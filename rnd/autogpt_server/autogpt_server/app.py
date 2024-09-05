@@ -1,3 +1,4 @@
+from multiprocessing import set_start_method
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

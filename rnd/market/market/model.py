@@ -95,3 +95,26 @@ class AgentDetailResponse(pydantic.BaseModel):
     createdAt: datetime.datetime
     updatedAt: datetime.datetime
     graph: dict[str, typing.Any]
+
+
+class FeaturedAgentResponse(pydantic.BaseModel):
+    """
+    Represents the response data for an agent detail.
+    """
+
+    agentId: str
+    featuredCategories: list[str]
+    createdAt: datetime.datetime
+    updatedAt: datetime.datetime
+    isActive: bool
+
+
+class CategoriesResponse(pydantic.BaseModel):
+    """
+    Represents the response data for a list of categories.
+
+    Attributes:
+        unique_categories (list[str]): The list of unique categories.
+    """
+
+    unique_categories: list[str]
