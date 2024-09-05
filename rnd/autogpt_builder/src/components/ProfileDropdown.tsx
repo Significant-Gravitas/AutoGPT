@@ -14,21 +14,34 @@ import useUser from "@/hooks/useUser";
 const ProfileDropdown = () => {
   const { supabase } = useSupabase();
   const router = useRouter();
+  const { user, role, isLoading } = useUser();
+
+  if (isLoading) {
+    return null;
+  }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-8 w-8 rounded-full">
           <Avatar>
-            <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+            <AvatarImage
+              src={user?.user_metadata["avatar_url"]}
+              alt="User Avatar"
+            />
             <AvatarFallback>CN</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => router.push("profile")}>
+        <DropdownMenuItem onClick={() => router.push("/profile")}>
           Profile
         </DropdownMenuItem>
+        {role === "admin" && (
+          <DropdownMenuItem onClick={() => router.push("/admin/dashboard")}>
+            Admin Dashboard
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => supabase?.auth.signOut()}>
           Log out
         </DropdownMenuItem>

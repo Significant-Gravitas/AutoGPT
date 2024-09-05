@@ -1,0 +1,63 @@
+replicaCount: 1 # not scaling websocket server for now
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-ws-server-dev/agpt-ws-server-dev
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8001
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-ws-server-ip"
+    networking.gke.io/managed-certificates: "autogpt-websocket-server-cert"
+  hosts:
+    - host: dev-ws-server.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-websocket-server
+          port: 8001
+  defaultBackend:
+    service:
+      name: autogpt-websocket-server
+      port:
+        number: 8001
+
+domain: "dev-ws-server.agpt.co"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 10
+  periodSeconds: 5
+livenessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+env:
+  REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: "password"

@@ -1,11 +1,11 @@
 import time
 from datetime import datetime, timedelta
-from typing import Union
+from typing import Any, Union
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 
 
-class CurrentTimeBlock(Block):
+class GetCurrentTimeBlock(Block):
     class Input(BlockSchema):
         trigger: str
 
@@ -17,8 +17,8 @@ class CurrentTimeBlock(Block):
             id="a892b8d9-3e4e-4e9c-9c1e-75f8efcf1bfa",
             description="This block outputs the current time.",
             categories={BlockCategory.TEXT},
-            input_schema=CurrentTimeBlock.Input,
-            output_schema=CurrentTimeBlock.Output,
+            input_schema=GetCurrentTimeBlock.Input,
+            output_schema=GetCurrentTimeBlock.Output,
             test_input=[
                 {"trigger": "Hello", "format": "{time}"},
             ],
@@ -32,7 +32,7 @@ class CurrentTimeBlock(Block):
         yield "time", current_time
 
 
-class CurrentDateBlock(Block):
+class GetCurrentDateBlock(Block):
     class Input(BlockSchema):
         trigger: str
         offset: Union[int, str]
@@ -45,8 +45,8 @@ class CurrentDateBlock(Block):
             id="b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1",
             description="This block outputs the current date with an optional offset.",
             categories={BlockCategory.TEXT},
-            input_schema=CurrentDateBlock.Input,
-            output_schema=CurrentDateBlock.Output,
+            input_schema=GetCurrentDateBlock.Input,
+            output_schema=GetCurrentDateBlock.Output,
             test_input=[
                 {"trigger": "Hello", "format": "{date}", "offset": "7"},
             ],
@@ -68,7 +68,7 @@ class CurrentDateBlock(Block):
         yield "date", current_date.strftime("%Y-%m-%d")
 
 
-class CurrentDateAndTimeBlock(Block):
+class GetCurrentDateAndTimeBlock(Block):
     class Input(BlockSchema):
         trigger: str
 
@@ -80,8 +80,8 @@ class CurrentDateAndTimeBlock(Block):
             id="b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0h2",
             description="This block outputs the current date and time.",
             categories={BlockCategory.TEXT},
-            input_schema=CurrentDateAndTimeBlock.Input,
-            output_schema=CurrentDateAndTimeBlock.Output,
+            input_schema=GetCurrentDateAndTimeBlock.Input,
+            output_schema=GetCurrentDateAndTimeBlock.Output,
             test_input=[
                 {"trigger": "Hello", "format": "{date_time}"},
             ],
@@ -101,28 +101,31 @@ class CurrentDateAndTimeBlock(Block):
         yield "date_time", current_date_time
 
 
-class TimerBlock(Block):
+class CountdownTimerBlock(Block):
     class Input(BlockSchema):
+        input_message: Any = "timer finished"
         seconds: Union[int, str] = 0
         minutes: Union[int, str] = 0
         hours: Union[int, str] = 0
         days: Union[int, str] = 0
 
     class Output(BlockSchema):
-        message: str
+        output_message: str
 
     def __init__(self):
         super().__init__(
             id="d67a9c52-5e4e-11e2-bcfd-0800200c9a71",
             description="This block triggers after a specified duration.",
             categories={BlockCategory.TEXT},
-            input_schema=TimerBlock.Input,
-            output_schema=TimerBlock.Output,
+            input_schema=CountdownTimerBlock.Input,
+            output_schema=CountdownTimerBlock.Output,
             test_input=[
                 {"seconds": 1},
+                {"input_message": "Custom message"},
             ],
             test_output=[
-                ("message", "timer finished"),
+                ("output_message", "timer finished"),
+                ("output_message", "Custom message"),
             ],
         )
 
@@ -136,4 +139,4 @@ class TimerBlock(Block):
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
         time.sleep(total_seconds)
-        yield "message", "timer finished"
+        yield "output_message", input_data.input_message

@@ -1,9 +1,10 @@
-import React from "react";
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import React, { useCallback } from "react";
+import AutoGPTServerAPI, { GraphMeta } from "@/lib/autogpt-server-api";
 import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { IconSquare } from "@/components/ui/icons";
 import { Pencil2Icon } from "@radix-ui/react-icons";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
@@ -20,6 +21,11 @@ export const FlowRunInfo: React.FC<
     );
   }
 
+  const handleStopRun = useCallback(() => {
+    const api = new AutoGPTServerAPI();
+    api.stopGraphExecution(flow.id, flowRun.id);
+  }, [flow.id, flowRun.id]);
+
   return (
     <Card {...props}>
       <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
@@ -34,12 +40,19 @@ export const FlowRunInfo: React.FC<
             Run ID: <code>{flowRun.id}</code>
           </p>
         </div>
-        <Link
-          className={buttonVariants({ variant: "outline" })}
-          href={`/build?flowID=${flow.id}`}
-        >
-          <Pencil2Icon className="mr-2" /> Edit Agent
-        </Link>
+        <div className="flex space-x-2">
+          {flowRun.status === "running" && (
+            <Button onClick={handleStopRun} variant="destructive">
+              <IconSquare className="mr-2" /> Stop Run
+            </Button>
+          )}
+          <Link
+            className={buttonVariants({ variant: "outline" })}
+            href={`/build?flowID=${flow.id}`}
+          >
+            <Pencil2Icon className="mr-2" /> Edit Agent
+          </Link>
+        </div>
       </CardHeader>
       <CardContent>
         <p>

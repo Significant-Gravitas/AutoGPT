@@ -15,15 +15,17 @@ export default class AutoGPTServerAPI {
   private wsUrl: string;
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
-  private wsMessageHandlers: { [key: string]: (data: any) => void } = {};
+  private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private supabaseClient = createClient();
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
       "http://localhost:8000/api",
+    wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
+      "ws://localhost:8001/ws",
   ) {
     this.baseUrl = baseUrl;
-    this.wsUrl = `ws://${new URL(this.baseUrl).host}/ws`;
+    this.wsUrl = wsUrl;
   }
 
   async createUser(): Promise<User> {
@@ -126,14 +128,17 @@ export default class AutoGPTServerAPI {
     runID: string,
   ): Promise<NodeExecutionResult[]> {
     return (await this._get(`/graphs/${graphID}/executions/${runID}`)).map(
-      (result: any) => ({
-        ...result,
-        add_time: new Date(result.add_time),
-        queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
-        start_time: result.start_time ? new Date(result.start_time) : undefined,
-        end_time: result.end_time ? new Date(result.end_time) : undefined,
-      }),
+      parseNodeExecutionResultTimestamps,
     );
+  }
+
+  async stopGraphExecution(
+    graphID: string,
+    runID: string,
+  ): Promise<NodeExecutionResult[]> {
+    return (
+      await this._request("POST", `/graphs/${graphID}/executions/${runID}/stop`)
+    ).map(parseNodeExecutionResultTimestamps);
   }
 
   private async _get(path: string) {
@@ -205,10 +210,13 @@ export default class AutoGPTServerAPI {
         };
 
         this.webSocket.onmessage = (event) => {
-          const message = JSON.parse(event.data);
-          if (this.wsMessageHandlers[message.method]) {
-            this.wsMessageHandlers[message.method](message.data);
+          const message: WebsocketMessage = JSON.parse(event.data);
+          if (message.method == "execution_event") {
+            message.data = parseNodeExecutionResultTimestamps(message.data);
           }
+          this.wsMessageHandlers[message.method]?.forEach((handler) =>
+            handler(message.data),
+          );
         };
       } catch (error) {
         console.error("Error connecting to WebSocket:", error);
@@ -248,8 +256,12 @@ export default class AutoGPTServerAPI {
   onWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
     method: M,
     handler: (data: WebsocketMessageTypeMap[M]) => void,
-  ) {
-    this.wsMessageHandlers[method] = handler;
+  ): () => void {
+    this.wsMessageHandlers[method] ??= new Set();
+    this.wsMessageHandlers[method].add(handler);
+
+    // Return detacher
+    return () => this.wsMessageHandlers[method].delete(handler);
   }
 
   subscribeToExecution(graphId: string) {
@@ -272,3 +284,22 @@ type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
   execution_event: NodeExecutionResult;
 };
+
+type WebsocketMessage = {
+  [M in keyof WebsocketMessageTypeMap]: {
+    method: M;
+    data: WebsocketMessageTypeMap[M];
+  };
+}[keyof WebsocketMessageTypeMap];
+
+/* *** HELPER FUNCTIONS *** */
+
+function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
+  return {
+    ...result,
+    add_time: new Date(result.add_time),
+    queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
+    start_time: result.start_time ? new Date(result.start_time) : undefined,
+    end_time: result.end_time ? new Date(result.end_time) : undefined,
+  };
+}
