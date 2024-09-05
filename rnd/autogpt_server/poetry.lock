@@ -25,7 +25,7 @@ requests = "*"
 sentry-sdk = "^1.40.4"
 
 [package.extras]
-benchmark = ["agbenchmark"]
+benchmark = ["agbenchmark @ file:///Users/majdyz/Code/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
@@ -386,7 +386,7 @@ watchdog = "4.0.0"
 webdriver-manager = "^4.0.1"
 
 [package.extras]
-benchmark = ["agbenchmark"]
+benchmark = ["agbenchmark @ file:///Users/majdyz/Code/AutoGPT/benchmark"]
 
 [package.source]
 type = "directory"
