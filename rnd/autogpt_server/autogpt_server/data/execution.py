@@ -300,6 +300,26 @@ async def update_execution_status(
     return ExecutionResult.from_db(res)
 
 
+async def get_graph_execution(
+    graph_exec_id: str, user_id: str
+) -> AgentGraphExecution | None:
+    """
+    Retrieve a specific graph execution by its ID.
+
+    Args:
+        graph_exec_id (str): The ID of the graph execution to retrieve.
+        user_id (str): The ID of the user to whom the graph (execution) belongs.
+
+    Returns:
+        AgentGraphExecution | None: The graph execution if found, None otherwise.
+    """
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": graph_exec_id, "userId": user_id},
+        include=GRAPH_EXECUTION_INCLUDE,
+    )
+    return execution
+
+
 async def list_executions(graph_id: str, graph_version: int | None = None) -> list[str]:
     where: AgentGraphExecutionWhereInput = {"agentGraphId": graph_id}
     if graph_version is not None:

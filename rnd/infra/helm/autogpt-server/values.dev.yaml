@@ -82,6 +82,6 @@ env:
   APP_ENV: "dev"
   PYRO_HOST: "0.0.0.0"
   NUM_GRAPH_WORKERS: 100
-  NUM_NODE_WORKERS: 100
+  NUM_NODE_WORKERS: 5
   REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
   REDIS_PORT: "6379"
