@@ -1,7 +1,4 @@
-from multiprocessing import set_start_method
 from typing import TYPE_CHECKING
-
-from .util.logging import configure_logging
 
 if TYPE_CHECKING:
     from autogpt_server.util.process import AppProcess
@@ -12,9 +9,6 @@ def run_processes(*processes: "AppProcess", **kwargs):
     Execute all processes in the app. The last process is run in the foreground.
     """
     try:
-        set_start_method("spawn", force=True)
-        configure_logging()
-
         for process in processes[:-1]:
             process.start(background=True, **kwargs)
 
