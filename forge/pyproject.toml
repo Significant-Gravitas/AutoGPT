@@ -54,7 +54,7 @@ tiktoken = ">=0.7.0,<1.0.0"
 toml = "^0.10.2"
 uvicorn = { extras = ["standard"], version = ">=0.23.2,<1" }
 watchdog = "4.0.0"
-webdriver-manager = "^4.0.1"
+webdriver-manager = "^4.0.2"
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]
