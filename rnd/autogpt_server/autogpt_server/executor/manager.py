@@ -49,7 +49,6 @@ from autogpt_server.util.settings import Config
 from autogpt_server.util.type import convert
 
 logger = logging.getLogger(__name__)
-multiprocessing.log_to_stderr(logging.DEBUG)
 
 
 def get_log_metadata(
@@ -121,9 +120,7 @@ def execute_node(
     if input_data is None:
         logger.error(
             "Skip execution, input validation error",
-            extra={
-                "json_fields": {**log_metadata, "error": error},
-            },
+            extra={"json_fields": {**log_metadata, "error": error}},
         )
         return
 
@@ -255,22 +252,14 @@ def _enqueue_next_nodes(
             if not next_node_input:
                 logger.warning(
                     f"Skipped queueing {suffix}",
-                    extra={
-                        "json_fields": {
-                            **log_metadata,
-                        }
-                    },
+                    extra={"json_fields": {**log_metadata}},
                 )
                 return enqueued_executions
 
             # Input is complete, enqueue the execution.
             logger.info(
                 f"Enqueued {suffix}",
-                extra={
-                    "json_fields": {
-                        **log_metadata,
-                    }
-                },
+                extra={"json_fields": {**log_metadata}},
             )
             enqueued_executions.append(
                 add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
@@ -404,7 +393,6 @@ class Executor:
     def on_node_executor_start(cls):
         configure_logging()
 
-        cls.logger = logging.getLogger("node_executor")
         cls.loop = asyncio.new_event_loop()
         cls.pid = os.getpid()
 
@@ -467,27 +455,19 @@ class Executor:
         cls, q: ExecutionQueue[NodeExecution], data: NodeExecution, log_metadata: dict
     ):
         try:
-            cls.logger.info(
-                "Start node execution",
-                extra={
-                    "json_fields": {
-                        **log_metadata,
-                    }
-                },
+            logger.info(
+                f"Start node execution {data.node_exec_id}",
+                extra={"json_fields": {**log_metadata}},
             )
             for execution in execute_node(cls.loop, cls.agent_server_client, data):
                 q.add(execution)
-            cls.logger.info(
-                "Finished node execution",
-                extra={
-                    "json_fields": {
-                        **log_metadata,
-                    }
-                },
+            logger.info(
+                f"Finished node execution {data.node_exec_id}",
+                extra={"json_fields": {**log_metadata}},
             )
         except Exception as e:
-            cls.logger.exception(
-                f"Failed node execution: {e}",
+            logger.exception(
+                f"Failed node execution {data.node_exec_id}: {e}",
                 extra={
                     **log_metadata,
                 },
@@ -498,7 +478,6 @@ class Executor:
         configure_logging()
 
         cls.pool_size = Config().num_node_workers
-        cls.logger = logging.getLogger("graph_executor")
         cls.loop = asyncio.new_event_loop()
         cls.pid = os.getpid()
 
@@ -554,15 +533,11 @@ class Executor:
     @classmethod
     @time_measured
     def _on_graph_execution(
-        cls, graph_data: GraphExecution, cancel: threading.Event, log_metadata: dict
+        cls, graph_exec: GraphExecution, cancel: threading.Event, log_metadata: dict
     ) -> int:
-        cls.logger.info(
-            "Start graph execution",
-            extra={
-                "json_fields": {
-                    **log_metadata,
-                }
-            },
+        logger.info(
+            f"Start graph execution {graph_exec.graph_exec_id}",
+            extra={"json_fields": {**log_metadata}},
         )
         n_node_executions = 0
         finished = False
@@ -574,7 +549,7 @@ class Executor:
                 return
             cls.executor.terminate()
             logger.info(
-                f"Terminated graph execution {graph_data.graph_exec_id}",
+                f"Terminated graph execution {graph_exec.graph_exec_id}",
                 extra={"json_fields": {**log_metadata}},
             )
             cls._init_node_executor_pool()
@@ -584,7 +559,7 @@ class Executor:
 
         try:
             queue = ExecutionQueue[NodeExecution]()
-            for node_exec in graph_data.start_node_execs:
+            for node_exec in graph_exec.start_node_execs:
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
@@ -614,7 +589,11 @@ class Executor:
                     #   Re-enqueueing the data back to the queue will disrupt the order.
                     execution.wait()
 
-                logger.debug(f"Dispatching execution of node {exec_data.node_id}")
+                logger.debug(
+                    f"Dispatching node execution {exec_data.node_exec_id} "
+                    f"for node {exec_data.node_id}",
+                    extra={**log_metadata},
+                )
                 running_executions[exec_data.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
                     (queue, exec_data),
@@ -625,41 +604,30 @@ class Executor:
                 while queue.empty() and running_executions:
                     logger.debug(
                         "Queue empty; running nodes: "
-                        f"{list(running_executions.keys())}"
+                        f"{list(running_executions.keys())}",
+                        extra={"json_fields": {**log_metadata}},
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
                             return n_node_executions
 
                         if not queue.empty():
-                            logger.debug(
-                                "Queue no longer empty! Returning to dispatching loop."
-                            )
                             break  # yield to parent loop to execute new queue items
 
-                        logger.debug(f"Waiting on execution of node {node_id}")
-                        execution.wait(3)
                         logger.debug(
-                            f"State of execution of node {node_id} after waiting: "
-                            f"{'DONE' if execution.ready() else 'RUNNING'}"
+                            f"Waiting on execution of node {node_id}",
+                            extra={"json_fields": {**log_metadata}},
                         )
+                        execution.wait(3)
 
-            cls.logger.info(
-                "Finished graph execution",
-                extra={
-                    "json_fields": {
-                        **log_metadata,
-                    }
-                },
+            logger.info(
+                f"Finished graph execution {graph_exec.graph_exec_id}",
+                extra={"json_fields": {**log_metadata}},
             )
         except Exception as e:
             logger.exception(
-                f"Failed graph execution: {e}",
-                extra={
-                    "json_fields": {
-                        **log_metadata,
-                    }
-                },
+                f"Failed graph execution {graph_exec.graph_exec_id}: {e}",
+                extra={"json_fields": {**log_metadata}},
             )
         finally:
             if not cancel.is_set():
