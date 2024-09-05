@@ -4,6 +4,35 @@ import typing
 import prisma.enums
 import pydantic
 
+from enum import Enum
+from typing import Literal, Union
+
+class InstallationLocation(str, Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
+
+class AgentInstalledFromMarketplaceEventData(pydantic.BaseModel):
+    marketplace_agent_id: str
+    installed_agent_id: str
+    installation_location: InstallationLocation
+
+class AgentInstalledFromTemplateEventData(pydantic.BaseModel):
+    template_id: str
+    installed_agent_id: str
+    installation_location: InstallationLocation
+
+class AgentInstalledFromMarketplaceEvent(pydantic.BaseModel):
+    event_name: Literal["agent_installed_from_marketplace"]
+    event_data: AgentInstalledFromMarketplaceEventData
+
+class AgentInstalledFromTemplateEvent(pydantic.BaseModel):
+    event_name: Literal["agent_installed_from_template"]
+    event_data: AgentInstalledFromTemplateEventData
+
+AnalyticsEvent = Union[AgentInstalledFromMarketplaceEvent, AgentInstalledFromTemplateEvent]
+
+class AnalyticsRequest(pydantic.BaseModel):
+    event: AnalyticsEvent
 
 class AddAgentRequest(pydantic.BaseModel):
     graph: dict[str, typing.Any]

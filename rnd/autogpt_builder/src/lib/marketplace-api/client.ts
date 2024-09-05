@@ -8,6 +8,7 @@ import {
   AgentWithRank,
   FeaturedAgentResponse,
   UniqueCategoriesResponse,
+  AnalyticsEvent,
 } from "./types";
 
 export default class MarketplaceAPI {
@@ -191,6 +192,10 @@ export default class MarketplaceAPI {
 
   async getCategories(): Promise<UniqueCategoriesResponse> {
     return this._get("/admin/categories");
+  }
+
+  async makeAnalyticsEvent(event: AnalyticsEvent) {
+    return this._post("/analytics", event);
   }
 
   private async _get(path: string) {
