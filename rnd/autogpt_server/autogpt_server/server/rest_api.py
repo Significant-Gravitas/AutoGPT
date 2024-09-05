@@ -11,14 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from autogpt_server.data import block, db
+from autogpt_server.data import execution as execution_db
 from autogpt_server.data import graph as graph_db
 from autogpt_server.data import user as user_db
 from autogpt_server.data.block import BlockInput, CompletedBlockOutput
-from autogpt_server.data.execution import (
-    ExecutionResult,
-    get_execution_results,
-    list_executions,
-)
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
@@ -170,9 +166,14 @@ class AgentServer(AppService):
             methods=["GET"],
         )
         router.add_api_route(
-            path="/graphs/{graph_id}/executions/{run_id}",
-            endpoint=self.get_run_execution_results,
+            path="/graphs/{graph_id}/executions/{graph_exec_id}",
+            endpoint=self.get_graph_run_node_execution_results,
             methods=["GET"],
+        )
+        router.add_api_route(
+            path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
+            endpoint=self.stop_graph_run,
+            methods=["POST"],
         )
         router.add_api_route(
             path="/graphs/{graph_id}/schedules",
@@ -423,14 +424,28 @@ class AgentServer(AppService):
         graph_id: str,
         node_input: dict[Any, Any],
         user_id: Annotated[str, Depends(get_user_id)],
-    ) -> dict[Any, Any]:
+    ) -> dict[str, Any]:  # FIXME: add proper return type
         try:
-            return self.execution_manager_client.add_execution(
+            graph_exec = self.execution_manager_client.add_execution(
                 graph_id, node_input, user_id=user_id
             )
+            return {"id": graph_exec["graph_exec_id"]}
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
+
+    async def stop_graph_run(
+        self, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> list[execution_db.ExecutionResult]:
+        if not await execution_db.get_graph_execution(graph_exec_id, user_id):
+            raise HTTPException(
+                404, detail=f"Agent execution #{graph_exec_id} not found"
+            )
+
+        self.execution_manager_client.cancel_execution(graph_exec_id)
+
+        # Retrieve & return canceled graph execution in its final state
+        return await execution_db.get_execution_results(graph_exec_id)
 
     @classmethod
     async def get_graph_input_schema(
@@ -458,17 +473,20 @@ class AgentServer(AppService):
                 status_code=404, detail=f"Agent #{graph_id}{rev} not found."
             )
 
-        return await list_executions(graph_id, graph_version)
+        return await execution_db.list_executions(graph_id, graph_version)
 
     @classmethod
-    async def get_run_execution_results(
-        cls, graph_id: str, run_id: str, user_id: Annotated[str, Depends(get_user_id)]
-    ) -> list[ExecutionResult]:
+    async def get_graph_run_node_execution_results(
+        cls,
+        graph_id: str,
+        graph_exec_id: str,
+        user_id: Annotated[str, Depends(get_user_id)],
+    ) -> list[execution_db.ExecutionResult]:
         graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-        return await get_execution_results(run_id)
+        return await execution_db.get_execution_results(graph_exec_id)
 
     async def create_schedule(
         self,
@@ -506,7 +524,7 @@ class AgentServer(AppService):
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        execution_result = ExecutionResult(**execution_result_dict)
+        execution_result = execution_db.ExecutionResult(**execution_result_dict)
         self.run_and_wait(self.event_queue.put(execution_result))
 
     @expose
