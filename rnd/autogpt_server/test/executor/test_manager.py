@@ -39,7 +39,7 @@ async def assert_sample_graph_executions(
         test_graph.id, graph_exec_id, test_user.id
     )
 
-    output_list = [{"value": ["Hello"]}, {"value": ["World"]}]
+    output_list = [{"result": ["Hello"]}, {"result": ["World"]}]
     input_list = [
         {"value": "Hello", "name": "input_1"},
         {"value": "World", "name": "input_2"},

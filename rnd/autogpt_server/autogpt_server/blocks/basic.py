@@ -140,7 +140,7 @@ class InputOutputBlockInput(BlockSchema, Generic[T]):
 
 
 class InputOutputBlockOutput(BlockSchema, Generic[T]):
-    value: T = Field(description="The value passed as input/output.")
+    result: T = Field(description="The value passed as input/output.")
 
 
 class InputOutputBlockBase(Block, ABC, Generic[T]):
@@ -162,8 +162,8 @@ class InputOutputBlockBase(Block, ABC, Generic[T]):
                 {"value": MockObject(value="!!", key="key"), "name": "input_2"},
             ],
             test_output=[
-                ("value", {"apple": 1, "banana": 2, "cherry": 3}),
-                ("value", MockObject(value="!!", key="key")),
+                ("result", {"apple": 1, "banana": 2, "cherry": 3}),
+                ("result", MockObject(value="!!", key="key")),
             ],
             static_output=True,
             *args,
@@ -171,7 +171,7 @@ class InputOutputBlockBase(Block, ABC, Generic[T]):
         )
 
     def run(self, input_data: InputOutputBlockInput[T]) -> BlockOutput:
-        yield "value", input_data.value
+        yield "result", input_data.value
 
 
 class InputBlock(InputOutputBlockBase[Any]):
