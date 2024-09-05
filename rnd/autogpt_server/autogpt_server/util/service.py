@@ -7,17 +7,14 @@ from typing import Any, Callable, Coroutine, Type, TypeVar, cast
 
 from Pyro5 import api as pyro
 from Pyro5 import nameserver
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from autogpt_server.data import db
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.util.process import AppProcess
+from autogpt_server.util.retry import conn_retry
 from autogpt_server.util.settings import Config
 
 logger = logging.getLogger(__name__)
-conn_retry = retry(
-    stop=stop_after_attempt(30), wait=wait_exponential(multiplier=1, min=1, max=30)
-)
 T = TypeVar("T")
 C = TypeVar("C", bound=Callable)
 
@@ -65,7 +62,7 @@ class PyroNameServer(AppProcess):
 class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
     event_queue: AsyncEventQueue = AsyncRedisEventQueue()
-    use_db: bool = True
+    use_db: bool = False
     use_redis: bool = False
 
     @classmethod

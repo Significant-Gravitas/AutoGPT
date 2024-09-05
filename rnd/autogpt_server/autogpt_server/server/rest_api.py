@@ -1,10 +1,12 @@
+import asyncio
 import inspect
+import uvicorn
+
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Annotated, Any, Dict
 
-import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,7 +31,6 @@ settings = Settings()
 
 class AgentServer(AppService):
     mutex = KeyedMutex()
-    use_db = False
     use_redis = True
     _test_dependency_overrides = {}
 

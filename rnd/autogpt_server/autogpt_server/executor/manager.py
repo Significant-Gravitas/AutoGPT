@@ -621,7 +621,7 @@ class Executor:
 
 class ExecutionManager(AppService):
     def __init__(self):
-        self.use_redis = False
+        self.use_db = True
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
