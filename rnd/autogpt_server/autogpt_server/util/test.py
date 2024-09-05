@@ -59,7 +59,6 @@ class SpinTestServer:
         return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
     async def __aenter__(self):
-
         self.name_server.__enter__()
         self.setup_dependency_overrides()
         self.agent_server.__enter__()
@@ -95,7 +94,7 @@ async def wait_execution(
     timeout: int = 20,
 ) -> list:
     async def is_execution_completed():
-        execs = await AgentServer().get_run_execution_results(
+        execs = await AgentServer().get_graph_run_node_execution_results(
             graph_id, graph_exec_id, user_id
         )
         return (
@@ -110,7 +109,7 @@ async def wait_execution(
     # Wait for the executions to complete
     for i in range(timeout):
         if await is_execution_completed():
-            return await AgentServer().get_run_execution_results(
+            return await AgentServer().get_graph_run_node_execution_results(
                 graph_id, graph_exec_id, user_id
             )
         time.sleep(1)

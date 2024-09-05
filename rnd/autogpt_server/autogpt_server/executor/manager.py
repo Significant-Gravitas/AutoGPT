@@ -1,9 +1,12 @@
 import asyncio
 import atexit
 import logging
+import multiprocessing
 import os
-from concurrent.futures import Future, ProcessPoolExecutor, TimeoutError
+import threading
+from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
+from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 
 if TYPE_CHECKING:
@@ -18,16 +21,27 @@ from autogpt_server.data.execution import (
     GraphExecution,
     NodeExecution,
     create_graph_execution,
+    get_execution_results,
     get_incomplete_executions,
     get_latest_execution,
     merge_execution_input,
     parse_execution_output,
     update_execution_status,
+    update_graph_execution_stats,
+    update_node_execution_stats,
     upsert_execution_input,
     upsert_execution_output,
 )
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
+from autogpt_server.util import json
+from autogpt_server.util.decorator import error_logged, time_measured
 from autogpt_server.util.logging import configure_logging
+from autogpt_server.util.metrics import (
+    metric_graph_count,
+    metric_graph_timing,
+    metric_node_payload,
+    metric_node_timing,
+)
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Config
 from autogpt_server.util.type import convert
@@ -35,11 +49,19 @@ from autogpt_server.util.type import convert
 logger = logging.getLogger(__name__)
 
 
-def get_log_metadata(graph_eid: str, node_eid: str, block_name: str = "-") -> dict:
+def get_log_metadata(
+    graph_eid: str,
+    graph_id: str,
+    node_eid: str,
+    node_id: str,
+    block_name: str,
+) -> dict:
     return {
         "component": "ExecutionManager",
         "graph_eid": graph_eid,
+        "graph_id": graph_id,
         "node_eid": node_eid,
+        "node_id": node_id,
         "block_name": block_name,
     }
 
@@ -64,6 +86,7 @@ def execute_node(
         The subsequent node to be enqueued, or None if there is no subsequent node.
     """
     graph_exec_id = data.graph_exec_id
+    graph_id = data.graph_id
     node_exec_id = data.node_exec_id
     node_id = data.node_id
 
@@ -84,9 +107,15 @@ def execute_node(
         return
 
     # Sanity check: validate the execution input.
-    log_metadata = get_log_metadata(graph_exec_id, node_exec_id, node_block.name)
-    exec_data, error = validate_exec(node, data.data, resolve_input=False)
-    if exec_data is None:
+    log_metadata = get_log_metadata(
+        graph_eid=graph_exec_id,
+        graph_id=graph_id,
+        node_eid=node_exec_id,
+        node_id=node_id,
+        block_name=node_block.name,
+    )
+    input_data, error = validate_exec(node, data.data, resolve_input=False)
+    if input_data is None:
         logger.error(
             "Skip execution, input validation error",
             extra={
@@ -96,20 +125,23 @@ def execute_node(
         return
 
     # Execute the node
-    exec_data_str = str(exec_data).encode("utf-8").decode("unicode_escape")
+    input_data_str = json.dumps(input_data)
+    metric_node_payload("input_size", len(input_data_str), tags=log_metadata)
     logger.info(
         "Executed node with input",
-        extra={"json_fields": {**log_metadata, "input": exec_data_str}},
+        extra={"json_fields": {**log_metadata, "input": input_data_str}},
     )
     update_execution(ExecutionStatus.RUNNING)
 
     try:
-        for output_name, output_data in node_block.execute(exec_data):
+        for output_name, output_data in node_block.execute(input_data):
+            output_data_str = json.dumps(output_data)
+            metric_node_payload("output_size", len(output_data_str), tags=log_metadata)
             logger.info(
                 "Node produced output",
-                extra={"json_fields": {**log_metadata, output_name: output_data}},
+                extra={"json_fields": {**log_metadata, output_name: output_data_str}},
             )
-            wait(upsert_execution_output(node_exec_id, output_name, output_data))
+            wait(upsert_execution_output(node_exec_id, output_name, output_data_str))
 
             for execution in _enqueue_next_nodes(
                 api_client=api_client,
@@ -117,6 +149,7 @@ def execute_node(
                 node=node,
                 output=(output_name, output_data),
                 graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
                 log_metadata=log_metadata,
             ):
                 yield execution
@@ -150,6 +183,7 @@ def _enqueue_next_nodes(
     node: Node,
     output: BlockData,
     graph_exec_id: str,
+    graph_id: str,
     log_metadata: dict,
 ) -> list[NodeExecution]:
     def wait(f: Coroutine[Any, Any, T]) -> T:
@@ -164,6 +198,7 @@ def _enqueue_next_nodes(
         api_client.send_execution_update(exec_update.model_dump())
         return NodeExecution(
             graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
             node_exec_id=node_exec_id,
             node_id=node_id,
             data=data,
@@ -365,8 +400,11 @@ class Executor:
     @classmethod
     def on_node_executor_start(cls):
         configure_logging()
+
         cls.logger = logging.getLogger("node_executor")
         cls.loop = asyncio.new_event_loop()
+        cls.pid = os.getpid()
+
         cls.loop.run_until_complete(db.connect())
         cls.agent_server_client = get_agent_server_client()
 
@@ -375,12 +413,37 @@ class Executor:
 
     @classmethod
     def on_node_executor_stop(cls):
-        logger.info(f"[on_node_executor_stop {os.getpid()}] ⏳ Disconnecting DB...")
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
         cls.loop.run_until_complete(db.disconnect())
 
     @classmethod
+    @error_logged
     def on_node_execution(cls, q: ExecutionQueue[NodeExecution], data: NodeExecution):
-        log_metadata = get_log_metadata(data.graph_exec_id, data.node_exec_id)
+        log_metadata = get_log_metadata(
+            graph_eid=data.graph_exec_id,
+            graph_id=data.graph_id,
+            node_eid=data.node_exec_id,
+            node_id=data.node_id,
+            block_name="-",
+        )
+        timing_info, _ = cls._on_node_execution(q, data, log_metadata)
+        metric_node_timing("walltime", timing_info.wall_time, tags=log_metadata)
+        metric_node_timing("cputime", timing_info.cpu_time, tags=log_metadata)
+        cls.loop.run_until_complete(
+            update_node_execution_stats(
+                data.node_exec_id,
+                {
+                    "walltime": timing_info.wall_time,
+                    "cputime": timing_info.cpu_time,
+                },
+            )
+        )
+
+    @classmethod
+    @time_measured
+    def _on_node_execution(
+        cls, q: ExecutionQueue[NodeExecution], data: NodeExecution, log_metadata: dict
+    ):
         try:
             cls.logger.info(
                 "Start node execution",
@@ -411,11 +474,16 @@ class Executor:
     @classmethod
     def on_graph_executor_start(cls):
         configure_logging()
-        cls.logger = logging.getLogger("graph_executor")
+
         cls.pool_size = Config().num_node_workers
-        cls.executor = ProcessPoolExecutor(
-            max_workers=cls.pool_size,
-            initializer=cls.on_node_executor_start,
+        cls.logger = logging.getLogger("graph_executor")
+        cls.loop = asyncio.new_event_loop()
+        cls.pid = os.getpid()
+
+        cls.loop.run_until_complete(db.connect())
+        cls._init_node_executor_pool()
+        logger.info(
+            f"Graph executor {cls.pid} started with {cls.pool_size} node workers"
         )
 
         # Set up shutdown handler
@@ -424,14 +492,48 @@ class Executor:
     @classmethod
     def on_graph_executor_stop(cls):
         logger.info(
-            f"[on_graph_executor_stop {os.getpid()}] "
-            "⏳ Shutting down node executor pool..."
+            f"[on_graph_executor_stop {cls.pid}] ⏳ Terminating node executor pool..."
         )
-        cls.executor.shutdown(cancel_futures=True)
+        cls.executor.terminate()
 
     @classmethod
-    def on_graph_execution(cls, graph_data: GraphExecution):
-        log_metadata = get_log_metadata(graph_data.graph_exec_id, "*")
+    def _init_node_executor_pool(cls):
+        cls.executor = Pool(
+            processes=cls.pool_size,
+            initializer=cls.on_node_executor_start,
+        )
+
+    @classmethod
+    @error_logged
+    def on_graph_execution(cls, data: GraphExecution, cancel: threading.Event):
+        log_metadata = get_log_metadata(
+            graph_eid=data.graph_exec_id,
+            graph_id=data.graph_id,
+            node_id="*",
+            node_eid="*",
+            block_name="-",
+        )
+        timing_info, node_count = cls._on_graph_execution(data, cancel, log_metadata)
+        metric_graph_timing("walltime", timing_info.wall_time, tags=log_metadata)
+        metric_graph_timing("cputime", timing_info.cpu_time, tags=log_metadata)
+        metric_graph_count("nodecount", node_count, tags=log_metadata)
+
+        cls.loop.run_until_complete(
+            update_graph_execution_stats(
+                data.graph_exec_id,
+                {
+                    "walltime": timing_info.wall_time,
+                    "cputime": timing_info.cpu_time,
+                    "nodecount": node_count,
+                },
+            )
+        )
+
+    @classmethod
+    @time_measured
+    def _on_graph_execution(
+        cls, graph_data: GraphExecution, cancel: threading.Event, log_metadata: dict
+    ) -> int:
         cls.logger.info(
             "Start graph execution",
             extra={
@@ -440,36 +542,85 @@ class Executor:
                 }
             },
         )
+        n_node_executions = 0
+        finished = False
+
+        def cancel_handler():
+            while not cancel.is_set():
+                cancel.wait(1)
+            if finished:
+                return
+            cls.executor.terminate()
+            logger.info(
+                f"Terminated graph execution {graph_data.graph_exec_id}",
+                extra={"json_fields": {**log_metadata}},
+            )
+            cls._init_node_executor_pool()
+
+        cancel_thread = threading.Thread(target=cancel_handler)
+        cancel_thread.start()
 
         try:
             queue = ExecutionQueue[NodeExecution]()
             for node_exec in graph_data.start_node_execs:
                 queue.add(node_exec)
 
-            futures: dict[str, Future] = {}
+            running_executions: dict[str, AsyncResult] = {}
+
+            def make_exec_callback(exec_data: NodeExecution):
+                node_id = exec_data.node_id
+
+                def callback(_):
+                    running_executions.pop(node_id)
+                    nonlocal n_node_executions
+                    n_node_executions += 1
+
+                return callback
+
             while not queue.empty():
-                execution = queue.get()
+                if cancel.is_set():
+                    return n_node_executions
+
+                exec_data = queue.get()
 
                 # Avoid parallel execution of the same node.
-                fut = futures.get(execution.node_id)
-                if fut and not fut.done():
+                execution = running_executions.get(exec_data.node_id)
+                if execution and not execution.ready():
                     # TODO (performance improvement):
                     #   Wait for the completion of the same node execution is blocking.
                     #   To improve this we need a separate queue for each node.
                     #   Re-enqueueing the data back to the queue will disrupt the order.
-                    cls.wait_future(fut, timeout=None)
+                    execution.wait()
 
-                futures[execution.node_id] = cls.executor.submit(
-                    cls.on_node_execution, queue, execution
+                logger.debug(f"Dispatching execution of node {exec_data.node_id}")
+                running_executions[exec_data.node_id] = cls.executor.apply_async(
+                    cls.on_node_execution,
+                    (queue, exec_data),
+                    callback=make_exec_callback(exec_data),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
-                while queue.empty() and futures:
-                    for node_id, future in list(futures.items()):
-                        if future.done():
-                            del futures[node_id]
-                        elif queue.empty():
-                            cls.wait_future(future)
+                while queue.empty() and running_executions:
+                    logger.debug(
+                        "Queue empty; running nodes: "
+                        f"{list(running_executions.keys())}"
+                    )
+                    for node_id, execution in list(running_executions.items()):
+                        if cancel.is_set():
+                            return n_node_executions
+
+                        if not queue.empty():
+                            logger.debug(
+                                "Queue no longer empty! Returning to dispatching loop."
+                            )
+                            break  # yield to parent loop to execute new queue items
+
+                        logger.debug(f"Waiting on execution of node {node_id}")
+                        execution.wait(3)
+                        logger.debug(
+                            f"State of execution of node {node_id} after waiting: "
+                            f"{'DONE' if execution.ready() else 'RUNNING'}"
+                        )
 
             cls.logger.info(
                 "Finished graph execution",
@@ -480,7 +631,7 @@ class Executor:
                 },
             )
         except Exception as e:
-            cls.logger.exception(
+            logger.exception(
                 f"Failed graph execution: {e}",
                 extra={
                     "json_fields": {
@@ -488,36 +639,42 @@ class Executor:
                     }
                 },
             )
-
-    @classmethod
-    def wait_future(cls, future: Future, timeout: int | None = 3):
-        try:
-            if not future.done():
-                future.result(timeout=timeout)
-        except TimeoutError:
-            # Avoid being blocked by long-running node, by not waiting its completion.
-            pass
+        finally:
+            if not cancel.is_set():
+                finished = True
+                cancel.set()
+            cancel_thread.join()
+            return n_node_executions
 
 
 class ExecutionManager(AppService):
     def __init__(self):
+        self.use_redis = False
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
-        self.use_redis = False
+        self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
     def run_service(self):
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
         )
+        sync_manager = multiprocessing.Manager()
         logger.info(f"ExecutionManager started with max-{self.pool_size} graph workers")
         while True:
-            exec_data = self.queue.get()
+            graph_exec_data = self.queue.get()
+            graph_exec_id = graph_exec_data.graph_exec_id
             logger.debug(
-                f"[ExecutionManager] Dispatching graph execution "
-                f"{exec_data.graph_exec_id}"
+                f"[ExecutionManager] Dispatching graph execution {graph_exec_id}"
             )
-            self.executor.submit(Executor.on_graph_execution, exec_data)
+            cancel_event = sync_manager.Event()
+            future = self.executor.submit(
+                Executor.on_graph_execution, graph_exec_data, cancel_event
+            )
+            self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+            future.add_done_callback(
+                lambda _: self.active_graph_runs.pop(graph_exec_id)
+            )
 
     def cleanup(self):
         logger.info(f"[{__class__.__name__}] ⏳ Shutting down graph executor pool...")
@@ -532,7 +689,7 @@ class ExecutionManager(AppService):
     @expose
     def add_execution(
         self, graph_id: str, data: BlockInput, user_id: str
-    ) -> dict[Any, Any]:
+    ) -> dict[str, Any]:
         graph: Graph | None = self.run_and_wait(get_graph(graph_id, user_id=user_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
@@ -565,6 +722,7 @@ class ExecutionManager(AppService):
             starting_node_execs.append(
                 NodeExecution(
                     graph_exec_id=node_exec.graph_exec_id,
+                    graph_id=node_exec.graph_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
                     data=node_exec.input_data,
@@ -578,9 +736,51 @@ class ExecutionManager(AppService):
             self.agent_server_client.send_execution_update(exec_update.model_dump())
 
         graph_exec = GraphExecution(
+            graph_id=graph_id,
             graph_exec_id=graph_exec_id,
             start_node_execs=starting_node_execs,
         )
         self.queue.add(graph_exec)
 
-        return {"id": graph_exec_id}
+        return graph_exec.model_dump()
+
+    @expose
+    def cancel_execution(self, graph_exec_id: str) -> None:
+        """
+        Mechanism:
+        1. Set the cancel event
+        2. Graph executor's cancel handler thread detects the event, terminates workers,
+           reinitializes worker pool, and returns.
+        3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+        """
+        if graph_exec_id not in self.active_graph_runs:
+            raise Exception(
+                f"Graph execution #{graph_exec_id} not active/running: "
+                "possibly already completed/cancelled."
+            )
+
+        future, cancel_event = self.active_graph_runs[graph_exec_id]
+        if cancel_event.is_set():
+            return
+
+        cancel_event.set()
+        future.result()
+
+        # Update the status of the unfinished node executions
+        node_execs = self.run_and_wait(get_execution_results(graph_exec_id))
+        for node_exec in node_execs:
+            if node_exec.status not in (
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+            ):
+                self.run_and_wait(
+                    upsert_execution_output(
+                        node_exec.node_exec_id, "error", "TERMINATED"
+                    )
+                )
+                exec_update = self.run_and_wait(
+                    update_execution_status(
+                        node_exec.node_exec_id, ExecutionStatus.FAILED
+                    )
+                )
+                self.agent_server_client.send_execution_update(exec_update.model_dump())
