@@ -36,7 +36,7 @@ grouped_success_values = defaultdict[str, list[str]](list[str])
 
 # Loop through each JSON file to collect suffixes and success values
 for report_file in sorted(report_files):
-    with open(report_file) as f:
+    with open(report_file, encoding='utf-8') as f:
         logger.info(f"Loading {report_file}...")
 
         data = json.load(f)
