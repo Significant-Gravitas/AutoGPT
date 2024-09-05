@@ -412,26 +412,31 @@ class Executor:
         cls.agent_server_client = get_agent_server_client()
 
         # Set up shutdown handlers
-        cls.shutdown = False
         cls.shutdown_lock = threading.Lock()
-        atexit.register(cls.on_node_executor_stop)
-        signal.signal(signal.SIGTERM, lambda _, __: cls.stop_node_executor())
-
-    @classmethod
-    def stop_node_executor(cls):
-        cls.on_node_executor_stop()
-        sys.exit(0)
+        atexit.register(cls.on_node_executor_stop)  # handle regular shutdown
+        signal.signal(  # handle termination
+            signal.SIGTERM, lambda _, __: cls.on_node_executor_sigterm()
+        )
 
     @classmethod
     def on_node_executor_stop(cls):
-        # Prevent multiple calls to on_node_executor_stop from messing up the cleanup
-        with cls.shutdown_lock:
-            if cls.shutdown:
-                return
-            cls.shutdown = True
-            logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
-            cls.loop.run_until_complete(db.disconnect())
-            logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
+        if not cls.shutdown_lock.acquire(blocking=False):
+            return  # already shutting down
+
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
+        cls.loop.run_until_complete(db.disconnect())
+        logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
+
+    @classmethod
+    def on_node_executor_sigterm(cls):
+        llprint(f"[on_node_executor_sigterm {cls.pid}] ⚠️ SIGTERM received")
+        if not cls.shutdown_lock.acquire(blocking=False):
+            return  # already shutting down, no need to self-terminate
+
+        llprint(f"[on_node_executor_sigterm {cls.pid}] ⏳ Disconnecting DB...")
+        cls.loop.run_until_complete(db.disconnect())
+        llprint(f"[on_node_executor_sigterm {cls.pid}] ✅ Finished cleanup")
+        sys.exit(0)
 
     @classmethod
     @error_logged
@@ -801,3 +806,12 @@ class ExecutionManager(AppService):
                     )
                 )
                 self.agent_server_client.send_execution_update(exec_update.model_dump())
+
+
+def llprint(message: str):
+    """
+    Low-level print/log helper function for use in signal handlers.
+    Regular log/print statements are not allowed in signal handlers.
+    """
+    if logger.getEffectiveLevel() == logging.DEBUG:
+        os.write(sys.stdout.fileno(), (message + "\n").encode())
