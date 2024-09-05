@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -14,6 +15,8 @@ os.environ["PRISMA_SCHEMA_PATH"] = PRISMA_SCHEMA
 
 prisma, conn_id = Prisma(auto_register=True), ""
 
+logger = logging.getLogger(__name__)
+
 
 async def connect(call_count=0):
     global conn_id
@@ -21,13 +24,13 @@ async def connect(call_count=0):
         conn_id = str(uuid4())
 
     try:
-        print(f"[Prisma-{conn_id}] Acquiring connection..")
+        logger.info(f"[Prisma-{conn_id}] Acquiring connection..")
         if not prisma.is_connected():
             await prisma.connect()
-        print(f"[Prisma-{conn_id}] Connection acquired!")
+        logger.info(f"[Prisma-{conn_id}] Connection acquired!")
     except Exception as e:
         if call_count <= 5:
-            print(f"[Prisma-{conn_id}] Connection failed: {e}. Retrying now..")
+            logger.info(f"[Prisma-{conn_id}] Connection failed: {e}. Retrying now..")
             await asyncio.sleep(call_count)
             await connect(call_count + 1)
         else:
@@ -36,9 +39,9 @@ async def connect(call_count=0):
 
 async def disconnect():
     if prisma.is_connected():
-        print(f"[Prisma-{conn_id}] Releasing connection.")
+        logger.info(f"[Prisma-{conn_id}] Releasing connection.")
         await prisma.disconnect()
-        print(f"[Prisma-{conn_id}] Connection released.")
+        logger.info(f"[Prisma-{conn_id}] Connection released.")
 
 
 @asynccontextmanager
