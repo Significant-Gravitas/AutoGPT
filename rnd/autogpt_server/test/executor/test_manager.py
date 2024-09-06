@@ -41,8 +41,20 @@ async def assert_sample_graph_executions(
 
     output_list = [{"result": ["Hello"]}, {"result": ["World"]}]
     input_list = [
-        {"value": "Hello", "name": "input_1"},
-        {"value": "World", "name": "input_2"},
+        {
+            "name": "input_1",
+            "description": "First input value",
+            "placeholder_values": [],
+            "limit_to_placeholder_values": False,
+            "value": "Hello",
+        },
+        {
+            "name": "input_2",
+            "description": "Second input value",
+            "placeholder_values": [],
+            "limit_to_placeholder_values": False,
+            "value": "World",
+        },
     ]
 
     # Executing StoreValueBlock
