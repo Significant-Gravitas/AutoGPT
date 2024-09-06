@@ -134,13 +134,12 @@ def execute_node(
     output_size = 0
     try:
         for output_name, output_data in node_block.execute(input_data):
-            output_data_str = json.dumps(output_data)
-            output_size += len(output_data_str)
+            output_size += len(json.dumps(output_data))
             logger.info(
                 "Node produced output",
-                extra={"json_fields": {**log_metadata, output_name: output_data_str}},
+                extra={"json_fields": {**log_metadata, output_name: output_data}},
             )
-            wait(upsert_execution_output(node_exec_id, output_name, output_data_str))
+            wait(upsert_execution_output(node_exec_id, output_name, output_data))
 
             for execution in _enqueue_next_nodes(
                 api_client=api_client,
