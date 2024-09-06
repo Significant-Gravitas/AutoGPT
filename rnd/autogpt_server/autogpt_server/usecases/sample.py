@@ -29,11 +29,21 @@ def create_test_graph() -> graph.Graph:
     nodes = [
         graph.Node(
             block_id=InputBlock().id,
-            input_default={"name": "input_1"},
+            input_default={
+                "name": "input_1",
+                "description": "First input value",
+                "placeholder_values": [],
+                "limit_to_placeholder_values": False,
+            },
         ),
         graph.Node(
             block_id=InputBlock().id,
-            input_default={"name": "input_2"},
+            input_default={
+                "name": "input_2",
+                "description": "Second input value",
+                "placeholder_values": [],
+                "limit_to_placeholder_values": False,
+            },
         ),
         graph.Node(
             block_id=FillTextTemplateBlock().id,
@@ -48,13 +58,13 @@ def create_test_graph() -> graph.Graph:
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
-            source_name="value",
+            source_name="output",
             sink_name="values_#_a",
         ),
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
-            source_name="value",
+            source_name="output",
             sink_name="values_#_b",
         ),
         graph.Link(
