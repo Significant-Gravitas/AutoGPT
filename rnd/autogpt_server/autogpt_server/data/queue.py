@@ -59,7 +59,7 @@ class AsyncRedisEventQueue(AsyncEventQueue):
     async def put(self, execution_result: ExecutionResult):
         if self.connection:
             message = json.dumps(execution_result.model_dump(), cls=DateTimeEncoder)
-            logger.info(f"Put {message}")
+            logger.info(f"Putting execution result to Redis {message}")
             await self.connection.lpush(self.queue_name, message)  # type: ignore
 
     async def get(self) -> ExecutionResult | None:
@@ -67,7 +67,7 @@ class AsyncRedisEventQueue(AsyncEventQueue):
             message = await self.connection.rpop(self.queue_name)  # type: ignore
             if message is not None and isinstance(message, (str, bytes, bytearray)):
                 data = json.loads(message)
-                logger.info(f"Get {data}")
+                logger.info(f"Getting execution result from Redis {data}")
                 return ExecutionResult(**data)
         return None
 
