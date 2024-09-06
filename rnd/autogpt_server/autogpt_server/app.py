@@ -26,16 +26,21 @@ def main(**kwargs):
 
     from autogpt_server.executor import ExecutionManager, ExecutionScheduler
     from autogpt_server.server import AgentServer, WebsocketServer
-    from autogpt_server.util.service import PyroNameServer
 
     run_processes(
-        PyroNameServer(),
         ExecutionManager(),
         ExecutionScheduler(),
         WebsocketServer(),
         AgentServer(),
         **kwargs,
     )
+
+
+def execution_manager(**kwargs):
+
+    from autogpt_server.executor import ExecutionManager
+
+    run_processes(ExecutionManager(), **kwargs)
 
 
 if __name__ == "__main__":
