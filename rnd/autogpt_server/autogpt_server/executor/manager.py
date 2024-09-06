@@ -638,7 +638,7 @@ class ExecutionManager(AppService):
         ) as executor:
             sync_manager = multiprocessing.Manager()
             logger.info(
-                f"Execution manager started with max-{self.pool_size} graph workers."
+                f"[{self.service_name}] Started with max-{self.pool_size} graph workers"
             )
             while True:
                 graph_exec_data = self.queue.get()

@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from abc import ABC, abstractmethod
@@ -6,6 +7,8 @@ from typing import Optional
 
 from autogpt_server.util.logging import configure_logging
 from autogpt_server.util.metrics import sentry_init
+
+logger = logging.getLogger(__name__)
 
 
 class AppProcess(ABC):
@@ -37,9 +40,10 @@ class AppProcess(ABC):
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
+            logger.info(f"[{self.__class__.__name__}] Starting...")
             self.run()
         except KeyboardInterrupt or SystemExit as e:
-            print(f"Process terminated: {e}")
+            logger.warning(f"[{self.__class__.__name__}] Terminated: {e}")
 
     def __enter__(self):
         self.start(background=True)
