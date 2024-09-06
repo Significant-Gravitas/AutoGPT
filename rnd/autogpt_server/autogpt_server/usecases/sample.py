@@ -20,11 +20,11 @@ async def create_test_user() -> User:
 
 def create_test_graph() -> graph.Graph:
     """
-    StoreValueBlock
+    InputBlock
                \
                  ---- FillTextTemplateBlock ---- PrintToConsoleBlock
                /
-    StoreValueBlock
+    InputBlock
     """
     nodes = [
         graph.Node(

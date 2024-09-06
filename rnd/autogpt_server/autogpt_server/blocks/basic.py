@@ -202,7 +202,7 @@ class InputBlock(Block):
         )
 
     class Output(BlockSchema):
-        output: Any = SchemaField(description="The value passed as input.")
+        result: Any = SchemaField(description="The value passed as input.")
 
     def __init__(self):
         super().__init__(
@@ -227,15 +227,15 @@ class InputBlock(Block):
                 },
             ],
             test_output=[
-                ("output", "Hello, World!"),
-                ("output", "Hello, World!"),
+                ("result", "Hello, World!"),
+                ("result", "Hello, World!"),
             ],
             categories={BlockCategory.INPUT, BlockCategory.BASIC},
             ui_type=BlockUIType.INPUT,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        yield "output", input_data.value
+        yield "result", input_data.value
 
 
 class OutputBlock(InputOutputBlockBase[Any]):
