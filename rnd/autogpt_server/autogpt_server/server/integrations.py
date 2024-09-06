@@ -1,28 +1,28 @@
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Path, Query, Body
-from pydantic import BaseModel
-from supabase import Client
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
+from pydantic import BaseModel
+from supabase import Client
 
 from autogpt_server.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from autogpt_server.util.settings import Settings
 
-from .utils import get_user_id, get_supabase
+from .utils import get_supabase, get_user_id
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 settings = Settings()
+integrations_api_router = APIRouter()
 
 
 def get_store(supabase: Client = Depends(get_supabase)):
     return SupabaseIntegrationCredentialsStore(supabase)
 
 
-@router.get("/{provider}/login")
+@integrations_api_router.get("/{provider}/login")
 async def login(
     provider: Annotated[str, Path(title="The provider to initiate an OAuth flow for")],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -48,7 +48,7 @@ class CredentialsMetaResponse(BaseModel):
     credentials_type: Literal["oauth2", "api_key"]
 
 
-@router.post("/{provider}/callback")
+@integrations_api_router.post("/{provider}/callback")
 async def callback(
     provider: Annotated[str, Path(title="The target provider for this OAuth exchange")],
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
