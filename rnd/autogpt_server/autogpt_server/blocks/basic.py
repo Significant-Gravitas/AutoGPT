@@ -193,11 +193,11 @@ class InputBlock(Block):
         value: Any = SchemaField(description="The value to be passed as input.")
         name: str = SchemaField(description="The name of the input.")
         description: str = SchemaField(description="The description of the input.")
-        default_values: List[Any] = SchemaField(
-            description="The default values to be passed as input."
+        placeholder_values: List[Any] = SchemaField(
+            description="The placeholder values to be passed as input."
         )
-        limit_to_default_values: bool = SchemaField(
-            description="Whether to limit the selection to default values.",
+        limit_to_placeholder_values: bool = SchemaField(
+            description="Whether to limit the selection to placeholder values.",
             default=False,
         )
 
@@ -215,15 +215,15 @@ class InputBlock(Block):
                     "value": "Hello, World!",
                     "name": "input_1",
                     "description": "This is a test input.",
-                    "default_values": [],
-                    "limit_to_default_values": False,
+                    "placeholder_values": [],
+                    "limit_to_placeholder_values": False,
                 },
                 {
                     "value": "Hello, World!",
                     "name": "input_2",
                     "description": "This is a test input.",
-                    "default_values": ["Hello, World!"],
-                    "limit_to_default_values": True,
+                    "placeholder_values": ["Hello, World!"],
+                    "limit_to_placeholder_values": True,
                 },
             ],
             test_output=[
