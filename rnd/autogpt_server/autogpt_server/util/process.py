@@ -52,9 +52,10 @@ class AppProcess(ABC):
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
+            logger.info(f"[{self.__class__.__name__}] Starting...")
             self.run()
-        except (KeyboardInterrupt, SystemExit):
-            logger.info(f"[{self.__class__.__name__}] Terminated; quitting...")
+        except (KeyboardInterrupt, SystemExit) as e:
+            logger.warning(f"[{self.__class__.__name__}] Terminated: {e}; quitting...")
 
     def _self_terminate(self, signum: int, frame):
         self.cleanup()
