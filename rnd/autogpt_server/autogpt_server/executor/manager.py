@@ -133,7 +133,7 @@ def execute_node(
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
     logger.info(
-        f"{prefix}Executed node with input",
+        f"{prefix} Executed node with input",
         extra={"json_fields": {**log_metadata, "input": input_data_str}},
     )
     update_execution(ExecutionStatus.RUNNING)
@@ -165,7 +165,7 @@ def execute_node(
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
         logger.exception(
-            f"{prefix}Node execution failed with error",
+            f"{prefix} Node execution failed with error",
             extra={"json_fields": {**log_metadata, error: error_msg}},
         )
         wait(upsert_execution_output(node_exec_id, "error", error_msg))
@@ -446,7 +446,7 @@ class Executor:
     def _on_node_execution(
         cls,
         q: ExecutionQueue[NodeExecution],
-        dd: NodeExecution,
+        d: NodeExecution,
         log_metadata: dict,
         prefix: str,
         stats: dict[str, Any] | None = None,
