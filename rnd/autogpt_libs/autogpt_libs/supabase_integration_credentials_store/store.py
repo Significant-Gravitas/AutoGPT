@@ -1,5 +1,5 @@
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import cast
 
 from supabase import Client
@@ -83,7 +83,7 @@ class SupabaseIntegrationCredentialsStore:
 
     async def store_state_token(self, user_id: str, provider: str) -> str:
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(UTC) + timedelta(minutes=10)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
         state = OAuthState(
             token=token, provider=provider, expires_at=int(expires_at.timestamp())
@@ -104,7 +104,7 @@ class SupabaseIntegrationCredentialsStore:
         user_metadata = self._get_user_metadata(user_id)
         oauth_states = user_metadata.get("integration_oauth_states", [])
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         valid_state = next(
             (
                 state
