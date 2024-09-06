@@ -57,7 +57,6 @@ class PublishToMediumBlock(Block):
     class Output(BlockSchema):
         post_id: str = SchemaField(description="The ID of the created Medium post")
         post_url: str = SchemaField(description="The URL of the created Medium post")
-        author_id: str = SchemaField(description="The Medium user ID of the author")
         published_at: int = SchemaField(
             description="The timestamp when the post was published"
         )
@@ -85,7 +84,6 @@ class PublishToMediumBlock(Block):
             test_output=[
                 ("post_id", "e6f36a"),
                 ("post_url", "https://medium.com/@username/test-post-e6f36a"),
-                ("author_id", "1234567890abcdef"),
                 ("published_at", 1626282600),
             ],
             test_mock={
@@ -156,7 +154,6 @@ class PublishToMediumBlock(Block):
             if "data" in response:
                 yield "post_id", response["data"]["id"]
                 yield "post_url", response["data"]["url"]
-                yield "author_id", response["data"]["authorId"]
                 yield "published_at", response["data"]["publishedAt"]
             else:
                 error_message = response.get("errors", [{}])[0].get(

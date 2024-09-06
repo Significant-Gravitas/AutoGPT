@@ -403,7 +403,7 @@ async def get_top_agents_by_downloads(
 
 async def set_agent_featured(
     agent_id: str, is_active: bool = True, featured_categories: list[str] = ["featured"]
-):
+) -> prisma.models.FeaturedAgent:
     """Set an agent as featured in the database.
 
     Args:
@@ -418,7 +418,7 @@ async def set_agent_featured(
         if not agent:
             raise AgentQueryError(f"Agent with ID {agent_id} not found.")
 
-        await prisma.models.FeaturedAgent.prisma().upsert(
+        featured = await prisma.models.FeaturedAgent.prisma().upsert(
             where={"agentId": agent_id},
             data={
                 "update": {
@@ -432,6 +432,7 @@ async def set_agent_featured(
                 },
             },
         )
+        return featured
 
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
@@ -549,6 +550,93 @@ async def add_featured_category(
 
         return featured_agent
 
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def get_agent_featured(agent_id: str) -> prisma.models.FeaturedAgent | None:
+    """Retrieve an agent's featured categories from the database.
+
+    Args:
+        agent_id (str): The ID of the agent.
+
+    Returns:
+        FeaturedAgentResponse: The list of featured agents.
+    """
+    try:
+        featured_agent = await prisma.models.FeaturedAgent.prisma().find_unique(
+            where={"agentId": agent_id},
+        )
+        return featured_agent
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def get_not_featured_agents(
+    page: int = 1, page_size: int = 10
+) -> typing.List[prisma.models.Agents]:
+    """
+    Retrieve a list of not featured agents from the database.
+    """
+    try:
+        agents = await prisma.client.get_client().query_raw(
+            query=f"""
+            SELECT 
+                "Agents".id, 
+                "Agents"."createdAt", 
+                "Agents"."updatedAt", 
+                "Agents".version, 
+                "Agents".name, 
+                LEFT("Agents".description, 500) AS description, 
+                "Agents".author, 
+                "Agents".keywords, 
+                "Agents".categories, 
+                "Agents".graph,
+                "Agents"."submissionStatus",
+                "Agents"."submissionDate",
+                "Agents".search::text AS search
+            FROM "Agents"
+            LEFT JOIN "FeaturedAgent" ON "Agents"."id" = "FeaturedAgent"."agentId"
+            WHERE ("FeaturedAgent"."agentId" IS NULL OR "FeaturedAgent"."featuredCategories" = '{{}}')
+                AND "Agents"."submissionStatus" = 'APPROVED'
+            ORDER BY "Agents"."createdAt" DESC
+            LIMIT {page_size} OFFSET {page_size * (page - 1)}
+            """,
+            model=prisma.models.Agents,
+        )
+        return agents
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
+
+async def get_all_categories() -> market.model.CategoriesResponse:
+    """
+    Retrieve all unique categories from the database.
+
+    Returns:
+        CategoriesResponse: A list of unique categories.
+    """
+    try:
+        categories = await prisma.client.get_client().query_first(
+            query="""
+SELECT ARRAY_AGG(DISTINCT category ORDER BY category) AS unique_categories
+FROM (
+  SELECT UNNEST(categories) AS category
+  FROM "Agents"
+) subquery;
+""",
+            model=market.model.CategoriesResponse,
+        )
+        if not categories:
+            raise AgentQueryError("No categories found")
+
+        return categories
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
