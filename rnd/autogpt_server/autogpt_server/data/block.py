@@ -17,6 +17,10 @@ CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a 
 
 
 class BlockUIType(Enum):
+    """
+    The type of Node UI to be displayed in the builder for this block.
+    """
+
     STANDARD = "Standard"
     INPUT = "Input"
     OUTPUT = "Output"
