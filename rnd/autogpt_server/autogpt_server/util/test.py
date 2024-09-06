@@ -73,10 +73,10 @@ class SpinTestServer:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await db.disconnect()
 
-        self.name_server.__exit__(exc_type, exc_val, exc_tb)
-        self.agent_server.__exit__(exc_type, exc_val, exc_tb)
-        self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)
+        self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
+        self.agent_server.__exit__(exc_type, exc_val, exc_tb)
+        self.name_server.__exit__(exc_type, exc_val, exc_tb)
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing
