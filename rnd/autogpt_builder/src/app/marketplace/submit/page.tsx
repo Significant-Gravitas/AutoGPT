@@ -3,8 +3,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
-import ReactFlow, { Background, Controls } from "reactflow";
-import "reactflow/dist/style.css";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { Card } from "@/components/ui/card";

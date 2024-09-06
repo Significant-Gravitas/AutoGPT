@@ -4,6 +4,9 @@ from abc import ABC, abstractmethod
 from multiprocessing import Process, set_start_method
 from typing import Optional
 
+from autogpt_server.util.logging import configure_logging
+from autogpt_server.util.metrics import sentry_init
+
 
 class AppProcess(ABC):
     """
@@ -11,12 +14,21 @@ class AppProcess(ABC):
     """
 
     process: Optional[Process] = None
+
     set_start_method("spawn", force=True)
+    configure_logging()
+    sentry_init()
 
     @abstractmethod
     def run(self):
         """
         The method that will be executed in the process.
+        """
+        pass
+
+    def health_check(self):
+        """
+        A method to check the health of the process.
         """
         pass
 
@@ -57,6 +69,7 @@ class AppProcess(ABC):
             **proc_args,
         )
         self.process.start()
+        self.health_check()
         return self.process.pid or 0
 
     def stop(self):

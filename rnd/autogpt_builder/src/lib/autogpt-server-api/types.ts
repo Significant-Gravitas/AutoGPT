@@ -35,10 +35,11 @@ type BlockIOSimpleTypeSubSchema =
   | BlockIOBooleanSubSchema
   | BlockIONullSubSchema;
 
-type BlockIOSubSchemaMeta = {
+export type BlockIOSubSchemaMeta = {
   title?: string;
   description?: string;
   placeholder?: string;
+  advanced?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
@@ -121,7 +122,7 @@ export type Link = {
   is_static: boolean;
 };
 
-export type LinkCreatable = Omit<Link, "id"> & {
+export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
