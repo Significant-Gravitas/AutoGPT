@@ -245,7 +245,7 @@ async def upsert_execution_input(
 async def upsert_execution_output(
     node_exec_id: str,
     output_name: str,
-    output_data: str,  # JSON serialized data.
+    output_data: Any,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
@@ -253,7 +253,7 @@ async def upsert_execution_output(
     await AgentNodeExecutionInputOutput.prisma().create(
         data={
             "name": output_name,
-            "data": output_data,
+            "data": json.dumps(output_data),
             "referencedByOutputExecId": node_exec_id,
         }
     )
