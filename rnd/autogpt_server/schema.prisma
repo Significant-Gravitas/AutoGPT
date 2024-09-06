@@ -31,6 +31,8 @@ model User {
 model AgentGraph {
   id      String @default(uuid())
   version Int    @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   name        String?
   description String?
@@ -114,6 +116,8 @@ model AgentBlock {
 // This model describes the execution of an AgentGraph.
 model AgentGraphExecution {
   id String @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
@@ -175,6 +179,8 @@ model AgentNodeExecutionInputOutput {
 // This model describes the recurring execution schedule of an Agent.
 model AgentGraphExecutionSchedule {
   id String @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
