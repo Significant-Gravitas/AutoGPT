@@ -1,9 +1,14 @@
-from abc import ABC, abstractmethod
-from typing import Any, Generic, List, TypeVar
+from typing import Any, List
 
 from pydantic import Field
 
-from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockUIType,
+)
 from autogpt_server.data.model import SchemaField
 from autogpt_server.util.mock import MockObject
 
@@ -131,63 +136,151 @@ class FindInDictionaryBlock(Block):
             yield "missing", input_data.input
 
 
-T = TypeVar("T")
+class InputBlock(Block):
+    """
+    This block is used to provide input to the graph.
 
+    It takes in a value, name, description, default values list and bool to limit selection to default values.
 
-class InputOutputBlockInput(BlockSchema, Generic[T]):
-    value: T = Field(description="The value to be passed as input/output.")
-    name: str = Field(description="The name of the input/output.")
+    It Outputs the value passed as input.
+    """
 
-
-class InputOutputBlockOutput(BlockSchema, Generic[T]):
-    result: T = Field(description="The value passed as input/output.")
-
-
-class InputOutputBlockBase(Block, ABC, Generic[T]):
-    @abstractmethod
-    def block_id(self) -> str:
-        pass
-
-    def __init__(self, *args, **kwargs):
-        input_schema = InputOutputBlockInput[T]
-        output_schema = InputOutputBlockOutput[T]
-
-        super().__init__(
-            id=self.block_id(),
-            description="This block is used to define the input & output of a graph.",
-            input_schema=input_schema,
-            output_schema=output_schema,
-            test_input=[
-                {"value": {"apple": 1, "banana": 2, "cherry": 3}, "name": "input_1"},
-                {"value": MockObject(value="!!", key="key"), "name": "input_2"},
-            ],
-            test_output=[
-                ("result", {"apple": 1, "banana": 2, "cherry": 3}),
-                ("result", MockObject(value="!!", key="key")),
-            ],
-            static_output=True,
-            *args,
-            **kwargs,
+    class Input(BlockSchema):
+        value: Any = SchemaField(description="The value to be passed as input.")
+        name: str = SchemaField(description="The name of the input.")
+        description: str = SchemaField(description="The description of the input.")
+        placeholder_values: List[Any] = SchemaField(
+            description="The placeholder values to be passed as input."
+        )
+        limit_to_placeholder_values: bool = SchemaField(
+            description="Whether to limit the selection to placeholder values.",
+            default=False,
         )
 
-    def run(self, input_data: InputOutputBlockInput[T]) -> BlockOutput:
+    class Output(BlockSchema):
+        result: Any = SchemaField(description="The value passed as input.")
+
+    def __init__(self):
+        super().__init__(
+            id="c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+            description="This block is used to provide input to the graph.",
+            input_schema=InputBlock.Input,
+            output_schema=InputBlock.Output,
+            test_input=[
+                {
+                    "value": "Hello, World!",
+                    "name": "input_1",
+                    "description": "This is a test input.",
+                    "placeholder_values": [],
+                    "limit_to_placeholder_values": False,
+                },
+                {
+                    "value": "Hello, World!",
+                    "name": "input_2",
+                    "description": "This is a test input.",
+                    "placeholder_values": ["Hello, World!"],
+                    "limit_to_placeholder_values": True,
+                },
+            ],
+            test_output=[
+                ("result", "Hello, World!"),
+                ("result", "Hello, World!"),
+            ],
+            categories={BlockCategory.INPUT, BlockCategory.BASIC},
+            ui_type=BlockUIType.INPUT,
+        )
+
+    def run(self, input_data: Input) -> BlockOutput:
         yield "result", input_data.value
 
 
-class InputBlock(InputOutputBlockBase[Any]):
+class OutputBlock(Block):
+    """
+    Records the output of the graph for users to see.
+
+    Attributes:
+        recorded_value: The value to be recorded as output.
+        name: The name of the output.
+        description: The description of the output.
+        fmt_string: The format string to be used to format the recorded_value.
+
+    Outputs:
+        output: The formatted recorded_value if fmt_string is provided and the recorded_value
+                can be formatted, otherwise the raw recorded_value.
+
+    Behavior:
+        If fmt_string is provided and the recorded_value is of a type that can be formatted,
+        the block attempts to format the recorded_value using the fmt_string.
+        If formatting fails or no fmt_string is provided, the raw recorded_value is output.
+    """
+
+    class Input(BlockSchema):
+        recorded_value: Any = SchemaField(
+            description="The value to be recorded as output."
+        )
+        name: str = SchemaField(description="The name of the output.")
+        description: str = SchemaField(description="The description of the output.")
+        fmt_string: str = SchemaField(
+            description="The format string to be used to format the recorded_value."
+        )
+
+    class Output(BlockSchema):
+        output: Any = SchemaField(description="The value recorded as output.")
+
     def __init__(self):
-        super().__init__(categories={BlockCategory.INPUT, BlockCategory.BASIC})
+        super().__init__(
+            id="363ae599-353e-4804-937e-b2ee3cef3da4",
+            description=(
+                "This block records the graph output. It takes a value to record, "
+                "with a name, description, and optional format string. If a format "
+                "string is given, it tries to format the recorded value. The "
+                "formatted (or raw, if formatting fails) value is then output. "
+                "This block is key for capturing and presenting final results or "
+                "important intermediate outputs of the graph execution."
+            ),
+            input_schema=OutputBlock.Input,
+            output_schema=OutputBlock.Output,
+            test_input=[
+                {
+                    "recorded_value": "Hello, World!",
+                    "name": "output_1",
+                    "description": "This is a test output.",
+                    "fmt_string": "{value}",
+                },
+                {
+                    "recorded_value": 42,
+                    "name": "output_2",
+                    "description": "This is another test output.",
+                    "fmt_string": "{value}",
+                },
+                {
+                    "recorded_value": MockObject(value="!!", key="key"),
+                    "name": "output_3",
+                    "description": "This is a test output with a mock object.",
+                    "fmt_string": "{value}",
+                },
+            ],
+            test_output=[
+                ("output", "Hello, World!"),
+                ("output", 42),
+                ("output", MockObject(value="!!", key="key")),
+            ],
+            categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
+            ui_type=BlockUIType.OUTPUT,
+        )
 
-    def block_id(self) -> str:
-        return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
-
-
-class OutputBlock(InputOutputBlockBase[Any]):
-    def __init__(self):
-        super().__init__(categories={BlockCategory.OUTPUT, BlockCategory.BASIC})
-
-    def block_id(self) -> str:
-        return "363ae599-353e-4804-937e-b2ee3cef3da4"
+    def run(self, input_data: Input) -> BlockOutput:
+        """
+        Attempts to format the recorded_value using the fmt_string if provided.
+        If formatting fails or no fmt_string is given, returns the original recorded_value.
+        """
+        if input_data.fmt_string:
+            try:
+                yield "output", input_data.fmt_string.format(input_data.recorded_value)
+            except Exception:
+                yield "output", input_data.recorded_value
+        else:
+            yield "output", input_data.recorded_value
 
 
 class AddToDictionaryBlock(Block):
@@ -323,3 +416,24 @@ class AddToListBlock(Block):
             yield "updated_list", updated_list
         except Exception as e:
             yield "error", f"Failed to add entry to list: {str(e)}"
+
+
+class NoteBlock(Block):
+    class Input(BlockSchema):
+        text: str = SchemaField(description="The text to display in the sticky note.")
+
+    class Output(BlockSchema): ...
+
+    def __init__(self):
+        super().__init__(
+            id="31d1064e-7446-4693-o7d4-65e5ca9110d1",
+            description="This block is used to display a sticky note with the given text.",
+            categories={BlockCategory.BASIC},
+            input_schema=NoteBlock.Input,
+            output_schema=NoteBlock.Output,
+            test_input={"text": "Hello, World!"},
+            test_output=None,
+            ui_type=BlockUIType.NOTE,
+        )
+
+    def run(self, input_data: Input) -> BlockOutput: ...

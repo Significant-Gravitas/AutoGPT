@@ -58,13 +58,21 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 6. Migrate the database. Be careful because this deletes current data in the database.
 
    ```sh
-   docker compose up postgres -d
+   docker compose up postgres redis -d
    poetry run prisma migrate dev 
    ```
 
 ## Running The Server
 
-### Starting the server directly
+### Starting the server without Docker
+
+Run the following command to build the dockerfiles:
+
+```sh
+poetry run app
+```
+
+### Starting the server with Docker
 
 Run the following command to build the dockerfiles:
 
