@@ -48,13 +48,13 @@ def create_test_graph() -> graph.Graph:
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
-            source_name="value",
+            source_name="result",
             sink_name="values_#_a",
         ),
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
-            source_name="value",
+            source_name="result",
             sink_name="values_#_b",
         ),
         graph.Link(
