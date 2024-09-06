@@ -180,15 +180,62 @@ class InputOutputBlockBase(Block, ABC, Generic[T]):
         yield "result", input_data.value
 
 
-class InputBlock(InputOutputBlockBase[Any]):
+class InputBlock(Block):
+    """
+    This block is used to provide input to the graph.
+
+    It takes in a value, name, description, default values list and bool to limit selection to default values.
+
+    It Outputs the value passed as input.
+    """
+
+    class Input(BlockSchema):
+        value: Any = SchemaField(description="The value to be passed as input.")
+        name: str = SchemaField(description="The name of the input.")
+        description: str = SchemaField(description="The description of the input.")
+        placeholder_values: List[Any] = SchemaField(
+            description="The placeholder values to be passed as input."
+        )
+        limit_to_placeholder_values: bool = SchemaField(
+            description="Whether to limit the selection to placeholder values.",
+            default=False,
+        )
+
+    class Output(BlockSchema):
+        result: Any = SchemaField(description="The value passed as input.")
+
     def __init__(self):
         super().__init__(
+            id="c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+            description="This block is used to provide input to the graph.",
+            input_schema=InputBlock.Input,
+            output_schema=InputBlock.Output,
+            test_input=[
+                {
+                    "value": "Hello, World!",
+                    "name": "input_1",
+                    "description": "This is a test input.",
+                    "placeholder_values": [],
+                    "limit_to_placeholder_values": False,
+                },
+                {
+                    "value": "Hello, World!",
+                    "name": "input_2",
+                    "description": "This is a test input.",
+                    "placeholder_values": ["Hello, World!"],
+                    "limit_to_placeholder_values": True,
+                },
+            ],
+            test_output=[
+                ("result", "Hello, World!"),
+                ("result", "Hello, World!"),
+            ],
             categories={BlockCategory.INPUT, BlockCategory.BASIC},
             ui_type=BlockUIType.INPUT,
         )
 
-    def block_id(self) -> str:
-        return "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
+    def run(self, input_data: Input) -> BlockOutput:
+        yield "result", input_data.value
 
 
 class OutputBlock(InputOutputBlockBase[Any]):
