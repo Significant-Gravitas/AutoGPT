@@ -1,4 +1,6 @@
+import logging
 import os
+import signal
 import sys
 from abc import ABC, abstractmethod
 from multiprocessing import Process, set_start_method
@@ -6,6 +8,8 @@ from typing import Optional
 
 from autogpt_server.util.logging import configure_logging
 from autogpt_server.util.metrics import sentry_init
+
+logger = logging.getLogger(__name__)
 
 
 class AppProcess(ABC):
@@ -19,10 +23,19 @@ class AppProcess(ABC):
     configure_logging()
     sentry_init()
 
+    # Methods that are executed INSIDE the process #
+
     @abstractmethod
     def run(self):
         """
         The method that will be executed in the process.
+        """
+        pass
+
+    def cleanup(self):
+        """
+        Implement this method on a subclass to do post-execution cleanup,
+        e.g. disconnecting from a database or terminating child processes.
         """
         pass
 
@@ -33,13 +46,21 @@ class AppProcess(ABC):
         pass
 
     def execute_run_command(self, silent):
+        signal.signal(signal.SIGTERM, self._self_terminate)
+
         try:
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
             self.run()
-        except KeyboardInterrupt or SystemExit as e:
-            print(f"Process terminated: {e}")
+        except (KeyboardInterrupt, SystemExit):
+            logger.info(f"[{self.__class__.__name__}] Terminated; quitting...")
+
+    def _self_terminate(self, signum: int, frame):
+        self.cleanup()
+        sys.exit(0)
+
+    # Methods that are executed OUTSIDE the process #
 
     def __enter__(self):
         self.start(background=True)
