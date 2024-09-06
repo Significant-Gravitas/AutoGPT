@@ -38,9 +38,17 @@ Credentials = Annotated[
 ]
 
 
+class OAuthState(BaseModel):
+    token: str
+    provider: str
+    expires_at: int  # Unix timestamp
+
+
 class UserMetadata(BaseModel):
     integration_credentials: list[Credentials] = Field(default_factory=list)
+    integration_oauth_states: list[OAuthState] = Field(default_factory=list)
 
 
 class UserMetadataRaw(TypedDict, total=False):
     integration_credentials: list[dict]
+    integration_oauth_states: list[dict]

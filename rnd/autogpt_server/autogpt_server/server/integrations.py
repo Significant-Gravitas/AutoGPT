@@ -1,6 +1,8 @@
-from typing import Annotated
+import logging
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Path, Query, Body
+from pydantic import BaseModel
 from supabase import Client
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
@@ -11,8 +13,8 @@ from autogpt_server.util.settings import Settings
 
 from .utils import get_user_id, get_supabase
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
-
 settings = Settings()
 
 
@@ -25,38 +27,53 @@ async def login(
     provider: Annotated[str, Path(title="The provider to initiate an OAuth flow for")],
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
 ):
     handler = _get_provider_oauth_handler(request, provider)
 
-    state = user_id  # You might want to use a more secure state
+    # Generate and store a secure random state token
+    state = await store.store_state_token(user_id, provider)
+
     requested_scopes = scopes.split(",") if scopes else []
     login_url = handler.get_login_url(requested_scopes, state)
 
     return {"login_url": login_url}
 
 
+class CredentialsMetaResponse(BaseModel):
+    credentials_id: str
+    credentials_type: Literal["oauth2", "api_key"]
+
+
 @router.post("/{provider}/callback")
 async def callback(
     provider: Annotated[str, Path(title="The target provider for this OAuth exchange")],
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
-    state: Annotated[str, Body(title="Anti-CSRF nonce")],
+    state_token: Annotated[str, Body(title="Anti-CSRF nonce")],
     store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
-):
+) -> CredentialsMetaResponse:
     handler = _get_provider_oauth_handler(request, provider)
 
-    # TODO: check state
+    # Verify the state token
+    if not await store.verify_state_token(user_id, state_token, provider):
+        raise HTTPException(status_code=400, detail="Invalid or expired state token")
 
     try:
         credentials = handler.exchange_code_for_tokens(code)
-        store.add_creds(user_id, credentials)
-        return {"message": "Authentication successful"}
     except Exception as e:
+        logger.warning(f"Code->Token exchange failed for provider {provider}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+    store.add_creds(user_id, credentials)
+    return CredentialsMetaResponse(
+        credentials_id=credentials.id,
+        credentials_type=credentials.type,
+    )
 
 
 # -------- UTILITIES --------- #
