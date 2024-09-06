@@ -337,7 +337,7 @@ class AddToListBlock(Block):
             yield "error", f"Failed to add entry to list: {str(e)}"
 
 
-class StickyNoteBlock(Block):
+class NoteBlock(Block):
     class Input(BlockSchema):
         text: str = SchemaField(description="The text to display in the sticky note.")
 
@@ -348,11 +348,11 @@ class StickyNoteBlock(Block):
             id="31d1064e-7446-4693-o7d4-65e5ca9110d1",
             description="This block is used to display a sticky note with the given text.",
             categories={BlockCategory.BASIC},
-            input_schema=StickyNoteBlock.Input,
-            output_schema=StickyNoteBlock.Output,
+            input_schema=NoteBlock.Input,
+            output_schema=NoteBlock.Output,
             test_input={"text": "Hello, World!"},
             test_output=None,
-            ui_type=BlockUIType.STICKYNOTE,
+            ui_type=BlockUIType.NOTE,
         )
 
     def run(self, input_data: Input) -> BlockOutput: ...

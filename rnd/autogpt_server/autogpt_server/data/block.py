@@ -20,7 +20,7 @@ class BlockUIType(Enum):
     STANDARD = "Standard"
     INPUT = "Input"
     OUTPUT = "Output"
-    STICKYNOTE = "StickyNote"
+    NOTE = "Note"
 
 
 class BlockCategory(Enum):
