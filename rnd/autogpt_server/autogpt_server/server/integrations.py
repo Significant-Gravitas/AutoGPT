@@ -22,6 +22,10 @@ def get_store(supabase: Client = Depends(get_supabase)):
     return SupabaseIntegrationCredentialsStore(supabase)
 
 
+class LoginResponse(BaseModel):
+    login_url: str
+
+
 @integrations_api_router.get("/{provider}/login")
 async def login(
     provider: Annotated[str, Path(title="The provider to initiate an OAuth flow for")],
@@ -31,7 +35,7 @@ async def login(
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
-):
+) -> LoginResponse:
     handler = _get_provider_oauth_handler(request, provider)
 
     # Generate and store a secure random state token
@@ -40,7 +44,7 @@ async def login(
     requested_scopes = scopes.split(",") if scopes else []
     login_url = handler.get_login_url(requested_scopes, state)
 
-    return {"login_url": login_url}
+    return LoginResponse(login_url=login_url)
 
 
 class CredentialsMetaResponse(BaseModel):
