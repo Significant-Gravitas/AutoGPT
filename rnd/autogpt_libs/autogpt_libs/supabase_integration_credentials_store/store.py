@@ -7,7 +7,7 @@ from supabase import Client
 from .types import (
     Credentials,
     OAuth2Credentials,
-    StateToken,
+    OAuthState,
     UserMetadata,
     UserMetadataRaw,
 )
@@ -82,44 +82,44 @@ class SupabaseIntegrationCredentialsStore:
         self._set_user_integration_creds(user_id, filtered_credentials)
 
     async def store_state_token(self, user_id: str, provider: str) -> str:
-        state = secrets.token_urlsafe(32)
+        token = secrets.token_urlsafe(32)
         expires_at = datetime.now(UTC) + timedelta(minutes=10)
 
-        state_token = StateToken(
-            state=state, provider=provider, expires_at=int(expires_at.timestamp())
+        state = OAuthState(
+            token=token, provider=provider, expires_at=int(expires_at.timestamp())
         )
 
         user_metadata = self._get_user_metadata(user_id)
-        state_tokens = user_metadata.get("state_tokens", [])
-        state_tokens.append(state_token.model_dump())
-        user_metadata["state_tokens"] = state_tokens
+        oauth_states = user_metadata.get("integration_oauth_states", [])
+        oauth_states.append(state.model_dump())
+        user_metadata["integration_oauth_states"] = oauth_states
 
         self.supabase.auth.admin.update_user_by_id(
             user_id, {"user_metadata": user_metadata}
         )
 
-        return state
+        return token
 
-    async def verify_state_token(self, user_id: str, state: str, provider: str) -> bool:
+    async def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
         user_metadata = self._get_user_metadata(user_id)
-        state_tokens = user_metadata.get("state_tokens", [])
+        oauth_states = user_metadata.get("integration_oauth_states", [])
 
         now = datetime.now(UTC)
-        valid_token = next(
+        valid_state = next(
             (
-                token
-                for token in state_tokens
-                if token["state"] == state
-                and token["provider"] == provider
-                and token["expires_at"] > now.timestamp()
+                state
+                for state in oauth_states
+                if state["token"] == token
+                and state["provider"] == provider
+                and state["expires_at"] > now.timestamp()
             ),
             None,
         )
 
-        if valid_token:
-            # Remove the used token
-            state_tokens.remove(valid_token)
-            user_metadata["state_tokens"] = state_tokens
+        if valid_state:
+            # Remove the used state
+            oauth_states.remove(valid_state)
+            user_metadata["integration_oauth_states"] = oauth_states
             self.supabase.auth.admin.update_user_by_id(
                 user_id, {"user_metadata": user_metadata}
             )
