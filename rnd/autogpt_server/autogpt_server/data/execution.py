@@ -274,7 +274,10 @@ async def update_node_execution_stats(node_exec_id: str, stats: dict[str, Any]):
 
 
 async def update_execution_status(
-    node_exec_id: str, status: ExecutionStatus, execution_data: BlockInput | None = None
+    node_exec_id: str,
+    status: ExecutionStatus,
+    execution_data: BlockInput | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> ExecutionResult:
     if status == ExecutionStatus.QUEUED and execution_data is None:
         raise ValueError("Execution data must be provided when queuing an execution.")
@@ -287,6 +290,7 @@ async def update_execution_status(
         **({"endedTime": now} if status == ExecutionStatus.FAILED else {}),
         **({"endedTime": now} if status == ExecutionStatus.COMPLETED else {}),
         **({"executionData": json.dumps(execution_data)} if execution_data else {}),
+        **({"stats": json.dumps(stats)} if stats else {}),
     }
 
     res = await AgentNodeExecution.prisma().update(

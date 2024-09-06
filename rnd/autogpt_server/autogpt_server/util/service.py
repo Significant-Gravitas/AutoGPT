@@ -102,6 +102,14 @@ class AppService(AppProcess):
         # Run the main service (if it's not implemented, just sleep).
         self.run_service()
 
+    def cleanup(self):
+        if self.use_db:
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting DB...")
+            self.run_and_wait(db.disconnect())
+        if self.use_redis:
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
+            self.run_and_wait(self.event_queue.close())
+
     @conn_retry
     def __start_pyro(self):
         daemon = pyro.Daemon(host=pyro_host)
