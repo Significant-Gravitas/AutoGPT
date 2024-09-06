@@ -31,22 +31,27 @@ export default function useAgentGraph(
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
   /**
-   * User `request` to save or save&run the agent
+   * User `request` to save or save&run the agent, or to stop the active run.
    * `state` is used to track the request status:
    * - none: no request
    * - saving: request was sent to save the agent
    *   and nodes are pending sync to update their backend ids
    * - running: request was sent to run the agent
    *   and frontend is enqueueing execution results
+   * - stopping: a request to stop the active run has been sent; response is pending
    * - error: request failed
-   *
-   * As of now, state will be stuck at 'running' (if run requested)
-   * because there's no way to know when the execution is done
    */
-  const [saveRunRequest, setSaveRunRequest] = useState<{
-    request: "none" | "save" | "run";
-    state: "none" | "saving" | "running" | "error";
-  }>({
+  const [saveRunRequest, setSaveRunRequest] = useState<
+    | {
+        request: "none" | "save" | "run";
+        state: "none" | "saving" | "error";
+      }
+    | {
+        request: "run" | "stop";
+        state: "running" | "stopping" | "error";
+        activeExecutionID?: string;
+      }
+  >({
     request: "none",
     state: "none",
   });
@@ -128,13 +133,14 @@ export default function useAgentGraph(
         console.error("Error saving agent");
       } else if (saveRunRequest.request === "run") {
         console.error(`Error saving&running agent`);
+      } else if (saveRunRequest.request === "stop") {
+        console.error(`Error stopping agent`);
       }
       // Reset request
-      setSaveRunRequest((prev) => ({
-        ...prev,
+      setSaveRunRequest({
         request: "none",
         state: "none",
-      }));
+      });
       return;
     }
     // When saving request is done
@@ -145,11 +151,10 @@ export default function useAgentGraph(
     ) {
       // Reset request if only save was requested
       if (saveRunRequest.request === "save") {
-        setSaveRunRequest((prev) => ({
-          ...prev,
+        setSaveRunRequest({
           request: "none",
           state: "none",
-        }));
+        });
         // If run was requested, run the agent
       } else if (saveRunRequest.request === "run") {
         if (!validateNodes()) {
@@ -161,15 +166,63 @@ export default function useAgentGraph(
           return;
         }
         api.subscribeToExecution(savedAgent.id);
-        api.executeGraph(savedAgent.id);
-        processedUpdates.current = processedUpdates.current = [];
+        setSaveRunRequest({ request: "run", state: "running" });
+        api
+          .executeGraph(savedAgent.id)
+          .then((graphExecution) => {
+            setSaveRunRequest({
+              request: "run",
+              state: "running",
+              activeExecutionID: graphExecution.id,
+            });
 
-        setSaveRunRequest((prev) => ({
-          ...prev,
-          request: "run",
-          state: "running",
-        }));
+            // Track execution until completed
+            const pendingNodeExecutions: Set<string> = new Set();
+            const cancelExecListener = api.onWebSocketMessage(
+              "execution_event",
+              (nodeResult) => {
+                // We are racing the server here, since we need the ID to filter events
+                if (nodeResult.graph_exec_id != graphExecution.id) {
+                  return;
+                }
+                if (
+                  nodeResult.status != "COMPLETED" &&
+                  nodeResult.status != "FAILED"
+                ) {
+                  pendingNodeExecutions.add(nodeResult.node_exec_id);
+                } else {
+                  pendingNodeExecutions.delete(nodeResult.node_exec_id);
+                }
+                if (pendingNodeExecutions.size == 0) {
+                  // Assuming the first event is always a QUEUED node, and
+                  // following nodes are QUEUED before all preceding nodes are COMPLETED,
+                  // an empty set means the graph has finished running.
+                  cancelExecListener();
+                  setSaveRunRequest({ request: "none", state: "none" });
+                }
+              },
+            );
+          })
+          .catch(() => setSaveRunRequest({ request: "run", state: "error" }));
+
+        processedUpdates.current = processedUpdates.current = [];
       }
+    }
+    // Handle stop request
+    if (
+      saveRunRequest.request === "stop" &&
+      saveRunRequest.state != "stopping" &&
+      savedAgent &&
+      saveRunRequest.activeExecutionID
+    ) {
+      setSaveRunRequest({
+        request: "stop",
+        state: "stopping",
+        activeExecutionID: saveRunRequest.activeExecutionID,
+      });
+      api
+        .stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID)
+        .then(() => setSaveRunRequest({ request: "none", state: "none" }));
     }
   }, [saveRunRequest, savedAgent, nodesSyncedWithSavedAgent]);
 
@@ -657,13 +710,30 @@ export default function useAgentGraph(
     [saveAgent],
   );
 
-  const requestSaveRun = useCallback(() => {
+  const requestSaveAndRun = useCallback(() => {
     saveAgent();
     setSaveRunRequest({
       request: "run",
       state: "saving",
     });
   }, [saveAgent]);
+
+  const requestStopRun = useCallback(() => {
+    if (saveRunRequest.state != "running") {
+      return;
+    }
+    if (!saveRunRequest.activeExecutionID) {
+      console.warn(
+        "Stop requested but execution ID is unknown; state:",
+        saveRunRequest,
+      );
+    }
+    setSaveRunRequest((prev) => ({
+      ...prev,
+      request: "stop",
+      state: "running",
+    }));
+  }, [saveRunRequest]);
 
   return {
     agentName,
@@ -674,7 +744,11 @@ export default function useAgentGraph(
     availableNodes,
     getOutputType,
     requestSave,
-    requestSaveRun,
+    requestSaveAndRun,
+    requestStopRun,
+    isSaving: saveRunRequest.state == "saving",
+    isRunning: saveRunRequest.state == "running",
+    isStopping: saveRunRequest.state == "stopping",
     nodes,
     setNodes,
     edges,

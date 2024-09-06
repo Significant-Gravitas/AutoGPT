@@ -103,14 +103,14 @@ class GetCurrentDateAndTimeBlock(Block):
 
 class CountdownTimerBlock(Block):
     class Input(BlockSchema):
-        message: Any = "timer finished"
+        input_message: Any = "timer finished"
         seconds: Union[int, str] = 0
         minutes: Union[int, str] = 0
         hours: Union[int, str] = 0
         days: Union[int, str] = 0
 
     class Output(BlockSchema):
-        message: str
+        output_message: str
 
     def __init__(self):
         super().__init__(
@@ -121,11 +121,11 @@ class CountdownTimerBlock(Block):
             output_schema=CountdownTimerBlock.Output,
             test_input=[
                 {"seconds": 1},
-                {"message": "Custom message"},
+                {"input_message": "Custom message"},
             ],
             test_output=[
-                ("message", "timer finished"),
-                ("message", "Custom message"),
+                ("output_message", "timer finished"),
+                ("output_message", "Custom message"),
             ],
         )
 
@@ -139,4 +139,4 @@ class CountdownTimerBlock(Block):
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
         time.sleep(total_seconds)
-        yield "message", input_data.message
+        yield "output_message", input_data.input_message
