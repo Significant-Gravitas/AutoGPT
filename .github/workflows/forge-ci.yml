@@ -2,6 +2,7 @@ name: Forge CI
 
 on:
   push:
+    branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/forge-ci.yml'
       - 'forge/**'
