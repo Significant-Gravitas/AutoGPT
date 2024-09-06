@@ -136,49 +136,6 @@ class FindInDictionaryBlock(Block):
             yield "missing", input_data.input
 
 
-T = TypeVar("T")
-
-
-class InputOutputBlockInput(BlockSchema, Generic[T]):
-    value: T = Field(description="The value to be passed as input/output.")
-    name: str = Field(description="The name of the input/output.")
-
-
-class InputOutputBlockOutput(BlockSchema, Generic[T]):
-    result: T = Field(description="The value passed as input/output.")
-
-
-class InputOutputBlockBase(Block, ABC, Generic[T]):
-    @abstractmethod
-    def block_id(self) -> str:
-        pass
-
-    def __init__(self, *args, **kwargs):
-        input_schema = InputOutputBlockInput[T]
-        output_schema = InputOutputBlockOutput[T]
-
-        super().__init__(
-            id=self.block_id(),
-            description="This block is used to define the input & output of a graph.",
-            input_schema=input_schema,
-            output_schema=output_schema,
-            test_input=[
-                {"value": {"apple": 1, "banana": 2, "cherry": 3}, "name": "input_1"},
-                {"value": MockObject(value="!!", key="key"), "name": "input_2"},
-            ],
-            test_output=[
-                ("result", {"apple": 1, "banana": 2, "cherry": 3}),
-                ("result", MockObject(value="!!", key="key")),
-            ],
-            static_output=True,
-            *args,
-            **kwargs,
-        )
-
-    def run(self, input_data: InputOutputBlockInput[T]) -> BlockOutput:
-        yield "result", input_data.value
-
-
 class InputBlock(Block):
     """
     This block is used to provide input to the graph.
