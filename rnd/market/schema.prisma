@@ -40,6 +40,7 @@ model Agents {
   graph            Json
   AnalyticsTracker AnalyticsTracker[]
   FeaturedAgent    FeaturedAgent?
+  InstallTracker   InstallTracker[]
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -52,13 +53,28 @@ model AnalyticsTracker {
   downloads Int
 }
 
-model FeaturedAgent {
-  id          String  @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agentId     String  @unique @db.Uuid
-  agent       Agents  @relation(fields: [agentId], references: [id])
-  is_featured Boolean @default(false)
-  category    String  @default("featured")
+enum InstallationLocation {
+  LOCAL
+  CLOUD
+}
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model InstallTracker {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marketplaceAgentId   String               @db.Uuid
+  marketplaceAgent     Agents               @relation(fields: [marketplaceAgentId], references: [id])
+  installedAgentId     String               @db.Uuid
+  installationLocation InstallationLocation
+  createdAt            DateTime             @default(now())
+
+  @@unique([marketplaceAgentId, installedAgentId])
+}
+
+model FeaturedAgent {
+  id                 String   @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId            String   @unique @db.Uuid
+  agent              Agents   @relation(fields: [agentId], references: [id])
+  isActive           Boolean  @default(false)
+  featuredCategories String[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

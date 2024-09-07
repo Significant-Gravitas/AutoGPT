@@ -41,8 +41,16 @@ const TallyPopupSimple = () => {
     return null; // Hide the button when the form is visible
   }
 
+  const resetTutorial = () => {
+    const url = `${window.location.origin}/build?resetTutorial=true`;
+    window.location.href = url;
+  };
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 p-3 transition-all duration-300 ease-in-out">
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 p-3 transition-all duration-300 ease-in-out">
+      <Button variant="default" onClick={resetTutorial} className="mb-0">
+        Tutorial
+      </Button>
       <Button
         variant="default"
         data-tally-open="3yx2L0"

@@ -117,6 +117,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     smtp_username: str = Field(default="", description="SMTP username")
     smtp_password: str = Field(default="", description="SMTP password")
 
+    sentry_dsn: str = Field(default="", description="Sentry DSN")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(

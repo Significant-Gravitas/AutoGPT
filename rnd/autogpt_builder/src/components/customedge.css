@@ -38,3 +38,7 @@
 .react-flow__edge-interaction {
   cursor: pointer;
 }
+
+.react-flow__edges > svg:has(> g.selected) {
+  z-index: 10 !important;
+}

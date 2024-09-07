@@ -16,6 +16,17 @@ BlockOutput = Generator[BlockData, None, None]  # Output: 1 output pin produces 
 CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
 
 
+class BlockUIType(Enum):
+    """
+    The type of Node UI to be displayed in the builder for this block.
+    """
+
+    STANDARD = "Standard"
+    INPUT = "Input"
+    OUTPUT = "Output"
+    NOTE = "Note"
+
+
 class BlockCategory(Enum):
     AI = "Block that leverages AI to perform a task."
     SOCIAL = "Block that interacts with social media platforms."
@@ -59,6 +70,12 @@ class BlockSchema(BaseModel):
             return obj
 
         cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
+
+        # Set default properties values
+        for field in cls.cached_jsonschema.get("properties", {}).values():
+            if isinstance(field, dict) and "advanced" not in field:
+                field["advanced"] = True
+
         return cls.cached_jsonschema
 
     @classmethod
@@ -128,6 +145,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         test_mock: dict[str, Any] | None = None,
         disabled: bool = False,
         static_output: bool = False,
+        ui_type: BlockUIType = BlockUIType.STANDARD,
     ):
         """
         Initialize the block with the given schema.
@@ -157,6 +175,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.contributors = contributors or set()
         self.disabled = disabled
         self.static_output = static_output
+        self.ui_type = ui_type
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
@@ -187,6 +206,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 contributor.model_dump() for contributor in self.contributors
             ],
             "staticOutput": self.static_output,
+            "uiType": self.ui_type.value,
         }
 
     def execute(self, input_data: BlockInput) -> BlockOutput:

@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import { AgentDetailResponse } from "@/lib/marketplace-api";
-import AgentDetailContent from "@/components/AgentDetailContent";
+import AgentDetailContent from "@/components/marketplace/AgentDetailContent";
 
 async function getAgentDetails(id: string): Promise<AgentDetailResponse> {
   const apiUrl =
