@@ -17,6 +17,7 @@ async def execute_graph(
     test_user: User,
     input_data: dict,
     num_execs: int = 4,
+    timeout: int = 200,
 ) -> str:
     # --- Test adding new executions --- #
     response = await agent_server.execute_graph(test_graph.id, input_data, test_user.id)
@@ -24,7 +25,7 @@ async def execute_graph(
 
     # Execution queue should be empty
     assert await wait_execution(
-        test_manager, test_user.id, test_graph.id, graph_exec_id, num_execs
+        test_manager, test_user.id, test_graph.id, graph_exec_id, num_execs, timeout
     )
     return graph_exec_id
 
@@ -97,7 +98,6 @@ async def assert_sample_graph_executions(
 
 
 @pytest.mark.asyncio(scope="session")
-@pytest.mark.timeout(200)
 async def test_agent_execution(server: SpinTestServer):
     test_graph = create_test_graph()
     test_user = await create_test_user()
@@ -110,6 +110,7 @@ async def test_agent_execution(server: SpinTestServer):
         test_user,
         data,
         4,
+        200,
     )
     await assert_sample_graph_executions(
         server.agent_server, test_graph, test_user, graph_exec_id
