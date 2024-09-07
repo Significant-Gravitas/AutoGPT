@@ -185,7 +185,7 @@ If you don't know which to choose, you can safely go with OpenAI*.
 1. Get your Groq API key from [Settings > API keys][groq/api-keys]
 2. Open `.env`
 3. Find the line that says `GROQ_API_KEY=`
-4. Insert your Anthropic API Key directly after = without quotes or spaces:
+4. Insert your Groq API Key directly after = without quotes or spaces:
     ```ini
     GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     ```
