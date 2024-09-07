@@ -44,19 +44,15 @@ def expose(func: C) -> C:
 
 class PyroNameServer(AppProcess):
     def run(self):
-        try:
-            print("Starting NameServer loop")
-            nameserver.start_ns_loop(host=pyro_host, port=9090)
-        except KeyboardInterrupt:
-            print("Shutting down NameServer")
+        nameserver.start_ns_loop(host=pyro_host, port=9090)
 
     @conn_retry
     def _wait_for_ns(self):
         pyro.locate_ns(host="localhost", port=9090)
-        print("NameServer is ready")
 
     def health_check(self):
         self._wait_for_ns()
+        logger.info(f"{__class__.__name__} is ready")
 
 
 class AppService(AppProcess):
@@ -102,13 +98,21 @@ class AppService(AppProcess):
         # Run the main service (if it's not implemented, just sleep).
         self.run_service()
 
+    def cleanup(self):
+        if self.use_db:
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting DB...")
+            self.run_and_wait(db.disconnect())
+        if self.use_redis:
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
+            self.run_and_wait(self.event_queue.close())
+
     @conn_retry
     def __start_pyro(self):
         daemon = pyro.Daemon(host=pyro_host)
         ns = pyro.locate_ns(host=pyro_host, port=9090)
         uri = daemon.register(self)
         ns.register(self.service_name, uri)
-        logger.info(f"Service [{self.service_name}] Ready. Object URI = {uri}")
+        logger.info(f"[{self.service_name}] Connected to Pyro; URI = {uri}")
         daemon.requestLoop()
 
     def __start_async_loop(self):

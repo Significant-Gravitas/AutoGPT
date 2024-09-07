@@ -20,20 +20,30 @@ async def create_test_user() -> User:
 
 def create_test_graph() -> graph.Graph:
     """
-    StoreValueBlock
+    InputBlock
                \
                  ---- FillTextTemplateBlock ---- PrintToConsoleBlock
                /
-    StoreValueBlock
+    InputBlock
     """
     nodes = [
         graph.Node(
             block_id=InputBlock().id,
-            input_default={"name": "input_1"},
+            input_default={
+                "name": "input_1",
+                "description": "First input value",
+                "placeholder_values": [],
+                "limit_to_placeholder_values": False,
+            },
         ),
         graph.Node(
             block_id=InputBlock().id,
-            input_default={"name": "input_2"},
+            input_default={
+                "name": "input_2",
+                "description": "Second input value",
+                "placeholder_values": [],
+                "limit_to_placeholder_values": False,
+            },
         ),
         graph.Node(
             block_id=FillTextTemplateBlock().id,

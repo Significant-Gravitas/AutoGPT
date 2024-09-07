@@ -8,6 +8,7 @@ import {
   AgentWithRank,
   FeaturedAgentResponse,
   UniqueCategoriesResponse,
+  AnalyticsEvent,
 } from "./types";
 
 export default class MarketplaceAPI {
@@ -191,6 +192,13 @@ export default class MarketplaceAPI {
 
   async getCategories(): Promise<UniqueCategoriesResponse> {
     return this._get("/admin/categories");
+  }
+
+  async makeAnalyticsEvent(event: AnalyticsEvent) {
+    if (event.event_name === "agent_installed_from_marketplace") {
+      return this._post("/analytics/agent-installed", event.event_data);
+    }
+    throw new Error("Invalid event name");
   }
 
   private async _get(path: string) {

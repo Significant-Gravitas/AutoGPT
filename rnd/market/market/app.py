@@ -18,6 +18,7 @@ import market.routes.admin
 import market.routes.agents
 import market.routes.search
 import market.routes.submissions
+import market.routes.analytics
 
 dotenv.load_dotenv()
 
@@ -75,6 +76,9 @@ app.include_router(market.routes.agents.router, tags=["agents"])
 app.include_router(market.routes.search.router, tags=["search"])
 app.include_router(market.routes.submissions.router, tags=["submissions"])
 app.include_router(market.routes.admin.router, prefix="/admin", tags=["admin"])
+app.include_router(
+    market.routes.analytics.router, prefix="/analytics", tags=["analytics"]
+)
 
 
 @app.get("/health")
