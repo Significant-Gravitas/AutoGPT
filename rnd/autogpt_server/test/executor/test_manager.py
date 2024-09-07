@@ -97,6 +97,7 @@ async def assert_sample_graph_executions(
 
 
 @pytest.mark.asyncio(scope="session")
+@pytest.mark.timeout(200)
 async def test_agent_execution(server: SpinTestServer):
     test_graph = create_test_graph()
     test_user = await create_test_user()
