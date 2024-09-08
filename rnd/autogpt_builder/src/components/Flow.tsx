@@ -256,7 +256,7 @@ const FlowEditor: React.FC<{
       }
 
       const edgeColor = getTypeColor(
-        getOutputType(connection.source!, connection.sourceHandle!),
+        getOutputType(nodes, connection.source!, connection.sourceHandle!),
       );
       const sourceNode = getNode(connection.source!);
       const newEdge: CustomEdge = {
@@ -295,6 +295,7 @@ const FlowEditor: React.FC<{
       addEdges,
       deleteElements,
       clearNodesStatusAndOutput,
+      nodes,
       edges,
       formatEdgeID,
       getOutputType,

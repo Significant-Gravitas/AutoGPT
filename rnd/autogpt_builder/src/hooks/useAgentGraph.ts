@@ -61,8 +61,10 @@ export default function useAgentGraph(
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
 
-  const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
-  const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
+  const api = useMemo(
+    () => new AutoGPTServerAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
+    [],
+  );
 
   // Connect to WebSocket
   useEffect(() => {
@@ -101,7 +103,7 @@ export default function useAgentGraph(
   }, []);
 
   const getOutputType = useCallback(
-    (nodeId: string, handleId: string) => {
+    (nodes: CustomNode[], nodeId: string, handleId: string) => {
       const node = nodes.find((n) => n.id === nodeId);
       if (!node) return "unknown";
 
@@ -112,7 +114,7 @@ export default function useAgentGraph(
       if (!("type" in outputHandle)) return "unknown";
       return outputHandle.type;
     },
-    [nodes],
+    [],
   );
 
   // Load existing graph
@@ -163,9 +165,9 @@ export default function useAgentGraph(
             type: "custom",
             data: {
               edgeColor: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
+                getOutputType(newNodes, link.source_id, link.source_name!),
               ),
-              sourcePos: nodes.find((node) => node.id === link.source_id)
+              sourcePos: newNodes.find((node) => node.id === link.source_id)
                 ?.position,
               isStatic: link.is_static,
               beadUp: 0,
@@ -176,7 +178,7 @@ export default function useAgentGraph(
               type: MarkerType.ArrowClosed,
               strokeWidth: 2,
               color: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
+                getOutputType(newNodes, link.source_id, link.source_name!),
               ),
             },
             source: link.source_id,
@@ -188,7 +190,7 @@ export default function useAgentGraph(
         return newNodes;
       });
     },
-    [availableNodes, formatEdgeID, getOutputType, nodes],
+    [availableNodes, formatEdgeID, getOutputType],
   );
 
   const getFrontendId = useCallback(
@@ -303,8 +305,11 @@ export default function useAgentGraph(
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then((graph) =>
-      loadGraph(graph),
+    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
+      (graph) => {
+        console.log("Loading graph");
+        loadGraph(graph);
+      },
     );
   }, [flowID, template, availableNodes, api, loadGraph]);
 
