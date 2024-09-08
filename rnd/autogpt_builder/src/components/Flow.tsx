@@ -121,7 +121,7 @@ const FlowEditor: React.FC<{
         localStorage.setItem("shepherd-tour", "yes");
       }
     }
-  }, [availableNodes, tutorialStarted]);
+  }, [availableNodes, tutorialStarted, router, pathname]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -377,7 +377,7 @@ const FlowEditor: React.FC<{
         clearNodesStatusAndOutput();
       }
     },
-    [setNodes, clearNodesStatusAndOutput],
+    [setNodes, clearNodesStatusAndOutput, setEdges],
   );
 
   const getNextNodeId = useCallback(() => {
@@ -434,7 +434,6 @@ const FlowEditor: React.FC<{
       nodeId,
       availableNodes,
       addNodes,
-      setNodes,
       deleteElements,
       clearNodesStatusAndOutput,
       x,
