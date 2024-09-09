@@ -1,6 +1,5 @@
-from abc import ABC, abstractmethod
 import re
-from typing import Any, Generic, List, TypeVar
+from typing import Any, List
 
 from jinja2 import BaseLoader, Environment
 from pydantic import Field
@@ -153,13 +152,20 @@ class AgentInputBlock(Block):
     class Input(BlockSchema):
         value: Any = SchemaField(description="The value to be passed as input.")
         name: str = SchemaField(description="The name of the input.")
-        description: str = SchemaField(description="The description of the input.")
+        description: str = SchemaField(
+            description="The description of the input.",
+            default="",
+            advanced=True,
+        )
         placeholder_values: List[Any] = SchemaField(
-            description="The placeholder values to be passed as input."
+            description="The placeholder values to be passed as input.",
+            default=[],
+            advanced=True,
         )
         limit_to_placeholder_values: bool = SchemaField(
             description="Whether to limit the selection to placeholder values.",
             default=False,
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -222,9 +228,15 @@ class AgentOutputBlock(Block):
     class Input(BlockSchema):
         value: Any = SchemaField(description="The value to be recorded as output.")
         name: str = SchemaField(description="The name of the output.")
-        description: str = SchemaField(description="The description of the output.")
+        description: str = SchemaField(
+            description="The description of the output.",
+            default="",
+            advanced=True,
+        )
         format: str = SchemaField(
-            description="The format string to be used to format the recorded_value."
+            description="The format string to be used to format the recorded_value.",
+            default="",
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -427,7 +439,8 @@ class NoteBlock(Block):
     class Input(BlockSchema):
         text: str = SchemaField(description="The text to display in the sticky note.")
 
-    class Output(BlockSchema): ...
+    class Output(BlockSchema):
+        output: str = SchemaField(description="The text to display in the sticky note.")
 
     def __init__(self):
         super().__init__(
@@ -437,8 +450,11 @@ class NoteBlock(Block):
             input_schema=NoteBlock.Input,
             output_schema=NoteBlock.Output,
             test_input={"text": "Hello, World!"},
-            test_output=None,
+            test_output=[
+                ("output", "Hello, World!"),
+            ],
             ui_type=BlockUIType.NOTE,
         )
 
-    def run(self, input_data: Input) -> BlockOutput: ...
+    def run(self, input_data: Input) -> BlockOutput:
+        yield "output", input_data.text
