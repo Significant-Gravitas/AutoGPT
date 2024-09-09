@@ -61,7 +61,8 @@ class CodeExecutorConfiguration(BaseModel):
     shell_allowlist: list[str] = Field(default_factory=list)
     """List of allowed shell commands"""
     shell_denylist: list[str] = Field(default_factory=list)
-    """List of prohibited shell commands, not for security, but to prevent casual use by agent"""
+    """List of prohibited shell commands, not for security,
+     but to prevent casual use by agent"""
     docker_container_name: str = "agent_sandbox"
     """Name of the Docker container used for code execution"""
 
