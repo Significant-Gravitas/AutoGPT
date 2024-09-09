@@ -93,6 +93,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
+    supabase_url: str = Field(default="", description="Supabase URL")
+    supabase_key: str = Field(default="", description="Supabase key")
+
+    # OAuth server credentials for integrations
+    github_client_id: str = Field(default="", description="GitHub OAuth client ID")
+    github_client_secret: str = Field(
+        default="", description="GitHub OAuth client secret"
+    )
+    google_client_id: str = Field(default="", description="Google OAuth client ID")
+    google_client_secret: str = Field(
+        default="", description="Google OAuth client secret"
+    )
+    notion_client_id: str = Field(default="", description="Notion OAuth client ID")
+    notion_client_secret: str = Field(
+        default="", description="Notion OAuth client secret"
+    )
+
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")

@@ -13,6 +13,7 @@ from autogpt_server.server.model import ExecutionSubscription, Methods, WsMessag
 from autogpt_server.util.service import AppProcess
 from autogpt_server.util.settings import Settings
 
+logger = logging.getLogger(__name__)
 settings = Settings()
 
 app = FastAPI()
@@ -93,7 +94,7 @@ async def handle_subscribe(
     else:
         ex_sub = ExecutionSubscription.model_validate(message.data)
         await manager.subscribe(ex_sub.graph_id, websocket)
-        print("subscribed")
+        logger.debug(f"New execution subscription for graph {ex_sub.graph_id}")
         await websocket.send_text(
             WsMessage(
                 method=Methods.SUBSCRIBE,
@@ -117,7 +118,7 @@ async def handle_unsubscribe(
     else:
         ex_sub = ExecutionSubscription.model_validate(message.data)
         await manager.unsubscribe(ex_sub.graph_id, websocket)
-        print("unsubscribed")
+        logger.debug(f"Removed execution subscription for graph {ex_sub.graph_id}")
         await websocket.send_text(
             WsMessage(
                 method=Methods.UNSUBSCRIBE,
@@ -151,11 +152,12 @@ async def websocket_router(
                 await handle_unsubscribe(websocket, manager, message)
 
             elif message.method == Methods.ERROR:
-                logging.error("WebSocket Error message received:", message.data)
+                logger.error(f"WebSocket Error message received: {message.data}")
 
             else:
-                logging.info(
-                    f"Message type {message.method} is not processed by the server"
+                logger.warning(
+                    f"Unknown WebSocket message type {message.method} received: "
+                    f"{message.data}"
                 )
                 await websocket.send_text(
                     WsMessage(
@@ -167,7 +169,7 @@ async def websocket_router(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        logging.info("Client Disconnected")
+        logger.debug("WebSocket client disconnected")
 
 
 class WebsocketServer(AppProcess):
