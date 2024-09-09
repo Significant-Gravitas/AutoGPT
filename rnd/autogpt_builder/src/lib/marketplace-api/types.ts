@@ -76,3 +76,34 @@ export type AgentResponse = Agent;
 export type UniqueCategoriesResponse = {
   unique_categories: string[];
 };
+
+export enum InstallationLocation {
+  LOCAL = "local",
+  CLOUD = "cloud",
+}
+
+export type AgentInstalledFromMarketplaceEventData = {
+  marketplace_agent_id: string;
+  installed_agent_id: string;
+  installation_location: InstallationLocation;
+};
+
+export type AgentInstalledFromTemplateEventData = {
+  template_id: string;
+  installed_agent_id: string;
+  installation_location: InstallationLocation;
+};
+
+export interface AgentInstalledFromMarketplaceEvent {
+  event_name: "agent_installed_from_marketplace";
+  event_data: AgentInstalledFromMarketplaceEventData;
+}
+
+export interface AgentInstalledFromTemplateEvent {
+  event_name: "agent_installed_from_template";
+  event_data: AgentInstalledFromTemplateEventData;
+}
+
+export type AnalyticsEvent =
+  | AgentInstalledFromMarketplaceEvent
+  | AgentInstalledFromTemplateEvent;
