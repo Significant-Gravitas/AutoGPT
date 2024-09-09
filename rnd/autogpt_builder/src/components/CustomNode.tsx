@@ -96,7 +96,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
   useEffect(() => {
     setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
-  }, [isModalOpen, isOutputModalOpen, data, setIsAnyModalOpen]);
+  }, [isModalOpen, isOutputModalOpen, data]);
 
   useEffect(() => {
     isInitialSetup.current = false;
