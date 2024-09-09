@@ -19,7 +19,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       ) {
         ref.current.value = value;
       }
-    }, [value, type]);
+    }, [value, type, ref]);
     return (
       <input
         type={type}

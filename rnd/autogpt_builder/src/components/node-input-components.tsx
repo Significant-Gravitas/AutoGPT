@@ -10,7 +10,7 @@ import {
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import { FC, useEffect, useState } from "react";
+import { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -296,7 +296,7 @@ const NodeKeyValueInput: FC<{
   className,
   displayName,
 }) => {
-  const getPairValues = () => {
+  const getPairValues = useCallback(() => {
     let defaultEntries = new Map<string, any>();
 
     connections
@@ -311,7 +311,7 @@ const NodeKeyValueInput: FC<{
     });
 
     return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
-  };
+  }, [connections, entries, schema.default, selfKey]);
 
   const [keyValuePairs, setKeyValuePairs] = useState<
     { key: string; value: string | number | null }[]
@@ -319,7 +319,7 @@ const NodeKeyValueInput: FC<{
 
   useEffect(
     () => setKeyValuePairs(getPairValues()),
-    [connections, entries, schema.default],
+    [connections, entries, schema.default, getPairValues],
   );
 
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
