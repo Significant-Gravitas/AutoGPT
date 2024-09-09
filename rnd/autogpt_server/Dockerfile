@@ -43,7 +43,7 @@ ENV DATABASE_URL=""
 
 CMD ["poetry", "run", "rest"]
 
-FROM server_base as manager
+FROM server_base as executor
 
 ENV PORT=8002
 ENV DATABASE_URL=""

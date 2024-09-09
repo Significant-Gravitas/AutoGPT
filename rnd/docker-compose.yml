@@ -57,7 +57,7 @@ services:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
-      target: manager
+      target: executor
     develop:
       watch:
         - path: ./
@@ -75,7 +75,7 @@ services:
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
-      - AGENTSERVER_HOST=agent_server
+      - AGENTSERVER_HOST=rest_server
     ports:
       - "8002:8002"
     networks:
