@@ -8,7 +8,6 @@ from typing import Any, Callable, Coroutine, Type, TypeVar, cast
 
 import Pyro5.api
 from Pyro5 import api as pyro
-from Pyro5 import nameserver
 
 from autogpt_server.data import db
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
@@ -42,19 +41,6 @@ def expose(func: C) -> C:
             raise Exception(msg, e)
 
     return pyro.expose(wrapper)  # type: ignore
-
-
-class PyroNameServer(AppProcess):
-    def run(self):
-        nameserver.start_ns_loop(host=pyro_host, port=9090)
-
-    @conn_retry
-    def _wait_for_ns(self):
-        pyro.locate_ns(host="localhost", port=9090)
-
-    def health_check(self):
-        self._wait_for_ns()
-        logger.info(f"{__class__.__name__} is ready")
 
 
 class AppService(AppProcess):
