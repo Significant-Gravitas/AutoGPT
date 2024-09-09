@@ -6,6 +6,9 @@ import {
   AgentListResponse,
   AgentDetailResponse,
   AgentWithRank,
+  FeaturedAgentResponse,
+  UniqueCategoriesResponse,
+  AnalyticsEvent,
 } from "./types";
 
 export default class MarketplaceAPI {
@@ -99,6 +102,20 @@ export default class MarketplaceAPI {
     return this._get(`/agents/${id}/download?${queryParams.toString()}`);
   }
 
+  async submitAgent(
+    graph: { [key: string]: any },
+    author: string,
+    keywords: string[],
+    categories: string[],
+  ): Promise<AgentResponse> {
+    return this._post("/agents/submit", {
+      graph,
+      author,
+      keywords,
+      categories,
+    });
+  }
+
   async downloadAgentFile(id: string, version?: number): Promise<Blob> {
     const queryParams = new URLSearchParams();
     if (version) queryParams.append("version", version.toString());
@@ -107,8 +124,81 @@ export default class MarketplaceAPI {
     );
   }
 
+  async getAgentSubmissions(): Promise<AgentListResponse> {
+    return this._get("/admin/agent/submissions");
+  }
+
   async createAgentEntry(request: AddAgentRequest): Promise<AgentResponse> {
     return this._post("/admin/agent", request);
+  }
+
+  async approveAgentSubmission(
+    agentId: string,
+    version: number,
+    comments: string = "",
+  ): Promise<AgentResponse> {
+    return this._post("/admin/agent/submissions", {
+      agent_id: agentId,
+      version: version,
+      status: "APPROVED",
+      comments: comments,
+    });
+  }
+
+  async rejectAgentSubmission(
+    agentId: string,
+    version: number,
+    comments: string = "",
+  ): Promise<AgentResponse> {
+    return this._post("/admin/agent/submissions", {
+      agent_id: agentId,
+      version: version,
+      status: "REJECTED",
+      comments: comments,
+    });
+  }
+
+  async addFeaturedAgent(
+    agentId: string,
+    categories: string[],
+  ): Promise<FeaturedAgentResponse> {
+    const response = await this._post(`/admin/agent/featured/${agentId}`, {
+      categories: categories,
+    });
+    return response;
+  }
+
+  async removeFeaturedAgent(
+    agentId: string,
+    categories: string[],
+  ): Promise<FeaturedAgentResponse> {
+    return this._delete(`/admin/agent/featured/${agentId}`, {
+      categories: categories,
+    });
+  }
+
+  async getFeaturedAgent(agentId: string): Promise<FeaturedAgentResponse> {
+    return this._get(`/admin/agent/featured/${agentId}`);
+  }
+
+  async getNotFeaturedAgents(
+    page: number = 1,
+    pageSize: number = 10,
+  ): Promise<AgentListResponse> {
+    return this._get(
+      `/admin/agent/not-featured?page=${page}&page_size=${pageSize}`,
+    );
+  }
+
+  async getCategories(): Promise<UniqueCategoriesResponse> {
+    return this._get("/admin/categories");
+  }
+
+  async makeAnalyticsEvent(event: AnalyticsEvent) {
+    if (event.event_name === "agent_installed_from_marketplace") {
+      return this._post("/analytics/agent-installed", event.event_data);
+    }
+    throw new Error("Invalid event name");
   }
 
   private async _get(path: string) {
@@ -117,6 +207,10 @@ export default class MarketplaceAPI {
 
   private async _post(path: string, payload: { [key: string]: any }) {
     return this._request("POST", path, payload);
+  }
+
+  private async _delete(path: string, payload: { [key: string]: any }) {
+    return this._request("DELETE", path, payload);
   }
 
   private async _getBlob(path: string): Promise<Blob> {
@@ -134,7 +228,7 @@ export default class MarketplaceAPI {
   }
 
   private async _request(
-    method: "GET" | "POST" | "PUT" | "PATCH",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     payload?: { [key: string]: any },
   ) {

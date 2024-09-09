@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import moment from "moment/moment";
 import { FlowRun } from "@/lib/types";
+import { DialogTitle } from "@/components/ui/dialog";
 
 export const AgentFlowList = ({
   flows,
@@ -51,7 +52,7 @@ export const AgentFlowList = ({
 
   return (
     <Card className={className}>
-      <CardHeader className="flex-row justify-between items-center space-x-3 space-y-0">
+      <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
         <CardTitle>Agents</CardTitle>
 
         <div className="flex items-center">
@@ -102,8 +103,11 @@ export const AgentFlowList = ({
             </DropdownMenu>
 
             <DialogContent>
-              <DialogHeader className="text-lg">
-                Import an Agent (template) from a file
+              <DialogHeader>
+                <DialogTitle className="sr-only">Import Agent</DialogTitle>
+                <h2 className="text-lg font-semibold">
+                  Import an Agent (template) from a file
+                </h2>
               </DialogHeader>
               <AgentImportForm />
             </DialogContent>

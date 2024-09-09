@@ -1,19 +1,30 @@
 from typing import Optional
 
+from fastapi import HTTPException
 from prisma.models import User
 
 from autogpt_server.data.db import prisma
 
 DEFAULT_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+DEFAULT_EMAIL = "default@example.com"
 
 
 async def get_or_create_user(user_data: dict) -> User:
-    user = await prisma.user.find_unique(where={"id": user_data["sub"]})
+
+    user_id = user_data.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID not found in token")
+
+    user_email = user_data.get("email")
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Email not found in token")
+
+    user = await prisma.user.find_unique(where={"id": user_id})
     if not user:
         user = await prisma.user.create(
             data={
-                "id": user_data["sub"],
-                "email": user_data["email"],
+                "id": user_id,
+                "email": user_email,
                 "name": user_data.get("user_metadata", {}).get("name"),
             }
         )

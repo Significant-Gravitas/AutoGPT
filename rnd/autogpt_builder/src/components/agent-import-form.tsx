@@ -21,8 +21,13 @@ import AutoGPTServerAPI, {
 import { cn } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
 
+// Add this custom schema for File type
+const fileSchema = z.custom<File>((val) => val instanceof File, {
+  message: "Must be a File object",
+});
+
 const formSchema = z.object({
-  agentFile: z.instanceof(File),
+  agentFile: fileSchema,
   agentName: z.string().min(1, "Agent name is required"),
   agentDescription: z.string(),
   importAsTemplate: z.boolean(),
@@ -165,7 +170,7 @@ export const AgentImportForm: React.FC<
             <FormItem>
               <FormLabel>Import as</FormLabel>
               <FormControl>
-                <div className="flex space-x-2 items-center">
+                <div className="flex items-center space-x-2">
                   <span
                     className={
                       field.value ? "text-gray-400 dark:text-gray-600" : ""

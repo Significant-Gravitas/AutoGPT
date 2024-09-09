@@ -4,6 +4,35 @@ import typing
 import prisma.enums
 import pydantic
 
+from enum import Enum
+from typing import Literal, Union
+
+class InstallationLocation(str, Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
+
+class AgentInstalledFromMarketplaceEventData(pydantic.BaseModel):
+    marketplace_agent_id: str
+    installed_agent_id: str
+    installation_location: InstallationLocation
+
+class AgentInstalledFromTemplateEventData(pydantic.BaseModel):
+    template_id: str
+    installed_agent_id: str
+    installation_location: InstallationLocation
+
+class AgentInstalledFromMarketplaceEvent(pydantic.BaseModel):
+    event_name: Literal["agent_installed_from_marketplace"]
+    event_data: AgentInstalledFromMarketplaceEventData
+
+class AgentInstalledFromTemplateEvent(pydantic.BaseModel):
+    event_name: Literal["agent_installed_from_template"]
+    event_data: AgentInstalledFromTemplateEventData
+
+AnalyticsEvent = Union[AgentInstalledFromMarketplaceEvent, AgentInstalledFromTemplateEvent]
+
+class AnalyticsRequest(pydantic.BaseModel):
+    event: AnalyticsEvent
 
 class AddAgentRequest(pydantic.BaseModel):
     graph: dict[str, typing.Any]
@@ -44,7 +73,7 @@ class AgentResponse(pydantic.BaseModel):
     version: int
     createdAt: datetime.datetime
     updatedAt: datetime.datetime
-    submission_status: str
+    submissionStatus: str
     views: int = 0
     downloads: int = 0
 
@@ -95,3 +124,26 @@ class AgentDetailResponse(pydantic.BaseModel):
     createdAt: datetime.datetime
     updatedAt: datetime.datetime
     graph: dict[str, typing.Any]
+
+
+class FeaturedAgentResponse(pydantic.BaseModel):
+    """
+    Represents the response data for an agent detail.
+    """
+
+    agentId: str
+    featuredCategories: list[str]
+    createdAt: datetime.datetime
+    updatedAt: datetime.datetime
+    isActive: bool
+
+
+class CategoriesResponse(pydantic.BaseModel):
+    """
+    Represents the response data for a list of categories.
+
+    Attributes:
+        unique_categories (list[str]): The list of unique categories.
+    """
+
+    unique_categories: list[str]

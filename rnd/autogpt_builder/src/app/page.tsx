@@ -76,7 +76,7 @@ const Monitor = () => {
   const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10 gap-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10">
       <AgentFlowList
         className={column1}
         flows={flows}
@@ -90,10 +90,11 @@ const Monitor = () => {
       <FlowRunsList
         className={column2}
         flows={flows}
-        runs={(selectedFlow
-          ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
-          : flowRuns
-        ).toSorted((a, b) => Number(a.startTime) - Number(b.startTime))}
+        runs={[
+          ...(selectedFlow
+            ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
+            : flowRuns),
+        ].sort((a, b) => Number(a.startTime) - Number(b.startTime))}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />

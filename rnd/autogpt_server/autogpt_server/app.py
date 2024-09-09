@@ -1,44 +1,40 @@
-from multiprocessing import freeze_support, set_start_method
+from typing import TYPE_CHECKING
 
-from autogpt_server.executor import ExecutionManager, ExecutionScheduler
-from autogpt_server.server import AgentServer
-from autogpt_server.util.process import AppProcess
-from autogpt_server.util.service import PyroNameServer
+if TYPE_CHECKING:
+    from autogpt_server.util.process import AppProcess
 
 
-def get_config_and_secrets():
-    from autogpt_server.util.settings import Settings
-
-    settings = Settings()
-    return settings
-
-
-def run_processes(processes: list[AppProcess], **kwargs):
+def run_processes(*processes: "AppProcess", **kwargs):
     """
     Execute all processes in the app. The last process is run in the foreground.
     """
     try:
         for process in processes[:-1]:
             process.start(background=True, **kwargs)
+
+        # Run the last process in the foreground
         processes[-1].start(background=False, **kwargs)
-    except Exception as e:
+    finally:
         for process in processes:
             process.stop()
-        raise e
 
 
 def main(**kwargs):
-    set_start_method("spawn", force=True)
-    freeze_support()
+    """
+    Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
+    """
+
+    from autogpt_server.executor import ExecutionManager, ExecutionScheduler
+    from autogpt_server.server import AgentServer, WebsocketServer
+    from autogpt_server.util.service import PyroNameServer
 
     run_processes(
-        [
-            PyroNameServer(),
-            ExecutionManager(),
-            ExecutionScheduler(),
-            AgentServer(),
-        ],
-        **kwargs
+        PyroNameServer(),
+        ExecutionManager(),
+        ExecutionScheduler(),
+        WebsocketServer(),
+        AgentServer(),
+        **kwargs,
     )
 
 

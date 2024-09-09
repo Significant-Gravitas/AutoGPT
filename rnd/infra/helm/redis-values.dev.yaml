@@ -1,0 +1,15 @@
+architecture: standalone
+auth:
+  enabled: true
+  password: password
+master:
+  persistence:
+    enabled: true
+    size: 3Gi
+  configmap:
+    redis.conf: |
+      bind 127.0.0.1
+      protected-mode yes
+      requirepass password
+replica:
+  replicaCount: 0

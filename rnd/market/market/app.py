@@ -17,6 +17,8 @@ import market.config
 import market.routes.admin
 import market.routes.agents
 import market.routes.search
+import market.routes.submissions
+import market.routes.analytics
 
 dotenv.load_dotenv()
 
@@ -61,9 +63,10 @@ app.add_middleware(fastapi.middleware.gzip.GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     middleware_class=fastapi.middleware.cors.CORSMiddleware,
     allow_origins=[
-        # Currently, we allow only next.js dev server
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3000",
+        "https://dev-builder.agpt.co",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -71,7 +74,11 @@ app.add_middleware(
 )
 app.include_router(market.routes.agents.router, tags=["agents"])
 app.include_router(market.routes.search.router, tags=["search"])
+app.include_router(market.routes.submissions.router, tags=["submissions"])
 app.include_router(market.routes.admin.router, prefix="/admin", tags=["admin"])
+app.include_router(
+    market.routes.analytics.router, prefix="/analytics", tags=["analytics"]
+)
 
 
 @app.get("/health")

@@ -18,13 +18,13 @@ def log(msg, **kwargs):
 
 
 class ExecutionScheduler(AppService):
-
     def __init__(self, refresh_interval=10):
+        self.use_db = True
         self.last_check = datetime.min
         self.refresh_interval = refresh_interval
 
     @property
-    def execution_manager_client(self):
+    def execution_manager_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager)
 
     def run_service(self):
@@ -37,7 +37,8 @@ class ExecutionScheduler(AppService):
     def __refresh_jobs_from_db(self, scheduler: BackgroundScheduler):
         schedules = self.run_and_wait(model.get_active_schedules(self.last_check))
         for schedule in schedules:
-            self.last_check = max(self.last_check, schedule.last_updated)
+            if schedule.last_updated:
+                self.last_check = max(self.last_check, schedule.last_updated)
 
             if not schedule.is_enabled:
                 log(f"Removing recurring job {schedule.id}: {schedule.schedule}")
@@ -49,15 +50,15 @@ class ExecutionScheduler(AppService):
                 self.__execute_graph,
                 CronTrigger.from_crontab(schedule.schedule),
                 id=schedule.id,
-                args=[schedule.graph_id, schedule.input_data],
+                args=[schedule.graph_id, schedule.input_data, schedule.user_id],
                 replace_existing=True,
             )
 
-    def __execute_graph(self, graph_id: str, input_data: dict):
+    def __execute_graph(self, graph_id: str, input_data: dict, user_id: str):
         try:
             log(f"Executing recurring job for graph #{graph_id}")
             execution_manager = self.execution_manager_client
-            execution_manager.add_execution(graph_id, input_data)
+            execution_manager.add_execution(graph_id, input_data, user_id)
         except Exception as e:
             logger.exception(f"Error executing graph {graph_id}: {e}")
 
