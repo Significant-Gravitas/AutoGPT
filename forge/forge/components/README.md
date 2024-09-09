@@ -105,7 +105,7 @@ You can set sensitive variables in the `.json` file as well but it's recommended
         "execute_local_commands": false,
         "shell_command_control": "allowlist",
         "shell_allowlist": ["cat", "echo"],
-        "shell_denylist": [], // not for security, but to prevent casual use by agent. Use appropriate sandboxing for security.
+        "shell_denylist": [],
         "docker_container_name": "agent_sandbox"
     },
     "FileManagerConfiguration": {
