@@ -1,5 +1,8 @@
-from typing import Any, List
+from abc import ABC, abstractmethod
+import re
+from typing import Any, Generic, List, TypeVar
 
+from jinja2 import BaseLoader, Environment
 from pydantic import Field
 
 from autogpt_server.data.block import (
@@ -11,6 +14,8 @@ from autogpt_server.data.block import (
 )
 from autogpt_server.data.model import SchemaField
 from autogpt_server.util.mock import MockObject
+
+jinja = Environment(loader=BaseLoader())
 
 
 class StoreValueBlock(Block):
@@ -136,7 +141,7 @@ class FindInDictionaryBlock(Block):
             yield "missing", input_data.input
 
 
-class InputBlock(Block):
+class AgentInputBlock(Block):
     """
     This block is used to provide input to the graph.
 
@@ -164,8 +169,8 @@ class InputBlock(Block):
         super().__init__(
             id="c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
             description="This block is used to provide input to the graph.",
-            input_schema=InputBlock.Input,
-            output_schema=InputBlock.Output,
+            input_schema=AgentInputBlock.Input,
+            output_schema=AgentInputBlock.Output,
             test_input=[
                 {
                     "value": "Hello, World!",
@@ -194,7 +199,7 @@ class InputBlock(Block):
         yield "result", input_data.value
 
 
-class OutputBlock(Block):
+class AgentOutputBlock(Block):
     """
     Records the output of the graph for users to see.
 
@@ -215,12 +220,10 @@ class OutputBlock(Block):
     """
 
     class Input(BlockSchema):
-        recorded_value: Any = SchemaField(
-            description="The value to be recorded as output."
-        )
+        value: Any = SchemaField(description="The value to be recorded as output.")
         name: str = SchemaField(description="The name of the output.")
         description: str = SchemaField(description="The description of the output.")
-        fmt_string: str = SchemaField(
+        format: str = SchemaField(
             description="The format string to be used to format the recorded_value."
         )
 
@@ -238,30 +241,30 @@ class OutputBlock(Block):
                 "This block is key for capturing and presenting final results or "
                 "important intermediate outputs of the graph execution."
             ),
-            input_schema=OutputBlock.Input,
-            output_schema=OutputBlock.Output,
+            input_schema=AgentOutputBlock.Input,
+            output_schema=AgentOutputBlock.Output,
             test_input=[
                 {
-                    "recorded_value": "Hello, World!",
+                    "value": "Hello, World!",
                     "name": "output_1",
                     "description": "This is a test output.",
-                    "fmt_string": "{value}",
+                    "format": "{value}!!",
                 },
                 {
-                    "recorded_value": 42,
+                    "value": 42,
                     "name": "output_2",
                     "description": "This is another test output.",
-                    "fmt_string": "{value}",
+                    "format": "{value}",
                 },
                 {
-                    "recorded_value": MockObject(value="!!", key="key"),
+                    "value": MockObject(value="!!", key="key"),
                     "name": "output_3",
                     "description": "This is a test output with a mock object.",
-                    "fmt_string": "{value}",
+                    "format": "{value}",
                 },
             ],
             test_output=[
-                ("output", "Hello, World!"),
+                ("output", "Hello, World!!!"),
                 ("output", 42),
                 ("output", MockObject(value="!!", key="key")),
             ],
@@ -274,13 +277,15 @@ class OutputBlock(Block):
         Attempts to format the recorded_value using the fmt_string if provided.
         If formatting fails or no fmt_string is given, returns the original recorded_value.
         """
-        if input_data.fmt_string:
+        if input_data.format:
             try:
-                yield "output", input_data.fmt_string.format(input_data.recorded_value)
+                fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
+                template = jinja.from_string(fmt)
+                yield "output", template.render(input_data.value)
             except Exception:
-                yield "output", input_data.recorded_value
+                yield "output", f"Error: {input_data.value}"
         else:
-            yield "output", input_data.recorded_value
+            yield "output", input_data.value
 
 
 class AddToDictionaryBlock(Block):
