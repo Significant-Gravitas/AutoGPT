@@ -69,6 +69,8 @@ Lets the agent execute non-interactive Shell commands and Python code. Python ex
 | `shell_denylist`         | List of prohibited shell commands                    | `List[str]`                 | `[]`              |
 | `docker_container_name`  | Name of the Docker container used for code execution | `str`                       | `"agent_sandbox"` |
 
+All shell command configurations are expected to be for convience only. This component is not secure and should not be used in production environments. It is recommended to use more appropriate sandboxing.
+
 ### CommandProvider
 
 - `execute_shell` execute shell command
