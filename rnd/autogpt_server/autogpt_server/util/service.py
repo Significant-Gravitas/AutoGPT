@@ -121,7 +121,7 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
         def __init__(self):
             host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
             uri = f"PYRO:{service_type.service_name}@{host}:{port}"
-            logger.info(f"Connecting to service [{service_name}]. URI = {uri}")
+            logger.debug(f"Connecting to service [{service_name}]. URI = {uri}")
             self.proxy = Pyro5.api.Proxy(uri)
             # Attempt to bind to ensure the connection is established
             self.proxy._pyroBind()
