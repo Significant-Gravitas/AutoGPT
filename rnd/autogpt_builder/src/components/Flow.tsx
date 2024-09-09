@@ -121,7 +121,7 @@ const FlowEditor: React.FC<{
         localStorage.setItem("shepherd-tour", "yes");
       }
     }
-  }, [availableNodes, tutorialStarted, router, pathname]);
+  }, [availableNodes, tutorialStarted]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -256,7 +256,7 @@ const FlowEditor: React.FC<{
       }
 
       const edgeColor = getTypeColor(
-        getOutputType(nodes, connection.source!, connection.sourceHandle!),
+        getOutputType(connection.source!, connection.sourceHandle!),
       );
       const sourceNode = getNode(connection.source!);
       const newEdge: CustomEdge = {
@@ -295,7 +295,6 @@ const FlowEditor: React.FC<{
       addEdges,
       deleteElements,
       clearNodesStatusAndOutput,
-      nodes,
       edges,
       formatEdgeID,
       getOutputType,
@@ -378,7 +377,7 @@ const FlowEditor: React.FC<{
         clearNodesStatusAndOutput();
       }
     },
-    [setNodes, clearNodesStatusAndOutput, setEdges],
+    [setNodes, clearNodesStatusAndOutput],
   );
 
   const getNextNodeId = useCallback(() => {
@@ -435,6 +434,7 @@ const FlowEditor: React.FC<{
       nodeId,
       availableNodes,
       addNodes,
+      setNodes,
       deleteElements,
       clearNodesStatusAndOutput,
       x,
