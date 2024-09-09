@@ -103,10 +103,7 @@ class AppService(AppProcess):
         host = Config().pyro_host
         daemon = Pyro5.api.Daemon(host=host, port=self.port)
         self.uri = daemon.register(self, objectId=self.service_name)
-
-        logger.debug(
-            f"Service in start pyro [{self.service_name}] Ready. Object URI = {self.uri}"
-        )
+        logger.info(f"[{self.service_name}] Connected to Pyro; URI = {self.uri}")
         daemon.requestLoop()
 
     def __start_async_loop(self):
@@ -128,7 +125,7 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
             self.proxy = Pyro5.api.Proxy(uri)
             # Attempt to bind to ensure the connection is established
             self.proxy._pyroBind()
-            logger.debug(f"Successfully connected to service [{service_name}]")
+            logger.info(f"Successfully connected to service [{service_name}]")
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
             return getattr(self.proxy, name)

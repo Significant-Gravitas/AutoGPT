@@ -48,4 +48,4 @@ FROM server_base as manager
 ENV PORT=8002
 ENV DATABASE_URL=""
 
-CMD ["poetry", "run", "manager"]
+CMD ["poetry", "run", "executor"]
