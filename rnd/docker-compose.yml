@@ -24,7 +24,7 @@ services:
     networks:
       - app-network
 
-  agent_server:
+  rest_server:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
@@ -53,7 +53,7 @@ services:
     networks:
       - app-network
 
-  execution_manager:
+  executor:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
