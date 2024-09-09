@@ -19,10 +19,11 @@ from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
-from autogpt_server.util.auth import get_user_id
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
 from autogpt_server.util.settings import Settings
+
+from .utils import get_user_id
 
 settings = Settings()
 
@@ -70,127 +71,132 @@ class AgentServer(AppService):
         )
 
         # Define the API routes
-        router = APIRouter(prefix="/api")
-        router.dependencies.append(Depends(auth_middleware))
+        api_router = APIRouter(prefix="/api")
+        api_router.dependencies.append(Depends(auth_middleware))
 
-        router.add_api_route(
+        # Import & Attach sub-routers
+        from .integrations import integrations_api_router
+
+        api_router.include_router(integrations_api_router, prefix="/integrations")
+
+        api_router.add_api_route(
             path="/auth/user",
             endpoint=self.get_or_create_user_route,
             methods=["POST"],
         )
 
-        router.add_api_route(
+        api_router.add_api_route(
             path="/blocks",
             endpoint=self.get_graph_blocks,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/blocks/{block_id}/execute",
             endpoint=self.execute_graph_block,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs",
             endpoint=self.get_graphs,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates",
             endpoint=self.get_templates,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs",
             endpoint=self.create_new_graph,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates",
             endpoint=self.create_new_template,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.get_graph,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.get_template,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/versions/{version}",
             endpoint=self.get_graph,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/versions/active",
             endpoint=self.set_graph_active_version,
             methods=["PUT"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/input_schema",
             endpoint=self.get_graph_input_schema,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/execute",
             endpoint=self.execute_graph,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/executions",
             endpoint=self.list_graph_runs,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/executions/{graph_exec_id}",
             endpoint=self.get_graph_run_node_execution_results,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
             endpoint=self.stop_graph_run,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.create_schedule,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.get_execution_schedules,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
             endpoint=self.update_schedule,
             methods=["PUT"],
         )
 
-        router.add_api_route(
+        api_router.add_api_route(
             path="/settings",
             endpoint=self.update_configuration,
             methods=["POST"],
@@ -198,7 +204,7 @@ class AgentServer(AppService):
 
         app.add_exception_handler(500, self.handle_internal_http_error)
 
-        app.include_router(router)
+        app.include_router(api_router)
 
         uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)
 
