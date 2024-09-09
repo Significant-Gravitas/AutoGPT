@@ -61,6 +61,7 @@ Lets the agent execute non-interactive Shell commands and Python code. Python ex
 
 ### `CodeExecutorConfiguration`
 
+| Config variable          | Details                                              | Type                        | Default           |
 | ------------------------ | ---------------------------------------------------- | --------------------------- | ----------------- |
 | `execute_local_commands` | Enable shell command execution                       | `bool`                      | `False`           |
 | `shell_command_control`  | Controls which list is used                          | `"allowlist" \| "denylist"` | `"allowlist"`     |
