@@ -61,13 +61,13 @@ Lets the agent execute non-interactive Shell commands and Python code. Python ex
 
 ### `CodeExecutorConfiguration`
 
-| Config variable          | Details                                              | Type                        | Default           |
 | ------------------------ | ---------------------------------------------------- | --------------------------- | ----------------- |
 | `execute_local_commands` | Enable shell command execution                       | `bool`                      | `False`           |
 | `shell_command_control`  | Controls which list is used                          | `"allowlist" \| "denylist"` | `"allowlist"`     |
 | `shell_allowlist`        | List of allowed shell commands                       | `List[str]`                 | `[]`              |
 | `shell_denylist`         | List of prohibited shell commands                    | `List[str]`                 | `[]`              |
 | `docker_container_name`  | Name of the Docker container used for code execution | `str`                       | `"agent_sandbox"` |
+All shell command configurations are expected to be for convience only. This component is not secure and should not be used in production environments. It is recommended to use more appropriate sandboxing.
 
 ### CommandProvider
 
