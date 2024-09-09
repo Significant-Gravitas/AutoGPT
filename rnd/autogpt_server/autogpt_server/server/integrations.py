@@ -1,8 +1,12 @@
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
+)
+from autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+    OAuth2Credentials,
 )
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
@@ -78,6 +82,85 @@ async def callback(
         credentials_id=credentials.id,
         credentials_type=credentials.type,
     )
+
+
+@integrations_api_router.get(
+    "/{provider}/credentials", response_model=list[CredentialsMetaResponse]
+)
+async def list_credentials(
+    provider: Annotated[str, Path(title="The provider to list credentials for")],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+) -> list[CredentialsMetaResponse]:
+    credentials = store.get_creds_by_provider(user_id, provider)
+    return [
+        CredentialsMetaResponse(credentials_id=cred.id, credentials_type=cred.type)
+        for cred in credentials
+    ]
+
+
+class CredentialsDetailResponse(BaseModel):
+    id: str
+    provider: str
+    title: str
+    type: Literal["oauth2", "api_key"]
+    access_token: str
+    refresh_token: Optional[str]
+    access_token_expires_at: Optional[int]
+    refresh_token_expires_at: Optional[int]
+    scopes: list[str]
+    metadata: dict
+
+
+@integrations_api_router.get(
+    "/{provider}/credentials/{cred_id}", response_model=CredentialsDetailResponse
+)
+async def get_credential(
+    provider: Annotated[str, Path(title="The provider to retrieve credentials for")],
+    cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+) -> CredentialsDetailResponse:
+    credential = store.get_creds_by_id(user_id, cred_id)
+    if not credential:
+        raise HTTPException(status_code=404, detail="Credentials not found")
+    if credential.provider != provider:
+        raise HTTPException(
+            status_code=400, detail="Credentials do not match the specified provider"
+        )
+
+    if isinstance(credential, OAuth2Credentials):
+        return CredentialsDetailResponse(
+            id=credential.id,
+            provider=credential.provider,
+            title=credential.title,
+            type=credential.type,
+            access_token=credential.access_token.get_secret_value(),
+            refresh_token=(
+                credential.refresh_token.get_secret_value()
+                if credential.refresh_token
+                else None
+            ),
+            access_token_expires_at=credential.access_token_expires_at,
+            refresh_token_expires_at=credential.refresh_token_expires_at,
+            scopes=credential.scopes,
+            metadata=credential.metadata,
+        )
+    elif isinstance(credential, APIKeyCredentials):
+        return CredentialsDetailResponse(
+            id=credential.id,
+            provider=credential.provider,
+            title=credential.title,
+            type=credential.type,
+            access_token=credential.api_key.get_secret_value(),
+            refresh_token=None,
+            access_token_expires_at=credential.expires_at,
+            refresh_token_expires_at=None,
+            scopes=[],
+            metadata={},
+        )
+    else:
+        raise HTTPException(status_code=500, detail="Unknown credential type")
 
 
 # -------- UTILITIES --------- #
