@@ -634,9 +634,29 @@ FROM (
             model=market.model.CategoriesResponse,
         )
         if not categories:
-            raise AgentQueryError("No categories found")
+            return market.model.CategoriesResponse(unique_categories=[])
 
         return categories
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        # raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+        return market.model.CategoriesResponse(unique_categories=[])
+
+
+async def create_agent_installed_event(
+    event_data: market.model.AgentInstalledFromMarketplaceEventData,
+):
+    try:
+        await prisma.models.InstallTracker.prisma().create(
+            data={
+                "installedAgentId": event_data.installed_agent_id,
+                "marketplaceAgentId": event_data.marketplace_agent_id,
+                "installationLocation": prisma.enums.InstallationLocation(
+                    event_data.installation_location.name
+                ),
+            }
+        )
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
