@@ -36,12 +36,5 @@ def main(**kwargs):
     )
 
 
-def execution_manager(**kwargs):
-
-    from autogpt_server.executor import ExecutionManager
-
-    run_processes(ExecutionManager(), **kwargs)
-
-
 if __name__ == "__main__":
     main()
