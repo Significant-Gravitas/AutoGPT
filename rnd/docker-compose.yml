@@ -22,6 +22,24 @@ services:
       target: server
     image: autogpt_server:latest
     command: ["echo", "This is a base image and should not be run directly"]
+    
+  migrate:
+    image: autogpt_server:latest
+    command: ["sh", "-c", "until pg_isready -h postgres -U agpt_user -d agpt_local; do echo 'Waiting for postgres...'; sleep 2; done; poetry run prisma db push"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+    networks:
+      - app-network
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "poetry", "run", "prisma", "migrate", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
   redis:
     image: redis:latest
@@ -44,6 +62,8 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - REDIS_HOST=redis
@@ -72,6 +92,8 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - REDIS_HOST=redis
@@ -97,6 +119,7 @@ services:
     depends_on:
       - postgres
       - redis
+      - migrate
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - REDIS_HOST=redis
@@ -116,6 +139,7 @@ services:
       dockerfile: rnd/market/Dockerfile
     depends_on:
       - postgres
+      - migrate
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
     ports:
@@ -132,6 +156,7 @@ services:
       - postgres
       - api_srv
       - ws_srv
+      - migrate
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api

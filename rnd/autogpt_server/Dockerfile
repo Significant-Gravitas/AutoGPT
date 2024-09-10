@@ -7,8 +7,9 @@ ENV PYTHONUNBUFFERED 1
 
 WORKDIR /app
 
+# postgresql-client is needed to check if the postgres service is ready for running migrations
 RUN apt-get update \
-    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev \
+    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev postgresql-client \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && wget https://github.com/git/git/archive/v2.28.0.tar.gz -O git.tar.gz \
