@@ -11,6 +11,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 agpt = { path = "../../autogpt", develop = true }
+aio-pika = "^9.4.3"
 anthropic = "^0.25.1"
 apscheduler = "^3.10.4"
 autogpt-forge = { path = "../../forge", develop = true }
@@ -39,14 +40,13 @@ pyro5 = "^5.15"
 pytest = "^8.2.1"
 pytest-asyncio = "^0.23.7"
 python-dotenv = "^1.0.1"
+redis = "^5.0.8"
+sentry-sdk = "1.45.0"
+supabase = "^2.7.2"
 tenacity = "^8.3.0"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
 websockets = "^12.0"
 youtube-transcript-api = "^0.6.2"
-
-aio-pika = "^9.4.3"
-redis = "^5.0.8"
-sentry-sdk = "1.45.0"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.26.1"
