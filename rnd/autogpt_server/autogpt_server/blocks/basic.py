@@ -260,24 +260,24 @@ class AgentOutputBlock(Block):
                     "value": "Hello, World!",
                     "name": "output_1",
                     "description": "This is a test output.",
-                    "format": "{value}!!",
+                    "format": "{{ output_1 }}!!",
                 },
                 {
-                    "value": 42,
+                    "value": "42",
                     "name": "output_2",
                     "description": "This is another test output.",
-                    "format": "{value}",
+                    "format": "{{ output_2 }}",
                 },
                 {
                     "value": MockObject(value="!!", key="key"),
                     "name": "output_3",
                     "description": "This is a test output with a mock object.",
-                    "format": "{value}",
+                    "format": "{{ output_3 }}",
                 },
             ],
             test_output=[
                 ("output", "Hello, World!!!"),
-                ("output", 42),
+                ("output", "42"),
                 ("output", MockObject(value="!!", key="key")),
             ],
             categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
@@ -293,9 +293,9 @@ class AgentOutputBlock(Block):
             try:
                 fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
                 template = jinja.from_string(fmt)
-                yield "output", template.render(input_data.value)
-            except Exception:
-                yield "output", f"Error: {input_data.value}"
+                yield "output", template.render({input_data.name: input_data.value})
+            except Exception as e:
+                yield "output", f"Error: {e}, {input_data.value}"
         else:
             yield "output", input_data.value
 
