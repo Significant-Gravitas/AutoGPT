@@ -4,7 +4,6 @@ FROM python:3.11-slim-buster as server_base
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-
 WORKDIR /app
 
 RUN apt-get update \
@@ -16,7 +15,6 @@ RUN apt-get update \
     && cd git-* \
     && make prefix=/usr all \
     && make prefix=/usr install
-
 
 ENV POETRY_VERSION=1.8.3 \
     POETRY_HOME="/opt/poetry" \
@@ -44,3 +42,10 @@ ENV PORT=8000
 ENV DATABASE_URL=""
 
 CMD ["poetry", "run", "rest"]
+
+FROM server_base as executor
+
+ENV PORT=8002
+ENV DATABASE_URL=""
+
+CMD ["poetry", "run", "executor"]
