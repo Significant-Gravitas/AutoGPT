@@ -72,10 +72,10 @@ services:
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
-      - EXECUTIONSCHEDULER_HOST=execution_scheduler
       - PORT=8000
     ports:
       - "8000:8000"
+      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
@@ -161,7 +161,7 @@ services:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api
       - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
-      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8005/api/v1/market
+      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
     ports:
       - "3000:3000"
     networks:
