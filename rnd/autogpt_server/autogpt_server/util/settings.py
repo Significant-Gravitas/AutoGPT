@@ -72,6 +72,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         extra="allow",
     )
 
+    execution_manager_port: int = Field(
+        default=8002,
+        description="The port for execution manager daemon to run on",
+    )
+
+    execution_scheduler_port: int = Field(
+        default=8003,
+        description="The port for execution scheduler daemon to run on",
+    )
+
+    agent_server_port: int = Field(
+        default=8004,
+        description="The port for agent server daemon to run on",
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,
