@@ -55,4 +55,68 @@ async def log_tutorial_step(
             "dataIndex": step,
         }
     )
+    await prisma.models.AnalyticsMetrics.prisma().upsert(
+        data={
+            "update": {"value": {"increment": 1}},
+            "create": {
+                "value": 1,
+                "analyticMetric": prisma.enums.AnalyticsMetric.TUTORIAL_STEP_COMPLETION,
+                "userId": user_id,
+                "dataString": step,
+                "aggregationType": prisma.enums.AggregationType.COUNT,
+            },
+        },
+        where={
+            "analyticMetric_userId_dataString_aggregationType": {
+                "analyticMetric": prisma.enums.AnalyticsMetric.TUTORIAL_STEP_COMPLETION,
+                "userId": user_id,
+                "dataString": step,
+                "aggregationType": prisma.enums.AggregationType.COUNT,
+            }
+        },
+    )
+    return id.id
+
+
+class PageViewData(pydantic.BaseModel):
+    page: str
+    data: Optional[dict]
+
+
+@router.post(path="/log_page_view")
+async def log_page_view(
+    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+    page_view_data: Annotated[PageViewData, fastapi.Body(..., embed=True)],
+):
+    """
+    Log the page view for analytics purposes.
+    """
+    id = await prisma.models.AnalyticsDetails.prisma().create(
+        data={
+            "userId": user_id,
+            "type": prisma.enums.AnalyticsType.WEB_PAGE,
+            "dataIndex": page_view_data.page,
+            "data": prisma.Json(page_view_data.data),
+        }
+    )
+    await prisma.models.AnalyticsMetrics.prisma().upsert(
+        data={
+            "update": {"value": {"increment": 1}},
+            "create": {
+                "value": 1,
+                "analyticMetric": prisma.enums.AnalyticsMetric.PAGE_VIEW,
+                "userId": user_id,
+                "dataString": page_view_data.page,
+                "aggregationType": prisma.enums.AggregationType.COUNT,
+            },
+        },
+        where={
+            "analyticMetric_userId_dataString_aggregationType": {
+                "analyticMetric": prisma.enums.AnalyticsMetric.PAGE_VIEW,
+                "userId": user_id,
+                "dataString": page_view_data.page,
+                "aggregationType": prisma.enums.AggregationType.COUNT,
+            }
+        },
+    )
     return id.id
