@@ -1,7 +1,7 @@
 # Analytics API
 
 import typing
-from typing import Annotated
+from typing import Annotated, Optional
 
 import fastapi
 import prisma
@@ -18,10 +18,6 @@ class UserData(pydantic.BaseModel):
     email: str
     name: str
     username: str
-
-
-class TutorialStepData(pydantic.BaseModel):
-    data: typing.Optional[dict]
 
 
 @router.post(path="/log_new_user")
@@ -45,8 +41,8 @@ async def log_create_user(
 @router.post(path="/log_tutorial_step")
 async def log_tutorial_step(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
-    step: Annotated[int, fastapi.Query(..., embed=True)],
-    data: Annotated[TutorialStepData, fastapi.Body(..., embed=True)],
+    step: Annotated[int, fastapi.Body(..., embed=True)],
+    data: Annotated[Optional[dict], fastapi.Body(..., embed=True)],
 ):
     """
     Log the tutorial step completed by the user for analytics purposes.
@@ -55,7 +51,7 @@ async def log_tutorial_step(
         data={
             "userId": user_id,
             "type": prisma.enums.AnalyticsType.TUTORIAL_STEP,
-            "data": prisma.Json(data.model_dump_json()),
+            "data": prisma.Json(data),
             "dataIndex": step,
         }
     )
