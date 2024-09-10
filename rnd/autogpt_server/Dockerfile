@@ -4,7 +4,6 @@ FROM python:3.11-slim-buster AS server_base
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-
 WORKDIR /app
 
 # postgresql-client is needed to check if the postgres service is ready for running migrations
@@ -17,7 +16,6 @@ RUN apt-get update \
     && cd git-* \
     && make prefix=/usr all \
     && make prefix=/usr install
-
 
 ENV POETRY_VERSION=1.8.3 \
     POETRY_HOME="/opt/poetry" \
@@ -56,3 +54,4 @@ ENV DATABASE_URL=""
 ENV PORT=8000
 
 CMD ["poetry", "run", "rest"]
+
