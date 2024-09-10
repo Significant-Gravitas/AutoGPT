@@ -1,5 +1,6 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
+import { sendTutorialStep } from "./build/actions";
 
 export const startTutorial = (
   setPinBlocksPopover: (value: boolean) => void,
@@ -492,6 +493,18 @@ export const startTutorial = (
     setPinBlocksPopover(false);
     localStorage.setItem("shepherd-tour", "completed"); // Optionally mark the tutorial as completed
   });
+
+  for (let index = 0; index < tour.steps.length; index++) {
+    const step = tour.steps[index];
+    step.on("complete", () => {
+      console.log("sendTutorialStep");
+
+      sendTutorialStep({
+        step: index,
+        data: {},
+      });
+    });
+  }
 
   tour.on("cancel", () => {
     setPinBlocksPopover(false);
