@@ -22,6 +22,8 @@ model User {
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+  AnalyticsDetails             AnalyticsDetails[]
+  AnalyticsMetrics             AnalyticsMetrics[]
 
   @@index([id])
   @@index([email])
@@ -29,9 +31,9 @@ model User {
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
-  id      String @default(uuid())
-  version Int    @default(1)
-  createdAt DateTime @default(now())
+  id        String    @default(uuid())
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   name        String?
@@ -115,8 +117,8 @@ model AgentBlock {
 
 // This model describes the execution of an AgentGraph.
 model AgentGraphExecution {
-  id String @id @default(uuid())
-  createdAt DateTime @default(now())
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   agentGraphId      String
@@ -178,8 +180,8 @@ model AgentNodeExecutionInputOutput {
 
 // This model describes the recurring execution schedule of an Agent.
 model AgentGraphExecutionSchedule {
-  id String @id
-  createdAt DateTime @default(now())
+  id        String    @id
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   agentGraphId      String
@@ -198,4 +200,80 @@ model AgentGraphExecutionSchedule {
   user   User   @relation(fields: [userId], references: [id])
 
   @@index([isEnabled])
+}
+
+enum AnalyticsType {
+  CREATE_USER
+  TUTORIAL_STEP
+  WEB_PAGE
+
+  AGENT_GRAPH_EXECUTION
+  AGENT_NODE_EXECUTION
+}
+
+model AnalyticsDetails {
+  // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
+  // typical uuid() inserts are handled by prisma
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  type AnalyticsType
+
+  // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
+  data Json?
+
+  // Indexable field for any count based analytically measures like page order clicking, tutorial step completion, etc.
+  dataIndex Int?
+
+  @@index([userId, type], name: "analyticsDetails")
+  @@index([type])
+}
+
+enum AnalyticsMetric {
+  PAGE_VIEW
+  TUTORIAL_STEP_COMPLETION
+  AGENT_GRAPH_EXECUTION
+  AGENT_NODE_EXECUTION
+}
+
+enum AggregationType {
+  COUNT
+  SUM
+  AVG
+  MAX
+  MIN
+  NO_AGGREGATION
+}
+
+model AnalyticsMetrics {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  analyticMetric     AnalyticsMetric
+  // Any numeric data that should be counted upon, summed, or otherwise aggregated.
+  value              Float
+  // Any string data that should be used to identify the metric as distinct.
+  // ex: '/build' vs '/market'
+  dataString         String?
+  // Data Aggregation Type
+  aggregationType    AggregationType @default(NO_AGGREGATION)
+  // Aggregation Counter used for aggregation style events that beenefit from it. (AVG) (not self incrementing)
+  aggregationCounter Int?            @default(1)
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Allows us to have unique but useful user level metrics.
+  @@unique([analyticMetric, userId, dataString, aggregationType])
+  @@index(fields: [analyticMetric, userId, dataString, aggregationType], name: "analytics_metric_index")
 }
