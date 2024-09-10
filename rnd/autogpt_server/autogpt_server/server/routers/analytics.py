@@ -1,12 +1,13 @@
 # Analytics API
 
-from typing import Annotated
 import typing
-import typing_extensions
+from typing import Annotated
+
 import fastapi
 import prisma
 import prisma.enums
 import pydantic
+
 from autogpt_server.server.utils import get_user_id
 
 router = fastapi.APIRouter()
