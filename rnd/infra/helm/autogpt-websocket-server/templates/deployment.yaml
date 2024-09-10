@@ -39,6 +39,7 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["poetry", "run", "ws"]
           ports:
             - name: ws
               containerPort: {{ .Values.service.port }}
