@@ -101,7 +101,7 @@ services:
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
-      - AGENTSERVER_HOST=agent_server
+      - AGENTSERVER_HOST=api_srv
       - PORT=8002
     ports:
       - "8002:8002"
