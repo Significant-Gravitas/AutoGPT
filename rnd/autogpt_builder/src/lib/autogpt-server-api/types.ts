@@ -182,3 +182,15 @@ export type User = {
   id: string;
   email: string;
 };
+
+export type UserData = {
+  user_id: string;
+  email: string;
+  name: string;
+  username: string;
+};
+
+export type TutorialStepData = {
+  step: number;
+  data: { [key: string]: any };
+};

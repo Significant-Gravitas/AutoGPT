@@ -8,6 +8,8 @@ import {
   GraphExecuteResponse,
   NodeExecutionResult,
   User,
+  UserData,
+  TutorialStepData,
 } from "./types";
 
 export default class AutoGPTServerAPI {
@@ -30,6 +32,15 @@ export default class AutoGPTServerAPI {
 
   async createUser(): Promise<User> {
     return this._request("POST", "/auth/user", {});
+  }
+
+  // Analytics
+  async logCreateUser(userData: UserData): Promise<string> {
+    return this._request("POST", "/analytics/log_new_user", userData);
+  }
+
+  async logTutorialStep(data: TutorialStepData): Promise<string> {
+    return this._request("POST", "/analytics/log_tutorial_step", data);
   }
 
   async getBlocks(): Promise<Block[]> {
