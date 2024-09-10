@@ -1,4 +1,3 @@
-version: "3"
 services:
   postgres:
     image: ankane/pgvector:latest
@@ -16,6 +15,32 @@ services:
     networks:
       - app-network
 
+  server_base:
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
+    image: autogpt_server:latest
+    command: ["echo", "This is a base image and should not be run directly"]
+    
+  migrate:
+    image: autogpt_server:latest
+    command: ["sh", "-c", "until pg_isready -h postgres -U agpt_user -d agpt_local; do echo 'Waiting for postgres...'; sleep 2; done; poetry run prisma migrate deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+    networks:
+      - app-network
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "poetry", "run", "prisma", "migrate", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
   redis:
     image: redis:latest
     command: redis-server --requirepass password
@@ -24,10 +49,9 @@ services:
     networks:
       - app-network
 
-  rest_server:
-    build:
-      context: ../
-      dockerfile: rnd/autogpt_server/Dockerfile
+  api_srv:
+    image: autogpt_server:latest
+    command: ["poetry", "run", "rest"]
     develop:
       watch:
         - path: ./
@@ -38,21 +62,55 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
+      - PYRO_HOST=0.0.0.0
+      - EXECUTIONMANAGER_HOST=executor
+      - PORT=8000
     ports:
       - "8000:8000"
+      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
-  ws_server:
-    build:
-      context: ../
-      dockerfile: rnd/autogpt_server/Dockerfile.ws
+  executor:
+    image: autogpt_server:latest
+    command: ["poetry", "run", "executor"]
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/
+          action: rebuild
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=password
+      - AUTH_ENABLED=false
+      - PYRO_HOST=0.0.0.0
+      - AGENTSERVER_HOST=api_srv
+      - PORT=8002
+    ports:
+      - "8002:8002"
+    networks:
+      - app-network
+
+  ws_srv:
+    image: autogpt_server:latest
+    command: ["poetry", "run", "ws"]
     develop:
       watch:
         - path: ./
@@ -61,17 +119,53 @@ services:
     depends_on:
       - postgres
       - redis
+      - migrate
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
+      - PYRO_HOST=0.0.0.0
+      - PORT=8001
     ports:
       - "8001:8001"
     networks:
       - app-network
 
+  market:
+    build:
+      context: ../
+      dockerfile: rnd/market/Dockerfile
+    depends_on:
+      - postgres
+      - migrate
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+    ports:
+      - "8015:8015"
+    networks:
+      - app-network
+      
+  frontend:
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_builder/Dockerfile
+      target: dev
+    depends_on:
+      - postgres
+      - api_srv
+      - ws_srv
+      - migrate
+    environment:
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
+      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
 networks:
      app-network:
        driver: bridge
