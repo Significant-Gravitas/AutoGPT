@@ -296,7 +296,7 @@ const NodeKeyValueInput: FC<{
   className,
   displayName,
 }) => {
-  const getPairValues = useCallback(() => {
+  const getPairValues = () => {
     let defaultEntries = new Map<string, any>();
 
     connections
@@ -311,7 +311,7 @@ const NodeKeyValueInput: FC<{
     });
 
     return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
-  }, [connections, entries, schema.default, selfKey]);
+  };
 
   const [keyValuePairs, setKeyValuePairs] = useState<
     { key: string; value: string | number | null }[]
@@ -319,7 +319,7 @@ const NodeKeyValueInput: FC<{
 
   useEffect(
     () => setKeyValuePairs(getPairValues()),
-    [connections, entries, schema.default, getPairValues],
+    [connections, entries, schema.default],
   );
 
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {

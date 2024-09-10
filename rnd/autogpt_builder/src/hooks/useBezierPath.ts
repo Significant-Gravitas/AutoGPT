@@ -84,12 +84,12 @@ export function useBezierPath(
 
       return length;
     },
-    [getPointForT],
+    [path],
   );
 
   const length = useMemo(() => {
     return getArcLength(1);
-  }, [getArcLength]);
+  }, [path]);
 
   const getBezierDerivative = useCallback(
     (t: number) => {
@@ -131,7 +131,7 @@ export function useBezierPath(
 
       return t;
     },
-    [getArcLength, getBezierDerivative, length],
+    [path],
   );
 
   const getPointAtDistance = useCallback(
@@ -143,7 +143,7 @@ export function useBezierPath(
       const t = getTForDistance(distance);
       return getPointForT(t);
     },
-    [getTForDistance, getPointForT, length],
+    [path],
   );
 
   return {
