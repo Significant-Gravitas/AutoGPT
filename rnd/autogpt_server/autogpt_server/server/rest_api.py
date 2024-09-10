@@ -75,10 +75,15 @@ class AgentServer(AppService):
         api_router.dependencies.append(Depends(auth_middleware))
 
         # Import & Attach sub-routers
-        from .integrations import integrations_api_router
-
-        api_router.include_router(integrations_api_router, prefix="/integrations")
         import autogpt_server.server.routers.analytics
+        import autogpt_server.server.routers.integrations
+
+        api_router.include_router(
+            autogpt_server.server.routers.integrations.router,
+            prefix="/integrations",
+            tags=["integrations"],
+            dependencies=[Depends(auth_middleware)],
+        )
 
         api_router.include_router(
             autogpt_server.server.routers.analytics.router,

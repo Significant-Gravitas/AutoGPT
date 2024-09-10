@@ -11,11 +11,11 @@ from supabase import Client
 from autogpt_server.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from autogpt_server.util.settings import Settings
 
-from .utils import get_supabase, get_user_id
+from ..utils import get_supabase, get_user_id
 
 logger = logging.getLogger(__name__)
 settings = Settings()
-integrations_api_router = APIRouter()
+router = APIRouter()
 
 
 def get_store(supabase: Client = Depends(get_supabase)):
@@ -26,7 +26,7 @@ class LoginResponse(BaseModel):
     login_url: str
 
 
-@integrations_api_router.get("/{provider}/login")
+@router.get("/{provider}/login")
 async def login(
     provider: Annotated[str, Path(title="The provider to initiate an OAuth flow for")],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -52,7 +52,7 @@ class CredentialsMetaResponse(BaseModel):
     credentials_type: Literal["oauth2", "api_key"]
 
 
-@integrations_api_router.post("/{provider}/callback")
+@router.post("/{provider}/callback")
 async def callback(
     provider: Annotated[str, Path(title="The target provider for this OAuth exchange")],
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
