@@ -72,6 +72,7 @@ format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
 # https://poethepoet.natn.io/index.html
+
 [tool.poe]
 poetry_command = ""
 
