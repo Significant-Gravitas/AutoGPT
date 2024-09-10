@@ -494,13 +494,12 @@ export const startTutorial = (
     localStorage.setItem("shepherd-tour", "completed"); // Optionally mark the tutorial as completed
   });
 
-  for (let index = 0; index < tour.steps.length; index++) {
-    const step = tour.steps[index];
+  for (const step of tour.steps) {
     step.on("complete", () => {
       console.log("sendTutorialStep");
 
       sendTutorialStep({
-        step: index,
+        step: step.id,
         data: {},
       });
     });

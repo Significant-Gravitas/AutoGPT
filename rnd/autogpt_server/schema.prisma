@@ -230,7 +230,7 @@ model AnalyticsDetails {
   data Json?
 
   // Indexable field for any count based analytically measures like page order clicking, tutorial step completion, etc.
-  dataIndex Int?
+  dataIndex String?
 
   @@index([userId, type], name: "analyticsDetails")
   @@index([type])

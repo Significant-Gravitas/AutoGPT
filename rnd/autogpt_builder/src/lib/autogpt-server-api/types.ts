@@ -191,6 +191,6 @@ export type UserData = {
 };
 
 export type TutorialStepData = {
-  step: number;
+  step: string;
   data: { [key: string]: any };
 };
