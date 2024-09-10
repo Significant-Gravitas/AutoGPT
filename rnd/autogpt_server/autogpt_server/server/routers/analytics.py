@@ -41,7 +41,7 @@ async def log_create_user(
 @router.post(path="/log_tutorial_step")
 async def log_tutorial_step(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
-    step: Annotated[int, fastapi.Body(..., embed=True)],
+    step: Annotated[str, fastapi.Body(..., embed=True)],
     data: Annotated[Optional[dict], fastapi.Body(..., embed=True)],
 ):
     """
