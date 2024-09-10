@@ -12,6 +12,8 @@ pydantic = "^2.8.2"
 pyjwt = "^2.8.0"
 python-dotenv = "^1.0.1"
 supabase = "^2.7.2"
+colorama = "^0.4.6"
+google-cloud-logging = "^3.8.0"
 
 
 [build-system]

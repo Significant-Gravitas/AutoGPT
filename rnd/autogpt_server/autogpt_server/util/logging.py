@@ -1,12 +1,12 @@
 import os
 
-from forge.logging.config import LogFormatName
+from autogpt_libs.logging.config import LogFormatName
 
 
 def configure_logging():
     import logging
 
-    from forge.logging import configure_logging
+    from autogpt_libs.logging import configure_logging
 
     if os.getenv("APP_ENV") != "cloud":
         configure_logging()
