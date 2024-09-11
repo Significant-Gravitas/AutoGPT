@@ -155,7 +155,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     let keys = Object.entries(schema.properties);
     switch (nodeType) {
       case BlockUIType.INPUT:
-        // For INPUT blocks, only show the 'value' property
+        // For INPUT blocks, dont include connection handles
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
           const isConnected = isHandleConnected(propKey);
@@ -205,7 +205,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         );
 
       case BlockUIType.OUTPUT:
-        // For OUTPUT blocks, only show the 'recorded_value' property
+        // For OUTPUT blocks, only show the 'value' property
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
           const isConnected = isHandleConnected(propKey);
