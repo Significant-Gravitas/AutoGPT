@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useEffect } from 'react';
-import logPageViewAction from './actions';
+import React, { createContext, useContext, useEffect } from "react";
+import logPageViewAction from "./actions";
 
 const PageViewContext = createContext<null>(null);
 
-export const PageViewProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-
+export const PageViewProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   useEffect(() => {
     const logPageView = async () => {
       const pageViewData = { page: window.location.pathname, data: {} };
@@ -12,13 +13,10 @@ export const PageViewProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     logPageView().catch(console.error);
-
   }, []);
 
   return (
-    <PageViewContext.Provider value={null}>
-      {children}
-    </PageViewContext.Provider>
+    <PageViewContext.Provider value={null}>{children}</PageViewContext.Provider>
   );
 };
 
