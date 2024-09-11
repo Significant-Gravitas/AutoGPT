@@ -8,7 +8,8 @@ def wait_for_postgres(max_retries=5, delay=5):
         try:
             result = subprocess.run(
                 [
-                    "docker", "compose",
+                    "docker",
+                    "compose",
                     "-f",
                     "docker-compose.test.yaml",
                     "exec",
@@ -45,7 +46,8 @@ def test():
     # Start PostgreSQL with Docker Compose
     run_command(
         [
-            "docker", "compose",
+            "docker",
+            "compose",
             "-f",
             "docker-compose.test.yaml",
             "up",
