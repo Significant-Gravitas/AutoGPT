@@ -417,6 +417,7 @@ const FlowEditor: React.FC<{
           isOutputOpen: false,
           block_id: blockId,
           isOutputStatic: nodeSchema.staticOutput,
+          uiType: nodeSchema.uiType,
         },
       };
 
