@@ -47,17 +47,44 @@ export function RunnerInputUI({
   onInputChange,
   onRun,
 }: RunSettingsUiProps) {
+  const inputCount = blockInputs.length;
+
+  const getDialogSize = (count: number) => {
+    const baseWidth = 400;
+    const widthPerInput = 50;
+    const maxWidth = 600;
+    return `sm:max-w-[${Math.min(baseWidth + count * widthPerInput, maxWidth)}px]`;
+  };
+
+  const getScrollAreaHeight = (count: number) => {
+    const baseHeight = 20;
+    const heightPerInput = 5;
+    const maxHeight = 50;
+    return `h-[${Math.min(baseHeight + count * heightPerInput, maxHeight)}vh]`;
+  };
+
+  const dialogSize = getDialogSize(inputCount);
+  const scrollAreaHeight = getScrollAreaHeight(inputCount);
+
+  // Auto close on run
+  const handleRun = () => {
+    onRun();
+    onClose();
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-[500px]">
-        <DialogHeader className="px-2 py-2">
-          <DialogTitle className="text-xl">Run Settings</DialogTitle>
-          <DialogDescription className="mt-1 text-sm">
+      <DialogContent
+        className={`flex max-h-[80vh] flex-col overflow-hidden ${dialogSize}`}
+      >
+        <DialogHeader className="px-4 py-4">
+          <DialogTitle className="text-2xl">Run Settings</DialogTitle>
+          <DialogDescription className="mt-2 text-sm">
             Configure settings for running your agent.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-grow overflow-y-auto px-2 py-2">
-          <ScrollArea className="h-[50vh] overflow-auto pr-4">
+        <div className="flex-grow overflow-y-auto px-4 py-4">
+          <ScrollArea className={`${scrollAreaHeight} overflow-auto pr-4`}>
             <div className="space-y-4">
               {blockInputs && blockInputs.length > 0 ? (
                 blockInputs.map((block) => (
@@ -120,9 +147,9 @@ export function RunnerInputUI({
             </div>
           </ScrollArea>
         </div>
-        <DialogFooter className="px-6 py-2">
-          <Button onClick={onRun} className="px-6 py-2">
-            {"Run"}
+        <DialogFooter className="px-6 py-4">
+          <Button onClick={handleRun} className="px-8 py-2 text-lg">
+            Run
           </Button>
         </DialogFooter>
       </DialogContent>
