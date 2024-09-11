@@ -21,7 +21,7 @@ from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
-from autogpt_server.util.settings import Settings
+from autogpt_server.util.settings import Config, Settings
 
 from .utils import get_user_id
 
@@ -34,6 +34,7 @@ class AgentServer(AppService):
     _test_dependency_overrides = {}
 
     def __init__(self, event_queue: AsyncEventQueue | None = None):
+        super().__init__(port=Config().agent_server_port)
         self.event_queue = event_queue or AsyncRedisEventQueue()
 
     @asynccontextmanager
@@ -239,11 +240,11 @@ class AgentServer(AppService):
 
     @property
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
+        return get_service_client(ExecutionManager, Config().execution_manager_port)
 
     @property
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler)
+        return get_service_client(ExecutionScheduler, Config().execution_scheduler_port)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):
