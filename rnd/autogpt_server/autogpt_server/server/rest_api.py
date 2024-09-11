@@ -11,33 +11,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from autogpt_server.data import block, db
+from autogpt_server.data import execution as execution_db
 from autogpt_server.data import graph as graph_db
 from autogpt_server.data import user as user_db
 from autogpt_server.data.block import BlockInput, CompletedBlockOutput
-from autogpt_server.data.execution import (
-    ExecutionResult,
-    get_execution_results,
-    list_executions,
-)
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.data.user import get_or_create_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server.model import CreateGraph, SetGraphActiveVersion
-from autogpt_server.util.auth import get_user_id
 from autogpt_server.util.lock import KeyedMutex
 from autogpt_server.util.service import AppService, expose, get_service_client
-from autogpt_server.util.settings import Settings
+from autogpt_server.util.settings import Config, Settings
+
+from .utils import get_user_id
 
 settings = Settings()
 
 
 class AgentServer(AppService):
     mutex = KeyedMutex()
-    use_db = False
     use_redis = True
     _test_dependency_overrides = {}
 
     def __init__(self, event_queue: AsyncEventQueue | None = None):
+        super().__init__(port=Config().agent_server_port)
         self.event_queue = event_queue or AsyncRedisEventQueue()
 
     @asynccontextmanager
@@ -75,122 +72,132 @@ class AgentServer(AppService):
         )
 
         # Define the API routes
-        router = APIRouter(prefix="/api")
-        router.dependencies.append(Depends(auth_middleware))
+        api_router = APIRouter(prefix="/api")
+        api_router.dependencies.append(Depends(auth_middleware))
 
-        router.add_api_route(
+        # Import & Attach sub-routers
+        from .integrations import integrations_api_router
+
+        api_router.include_router(integrations_api_router, prefix="/integrations")
+
+        api_router.add_api_route(
             path="/auth/user",
             endpoint=self.get_or_create_user_route,
             methods=["POST"],
         )
 
-        router.add_api_route(
+        api_router.add_api_route(
             path="/blocks",
             endpoint=self.get_graph_blocks,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/blocks/{block_id}/execute",
             endpoint=self.execute_graph_block,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs",
             endpoint=self.get_graphs,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates",
             endpoint=self.get_templates,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs",
             endpoint=self.create_new_graph,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates",
             endpoint=self.create_new_template,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.get_graph,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.get_template,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/templates/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/versions/{version}",
             endpoint=self.get_graph,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/versions/active",
             endpoint=self.set_graph_active_version,
             methods=["PUT"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/input_schema",
             endpoint=self.get_graph_input_schema,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/execute",
             endpoint=self.execute_graph,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/executions",
             endpoint=self.list_graph_runs,
             methods=["GET"],
         )
-        router.add_api_route(
-            path="/graphs/{graph_id}/executions/{run_id}",
-            endpoint=self.get_run_execution_results,
+        api_router.add_api_route(
+            path="/graphs/{graph_id}/executions/{graph_exec_id}",
+            endpoint=self.get_graph_run_node_execution_results,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
+            path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
+            endpoint=self.stop_graph_run,
+            methods=["POST"],
+        )
+        api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.create_schedule,
             methods=["POST"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.get_execution_schedules,
             methods=["GET"],
         )
-        router.add_api_route(
+        api_router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
             endpoint=self.update_schedule,
             methods=["PUT"],
         )
 
-        router.add_api_route(
+        api_router.add_api_route(
             path="/settings",
             endpoint=self.update_configuration,
             methods=["POST"],
@@ -198,9 +205,9 @@ class AgentServer(AppService):
 
         app.add_exception_handler(500, self.handle_internal_http_error)
 
-        app.include_router(router)
+        app.include_router(api_router)
 
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)
 
     def set_test_dependency_overrides(self, overrides: dict):
         self._test_dependency_overrides = overrides
@@ -233,11 +240,11 @@ class AgentServer(AppService):
 
     @property
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
+        return get_service_client(ExecutionManager, Config().execution_manager_port)
 
     @property
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler)
+        return get_service_client(ExecutionScheduler, Config().execution_scheduler_port)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):
@@ -423,14 +430,28 @@ class AgentServer(AppService):
         graph_id: str,
         node_input: dict[Any, Any],
         user_id: Annotated[str, Depends(get_user_id)],
-    ) -> dict[Any, Any]:
+    ) -> dict[str, Any]:  # FIXME: add proper return type
         try:
-            return self.execution_manager_client.add_execution(
+            graph_exec = self.execution_manager_client.add_execution(
                 graph_id, node_input, user_id=user_id
             )
+            return {"id": graph_exec["graph_exec_id"]}
         except Exception as e:
             msg = e.__str__().encode().decode("unicode_escape")
             raise HTTPException(status_code=400, detail=msg)
+
+    async def stop_graph_run(
+        self, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> list[execution_db.ExecutionResult]:
+        if not await execution_db.get_graph_execution(graph_exec_id, user_id):
+            raise HTTPException(
+                404, detail=f"Agent execution #{graph_exec_id} not found"
+            )
+
+        self.execution_manager_client.cancel_execution(graph_exec_id)
+
+        # Retrieve & return canceled graph execution in its final state
+        return await execution_db.get_execution_results(graph_exec_id)
 
     @classmethod
     async def get_graph_input_schema(
@@ -458,17 +479,20 @@ class AgentServer(AppService):
                 status_code=404, detail=f"Agent #{graph_id}{rev} not found."
             )
 
-        return await list_executions(graph_id, graph_version)
+        return await execution_db.list_executions(graph_id, graph_version)
 
     @classmethod
-    async def get_run_execution_results(
-        cls, graph_id: str, run_id: str, user_id: Annotated[str, Depends(get_user_id)]
-    ) -> list[ExecutionResult]:
+    async def get_graph_run_node_execution_results(
+        cls,
+        graph_id: str,
+        graph_exec_id: str,
+        user_id: Annotated[str, Depends(get_user_id)],
+    ) -> list[execution_db.ExecutionResult]:
         graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-        return await get_execution_results(run_id)
+        return await execution_db.get_execution_results(graph_exec_id)
 
     async def create_schedule(
         self,
@@ -506,7 +530,7 @@ class AgentServer(AppService):
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        execution_result = ExecutionResult(**execution_result_dict)
+        execution_result = execution_db.ExecutionResult(**execution_result_dict)
         self.run_and_wait(self.event_queue.put(execution_result))
 
     @expose

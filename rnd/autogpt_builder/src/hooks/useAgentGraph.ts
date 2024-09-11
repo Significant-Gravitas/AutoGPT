@@ -31,22 +31,27 @@ export default function useAgentGraph(
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
   /**
-   * User `request` to save or save&run the agent
+   * User `request` to save or save&run the agent, or to stop the active run.
    * `state` is used to track the request status:
    * - none: no request
    * - saving: request was sent to save the agent
    *   and nodes are pending sync to update their backend ids
    * - running: request was sent to run the agent
    *   and frontend is enqueueing execution results
+   * - stopping: a request to stop the active run has been sent; response is pending
    * - error: request failed
-   *
-   * As of now, state will be stuck at 'running' (if run requested)
-   * because there's no way to know when the execution is done
    */
-  const [saveRunRequest, setSaveRunRequest] = useState<{
-    request: "none" | "save" | "run";
-    state: "none" | "saving" | "running" | "error";
-  }>({
+  const [saveRunRequest, setSaveRunRequest] = useState<
+    | {
+        request: "none" | "save" | "run";
+        state: "none" | "saving" | "error";
+      }
+    | {
+        request: "run" | "stop";
+        state: "running" | "stopping" | "error";
+        activeExecutionID?: string;
+      }
+  >({
     request: "none",
     state: "none",
   });
@@ -56,8 +61,10 @@ export default function useAgentGraph(
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
 
-  const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
-  const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
+  const api = useMemo(
+    () => new AutoGPTServerAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
+    [],
+  );
 
   // Connect to WebSocket
   useEffect(() => {
@@ -84,170 +91,107 @@ export default function useAgentGraph(
       .getBlocks()
       .then((blocks) => setAvailableNodes(blocks))
       .catch();
+  }, [api]);
+
+  //TODO to utils? repeated in Flow
+  const formatEdgeID = useCallback((conn: Link | Connection): string => {
+    if ("sink_id" in conn) {
+      return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
+    } else {
+      return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
+    }
   }, []);
 
+  const getOutputType = useCallback(
+    (nodes: CustomNode[], nodeId: string, handleId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return "unknown";
+
+      const outputSchema = node.data.outputSchema;
+      if (!outputSchema) return "unknown";
+
+      const outputHandle = outputSchema.properties[handleId];
+      if (!("type" in outputHandle)) return "unknown";
+      return outputHandle.type;
+    },
+    [],
+  );
+
   // Load existing graph
-  useEffect(() => {
-    if (!flowID || availableNodes.length == 0) return;
+  const loadGraph = useCallback(
+    (graph: Graph) => {
+      setSavedAgent(graph);
+      setAgentName(graph.name);
+      setAgentDescription(graph.description);
 
-    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then((graph) =>
-      loadGraph(graph),
-    );
-  }, [flowID, template, availableNodes]);
-
-  // Update nodes with execution data
-  useEffect(() => {
-    if (updateQueue.length === 0 || !nodesSyncedWithSavedAgent) {
-      return;
-    }
-    setUpdateQueue((prev) => {
-      prev.forEach((data) => {
-        // Skip already processed updates by checking
-        // if the data is in the processedUpdates array by reference
-        // This is not to process twice in react dev mode
-        // because it'll add double the beads
-        if (processedUpdates.current.includes(data)) {
-          return;
-        }
-        updateNodesWithExecutionData(data);
-        processedUpdates.current.push(data);
-      });
-      return [];
-    });
-  }, [updateQueue, nodesSyncedWithSavedAgent]);
-
-  // Handle user requests
-  useEffect(() => {
-    // Ignore none request
-    if (saveRunRequest.request === "none") {
-      return;
-    }
-    // Display error message
-    if (saveRunRequest.state === "error") {
-      if (saveRunRequest.request === "save") {
-        console.error("Error saving agent");
-      } else if (saveRunRequest.request === "run") {
-        console.error(`Error saving&running agent`);
-      }
-      // Reset request
-      setSaveRunRequest((prev) => ({
-        ...prev,
-        request: "none",
-        state: "none",
-      }));
-      return;
-    }
-    // When saving request is done
-    if (
-      saveRunRequest.state === "saving" &&
-      savedAgent &&
-      nodesSyncedWithSavedAgent
-    ) {
-      // Reset request if only save was requested
-      if (saveRunRequest.request === "save") {
-        setSaveRunRequest((prev) => ({
-          ...prev,
-          request: "none",
-          state: "none",
-        }));
-        // If run was requested, run the agent
-      } else if (saveRunRequest.request === "run") {
-        if (!validateNodes()) {
-          console.error("Validation failed; aborting run");
-          setSaveRunRequest({
-            request: "none",
-            state: "none",
-          });
-          return;
-        }
-        api.subscribeToExecution(savedAgent.id);
-        api.executeGraph(savedAgent.id);
-        processedUpdates.current = processedUpdates.current = [];
-
-        setSaveRunRequest((prev) => ({
-          ...prev,
-          request: "run",
-          state: "running",
-        }));
-      }
-    }
-  }, [saveRunRequest, savedAgent, nodesSyncedWithSavedAgent]);
-
-  // Check if node ids are synced with saved agent
-  useEffect(() => {
-    // Check if all node ids are synced with saved agent (frontend and backend)
-    if (!savedAgent || nodes?.length === 0) {
-      setNodesSyncedWithSavedAgent(false);
-      return;
-    }
-    // Find at least one node that has backend id existing on any saved agent node
-    // This will works as long as ALL ids are replaced each time the graph is run
-    const oneNodeSynced = savedAgent.nodes.some(
-      (backendNode) => backendNode.id === nodes[0].data.backend_id,
-    );
-    setNodesSyncedWithSavedAgent(oneNodeSynced);
-  }, [savedAgent, nodes]);
-
-  const validateNodes = useCallback((): boolean => {
-    let isValid = true;
-
-    nodes.forEach((node) => {
-      const validate = ajv.compile(node.data.inputSchema);
-      const errors = {} as { [key: string]: string };
-
-      // Validate values against schema using AJV
-      const valid = validate(node.data.hardcodedValues);
-      if (!valid) {
-        // Populate errors if validation fails
-        validate.errors?.forEach((error) => {
-          // Skip error if there's an edge connected
-          const path =
-            "dataPath" in error
-              ? (error.dataPath as string)
-              : error.instancePath;
-          const handle = path.split(/[\/.]/)[0];
-          if (
-            node.data.connections.some(
-              (conn) => conn.target === node.id || conn.targetHandle === handle,
-            )
-          ) {
-            return;
-          }
-          console.warn("Error", error);
-          isValid = false;
-          if (path && error.message) {
-            const key = path.slice(1);
-            console.log("Error", key, error.message);
-            setNestedProperty(
-              errors,
-              key,
-              error.message[0].toUpperCase() + error.message.slice(1),
-            );
-          } else if (error.keyword === "required") {
-            const key = error.params.missingProperty;
-            setNestedProperty(errors, key, "This field is required");
-          }
+      setNodes(() => {
+        const newNodes = graph.nodes.map((node) => {
+          const block = availableNodes.find(
+            (block) => block.id === node.block_id,
+          )!;
+          const newNode: CustomNode = {
+            id: node.id,
+            type: "custom",
+            position: {
+              x: node.metadata.position.x,
+              y: node.metadata.position.y,
+            },
+            data: {
+              block_id: block.id,
+              blockType: block.name,
+              categories: block.categories,
+              description: block.description,
+              title: `${block.name} ${node.id}`,
+              inputSchema: block.inputSchema,
+              outputSchema: block.outputSchema,
+              hardcodedValues: node.input_default,
+              connections: graph.links
+                .filter((l) => [l.source_id, l.sink_id].includes(node.id))
+                .map((link) => ({
+                  edge_id: formatEdgeID(link),
+                  source: link.source_id,
+                  sourceHandle: link.source_name,
+                  target: link.sink_id,
+                  targetHandle: link.sink_name,
+                })),
+              isOutputOpen: false,
+            },
+          };
+          return newNode;
         });
-      }
-      // Set errors
-      setNodes((nodes) => {
-        return nodes.map((n) => {
-          if (n.id === node.id) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                errors,
-              },
-            };
-          }
-          return n;
-        });
+        setEdges((_) =>
+          graph.links.map((link) => ({
+            id: formatEdgeID(link),
+            type: "custom",
+            data: {
+              edgeColor: getTypeColor(
+                getOutputType(newNodes, link.source_id, link.source_name!),
+              ),
+              sourcePos: newNodes.find((node) => node.id === link.source_id)
+                ?.position,
+              isStatic: link.is_static,
+              beadUp: 0,
+              beadDown: 0,
+              beadData: [],
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              strokeWidth: 2,
+              color: getTypeColor(
+                getOutputType(newNodes, link.source_id, link.source_name!),
+              ),
+            },
+            source: link.source_id,
+            target: link.sink_id,
+            sourceHandle: link.source_name || undefined,
+            targetHandle: link.sink_name || undefined,
+          })),
+        );
+        return newNodes;
       });
-    });
-
-    return isValid;
-  }, [nodes]);
+    },
+    [availableNodes, formatEdgeID, getOutputType],
+  );
 
   const getFrontendId = useCallback(
     (backendId: string, nodes: CustomNode[]) => {
@@ -311,7 +255,7 @@ export default function useAgentGraph(
         });
       });
     },
-    [edges],
+    [getFrontendId, nodes],
   );
 
   const updateNodesWithExecutionData = useCallback(
@@ -355,107 +299,227 @@ export default function useAgentGraph(
         );
       });
     },
-    [nodes],
+    [passDataToBeads, updateEdgeBeads],
   );
 
-  //TODO to utils? repeated in Flow
-  const formatEdgeID = useCallback((conn: Link | Connection): string => {
-    if ("sink_id" in conn) {
-      return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
-    } else {
-      return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
+  useEffect(() => {
+    if (!flowID || availableNodes.length == 0) return;
+
+    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
+      (graph) => {
+        console.log("Loading graph");
+        loadGraph(graph);
+      },
+    );
+  }, [flowID, template, availableNodes, api, loadGraph]);
+
+  // Update nodes with execution data
+  useEffect(() => {
+    if (updateQueue.length === 0 || !nodesSyncedWithSavedAgent) {
+      return;
     }
-  }, []);
-
-  const getOutputType = useCallback(
-    (nodeId: string, handleId: string) => {
-      const node = nodes.find((n) => n.id === nodeId);
-      if (!node) return "unknown";
-
-      const outputSchema = node.data.outputSchema;
-      if (!outputSchema) return "unknown";
-
-      const outputHandle = outputSchema.properties[handleId];
-      if (!("type" in outputHandle)) return "unknown";
-      return outputHandle.type;
-    },
-    [nodes],
-  );
-
-  const loadGraph = useCallback(
-    (graph: Graph) => {
-      setSavedAgent(graph);
-      setAgentName(graph.name);
-      setAgentDescription(graph.description);
-
-      setNodes(() => {
-        const newNodes = graph.nodes.map((node) => {
-          const block = availableNodes.find(
-            (block) => block.id === node.block_id,
-          )!;
-          const newNode: CustomNode = {
-            id: node.id,
-            type: "custom",
-            position: {
-              x: node.metadata.position.x,
-              y: node.metadata.position.y,
-            },
-            data: {
-              block_id: block.id,
-              blockType: block.name,
-              categories: block.categories,
-              description: block.description,
-              title: `${block.name} ${node.id}`,
-              inputSchema: block.inputSchema,
-              outputSchema: block.outputSchema,
-              hardcodedValues: node.input_default,
-              connections: graph.links
-                .filter((l) => [l.source_id, l.sink_id].includes(node.id))
-                .map((link) => ({
-                  edge_id: formatEdgeID(link),
-                  source: link.source_id,
-                  sourceHandle: link.source_name,
-                  target: link.sink_id,
-                  targetHandle: link.sink_name,
-                })),
-              isOutputOpen: false,
-            },
-          };
-          return newNode;
-        });
-        setEdges((_) =>
-          graph.links.map((link) => ({
-            id: formatEdgeID(link),
-            type: "custom",
-            data: {
-              edgeColor: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
-              ),
-              sourcePos: nodes.find((node) => node.id === link.source_id)
-                ?.position,
-              isStatic: link.is_static,
-              beadUp: 0,
-              beadDown: 0,
-              beadData: [],
-            },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              strokeWidth: 2,
-              color: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
-              ),
-            },
-            source: link.source_id,
-            target: link.sink_id,
-            sourceHandle: link.source_name || undefined,
-            targetHandle: link.sink_name || undefined,
-          })),
-        );
-        return newNodes;
+    setUpdateQueue((prev) => {
+      prev.forEach((data) => {
+        // Skip already processed updates by checking
+        // if the data is in the processedUpdates array by reference
+        // This is not to process twice in react dev mode
+        // because it'll add double the beads
+        if (processedUpdates.current.includes(data)) {
+          return;
+        }
+        updateNodesWithExecutionData(data);
+        processedUpdates.current.push(data);
       });
-    },
-    [availableNodes],
-  );
+      return [];
+    });
+  }, [updateQueue, nodesSyncedWithSavedAgent, updateNodesWithExecutionData]);
+
+  const validateNodes = useCallback((): boolean => {
+    let isValid = true;
+
+    nodes.forEach((node) => {
+      const validate = ajv.compile(node.data.inputSchema);
+      const errors = {} as { [key: string]: string };
+
+      // Validate values against schema using AJV
+      const valid = validate(node.data.hardcodedValues);
+      if (!valid) {
+        // Populate errors if validation fails
+        validate.errors?.forEach((error) => {
+          // Skip error if there's an edge connected
+          const path =
+            "dataPath" in error
+              ? (error.dataPath as string)
+              : error.instancePath;
+          const handle = path.split(/[\/.]/)[0];
+          if (
+            node.data.connections.some(
+              (conn) => conn.target === node.id || conn.targetHandle === handle,
+            )
+          ) {
+            return;
+          }
+          console.warn("Error", error);
+          isValid = false;
+          if (path && error.message) {
+            const key = path.slice(1);
+            console.log("Error", key, error.message);
+            setNestedProperty(
+              errors,
+              key,
+              error.message[0].toUpperCase() + error.message.slice(1),
+            );
+          } else if (error.keyword === "required") {
+            const key = error.params.missingProperty;
+            setNestedProperty(errors, key, "This field is required");
+          }
+        });
+      }
+      // Set errors
+      setNodes((nodes) => {
+        return nodes.map((n) => {
+          if (n.id === node.id) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                errors,
+              },
+            };
+          }
+          return n;
+        });
+      });
+    });
+
+    return isValid;
+  }, [nodes]);
+
+  // Handle user requests
+  useEffect(() => {
+    // Ignore none request
+    if (saveRunRequest.request === "none") {
+      return;
+    }
+    // Display error message
+    if (saveRunRequest.state === "error") {
+      if (saveRunRequest.request === "save") {
+        console.error("Error saving agent");
+      } else if (saveRunRequest.request === "run") {
+        console.error(`Error saving&running agent`);
+      } else if (saveRunRequest.request === "stop") {
+        console.error(`Error stopping agent`);
+      }
+      // Reset request
+      setSaveRunRequest({
+        request: "none",
+        state: "none",
+      });
+      return;
+    }
+    // When saving request is done
+    if (
+      saveRunRequest.state === "saving" &&
+      savedAgent &&
+      nodesSyncedWithSavedAgent
+    ) {
+      // Reset request if only save was requested
+      if (saveRunRequest.request === "save") {
+        setSaveRunRequest({
+          request: "none",
+          state: "none",
+        });
+        // If run was requested, run the agent
+      } else if (saveRunRequest.request === "run") {
+        if (!validateNodes()) {
+          console.error("Validation failed; aborting run");
+          setSaveRunRequest({
+            request: "none",
+            state: "none",
+          });
+          return;
+        }
+        api.subscribeToExecution(savedAgent.id);
+        setSaveRunRequest({ request: "run", state: "running" });
+        api
+          .executeGraph(savedAgent.id)
+          .then((graphExecution) => {
+            setSaveRunRequest({
+              request: "run",
+              state: "running",
+              activeExecutionID: graphExecution.id,
+            });
+
+            // Track execution until completed
+            const pendingNodeExecutions: Set<string> = new Set();
+            const cancelExecListener = api.onWebSocketMessage(
+              "execution_event",
+              (nodeResult) => {
+                // We are racing the server here, since we need the ID to filter events
+                if (nodeResult.graph_exec_id != graphExecution.id) {
+                  return;
+                }
+                if (
+                  nodeResult.status != "COMPLETED" &&
+                  nodeResult.status != "FAILED"
+                ) {
+                  pendingNodeExecutions.add(nodeResult.node_exec_id);
+                } else {
+                  pendingNodeExecutions.delete(nodeResult.node_exec_id);
+                }
+                if (pendingNodeExecutions.size == 0) {
+                  // Assuming the first event is always a QUEUED node, and
+                  // following nodes are QUEUED before all preceding nodes are COMPLETED,
+                  // an empty set means the graph has finished running.
+                  cancelExecListener();
+                  setSaveRunRequest({ request: "none", state: "none" });
+                }
+              },
+            );
+          })
+          .catch(() => setSaveRunRequest({ request: "run", state: "error" }));
+
+        processedUpdates.current = processedUpdates.current = [];
+      }
+    }
+    // Handle stop request
+    if (
+      saveRunRequest.request === "stop" &&
+      saveRunRequest.state != "stopping" &&
+      savedAgent &&
+      saveRunRequest.activeExecutionID
+    ) {
+      setSaveRunRequest({
+        request: "stop",
+        state: "stopping",
+        activeExecutionID: saveRunRequest.activeExecutionID,
+      });
+      api
+        .stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID)
+        .then(() => setSaveRunRequest({ request: "none", state: "none" }));
+    }
+  }, [
+    api,
+    saveRunRequest,
+    savedAgent,
+    nodesSyncedWithSavedAgent,
+    validateNodes,
+  ]);
+
+  // Check if node ids are synced with saved agent
+  useEffect(() => {
+    // Check if all node ids are synced with saved agent (frontend and backend)
+    if (!savedAgent || nodes?.length === 0) {
+      setNodesSyncedWithSavedAgent(false);
+      return;
+    }
+    // Find at least one node that has backend id existing on any saved agent node
+    // This will works as long as ALL ids are replaced each time the graph is run
+    const oneNodeSynced = savedAgent.nodes.some(
+      (backendNode) => backendNode.id === nodes[0].data.backend_id,
+    );
+    setNodesSyncedWithSavedAgent(oneNodeSynced);
+  }, [savedAgent, nodes]);
 
   const prepareNodeInputData = useCallback(
     (node: CustomNode) => {
@@ -643,7 +707,15 @@ export default function useAgentGraph(
         }));
       });
     },
-    [nodes, edges, savedAgent],
+    [
+      api,
+      nodes,
+      edges,
+      savedAgent,
+      agentName,
+      agentDescription,
+      prepareNodeInputData,
+    ],
   );
 
   const requestSave = useCallback(
@@ -657,13 +729,30 @@ export default function useAgentGraph(
     [saveAgent],
   );
 
-  const requestSaveRun = useCallback(() => {
+  const requestSaveAndRun = useCallback(() => {
     saveAgent();
     setSaveRunRequest({
       request: "run",
       state: "saving",
     });
   }, [saveAgent]);
+
+  const requestStopRun = useCallback(() => {
+    if (saveRunRequest.state != "running") {
+      return;
+    }
+    if (!saveRunRequest.activeExecutionID) {
+      console.warn(
+        "Stop requested but execution ID is unknown; state:",
+        saveRunRequest,
+      );
+    }
+    setSaveRunRequest((prev) => ({
+      ...prev,
+      request: "stop",
+      state: "running",
+    }));
+  }, [saveRunRequest]);
 
   return {
     agentName,
@@ -674,7 +763,11 @@ export default function useAgentGraph(
     availableNodes,
     getOutputType,
     requestSave,
-    requestSaveRun,
+    requestSaveAndRun,
+    requestStopRun,
+    isSaving: saveRunRequest.state == "saving",
+    isRunning: saveRunRequest.state == "running",
+    isStopping: saveRunRequest.state == "stopping",
     nodes,
     setNodes,
     edges,

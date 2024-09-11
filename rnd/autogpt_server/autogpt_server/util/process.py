@@ -1,8 +1,15 @@
+import logging
 import os
+import signal
 import sys
 from abc import ABC, abstractmethod
 from multiprocessing import Process, set_start_method
 from typing import Optional
+
+from autogpt_server.util.logging import configure_logging
+from autogpt_server.util.metrics import sentry_init
+
+logger = logging.getLogger(__name__)
 
 
 class AppProcess(ABC):
@@ -11,7 +18,12 @@ class AppProcess(ABC):
     """
 
     process: Optional[Process] = None
+
     set_start_method("spawn", force=True)
+    configure_logging()
+    sentry_init()
+
+    # Methods that are executed INSIDE the process #
 
     @abstractmethod
     def run(self):
@@ -20,18 +32,36 @@ class AppProcess(ABC):
         """
         pass
 
+    def cleanup(self):
+        """
+        Implement this method on a subclass to do post-execution cleanup,
+        e.g. disconnecting from a database or terminating child processes.
+        """
+        pass
+
+    def health_check(self):
+        """
+        A method to check the health of the process.
+        """
+        pass
+
     def execute_run_command(self, silent):
+        signal.signal(signal.SIGTERM, self._self_terminate)
+
         try:
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
-            else:
-                from .logging import configure_logging
-
-                configure_logging()
+            logger.info(f"[{self.__class__.__name__}] Starting...")
             self.run()
-        except KeyboardInterrupt or SystemExit as e:
-            print(f"Process terminated: {e}")
+        except (KeyboardInterrupt, SystemExit) as e:
+            logger.warning(f"[{self.__class__.__name__}] Terminated: {e}; quitting...")
+
+    def _self_terminate(self, signum: int, frame):
+        self.cleanup()
+        sys.exit(0)
+
+    # Methods that are executed OUTSIDE the process #
 
     def __enter__(self):
         self.start(background=True)
@@ -61,6 +91,7 @@ class AppProcess(ABC):
             **proc_args,
         )
         self.process.start()
+        self.health_check()
         return self.process.pid or 0
 
     def stop(self):

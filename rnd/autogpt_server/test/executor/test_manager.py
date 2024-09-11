@@ -35,30 +35,46 @@ async def assert_sample_graph_executions(
     test_user: User,
     graph_exec_id: str,
 ):
-    executions = await agent_server.get_run_execution_results(
-        test_graph.id, graph_exec_id, test_user.id
+    executions = await agent_server.get_graph_run_node_execution_results(
+        test_graph.id,
+        graph_exec_id,
+        test_user.id,
     )
 
-    output_list = [{"value": ["Hello"]}, {"value": ["World"]}]
+    output_list = [{"result": ["Hello"]}, {"result": ["World"]}]
     input_list = [
-        {"value": "Hello", "name": "input_1"},
-        {"value": "World", "name": "input_2"},
+        {
+            "name": "input_1",
+            "value": "Hello",
+        },
+        {
+            "name": "input_2",
+            "value": "World",
+        },
     ]
 
     # Executing StoreValueBlock
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list
-    assert exec.input_data in input_list
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing StoreValueBlock
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list
-    assert exec.input_data in input_list
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing FillTextTemplateBlock
@@ -156,7 +172,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
         server.agent_server, server.exec_manager, test_graph, test_user, {}, 3
     )
 
-    executions = await server.agent_server.get_run_execution_results(
+    executions = await server.agent_server.get_graph_run_node_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
     assert len(executions) == 3
@@ -236,7 +252,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     graph_exec_id = await execute_graph(
         server.agent_server, server.exec_manager, test_graph, test_user, {}, 8
     )
-    executions = await server.agent_server.get_run_execution_results(
+    executions = await server.agent_server.get_graph_run_node_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
     assert len(executions) == 8

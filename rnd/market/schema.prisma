@@ -40,6 +40,7 @@ model Agents {
   graph            Json
   AnalyticsTracker AnalyticsTracker[]
   FeaturedAgent    FeaturedAgent?
+  InstallTracker   InstallTracker[]
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -50,6 +51,22 @@ model AnalyticsTracker {
   agent     Agents @relation(fields: [agentId], references: [id])
   views     Int
   downloads Int
+}
+
+enum InstallationLocation {
+  LOCAL
+  CLOUD
+}
+
+model InstallTracker {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marketplaceAgentId   String               @db.Uuid
+  marketplaceAgent     Agents               @relation(fields: [marketplaceAgentId], references: [id])
+  installedAgentId     String               @db.Uuid
+  installationLocation InstallationLocation
+  createdAt            DateTime             @default(now())
+
+  @@unique([marketplaceAgentId, installedAgentId])
 }
 
 model FeaturedAgent {
