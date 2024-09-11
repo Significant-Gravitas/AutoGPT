@@ -116,7 +116,7 @@ class GetRedditPostsBlock(Block):
         subreddit = client.subreddit(input_data.subreddit)
         return subreddit.new(limit=input_data.post_limit)
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         current_time = datetime.now(tz=timezone.utc)
         for post in self.get_posts(input_data):
             if input_data.last_minutes:
@@ -167,5 +167,5 @@ class PostRedditCommentBlock(Block):
         comment = submission.reply(comment.comment)
         return comment.id  # type: ignore
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "comment_id", self.reply_post(input_data.creds, input_data.data)

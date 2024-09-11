@@ -36,7 +36,7 @@ class BlockCategory(Enum):
     INPUT = "Block that interacts with input of the graph."
     OUTPUT = "Block that interacts with output of the graph."
     LOGIC = "Programming logic to control the flow of your agent"
-    DEVELOPER_TOOLS = "Developer tools like Github." # added this so all the github blocks are in the same category for now, this is to be changed
+    DEVELOPER_TOOLS = "Developer tools like Github."  # added this so all the github blocks are in the same category for now, this is to be changed
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -179,7 +179,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.ui_type = ui_type
 
     @abstractmethod
-    def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
+    def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
         """
         Run the block with the given input data.
         Args:
@@ -210,13 +210,15 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "uiType": self.ui_type.value,
         }
 
-    def execute(self, input_data: BlockInput) -> BlockOutput:
+    def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        for output_name, output_data in self.run(self.input_schema(**input_data)):
+        for output_name, output_data in self.run(
+            self.input_schema(**input_data), **kwargs
+        ):
             if error := self.output_schema.validate_field(output_name, output_data):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data

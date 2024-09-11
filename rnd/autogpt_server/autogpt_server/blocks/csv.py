@@ -32,7 +32,7 @@ class ReadCsvBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         import csv
         from io import StringIO
 

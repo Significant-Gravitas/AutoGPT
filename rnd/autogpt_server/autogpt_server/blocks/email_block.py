@@ -88,7 +88,7 @@ class SendEmailBlock(Block):
         except Exception as e:
             return f"Failed to send email: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         status = self.send_email(
             input_data.creds,
             input_data.to_email,

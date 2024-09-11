@@ -35,7 +35,7 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
             test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             topic = input_data.topic
             url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
@@ -72,7 +72,7 @@ class SearchTheWebBlock(Block, GetRequest):
             test_mock={"get_request": lambda url, json: "search content"},
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # Encode the search query
             encoded_query = quote(input_data.query)
@@ -113,7 +113,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             test_mock={"get_request": lambda url, json: "scraped content"},
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # Prepend the Jina-ai Reader URL to the input URL
             jina_url = f"https://r.jina.ai/{input_data.url}"
@@ -166,7 +166,7 @@ class GetWeatherInformationBlock(Block, GetRequest):
             },
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             units = "metric" if input_data.use_celsius else "imperial"
             api_key = input_data.api_key.get_secret_value()

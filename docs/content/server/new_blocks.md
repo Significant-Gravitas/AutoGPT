@@ -84,7 +84,7 @@ Follow these steps to create and test a new block:
 5. **Implement the `run` method with error handling:**, this should contain the main logic of the block:
 
    ```python
-   def run(self, input_data: Input) -> BlockOutput:
+   def run(self, input_data: Input, **kwargs) -> BlockOutput:
        try:
            topic = input_data.topic
            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"

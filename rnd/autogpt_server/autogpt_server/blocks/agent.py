@@ -155,7 +155,7 @@ class AutoGPTAgentBlock(Block):
 
         raise error or Exception("Failed to get result")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         # Set up configuration
         config = ConfigBuilder.build_config_from_env()
         # Disable commands

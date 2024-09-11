@@ -86,7 +86,7 @@ class ReadRSSFeedBlock(Block):
     def parse_feed(url: str) -> dict[str, Any]:
         return feedparser.parse(url)  # type: ignore
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         keep_going = True
         start_time = datetime.now(timezone.utc) - timedelta(
             minutes=input_data.time_period

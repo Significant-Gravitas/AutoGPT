@@ -62,7 +62,7 @@ class TranscribeYouTubeVideoBlock(Block):
     def get_transcript(video_id: str):
         return YouTubeTranscriptApi.get_transcript(video_id)
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             video_id = self.extract_video_id(input_data.youtube_url)
             yield "video_id", video_id
