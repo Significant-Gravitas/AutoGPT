@@ -13,7 +13,7 @@ from autogpt_server.data import db
 from autogpt_server.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from autogpt_server.util.process import AppProcess
 from autogpt_server.util.retry import conn_retry
-from autogpt_server.util.settings import Config
+from autogpt_server.util.settings import Config, Secrets
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -48,6 +48,7 @@ class AppService(AppProcess):
     event_queue: AsyncEventQueue = AsyncRedisEventQueue()
     use_db: bool = False
     use_redis: bool = False
+    use_supabase: bool = False
 
     def __init__(self, port):
         self.port = port
@@ -76,6 +77,11 @@ class AppService(AppProcess):
             self.shared_event_loop.run_until_complete(db.connect())
         if self.use_redis:
             self.shared_event_loop.run_until_complete(self.event_queue.connect())
+        if self.use_supabase:
+            from supabase import create_client
+
+            secrets = Secrets()
+            self.supabase = create_client(secrets.supabase_url, secrets.supabase_key)
 
         # Initialize the async loop.
         async_thread = threading.Thread(target=self.__start_async_loop)
@@ -97,6 +103,9 @@ class AppService(AppProcess):
         if self.use_redis:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
             self.run_and_wait(self.event_queue.close())
+        if self.use_supabase:
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Supabase...")
+            self.supabase.realtime.remove_all_channels()
 
     @conn_retry
     def __start_pyro(self):
