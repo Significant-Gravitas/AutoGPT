@@ -677,7 +677,7 @@ const FlowEditor: React.FC<{
           blockInputs={getBlockInputsAndOutputs().inputs}
           onInputChange={handleInputChange}
           onRun={() => {
-            requestSaveRun();
+            requestSaveAndRun();
           }}
         />
         <RunnerOutputUI
