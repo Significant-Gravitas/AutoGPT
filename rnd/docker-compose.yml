@@ -25,7 +25,7 @@ services:
     
   migrate:
     image: autogpt_server:latest
-    command: ["sh", "-c", "until pg_isready -h postgres -U agpt_user -d agpt_local; do echo 'Waiting for postgres...'; sleep 2; done; poetry run prisma db push"]
+    command: ["sh", "-c", "until pg_isready -h postgres -U agpt_user -d agpt_local; do echo 'Waiting for postgres...'; sleep 2; done; poetry run prisma migrate deploy"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,7 +49,7 @@ services:
     networks:
       - app-network
 
-  api_srv:
+  rest_server:
     image: autogpt_server:latest
     command: ["poetry", "run", "rest"]
     develop:
@@ -72,10 +72,9 @@ services:
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
-      - EXECUTIONSCHEDULER_HOST=execution_scheduler
-      - PORT=8000
     ports:
       - "8000:8000"
+      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
@@ -101,14 +100,13 @@ services:
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
-      - AGENTSERVER_HOST=api_srv
-      - PORT=8002
+      - AGENTSERVER_HOST=rest_server
     ports:
-      - "8002:8002"
+      - "8002:8000"
     networks:
       - app-network
 
-  ws_srv:
+  websocket_server:
     image: autogpt_server:latest
     command: ["poetry", "run", "ws"]
     develop:
@@ -127,9 +125,8 @@ services:
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
-      - PORT=8001
     ports:
-      - "8001:8001"
+      - "8001:8000"
     networks:
       - app-network
 
@@ -154,14 +151,14 @@ services:
       target: dev
     depends_on:
       - postgres
-      - api_srv
-      - ws_srv
+      - rest_server
+      - websocket_server
       - migrate
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
       - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api
       - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
-      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8005/api/v1/market
+      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
     ports:
       - "3000:3000"
     networks:
