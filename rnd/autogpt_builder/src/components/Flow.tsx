@@ -35,7 +35,7 @@ import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import {
-  IconMegaphone, 
+  IconMegaphone,
   IconPlay,
   IconUndo2,
   IconRedo2,
@@ -107,7 +107,7 @@ const FlowEditor: React.FC<{
 
   const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
   const [isRunnerOutputOpen, setIsRunnerOutputOpen] = useState(false);
-  
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
 
@@ -575,63 +575,69 @@ const FlowEditor: React.FC<{
 
   // This is to check for the Input and Output block, if they are used they are passed to Runner ui's input and output screen
   const getBlockInputsAndOutputs = useCallback(() => {
-    const inputBlocks = nodes.filter(node => 
-      node.data.block_id === "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b"
+    const inputBlocks = nodes.filter(
+      (node) => node.data.block_id === "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
     );
-    
-    const outputBlocks = nodes.filter(node => 
-      node.data.block_id === "363ae599-353e-4804-937e-b2ee3cef3da4"
+
+    const outputBlocks = nodes.filter(
+      (node) => node.data.block_id === "363ae599-353e-4804-937e-b2ee3cef3da4",
     );
-  
-    const inputs = inputBlocks.map(node => ({
+
+    const inputs = inputBlocks.map((node) => ({
       id: node.id,
-      type: 'input' as const,
+      type: "input" as const,
       inputSchema: node.data.inputSchema,
       outputSchema: node.data.outputSchema,
       hardcodedValues: {
-        name: node.data.hardcodedValues.name || '',
-        description: node.data.hardcodedValues.description || '',
+        name: node.data.hardcodedValues.name || "",
+        description: node.data.hardcodedValues.description || "",
         value: node.data.hardcodedValues.value,
         placeholder_values: node.data.hardcodedValues.placeholder_values || [],
-        limit_to_placeholder_values: node.data.hardcodedValues.limit_to_placeholder_values || false,
+        limit_to_placeholder_values:
+          node.data.hardcodedValues.limit_to_placeholder_values || false,
       },
     }));
-  
-    const outputs = outputBlocks.map(node => ({
+
+    const outputs = outputBlocks.map((node) => ({
       id: node.id,
-      type: 'output' as const,
+      type: "output" as const,
       inputSchema: node.data.inputSchema,
       outputSchema: node.data.outputSchema,
       hardcodedValues: {
-        name: node.data.hardcodedValues.name || 'Output',
-        description: node.data.hardcodedValues.description || 'Output from the agent',
+        name: node.data.hardcodedValues.name || "Output",
+        description:
+          node.data.hardcodedValues.description || "Output from the agent",
         value: node.data.hardcodedValues.value,
       },
       result: node.data.executionResults?.at(-1)?.data?.result,
     }));
-  
+
     return { inputs, outputs };
   }, [nodes]);
-  
+
   // This is to update the blocks when changes are made via the input Runner UI.
-  const handleInputChange = useCallback((nodeId: string, field: string, value: string) => {
-    setNodes(nds => nds.map(node => {
-      if (node.id === nodeId) {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            hardcodedValues: {
-              ...node.data.hardcodedValues,
-              [field]: value,
-            },
-          },
-        };
-      }
-      return node;
-    }));
-  }, [setNodes]);
-  
+  const handleInputChange = useCallback(
+    (nodeId: string, field: string, value: string) => {
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                hardcodedValues: {
+                  ...node.data.hardcodedValues,
+                  [field]: value,
+                },
+              },
+            };
+          }
+          return node;
+        }),
+      );
+    },
+    [setNodes],
+  );
 
   return (
     <FlowContext.Provider
@@ -671,20 +677,20 @@ const FlowEditor: React.FC<{
           </ControlPanel>
         </ReactFlow>
       </div>
-        <RunnerInputUI
-          isOpen={isRunnerInputOpen}
-          onClose={() => setIsRunnerInputOpen(false)}
-          blockInputs={getBlockInputsAndOutputs().inputs}
-          onInputChange={handleInputChange}
-          onRun={() => {
-            requestSaveAndRun();
-          }}
-        />
-        <RunnerOutputUI
-          isOpen={isRunnerOutputOpen}
-          onClose={() => setIsRunnerOutputOpen(false)}
-          blockOutputs={getBlockInputsAndOutputs().outputs}
-        />
+      <RunnerInputUI
+        isOpen={isRunnerInputOpen}
+        onClose={() => setIsRunnerInputOpen(false)}
+        blockInputs={getBlockInputsAndOutputs().inputs}
+        onInputChange={handleInputChange}
+        onRun={() => {
+          requestSaveAndRun();
+        }}
+      />
+      <RunnerOutputUI
+        isOpen={isRunnerOutputOpen}
+        onClose={() => setIsRunnerOutputOpen(false)}
+        blockOutputs={getBlockInputsAndOutputs().outputs}
+      />
     </FlowContext.Provider>
   );
 };
