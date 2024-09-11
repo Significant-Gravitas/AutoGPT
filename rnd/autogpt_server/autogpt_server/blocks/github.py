@@ -310,13 +310,13 @@ class GithubReadIssueBlock(Block):
             test_output=[
                 ("title", "Title of the issue"),
                 ("body", "This is the body of the issue."),
-                ("user", "username")
+                ("user", "username"),
             ],
             test_mock={
                 "read_issue": lambda *args, **kwargs: (
                     "Title of the issue",
                     "This is the body of the issue.",
-                    "username"
+                    "username",
                 )
             },
         )
@@ -404,7 +404,7 @@ class GithubReadPRBlock(Block):
                 "read_pr": lambda *args, **kwargs: (
                     "Title of the pull request",
                     "This is the body of the pull request.",
-                    "username"
+                    "username",
                 ),
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
@@ -984,10 +984,17 @@ class GithubAddLabelBlock(Block):
         try:
             # Convert the provided GitHub URL to the API URL
             if "/pull/" in issue_url:
-                api_url = issue_url.replace("github.com", "api.github.com/repos").replace("/pull/", "/issues/") + "/labels"
+                api_url = (
+                    issue_url.replace("github.com", "api.github.com/repos").replace(
+                        "/pull/", "/issues/"
+                    )
+                    + "/labels"
+                )
             else:
-                api_url = issue_url.replace("github.com", "api.github.com/repos") + "/labels"
-            
+                api_url = (
+                    issue_url.replace("github.com", "api.github.com/repos") + "/labels"
+                )
+
             # Log the constructed API URL for debugging
             print(f"Constructed API URL: {api_url}")
 
@@ -1064,10 +1071,18 @@ class GithubRemoveLabelBlock(Block):
         try:
             # Convert the provided GitHub URL to the API URL
             if "/pull/" in issue_url:
-                api_url = issue_url.replace("github.com", "api.github.com/repos").replace("/pull/", "/issues/") + f"/labels/{label}"
+                api_url = (
+                    issue_url.replace("github.com", "api.github.com/repos").replace(
+                        "/pull/", "/issues/"
+                    )
+                    + f"/labels/{label}"
+                )
             else:
-                api_url = issue_url.replace("github.com", "api.github.com/repos") + f"/labels/{label}"
-            
+                api_url = (
+                    issue_url.replace("github.com", "api.github.com/repos")
+                    + f"/labels/{label}"
+                )
+
             # Log the constructed API URL for debugging
             print(f"Constructed API URL: {api_url}")
 
@@ -1145,8 +1160,9 @@ class GithubAssignReviewerBlock(Block):
         try:
             # Convert the PR URL to the appropriate API endpoint
             api_url = (
-                pr_url.replace("github.com", "api.github.com/repos")
-                .replace("/pull/", "/pulls/")
+                pr_url.replace("github.com", "api.github.com/repos").replace(
+                    "/pull/", "/pulls/"
+                )
                 + "/requested_reviewers"
             )
 
@@ -1405,9 +1421,11 @@ class GithubAssignIssueBlock(Block):
     ) -> str:
         try:
             # Extracting repo path and issue number from the issue URL
-            repo_path, issue_number = issue_url.replace("https://github.com/", "").split("/issues/")
+            repo_path, issue_number = issue_url.replace(
+                "https://github.com/", ""
+            ).split("/issues/")
             api_url = f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-            
+
             headers = {
                 "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
                 "Accept": "application/vnd.github.v3+json",
@@ -1486,9 +1504,11 @@ class GithubUnassignIssueBlock(Block):
     ) -> str:
         try:
             # Extracting repo path and issue number from the issue URL
-            repo_path, issue_number = issue_url.replace("https://github.com/", "").split("/issues/")
+            repo_path, issue_number = issue_url.replace(
+                "https://github.com/", ""
+            ).split("/issues/")
             api_url = f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-            
+
             headers = {
                 "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
                 "Accept": "application/vnd.github.v3+json",
