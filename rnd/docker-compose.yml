@@ -49,7 +49,7 @@ services:
     networks:
       - app-network
 
-  api_srv:
+  rest_server:
     image: autogpt_server:latest
     command: ["poetry", "run", "rest"]
     develop:
@@ -72,7 +72,6 @@ services:
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
-      - PORT=8000
     ports:
       - "8000:8000"
       - "8003:8003" # execution scheduler
@@ -101,14 +100,13 @@ services:
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
-      - AGENTSERVER_HOST=api_srv
-      - PORT=8002
+      - AGENTSERVER_HOST=rest_server
     ports:
-      - "8002:8002"
+      - "8002:8000"
     networks:
       - app-network
 
-  ws_srv:
+  websocket_server:
     image: autogpt_server:latest
     command: ["poetry", "run", "ws"]
     develop:
@@ -127,9 +125,8 @@ services:
       - REDIS_PASSWORD=password
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
-      - PORT=8001
     ports:
-      - "8001:8001"
+      - "8001:8000"
     networks:
       - app-network
 
@@ -154,8 +151,8 @@ services:
       target: dev
     depends_on:
       - postgres
-      - api_srv
-      - ws_srv
+      - rest_server
+      - websocket_server
       - migrate
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
