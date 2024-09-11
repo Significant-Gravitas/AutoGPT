@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
 if TYPE_CHECKING:
     from autogpt_server.server.rest_api import AgentServer
 
-from autogpt_server.blocks.basic import InputBlock
+from autogpt_server.blocks.basic import AgentInputBlock
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, BlockData, BlockInput, get_block
 from autogpt_server.data.execution import (
@@ -364,7 +364,7 @@ def validate_exec(
 def get_agent_server_client() -> "AgentServer":
     from autogpt_server.server.rest_api import AgentServer
 
-    return get_service_client(AgentServer)
+    return get_service_client(AgentServer, Config().agent_server_port)
 
 
 class Executor:
@@ -648,6 +648,7 @@ class Executor:
 
 class ExecutionManager(AppService):
     def __init__(self):
+        super().__init__(port=Config().execution_manager_port)
         self.use_db = True
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
@@ -698,7 +699,7 @@ class ExecutionManager(AppService):
         nodes_input = []
         for node in graph.starting_nodes:
             input_data = {}
-            if isinstance(get_block(node.block_id), InputBlock):
+            if isinstance(get_block(node.block_id), AgentInputBlock):
                 name = node.input_default.get("name")
                 if name and name in data:
                     input_data = {"value": data[name]}

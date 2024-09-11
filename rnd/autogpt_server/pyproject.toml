@@ -66,11 +66,13 @@ build-backend = "poetry.core.masonry.api"
 app = "autogpt_server.app:main"
 rest = "autogpt_server.rest:main"
 ws = "autogpt_server.ws:main"
+executor = "autogpt_server.exec:main"
 cli = "autogpt_server.cli:main"
 format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
 # https://poethepoet.natn.io/index.html
+
 [tool.poe]
 poetry_command = ""
 

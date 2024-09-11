@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -65,24 +65,27 @@ export function CustomEdge({
   const beadDiameter = 12;
   const deltaTime = 16;
 
-  function setTargetPositions(beads: Bead[]) {
-    const distanceBetween = Math.min(
-      (length - beadDiameter) / (beads.length + 1),
-      beadDiameter,
-    );
+  const setTargetPositions = useCallback(
+    (beads: Bead[]) => {
+      const distanceBetween = Math.min(
+        (length - beadDiameter) / (beads.length + 1),
+        beadDiameter,
+      );
 
-    return beads.map((bead, index) => {
-      const distanceFromEnd = beadDiameter * 1.35;
-      const targetPosition = distanceBetween * index + distanceFromEnd;
-      const t = getTForDistance(-targetPosition);
+      return beads.map((bead, index) => {
+        const distanceFromEnd = beadDiameter * 1.35;
+        const targetPosition = distanceBetween * index + distanceFromEnd;
+        const t = getTForDistance(-targetPosition);
 
-      return {
-        ...bead,
-        t: visualizeBeads === "animate" ? bead.t : t,
-        targetT: t,
-      } as Bead;
-    });
-  }
+        return {
+          ...bead,
+          t: visualizeBeads === "animate" ? bead.t : t,
+          targetT: t,
+        } as Bead;
+      });
+    },
+    [getTForDistance, length, visualizeBeads],
+  );
 
   useEffect(() => {
     if (data?.beadUp === 0 && data?.beadDown === 0) {
@@ -170,7 +173,7 @@ export function CustomEdge({
     }, deltaTime);
 
     return () => clearInterval(interval);
-  }, [data]);
+  }, [data, setTargetPositions, visualizeBeads]);
 
   const middle = getPointForT(0.5);
 

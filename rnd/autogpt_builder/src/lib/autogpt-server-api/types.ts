@@ -13,6 +13,7 @@ export type Block = {
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
+  uiType: BlockUIType;
 };
 
 export type BlockIORootSchema = {
