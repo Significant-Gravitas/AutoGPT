@@ -2,7 +2,7 @@ from uuid import UUID
 
 import pytest
 
-from autogpt_server.blocks.basic import InputBlock, StoreValueBlock
+from autogpt_server.blocks.basic import AgentInputBlock, StoreValueBlock
 from autogpt_server.data.graph import Graph, Link, Node
 from autogpt_server.data.user import DEFAULT_USER_ID, create_default_user
 from autogpt_server.server.model import CreateGraph
@@ -25,7 +25,7 @@ async def test_graph_creation(server: SpinTestServer):
     await create_default_user("false")
 
     value_block = StoreValueBlock().id
-    input_block = InputBlock().id
+    input_block = AgentInputBlock().id
 
     graph = Graph(
         id="test_graph",
