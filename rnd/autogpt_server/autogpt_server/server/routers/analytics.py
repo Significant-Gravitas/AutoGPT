@@ -119,3 +119,91 @@ async def log_page_view(
         },
     )
     return id.id
+
+
+@router.post(path="/log_raw_metric")
+async def log_raw_metric(
+    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+    metric_name: Annotated[prisma.enums.AnalyticsMetric, fastapi.Body(..., embed=True)],
+    aggregation_type: Annotated[
+        prisma.enums.AggregationType, fastapi.Body(..., embed=True)
+    ],
+    metric_value: Annotated[float, fastapi.Body(..., embed=True)],
+    data_string: Annotated[str, fastapi.Body(..., embed=True)],
+):
+    if metric_value < 0:
+        raise ValueError("metric_value must be non-negative")
+
+    if aggregation_type == prisma.enums.AggregationType.NO_AGGREGATION:
+        value_increment = metric_value
+        counter_increment = 0
+    elif aggregation_type in [
+        prisma.enums.AggregationType.COUNT,
+        prisma.enums.AggregationType.SUM,
+    ]:
+        value_increment = metric_value
+        counter_increment = 1
+    elif aggregation_type in [
+        prisma.enums.AggregationType.AVG,
+        prisma.enums.AggregationType.MAX,
+        prisma.enums.AggregationType.MIN,
+    ]:
+        value_increment = 0  # These will be handled differently in a separate query
+        counter_increment = 1
+    else:
+        raise ValueError(f"Unsupported aggregation_type: {aggregation_type}")
+
+    await prisma.models.AnalyticsMetrics.prisma().upsert(
+        data={
+            "update": {
+                "value": {"increment": value_increment},
+                "aggregationCounter": {"increment": counter_increment},
+            },
+            "create": {
+                "value": metric_value,
+                "analyticMetric": metric_name,
+                "userId": user_id,
+                "dataString": data_string,
+                "aggregationType": aggregation_type,
+                "aggregationCounter": 1,
+            },
+        },
+        where={
+            "analyticMetric_userId_dataString_aggregationType": {
+                "analyticMetric": metric_name,
+                "userId": user_id,
+                "dataString": data_string,
+                "aggregationType": aggregation_type,
+            }
+        },
+    )
+
+    # For AVG, MAX, and MIN, we need to perform additional operations
+    if aggregation_type in [
+        prisma.enums.AggregationType.AVG,
+        prisma.enums.AggregationType.MAX,
+        prisma.enums.AggregationType.MIN,
+    ]:
+        existing = await prisma.models.AnalyticsMetrics.prisma().find_unique(
+            where={
+                "analyticMetric_userId_dataString_aggregationType": {
+                    "analyticMetric": metric_name,
+                    "userId": user_id,
+                    "dataString": data_string,
+                    "aggregationType": aggregation_type,
+                }
+            }
+        )
+        if existing:
+            if aggregation_type == prisma.enums.AggregationType.AVG:
+                new_value = (
+                    existing.value * existing.aggregationCounter + metric_value
+                ) / (existing.aggregationCounter + 1)
+            elif aggregation_type == prisma.enums.AggregationType.MAX:
+                new_value = max(existing.value, metric_value)
+            else:  # MIN
+                new_value = min(existing.value, metric_value)
+
+            await prisma.models.AnalyticsMetrics.prisma().update(
+                data={"value": new_value}, where={"id": existing.id}
+            )

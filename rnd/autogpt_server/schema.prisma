@@ -267,7 +267,7 @@ model AnalyticsMetrics {
   // Data Aggregation Type
   aggregationType    AggregationType @default(NO_AGGREGATION)
   // Aggregation Counter used for aggregation style events that beenefit from it. (AVG) (not self incrementing)
-  aggregationCounter Int?            @default(1)
+  aggregationCounter Int             @default(1)
 
   // Link to User model
   userId String
