@@ -1,14 +1,16 @@
+import inspect
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
+from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast, get_origin
 
 import jsonref
 import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
-from autogpt_server.data.model import ContributorDetails
 from autogpt_server.util import json
+
+from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
@@ -122,6 +124,46 @@ class BlockSchema(BaseModel):
             for field, field_info in cls.model_fields.items()
             if field_info.is_required()
         }
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs):
+        """Validates the schema definition. Rules:
+        - Only one `CredentialsMetaInput` field may be present.
+          - This field MUST be called `credentials`.
+        - A field that is called `credentials` MUST be a `CredentialsMetaInput`.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        credentials_fields = [
+            field_name
+            for field_name, info in cls.model_fields.items()
+            if (
+                inspect.isclass(info.annotation)
+                and issubclass(
+                    get_origin(info.annotation) or info.annotation,
+                    CredentialsMetaInput,
+                )
+            )
+        ]
+        if len(credentials_fields) > 1:
+            raise ValueError(
+                f"{cls.__qualname__} can only have one CredentialsMetaInput field"
+            )
+        elif (
+            len(credentials_fields) == 1
+            and credentials_fields[0] != CREDENTIALS_FIELD_NAME
+        ):
+            raise ValueError(
+                f"CredentialsMetaInput field on {cls.__qualname__} "
+                "must be named 'credentials'"
+            )
+        elif (
+            len(credentials_fields) == 0
+            and CREDENTIALS_FIELD_NAME in cls.model_fields.keys()
+        ):
+            raise TypeError(
+                f"Field 'credentials' on {cls.__qualname__} "
+                f"must be of type {CredentialsMetaInput.__name__}"
+            )
 
 
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
