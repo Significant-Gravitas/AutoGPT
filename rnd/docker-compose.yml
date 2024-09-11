@@ -25,7 +25,7 @@ services:
     
   migrate:
     image: autogpt_server:latest
-    command: ["sh", "-c", "until pg_isready -h postgres -U agpt_user -d agpt_local; do echo 'Waiting for postgres...'; sleep 2; done; poetry run prisma migrate deploy"]
+    command: ["sh", "-c", "sleep 5 && poetry run prisma migrate deploy"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,7 +140,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
     ports:
-      - "8015:8015"
+      - "8015:8000"
     networks:
       - app-network
       

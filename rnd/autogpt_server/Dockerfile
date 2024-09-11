@@ -28,7 +28,7 @@ RUN poetry config virtualenvs.create false \
 
 # Generate Prisma client
 COPY rnd/autogpt_server/schema.prisma ./
-RUN poetry run prisma generate
+RUN poetry config virtualenvs.create false && poetry run prisma generate
 
 FROM python:3.11-slim-buster AS server_dependencies
 
@@ -38,12 +38,6 @@ WORKDIR /app
 COPY --from=builder /app /app
 COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Install runtime dependencies
-RUN apt-get update \
-    && apt-get install -y postgresql-client ffmpeg \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -59,7 +53,7 @@ WORKDIR /app/rnd/autogpt_server
 FROM server_dependencies AS server_prisma
 
 COPY rnd/autogpt_server/schema.prisma ./
-RUN poetry run prisma generate
+RUN poetry config virtualenvs.create false && poetry run prisma generate
 
 FROM server_prisma AS server
 
