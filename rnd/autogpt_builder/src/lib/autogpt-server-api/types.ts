@@ -184,6 +184,13 @@ export type User = {
   email: string;
 };
 
+export enum BlockUIType {
+  STANDARD = "Standard",
+  INPUT = "Input",
+  OUTPUT = "Output",
+  NOTE = "Note",
+}
+
 export type UserData = {
   user_id: string;
   email: string;
