@@ -61,8 +61,10 @@ export default function useAgentGraph(
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
 
-  const apiUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL!;
-  const api = useMemo(() => new AutoGPTServerAPI(apiUrl), [apiUrl]);
+  const api = useMemo(
+    () => new AutoGPTServerAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
+    [],
+  );
 
   // Connect to WebSocket
   useEffect(() => {
@@ -89,16 +91,227 @@ export default function useAgentGraph(
       .getBlocks()
       .then((blocks) => setAvailableNodes(blocks))
       .catch();
+  }, [api]);
+
+  //TODO to utils? repeated in Flow
+  const formatEdgeID = useCallback((conn: Link | Connection): string => {
+    if ("sink_id" in conn) {
+      return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
+    } else {
+      return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
+    }
   }, []);
 
+  const getOutputType = useCallback(
+    (nodes: CustomNode[], nodeId: string, handleId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return "unknown";
+
+      const outputSchema = node.data.outputSchema;
+      if (!outputSchema) return "unknown";
+
+      const outputHandle = outputSchema.properties[handleId];
+      if (!("type" in outputHandle)) return "unknown";
+      return outputHandle.type;
+    },
+    [],
+  );
+
   // Load existing graph
+  const loadGraph = useCallback(
+    (graph: Graph) => {
+      setSavedAgent(graph);
+      setAgentName(graph.name);
+      setAgentDescription(graph.description);
+
+      setNodes(() => {
+        const newNodes = graph.nodes.map((node) => {
+          const block = availableNodes.find(
+            (block) => block.id === node.block_id,
+          )!;
+          const newNode: CustomNode = {
+            id: node.id,
+            type: "custom",
+            position: {
+              x: node.metadata.position.x,
+              y: node.metadata.position.y,
+            },
+            data: {
+              block_id: block.id,
+              blockType: block.name,
+              categories: block.categories,
+              description: block.description,
+              title: `${block.name} ${node.id}`,
+              inputSchema: block.inputSchema,
+              outputSchema: block.outputSchema,
+              hardcodedValues: node.input_default,
+              connections: graph.links
+                .filter((l) => [l.source_id, l.sink_id].includes(node.id))
+                .map((link) => ({
+                  edge_id: formatEdgeID(link),
+                  source: link.source_id,
+                  sourceHandle: link.source_name,
+                  target: link.sink_id,
+                  targetHandle: link.sink_name,
+                })),
+              isOutputOpen: false,
+            },
+          };
+          return newNode;
+        });
+        setEdges((_) =>
+          graph.links.map((link) => ({
+            id: formatEdgeID(link),
+            type: "custom",
+            data: {
+              edgeColor: getTypeColor(
+                getOutputType(newNodes, link.source_id, link.source_name!),
+              ),
+              sourcePos: newNodes.find((node) => node.id === link.source_id)
+                ?.position,
+              isStatic: link.is_static,
+              beadUp: 0,
+              beadDown: 0,
+              beadData: [],
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              strokeWidth: 2,
+              color: getTypeColor(
+                getOutputType(newNodes, link.source_id, link.source_name!),
+              ),
+            },
+            source: link.source_id,
+            target: link.sink_id,
+            sourceHandle: link.source_name || undefined,
+            targetHandle: link.sink_name || undefined,
+          })),
+        );
+        return newNodes;
+      });
+    },
+    [availableNodes, formatEdgeID, getOutputType],
+  );
+
+  const getFrontendId = useCallback(
+    (backendId: string, nodes: CustomNode[]) => {
+      const node = nodes.find((node) => node.data.backend_id === backendId);
+      return node?.id;
+    },
+    [],
+  );
+
+  const updateEdgeBeads = useCallback(
+    (executionData: NodeExecutionResult) => {
+      setEdges((edges) => {
+        return edges.map((e) => {
+          const edge = { ...e, data: { ...e.data } } as CustomEdge;
+
+          if (executionData.status === "COMPLETED") {
+            // Produce output beads
+            for (let key in executionData.output_data) {
+              if (
+                edge.source !== getFrontendId(executionData.node_id, nodes) ||
+                edge.sourceHandle !== key
+              ) {
+                continue;
+              }
+              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
+              // For static edges beadDown is always one less than beadUp
+              // Because there's no queueing and one bead is always at the connection point
+              if (edge.data?.isStatic) {
+                edge.data!.beadDown = (edge.data!.beadUp ?? 0) - 1;
+                edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
+                continue;
+              }
+              //todo kcze this assumes output at key is always array with one element
+              edge.data!.beadData = [
+                executionData.output_data[key][0],
+                ...edge.data!.beadData!,
+              ];
+            }
+          } else if (executionData.status === "RUNNING") {
+            // Consume input beads
+            for (let key in executionData.input_data) {
+              if (
+                edge.target !== getFrontendId(executionData.node_id, nodes) ||
+                edge.targetHandle !== key
+              ) {
+                continue;
+              }
+              // Skip decreasing bead count if edge doesn't match or if it's static
+              if (
+                edge.data!.beadData![edge.data!.beadData!.length - 1] !==
+                  executionData.input_data[key] ||
+                edge.data?.isStatic
+              ) {
+                continue;
+              }
+              edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
+              edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
+            }
+          }
+          return edge;
+        });
+      });
+    },
+    [getFrontendId, nodes],
+  );
+
+  const updateNodesWithExecutionData = useCallback(
+    (executionData: NodeExecutionResult) => {
+      if (passDataToBeads) {
+        updateEdgeBeads(executionData);
+      }
+      setNodes((nodes) => {
+        const nodeId = nodes.find(
+          (node) => node.data.backend_id === executionData.node_id,
+        )?.id;
+        if (!nodeId) {
+          console.error(
+            "Node not found for execution data:",
+            executionData,
+            "This shouldn't happen and means that the frontend and backend are out of sync.",
+          );
+          return nodes;
+        }
+        return nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: executionData.status,
+                  executionResults:
+                    Object.keys(executionData.output_data).length > 0
+                      ? [
+                          ...(node.data.executionResults || []),
+                          {
+                            execId: executionData.node_exec_id,
+                            data: executionData.output_data,
+                          },
+                        ]
+                      : node.data.executionResults,
+                  isOutputOpen: true,
+                },
+              }
+            : node,
+        );
+      });
+    },
+    [passDataToBeads, updateEdgeBeads],
+  );
+
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then((graph) =>
-      loadGraph(graph),
+    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
+      (graph) => {
+        console.log("Loading graph");
+        loadGraph(graph);
+      },
     );
-  }, [flowID, template, availableNodes]);
+  }, [flowID, template, availableNodes, api, loadGraph]);
 
   // Update nodes with execution data
   useEffect(() => {
@@ -119,7 +332,68 @@ export default function useAgentGraph(
       });
       return [];
     });
-  }, [updateQueue, nodesSyncedWithSavedAgent]);
+  }, [updateQueue, nodesSyncedWithSavedAgent, updateNodesWithExecutionData]);
+
+  const validateNodes = useCallback((): boolean => {
+    let isValid = true;
+
+    nodes.forEach((node) => {
+      const validate = ajv.compile(node.data.inputSchema);
+      const errors = {} as { [key: string]: string };
+
+      // Validate values against schema using AJV
+      const valid = validate(node.data.hardcodedValues);
+      if (!valid) {
+        // Populate errors if validation fails
+        validate.errors?.forEach((error) => {
+          // Skip error if there's an edge connected
+          const path =
+            "dataPath" in error
+              ? (error.dataPath as string)
+              : error.instancePath;
+          const handle = path.split(/[\/.]/)[0];
+          if (
+            node.data.connections.some(
+              (conn) => conn.target === node.id || conn.targetHandle === handle,
+            )
+          ) {
+            return;
+          }
+          console.warn("Error", error);
+          isValid = false;
+          if (path && error.message) {
+            const key = path.slice(1);
+            console.log("Error", key, error.message);
+            setNestedProperty(
+              errors,
+              key,
+              error.message[0].toUpperCase() + error.message.slice(1),
+            );
+          } else if (error.keyword === "required") {
+            const key = error.params.missingProperty;
+            setNestedProperty(errors, key, "This field is required");
+          }
+        });
+      }
+      // Set errors
+      setNodes((nodes) => {
+        return nodes.map((n) => {
+          if (n.id === node.id) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                errors,
+              },
+            };
+          }
+          return n;
+        });
+      });
+    });
+
+    return isValid;
+  }, [nodes]);
 
   // Handle user requests
   useEffect(() => {
@@ -224,7 +498,13 @@ export default function useAgentGraph(
         .stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID)
         .then(() => setSaveRunRequest({ request: "none", state: "none" }));
     }
-  }, [saveRunRequest, savedAgent, nodesSyncedWithSavedAgent]);
+  }, [
+    api,
+    saveRunRequest,
+    savedAgent,
+    nodesSyncedWithSavedAgent,
+    validateNodes,
+  ]);
 
   // Check if node ids are synced with saved agent
   useEffect(() => {
@@ -240,275 +520,6 @@ export default function useAgentGraph(
     );
     setNodesSyncedWithSavedAgent(oneNodeSynced);
   }, [savedAgent, nodes]);
-
-  const validateNodes = useCallback((): boolean => {
-    let isValid = true;
-
-    nodes.forEach((node) => {
-      const validate = ajv.compile(node.data.inputSchema);
-      const errors = {} as { [key: string]: string };
-
-      // Validate values against schema using AJV
-      const valid = validate(node.data.hardcodedValues);
-      if (!valid) {
-        // Populate errors if validation fails
-        validate.errors?.forEach((error) => {
-          // Skip error if there's an edge connected
-          const path =
-            "dataPath" in error
-              ? (error.dataPath as string)
-              : error.instancePath;
-          const handle = path.split(/[\/.]/)[0];
-          if (
-            node.data.connections.some(
-              (conn) => conn.target === node.id || conn.targetHandle === handle,
-            )
-          ) {
-            return;
-          }
-          console.warn("Error", error);
-          isValid = false;
-          if (path && error.message) {
-            const key = path.slice(1);
-            console.log("Error", key, error.message);
-            setNestedProperty(
-              errors,
-              key,
-              error.message[0].toUpperCase() + error.message.slice(1),
-            );
-          } else if (error.keyword === "required") {
-            const key = error.params.missingProperty;
-            setNestedProperty(errors, key, "This field is required");
-          }
-        });
-      }
-      // Set errors
-      setNodes((nodes) => {
-        return nodes.map((n) => {
-          if (n.id === node.id) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                errors,
-              },
-            };
-          }
-          return n;
-        });
-      });
-    });
-
-    return isValid;
-  }, [nodes]);
-
-  const getFrontendId = useCallback(
-    (backendId: string, nodes: CustomNode[]) => {
-      const node = nodes.find((node) => node.data.backend_id === backendId);
-      return node?.id;
-    },
-    [],
-  );
-
-  const updateEdgeBeads = useCallback(
-    (executionData: NodeExecutionResult) => {
-      setEdges((edges) => {
-        return edges.map((e) => {
-          const edge = { ...e, data: { ...e.data } } as CustomEdge;
-
-          if (executionData.status === "COMPLETED") {
-            // Produce output beads
-            for (let key in executionData.output_data) {
-              if (
-                edge.source !== getFrontendId(executionData.node_id, nodes) ||
-                edge.sourceHandle !== key
-              ) {
-                continue;
-              }
-              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
-              // For static edges beadDown is always one less than beadUp
-              // Because there's no queueing and one bead is always at the connection point
-              if (edge.data?.isStatic) {
-                edge.data!.beadDown = (edge.data!.beadUp ?? 0) - 1;
-                edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
-                continue;
-              }
-              //todo kcze this assumes output at key is always array with one element
-              edge.data!.beadData = [
-                executionData.output_data[key][0],
-                ...edge.data!.beadData!,
-              ];
-            }
-          } else if (executionData.status === "RUNNING") {
-            // Consume input beads
-            for (let key in executionData.input_data) {
-              if (
-                edge.target !== getFrontendId(executionData.node_id, nodes) ||
-                edge.targetHandle !== key
-              ) {
-                continue;
-              }
-              // Skip decreasing bead count if edge doesn't match or if it's static
-              if (
-                edge.data!.beadData![edge.data!.beadData!.length - 1] !==
-                  executionData.input_data[key] ||
-                edge.data?.isStatic
-              ) {
-                continue;
-              }
-              edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
-              edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
-            }
-          }
-          return edge;
-        });
-      });
-    },
-    [edges],
-  );
-
-  const updateNodesWithExecutionData = useCallback(
-    (executionData: NodeExecutionResult) => {
-      if (passDataToBeads) {
-        updateEdgeBeads(executionData);
-      }
-      setNodes((nodes) => {
-        const nodeId = nodes.find(
-          (node) => node.data.backend_id === executionData.node_id,
-        )?.id;
-        if (!nodeId) {
-          console.error(
-            "Node not found for execution data:",
-            executionData,
-            "This shouldn't happen and means that the frontend and backend are out of sync.",
-          );
-          return nodes;
-        }
-        return nodes.map((node) =>
-          node.id === nodeId
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  status: executionData.status,
-                  executionResults:
-                    Object.keys(executionData.output_data).length > 0
-                      ? [
-                          ...(node.data.executionResults || []),
-                          {
-                            execId: executionData.node_exec_id,
-                            data: executionData.output_data,
-                          },
-                        ]
-                      : node.data.executionResults,
-                  isOutputOpen: true,
-                },
-              }
-            : node,
-        );
-      });
-    },
-    [nodes],
-  );
-
-  //TODO to utils? repeated in Flow
-  const formatEdgeID = useCallback((conn: Link | Connection): string => {
-    if ("sink_id" in conn) {
-      return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
-    } else {
-      return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
-    }
-  }, []);
-
-  const getOutputType = useCallback(
-    (nodeId: string, handleId: string) => {
-      const node = nodes.find((n) => n.id === nodeId);
-      if (!node) return "unknown";
-
-      const outputSchema = node.data.outputSchema;
-      if (!outputSchema) return "unknown";
-
-      const outputHandle = outputSchema.properties[handleId];
-      if (!("type" in outputHandle)) return "unknown";
-      return outputHandle.type;
-    },
-    [nodes],
-  );
-
-  const loadGraph = useCallback(
-    (graph: Graph) => {
-      setSavedAgent(graph);
-      setAgentName(graph.name);
-      setAgentDescription(graph.description);
-
-      setNodes(() => {
-        const newNodes = graph.nodes.map((node) => {
-          const block = availableNodes.find(
-            (block) => block.id === node.block_id,
-          )!;
-          const newNode: CustomNode = {
-            id: node.id,
-            type: "custom",
-            position: {
-              x: node.metadata.position.x,
-              y: node.metadata.position.y,
-            },
-            data: {
-              block_id: block.id,
-              blockType: block.name,
-              categories: block.categories,
-              description: block.description,
-              title: `${block.name} ${node.id}`,
-              inputSchema: block.inputSchema,
-              outputSchema: block.outputSchema,
-              hardcodedValues: node.input_default,
-              connections: graph.links
-                .filter((l) => [l.source_id, l.sink_id].includes(node.id))
-                .map((link) => ({
-                  edge_id: formatEdgeID(link),
-                  source: link.source_id,
-                  sourceHandle: link.source_name,
-                  target: link.sink_id,
-                  targetHandle: link.sink_name,
-                })),
-              isOutputOpen: false,
-            },
-          };
-          return newNode;
-        });
-        setEdges((_) =>
-          graph.links.map((link) => ({
-            id: formatEdgeID(link),
-            type: "custom",
-            data: {
-              edgeColor: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
-              ),
-              sourcePos: nodes.find((node) => node.id === link.source_id)
-                ?.position,
-              isStatic: link.is_static,
-              beadUp: 0,
-              beadDown: 0,
-              beadData: [],
-            },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              strokeWidth: 2,
-              color: getTypeColor(
-                getOutputType(link.source_id, link.source_name!),
-              ),
-            },
-            source: link.source_id,
-            target: link.sink_id,
-            sourceHandle: link.source_name || undefined,
-            targetHandle: link.sink_name || undefined,
-          })),
-        );
-        return newNodes;
-      });
-    },
-    [availableNodes],
-  );
 
   const prepareNodeInputData = useCallback(
     (node: CustomNode) => {
@@ -696,7 +707,15 @@ export default function useAgentGraph(
         }));
       });
     },
-    [nodes, edges, savedAgent],
+    [
+      api,
+      nodes,
+      edges,
+      savedAgent,
+      agentName,
+      agentDescription,
+      prepareNodeInputData,
+    ],
   );
 
   const requestSave = useCallback(

@@ -36,23 +36,19 @@ async def assert_sample_graph_executions(
     graph_exec_id: str,
 ):
     executions = await agent_server.get_graph_run_node_execution_results(
-        test_graph.id, graph_exec_id, test_user.id
+        test_graph.id,
+        graph_exec_id,
+        test_user.id,
     )
 
     output_list = [{"result": ["Hello"]}, {"result": ["World"]}]
     input_list = [
         {
             "name": "input_1",
-            "description": "First input value",
-            "placeholder_values": [],
-            "limit_to_placeholder_values": False,
             "value": "Hello",
         },
         {
             "name": "input_2",
-            "description": "Second input value",
-            "placeholder_values": [],
-            "limit_to_placeholder_values": False,
             "value": "World",
         },
     ]
@@ -61,16 +57,24 @@ async def assert_sample_graph_executions(
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list
-    assert exec.input_data in input_list
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing StoreValueBlock
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list
-    assert exec.input_data in input_list
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing FillTextTemplateBlock

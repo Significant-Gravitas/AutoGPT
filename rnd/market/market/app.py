@@ -87,5 +87,11 @@ def health():
         content="<h1>Marketplace API</h1>", status_code=200
     )
 
+@app.get("/")
+def default():
+    return fastapi.responses.HTMLResponse(
+        content="<h1>Marketplace API</h1>", status_code=200
+    )
+
 
 prometheus_fastapi_instrumentator.Instrumentator().instrument(app).expose(app)

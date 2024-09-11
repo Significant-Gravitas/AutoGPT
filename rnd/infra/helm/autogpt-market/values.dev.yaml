@@ -13,7 +13,7 @@ serviceAccount:
 service:
   type: ClusterIP
   port: 8000
-  targetPort: 8000
+  targetPort: 8005
   annotations:
     cloud.google.com/neg: '{"ingress": true}'
     beta.cloud.google.com/backend-config: '{"default": "autogpt-market"}'
