@@ -2,7 +2,7 @@ import functools
 import logging
 import os
 import time
-from typing import Callable, Tuple, TypeVar
+from typing import Callable, Tuple, TypeVar, ParamSpec
 
 from pydantic import BaseModel
 
@@ -24,12 +24,13 @@ def _end_measurement(
     return end_wall_time - start_wall_time, end_cpu_time - start_cpu_time
 
 
+P = ParamSpec("P")
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
 
-def time_measured(func: Callable[..., T]) -> Callable[..., Tuple[TimingInfo, T]]:
+def time_measured(func: Callable[P, T]) -> Callable[P, Tuple[TimingInfo, T]]:
     """
     Decorator to measure the time taken by a function to execute.
     """
@@ -49,7 +50,7 @@ def time_measured(func: Callable[..., T]) -> Callable[..., Tuple[TimingInfo, T]]
     return wrapper
 
 
-def error_logged(func: Callable[..., T]) -> Callable[..., T | None]:
+def error_logged(func: Callable[P, T]) -> Callable[P, T | None]:
     """
     Decorator to suppress and log any exceptions raised by a function.
     """
