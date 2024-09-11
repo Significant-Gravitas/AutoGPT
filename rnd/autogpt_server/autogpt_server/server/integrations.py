@@ -1,9 +1,10 @@
 import logging
-from typing import Annotated, Literal
+from typing import Annotated
 
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
+from autogpt_libs.supabase_integration_credentials_store.types import CredentialsType
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 from supabase import Client
@@ -49,7 +50,7 @@ async def login(
 
 class CredentialsMetaResponse(BaseModel):
     credentials_id: str
-    credentials_type: Literal["oauth2", "api_key"]
+    credentials_type: CredentialsType
 
 
 @integrations_api_router.post("/{provider}/callback")
