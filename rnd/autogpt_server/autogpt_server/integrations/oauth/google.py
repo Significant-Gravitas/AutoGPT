@@ -1,5 +1,5 @@
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
-from google.auth.transport.requests import Request
+from google.auth.transport.requests import AuthorizedSession, Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
@@ -13,6 +13,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
     """  # noqa
 
     PROVIDER_NAME = "google"
+    EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -37,12 +38,16 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         flow.fetch_token(code=code)
 
         google_creds = flow.credentials
+        email = self._request_email(google_creds)
+
         # Google's OAuth library is poorly typed so we need some of these:
+        assert google_creds.client_id
         assert google_creds.token
         assert google_creds.refresh_token
         assert google_creds.expiry
         assert google_creds.scopes
         return OAuth2Credentials(
+            email=email,
             provider=self.PROVIDER_NAME,
             title="Google",
             access_token=SecretStr(google_creds.token),
@@ -51,6 +56,13 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             refresh_token_expires_at=None,
             scopes=google_creds.scopes,
         )
+
+    def _request_email(self, creds: Credentials) -> str | None:
+        session = AuthorizedSession(creds)
+        response = session.get(self.EMAIL_ENDPOINT)
+        if not response.ok:
+            return None
+        return response.json()["email"]
 
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         # Google credentials should ALWAYS have a refresh token
@@ -73,6 +85,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
         return OAuth2Credentials(
             id=credentials.id,
+            email=credentials.email,
             provider=self.PROVIDER_NAME,
             title=credentials.title,
             access_token=SecretStr(google_creds.token),

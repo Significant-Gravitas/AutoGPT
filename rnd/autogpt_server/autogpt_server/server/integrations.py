@@ -86,7 +86,7 @@ async def callback(
 
 
 class CredentialsResponse(CredentialsMetaResponse):
-    user_email: str
+    user_email: str | None
     scopes: list[str] | None
 
 
@@ -101,7 +101,7 @@ async def list_credentials(
         CredentialsResponse(
             credentials_id=cred.id,
             credentials_type=cred.type,
-            user_email=auth["email"],
+            user_email=cred.email if isinstance(cred, OAuth2Credentials) else None,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         )
         for cred in credentials
@@ -120,7 +120,7 @@ async def get_credential(
         raise HTTPException(status_code=404, detail="Credentials not found")
     if credential.provider != provider:
         raise HTTPException(
-            status_code=400, detail="Credentials do not match the specified provider"
+            status_code=404, detail="Credentials do not match the specified provider"
         )
     return credential
 
