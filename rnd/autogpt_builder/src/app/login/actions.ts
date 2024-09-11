@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
@@ -32,6 +33,7 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
 }
 
 export async function signup(values: z.infer<typeof loginFormSchema>) {
+  "use server";
   const supabase = createServerClient();
 
   if (!supabase) {
@@ -47,6 +49,16 @@ export async function signup(values: z.infer<typeof loginFormSchema>) {
 
   if (data.session) {
     await supabase.auth.setSession(data.session);
+  }
+  if (data.user) {
+    const api = new AutoGPTServerAPI();
+
+    api.logCreateUser({
+      email: values.email,
+      user_id: data.user.id,
+      name: values.email,
+      username: values.email,
+    });
   }
 
   revalidatePath("/", "layout");

@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import logPageViewAction from "./actions";
 
+const EXCLUDED_PATHS = ["/login"];
+
 const PageViewContext = createContext<null>(null);
 
 export const PageViewProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -11,6 +13,10 @@ export const PageViewProvider: React.FC<{ children: React.ReactNode }> = ({
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    if (EXCLUDED_PATHS.includes(pathname)) {
+      return;
+    }
+
     const logPageView = async () => {
       const pageViewData = {
         page: pathname,
