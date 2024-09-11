@@ -20,7 +20,7 @@ export const PageViewProvider: React.FC<{ children: React.ReactNode }> = ({
     const logPageView = async () => {
       const pageViewData = {
         page: pathname,
-        data: Object.fromEntries(searchParams.entries())
+        data: Object.fromEntries(searchParams.entries()),
       };
       await logPageViewAction(pageViewData.page, pageViewData.data);
     };

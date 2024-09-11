@@ -9,15 +9,6 @@ DEFAULT_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 DEFAULT_EMAIL = "default@example.com"
 
 
-class UserMetadata(BaseModel):
-    name: str
-    picture: str
-
-class UserData(BaseModel):
-    sub: str
-    email: str
-    user_metadata: UserMetadata
-
 async def get_or_create_user(user_data: dict) -> User:
 
     user_id = user_data.get("sub")

@@ -1,6 +1,5 @@
 # Analytics API
 
-import typing
 from typing import Annotated, Optional
 
 import fastapi
