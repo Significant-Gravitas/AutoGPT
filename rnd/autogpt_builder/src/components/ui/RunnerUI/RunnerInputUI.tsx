@@ -1,15 +1,28 @@
 import React from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
 
 interface BlockInput {
   id: string;
   inputSchema: BlockIORootSchema;
-  hardcodedValues: { 
+  hardcodedValues: {
     name: string;
     description: string;
     value: any;
@@ -27,51 +40,74 @@ interface RunSettingsUiProps {
   isRunning: boolean;
 }
 
-export function RunnerInputUI({ isOpen, onClose, blockInputs, onInputChange, onRun }: RunSettingsUiProps) {
+export function RunnerInputUI({
+  isOpen,
+  onClose,
+  blockInputs,
+  onInputChange,
+  onRun,
+}: RunSettingsUiProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] max-h-[80vh] flex flex-col overflow-hidden">
-        <DialogHeader className="py-2 px-2">
+      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-[500px]">
+        <DialogHeader className="px-2 py-2">
           <DialogTitle className="text-xl">Run Settings</DialogTitle>
-          <DialogDescription className="text-sm mt-1">
+          <DialogDescription className="mt-1 text-sm">
             Configure settings for running your agent.
           </DialogDescription>
         </DialogHeader>
         <div className="flex-grow overflow-y-auto px-2 py-2">
-          <ScrollArea className="h-[50vh] pr-4 overflow-auto">
+          <ScrollArea className="h-[50vh] overflow-auto pr-4">
             <div className="space-y-4">
               {blockInputs && blockInputs.length > 0 ? (
                 blockInputs.map((block) => (
                   <div key={block.id} className="space-y-1">
-                    <h3 className="font-semibold text-base">{block.hardcodedValues.name || 'Unnamed Input'}</h3>
-                    
+                    <h3 className="text-base font-semibold">
+                      {block.hardcodedValues.name || "Unnamed Input"}
+                    </h3>
+
                     {block.hardcodedValues.description && (
-                      <p className="text-sm text-gray-600">{block.hardcodedValues.description}</p>
+                      <p className="text-sm text-gray-600">
+                        {block.hardcodedValues.description}
+                      </p>
                     )}
 
                     <div>
-                      {block.hardcodedValues.placeholder_values && block.hardcodedValues.placeholder_values.length > 1 ? (
-                        <Select 
-                          onValueChange={(value) => onInputChange(block.id, 'value', value)}
-                          value={block.hardcodedValues.value?.toString() || ''}
+                      {block.hardcodedValues.placeholder_values &&
+                      block.hardcodedValues.placeholder_values.length > 1 ? (
+                        <Select
+                          onValueChange={(value) =>
+                            onInputChange(block.id, "value", value)
+                          }
+                          value={block.hardcodedValues.value?.toString() || ""}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select a value" />
                           </SelectTrigger>
                           <SelectContent>
-                            {block.hardcodedValues.placeholder_values.map((placeholder, index) => (
-                              <SelectItem key={index} value={placeholder.toString()}>
-                                {placeholder.toString()}
-                              </SelectItem>
-                            ))}
+                            {block.hardcodedValues.placeholder_values.map(
+                              (placeholder, index) => (
+                                <SelectItem
+                                  key={index}
+                                  value={placeholder.toString()}
+                                >
+                                  {placeholder.toString()}
+                                </SelectItem>
+                              ),
+                            )}
                           </SelectContent>
                         </Select>
                       ) : (
                         <Input
                           id={`${block.id}-Value`}
-                          value={block.hardcodedValues.value?.toString() || ''}
-                          onChange={(e) => onInputChange(block.id, 'value', e.target.value)}
-                          placeholder={block.hardcodedValues.placeholder_values?.[0]?.toString() || "Enter value"}
+                          value={block.hardcodedValues.value?.toString() || ""}
+                          onChange={(e) =>
+                            onInputChange(block.id, "value", e.target.value)
+                          }
+                          placeholder={
+                            block.hardcodedValues.placeholder_values?.[0]?.toString() ||
+                            "Enter value"
+                          }
                           className="w-full"
                         />
                       )}
@@ -84,7 +120,7 @@ export function RunnerInputUI({ isOpen, onClose, blockInputs, onInputChange, onR
             </div>
           </ScrollArea>
         </div>
-        <DialogFooter className="py-2 px-6">
+        <DialogFooter className="px-6 py-2">
           <Button onClick={onRun} className="px-6 py-2">
             {"Run"}
           </Button>
