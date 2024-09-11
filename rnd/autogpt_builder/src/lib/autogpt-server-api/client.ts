@@ -10,6 +10,7 @@ import {
   User,
   UserData,
   TutorialStepData,
+  PageViewData,
 } from "./types";
 
 export default class AutoGPTServerAPI {
@@ -41,6 +42,12 @@ export default class AutoGPTServerAPI {
 
   async logTutorialStep(data: TutorialStepData): Promise<string> {
     return this._request("POST", "/analytics/log_tutorial_step", data);
+  }
+
+  async logPageView(pageViewData: PageViewData): Promise<string> {
+    return this._request("POST", "/analytics/log_page_view", {
+      page_view_data: pageViewData,
+    });
   }
 
   async getBlocks(): Promise<Block[]> {
