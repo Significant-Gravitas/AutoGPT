@@ -101,7 +101,7 @@ docker compose down
 If you run into issues with dangling orphans, try:
 
 ```sh
-docker-compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
+docker compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
 ```
 
 ## Testing
