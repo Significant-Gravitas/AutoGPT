@@ -14,17 +14,17 @@ services:
       - "5432:5432"
     networks:
       - app-network
-
-  server_base:
+    
+  migrate:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
       target: server
-    image: autogpt_server:latest
-    command: ["echo", "This is a base image and should not be run directly"]
-    
-  migrate:
-    image: autogpt_server:latest
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/migrate
+          action: rebuild
     command: ["sh", "-c", "sleep 5 && poetry run prisma migrate deploy"]
     depends_on:
       postgres:
@@ -50,7 +50,10 @@ services:
       - app-network
 
   rest_server:
-    image: autogpt_server:latest
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
     command: ["python", "-m", "autogpt_server.rest"]
     develop:
       watch:
@@ -79,7 +82,10 @@ services:
       - app-network
 
   executor:
-    image: autogpt_server:latest
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
     command: ["python", "-m", "autogpt_server.exec"]
     develop:
       watch:
@@ -107,7 +113,10 @@ services:
       - app-network
 
   websocket_server:
-    image: autogpt_server:latest
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
     command: ["python", "-m", "autogpt_server.ws"]
     develop:
       watch:
@@ -134,6 +143,11 @@ services:
     build:
       context: ../
       dockerfile: rnd/market/Dockerfile
+    develop:
+      watch:
+        - path: ./
+          target: rnd/market/
+          action: rebuild
     depends_on:
       - postgres
       - migrate
@@ -149,6 +163,11 @@ services:
       context: ../
       dockerfile: rnd/autogpt_builder/Dockerfile
       target: dev
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_builder/
+          action: rebuild
     depends_on:
       - postgres
       - rest_server
