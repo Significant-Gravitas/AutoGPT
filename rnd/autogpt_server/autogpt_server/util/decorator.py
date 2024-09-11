@@ -2,7 +2,7 @@ import functools
 import logging
 import os
 import time
-from typing import Callable, Tuple, TypeVar, ParamSpec
+from typing import Callable, ParamSpec, Tuple, TypeVar
 
 from pydantic import BaseModel
 
@@ -36,7 +36,7 @@ def time_measured(func: Callable[P, T]) -> Callable[P, Tuple[TimingInfo, T]]:
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> Tuple[TimingInfo, T]:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Tuple[TimingInfo, T]:
         start_wall_time, start_cpu_time = _start_measurement()
         try:
             result = func(*args, **kwargs)
@@ -56,7 +56,7 @@ def error_logged(func: Callable[P, T]) -> Callable[P, T | None]:
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> T | None:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
         try:
             return func(*args, **kwargs)
         except Exception as e:
