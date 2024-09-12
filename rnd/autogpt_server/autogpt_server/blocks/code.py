@@ -45,6 +45,7 @@ class FastPythonExecutionBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=self.Input,
             output_schema=self.Output,
+            # You can enable this block on your own server if desired, this is RCE vulnerable so we don't want to enable it by default
             disabled=True,
         )
 
@@ -123,6 +124,7 @@ class FlexiblePythonExecutionBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=self.Input,
             output_schema=self.Output,
+            # You can enable this block on your own server if desired, this is RCE vulnerable so we don't want to enable it by default
             disabled=True,
         )
         self.venv_path = tempfile.mkdtemp()
@@ -283,6 +285,7 @@ Example: ["pandas==1.3.0", "numpy", "matplotlib"]""",
             categories={BlockCategory.BASIC},
             input_schema=self.Input,
             output_schema=self.Output,
+            # You can enable this block on your own server if desired, this is RCE vulnerable so we don't want to enable it by default
             disabled=True,
         )
         self.fast_executor = FastPythonExecutionBlock()
