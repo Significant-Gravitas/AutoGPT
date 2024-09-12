@@ -1,18 +1,20 @@
 [tool.poetry]
 name = "autogpt-libs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared libraries across NextGen AutoGPT"
 authors = ["Aarushi <aarushik93@gmail.com>"]
 readme = "README.md"
 packages = [{ include = "autogpt_libs" }]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4.0"
+colorama = "^0.4.6"
+google-cloud-logging = "^3.8.0"
 pydantic = "^2.8.2"
+pydantic-settings = "^2.5.2"
 pyjwt = "^2.8.0"
+python = ">=3.10,<4.0"
 python-dotenv = "^1.0.1"
 supabase = "^2.7.2"
-
 
 [build-system]
 requires = ["poetry-core"]

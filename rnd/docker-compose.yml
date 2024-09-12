@@ -14,18 +14,18 @@ services:
       - "5432:5432"
     networks:
       - app-network
-
-  server_base:
+    
+  migrate:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
       target: server
-    image: autogpt_server:latest
-    command: ["echo", "This is a base image and should not be run directly"]
-    
-  migrate:
-    image: autogpt_server:latest
-    command: ["sh", "-c", "until pg_isready -h postgres -U agpt_user -d agpt_local; do echo 'Waiting for postgres...'; sleep 2; done; poetry run prisma migrate deploy"]
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/migrate
+          action: rebuild
+    command: ["poetry", "run", "prisma", "migrate", "deploy"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,7 +40,6 @@ services:
       timeout: 5s
       retries: 5
 
-
   redis:
     image: redis:latest
     command: redis-server --requirepass password
@@ -48,10 +47,18 @@ services:
       - "6379:6379"
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   rest_server:
-    image: autogpt_server:latest
-    command: ["poetry", "run", "rest"]
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
+    command: ["python", "-m", "autogpt_server.rest"]
     develop:
       watch:
         - path: ./
@@ -59,11 +66,11 @@ services:
           action: rebuild
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       migrate:
-        condition: service_started
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
@@ -79,8 +86,11 @@ services:
       - app-network
 
   executor:
-    image: autogpt_server:latest
-    command: ["poetry", "run", "executor"]
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
+    command: ["python", "-m", "autogpt_server.exec"]
     develop:
       watch:
         - path: ./
@@ -88,11 +98,11 @@ services:
           action: rebuild
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       migrate:
-        condition: service_started
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
@@ -107,17 +117,23 @@ services:
       - app-network
 
   websocket_server:
-    image: autogpt_server:latest
-    command: ["poetry", "run", "ws"]
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
+    command: ["python", "-m", "autogpt_server.ws"]
     develop:
       watch:
         - path: ./
           target: rnd/autogpt_server/
           action: rebuild
     depends_on:
-      - postgres
-      - redis
-      - migrate
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
@@ -126,7 +142,7 @@ services:
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
     ports:
-      - "8001:8000"
+      - "8001:8001"
     networks:
       - app-network
 
@@ -134,13 +150,20 @@ services:
     build:
       context: ../
       dockerfile: rnd/market/Dockerfile
+    develop:
+      watch:
+        - path: ./
+          target: rnd/market/
+          action: rebuild
     depends_on:
-      - postgres
-      - migrate
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
     ports:
-      - "8015:8015"
+      - "8015:8000"
     networks:
       - app-network
       
@@ -149,11 +172,20 @@ services:
       context: ../
       dockerfile: rnd/autogpt_builder/Dockerfile
       target: dev
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_builder/
+          action: rebuild
     depends_on:
-      - postgres
-      - rest_server
-      - websocket_server
-      - migrate
+      postgres:
+        condition: service_healthy
+      rest_server:
+        condition: service_started
+      websocket_server:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api
@@ -163,6 +195,7 @@ services:
       - "3000:3000"
     networks:
       - app-network
+
 networks:
-     app-network:
-       driver: bridge
+  app-network:
+    driver: bridge
