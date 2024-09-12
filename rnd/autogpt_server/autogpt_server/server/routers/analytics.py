@@ -7,6 +7,7 @@ import prisma
 import prisma.enums
 import pydantic
 
+import autogpt_server.data.analytics
 from autogpt_server.server.utils import get_user_id
 
 router = fastapi.APIRouter()
@@ -22,64 +23,56 @@ class UserData(pydantic.BaseModel):
 @router.post(path="/log_new_user")
 async def log_create_user(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
-    user_data: Annotated[UserData, fastapi.Body(..., embed=True)],
+    user_data: Annotated[
+        UserData, fastapi.Body(..., embed=True, description="The user data to log")
+    ],
 ):
     """
     Log the user ID for analytics purposes.
     """
-    id = await prisma.models.AnalyticsDetails.prisma().create(
-        data={
-            "userId": user_id,
-            "type": prisma.enums.AnalyticsType.CREATE_USER,
-            "data": prisma.Json(user_data.model_dump_json()),
-        }
+
+    result = await autogpt_server.data.analytics.log_raw_analytics(
+        user_id,
+        prisma.enums.AnalyticsType.CREATE_USER,
+        user_data.model_dump(),
+        "",
     )
-    return id.id
+    return result.id
 
 
 @router.post(path="/log_tutorial_step")
 async def log_tutorial_step(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
     step: Annotated[str, fastapi.Body(..., embed=True)],
-    data: Annotated[Optional[dict], fastapi.Body(..., embed=True)],
+    data: Annotated[
+        Optional[dict],
+        fastapi.Body(..., embed=True, description="Any additional data to log"),
+    ],
 ):
     """
     Log the tutorial step completed by the user for analytics purposes.
     """
-    id = await prisma.models.AnalyticsDetails.prisma().create(
-        data={
-            "userId": user_id,
-            "type": prisma.enums.AnalyticsType.TUTORIAL_STEP,
-            "data": prisma.Json(data),
-            "dataIndex": step,
-        }
+    result = await autogpt_server.data.analytics.log_raw_analytics(
+        user_id,
+        prisma.enums.AnalyticsType.TUTORIAL_STEP,
+        data or {},
+        step,
     )
-    await prisma.models.AnalyticsMetrics.prisma().upsert(
-        data={
-            "update": {"value": {"increment": 1}},
-            "create": {
-                "value": 1,
-                "analyticMetric": prisma.enums.AnalyticsMetric.TUTORIAL_STEP_COMPLETION,
-                "userId": user_id,
-                "dataString": step,
-                "aggregationType": prisma.enums.AggregationType.COUNT,
-            },
-        },
-        where={
-            "analyticMetric_userId_dataString_aggregationType": {
-                "analyticMetric": prisma.enums.AnalyticsMetric.TUTORIAL_STEP_COMPLETION,
-                "userId": user_id,
-                "dataString": step,
-                "aggregationType": prisma.enums.AggregationType.COUNT,
-            }
-        },
+    await autogpt_server.data.analytics.log_raw_metric(
+        user_id=user_id,
+        metric_name=prisma.enums.AnalyticsMetric.TUTORIAL_STEP_COMPLETION,
+        aggregation_type=prisma.enums.AggregationType.COUNT,
+        metric_value=1,
+        data_string=step,
     )
-    return id.id
+    return result.id
 
 
 class PageViewData(pydantic.BaseModel):
-    page: str
-    data: Optional[dict]
+    page: str = pydantic.Field(description="The page viewed")
+    data: Optional[dict] = pydantic.Field(
+        default_factory=dict, description="Any additional data to log"
+    )
 
 
 @router.post(path="/log_page_view")
@@ -90,35 +83,20 @@ async def log_page_view(
     """
     Log the page view for analytics purposes.
     """
-    id = await prisma.models.AnalyticsDetails.prisma().create(
-        data={
-            "userId": user_id,
-            "type": prisma.enums.AnalyticsType.WEB_PAGE,
-            "dataIndex": page_view_data.page,
-            "data": prisma.Json(page_view_data.data),
-        }
+    await autogpt_server.data.analytics.log_raw_metric(
+        user_id=user_id,
+        metric_name=prisma.enums.AnalyticsMetric.PAGE_VIEW,
+        aggregation_type=prisma.enums.AggregationType.COUNT,
+        metric_value=1,
+        data_string=page_view_data.page,
     )
-    await prisma.models.AnalyticsMetrics.prisma().upsert(
-        data={
-            "update": {"value": {"increment": 1}},
-            "create": {
-                "value": 1,
-                "analyticMetric": prisma.enums.AnalyticsMetric.PAGE_VIEW,
-                "userId": user_id,
-                "dataString": page_view_data.page,
-                "aggregationType": prisma.enums.AggregationType.COUNT,
-            },
-        },
-        where={
-            "analyticMetric_userId_dataString_aggregationType": {
-                "analyticMetric": prisma.enums.AnalyticsMetric.PAGE_VIEW,
-                "userId": user_id,
-                "dataString": page_view_data.page,
-                "aggregationType": prisma.enums.AggregationType.COUNT,
-            }
-        },
+    result = await autogpt_server.data.analytics.log_raw_analytics(
+        user_id=user_id,
+        type=prisma.enums.AnalyticsType.WEB_PAGE,
+        data=page_view_data.data or {},
+        data_index=page_view_data.page,
     )
-    return id.id
+    return result.id
 
 
 @router.post(path="/log_raw_metric")
@@ -131,79 +109,30 @@ async def log_raw_metric(
     metric_value: Annotated[float, fastapi.Body(..., embed=True)],
     data_string: Annotated[str, fastapi.Body(..., embed=True)],
 ):
-    if metric_value < 0:
-        raise ValueError("metric_value must be non-negative")
-
-    if aggregation_type == prisma.enums.AggregationType.NO_AGGREGATION:
-        value_increment = metric_value
-        counter_increment = 0
-    elif aggregation_type in [
-        prisma.enums.AggregationType.COUNT,
-        prisma.enums.AggregationType.SUM,
-    ]:
-        value_increment = metric_value
-        counter_increment = 1
-    elif aggregation_type in [
-        prisma.enums.AggregationType.AVG,
-        prisma.enums.AggregationType.MAX,
-        prisma.enums.AggregationType.MIN,
-    ]:
-        value_increment = 0  # These will be handled differently in a separate query
-        counter_increment = 1
-    else:
-        raise ValueError(f"Unsupported aggregation_type: {aggregation_type}")
-
-    await prisma.models.AnalyticsMetrics.prisma().upsert(
-        data={
-            "update": {
-                "value": {"increment": value_increment},
-                "aggregationCounter": {"increment": counter_increment},
-            },
-            "create": {
-                "value": metric_value,
-                "analyticMetric": metric_name,
-                "userId": user_id,
-                "dataString": data_string,
-                "aggregationType": aggregation_type,
-                "aggregationCounter": 1,
-            },
-        },
-        where={
-            "analyticMetric_userId_dataString_aggregationType": {
-                "analyticMetric": metric_name,
-                "userId": user_id,
-                "dataString": data_string,
-                "aggregationType": aggregation_type,
-            }
-        },
+    result = await autogpt_server.data.analytics.log_raw_metric(
+        user_id, metric_name, aggregation_type, metric_value, data_string
     )
+    return result.id
 
-    # For AVG, MAX, and MIN, we need to perform additional operations
-    if aggregation_type in [
-        prisma.enums.AggregationType.AVG,
-        prisma.enums.AggregationType.MAX,
-        prisma.enums.AggregationType.MIN,
-    ]:
-        existing = await prisma.models.AnalyticsMetrics.prisma().find_unique(
-            where={
-                "analyticMetric_userId_dataString_aggregationType": {
-                    "analyticMetric": metric_name,
-                    "userId": user_id,
-                    "dataString": data_string,
-                    "aggregationType": aggregation_type,
-                }
-            }
-        )
-        if existing:
-            if aggregation_type == prisma.enums.AggregationType.AVG:
-                new_value = (
-                    existing.value * existing.aggregationCounter + metric_value
-                ) / (existing.aggregationCounter + 1)
-            elif aggregation_type == prisma.enums.AggregationType.MAX:
-                new_value = max(existing.value, metric_value)
-            else:  # MIN
-                new_value = min(existing.value, metric_value)
 
-            await prisma.models.AnalyticsMetrics.prisma().update(
-                data={"value": new_value}, where={"id": existing.id}
-            )
+@router.post("/log_raw_analytics")
+async def log_raw_analytics(
+    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+    type: Annotated[prisma.enums.AnalyticsType, fastapi.Body(..., embed=True)],
+    data: Annotated[
+        dict,
+        fastapi.Body(..., embed=True, description="The data to log"),
+    ],
+    data_index: Annotated[
+        str,
+        fastapi.Body(
+            ...,
+            embed=True,
+            description="Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.",
+        ),
+    ],
+):
+    result = await autogpt_server.data.analytics.log_raw_analytics(
+        user_id, type, data, data_index
+    )
+    return result.id

@@ -229,7 +229,7 @@ model AnalyticsDetails {
   // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
   data Json?
 
-  // Indexable field for any count based analytically measures like page order clicking, tutorial step completion, etc.
+  // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
   dataIndex String?
 
   @@index([userId, type], name: "analyticsDetails")
