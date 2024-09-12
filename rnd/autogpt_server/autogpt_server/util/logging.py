@@ -1,10 +1,10 @@
-import logging
 import os
-
-import autogpt_libs.logging.config
 
 
 def configure_logging():
+    import logging
+
+    import autogpt_libs.logging.config
 
     if os.getenv("APP_ENV") != "cloud":
         autogpt_libs.logging.config.configure_logging(force_cloud_logging=False)
