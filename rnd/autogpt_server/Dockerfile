@@ -28,7 +28,8 @@ RUN poetry config virtualenvs.create false \
 
 # Generate Prisma client
 COPY rnd/autogpt_server/schema.prisma ./
-RUN poetry run prisma generate
+RUN poetry config virtualenvs.create false \
+    && poetry run prisma generate
 
 FROM python:3.11-slim-buster AS server_dependencies
 
@@ -44,6 +45,9 @@ ENV POETRY_VERSION=1.8.3 \
 COPY --from=builder /app /app
 COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy Prisma binaries
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
 
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -59,7 +63,8 @@ WORKDIR /app/rnd/autogpt_server
 FROM server_dependencies AS server_prisma
 
 COPY rnd/autogpt_server/schema.prisma ./
-RUN poetry run prisma generate
+RUN poetry config virtualenvs.create false \
+    && poetry run prisma generate
 
 FROM server_dependencies AS server
 

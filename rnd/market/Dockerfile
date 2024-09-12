@@ -23,19 +23,15 @@ RUN pip3 install poetry
 COPY rnd/autogpt_libs /app/rnd/autogpt_libs
 COPY rnd/market/poetry.lock rnd/market/pyproject.toml /app/rnd/market/
 WORKDIR /app/rnd/market
-RUN poetry install --no-interaction --no-ansi
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi
 
 # Generate Prisma client
 COPY rnd/market /app/rnd/market
-RUN poetry run prisma generate
+RUN poetry config virtualenvs.create false \
+    && poetry run prisma generate
 
 FROM python:3.11-slim-buster AS server_dependencies
-
-ENV POETRY_VERSION=1.8.3 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=false \
-    PATH="$POETRY_HOME/bin:$PATH"
 
 WORKDIR /app
 
@@ -43,6 +39,8 @@ WORKDIR /app
 COPY --from=builder /app /app
 COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy Prisma binaries
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -58,11 +56,12 @@ WORKDIR /app/rnd/market
 FROM server_dependencies AS server_prisma
 
 COPY rnd/market /app/rnd/market
-RUN poetry run prisma generate
+RUN poetry config virtualenvs.create false \
+    && poetry run prisma generate
 
 FROM server_prisma AS server
 
 ENV DATABASE_URL=""
 ENV PORT=8000
 
-CMD ["uvicorn", "market.app:app"]
+CMD ["uvicorn", "market.app:app", "--reload"]
