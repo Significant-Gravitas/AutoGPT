@@ -49,17 +49,11 @@ RUN mkdir -p /app/rnd/market
 
 COPY rnd/autogpt_libs /app/rnd/autogpt_libs
 
-COPY rnd/market/poetry.lock rnd/market/pyproject.toml /app/rnd/market/
+COPY rnd/market /app/rnd/market
 
 WORKDIR /app/rnd/market
 
-FROM server_dependencies AS server_prisma
-
-COPY rnd/market /app/rnd/market
-RUN poetry config virtualenvs.create false \
-    && poetry run prisma generate
-
-FROM server_prisma AS server
+FROM server_dependencies AS server
 
 ENV DATABASE_URL=""
 ENV PORT=8000
