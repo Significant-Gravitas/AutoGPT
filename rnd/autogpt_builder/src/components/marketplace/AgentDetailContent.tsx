@@ -81,7 +81,7 @@ function convertGraphToReactFlow(graph: any): { nodes: Node[]; edges: Edge[] } {
 async function installGraph(id: string): Promise<void> {
   const apiUrl =
     process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
-    "http://localhost:8001/api/v1/market";
+    "http://localhost:8015/api/v1/market";
   const api = new MarketplaceAPI(apiUrl);
 
   const serverAPIUrl = process.env.AGPT_SERVER_API_URL;
