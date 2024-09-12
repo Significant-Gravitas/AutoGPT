@@ -27,6 +27,9 @@ func Load(configFile ...string) (*Config, error) {
 		viper.AddConfigPath(".")
 	}
 
+	viper.SetEnvPrefix("AGPT")
+	viper.AutomaticEnv()
+
 	if err := viper.ReadInConfig(); err != nil {
 		logger.Error("Failed to read config file", zap.Error(err))
 		return nil, err
