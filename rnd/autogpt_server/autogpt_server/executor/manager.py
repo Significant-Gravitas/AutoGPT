@@ -9,7 +9,10 @@ import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar
+from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar, cast
+
+from autogpt_libs.supabase_integration_credentials_store.types import Credentials
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from autogpt_server.server.rest_api import AgentServer
@@ -35,6 +38,7 @@ from autogpt_server.data.execution import (
     upsert_execution_output,
 )
 from autogpt_server.data.graph import Graph, Link, Node, get_graph, get_node
+from autogpt_server.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from autogpt_server.util import json
 from autogpt_server.util.decorator import error_logged, time_measured
 from autogpt_server.util.logging import configure_logging
@@ -70,6 +74,7 @@ def execute_node(
     loop: asyncio.AbstractEventLoop,
     api_client: "AgentServer",
     data: NodeExecution,
+    input_credentials: Credentials | None = None,
     execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
     """
@@ -131,9 +136,15 @@ def execute_node(
     )
     update_execution(ExecutionStatus.RUNNING)
 
+    extra_exec_kwargs = {}
+    if input_credentials:
+        extra_exec_kwargs["credentials"] = input_credentials
+
     output_size = 0
     try:
-        for output_name, output_data in node_block.execute(input_data):
+        for output_name, output_data in node_block.execute(
+            input_data, **extra_exec_kwargs
+        ):
             output_size += len(json.dumps(output_data))
             logger.info(
                 "Node produced output",
@@ -432,7 +443,10 @@ class Executor:
     @classmethod
     @error_logged
     def on_node_execution(
-        cls, q: ExecutionQueue[NodeExecution], node_exec: NodeExecution
+        cls,
+        q: ExecutionQueue[NodeExecution],
+        node_exec: NodeExecution,
+        input_credentials: Credentials | None,
     ):
         log_metadata = get_log_metadata(
             graph_eid=node_exec.graph_exec_id,
@@ -444,7 +458,7 @@ class Executor:
 
         execution_stats = {}
         timing_info, _ = cls._on_node_execution(
-            q, node_exec, log_metadata, execution_stats
+            q, node_exec, input_credentials, log_metadata, execution_stats
         )
         execution_stats["walltime"] = timing_info.wall_time
         execution_stats["cputime"] = timing_info.cpu_time
@@ -459,6 +473,7 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecution],
         node_exec: NodeExecution,
+        input_credentials: Credentials | None,
         log_metadata: dict,
         stats: dict[str, Any] | None = None,
     ):
@@ -468,7 +483,7 @@ class Executor:
                 extra={"json_fields": {**log_metadata}},
             )
             for execution in execute_node(
-                cls.loop, cls.agent_server_client, node_exec, stats
+                cls.loop, cls.agent_server_client, node_exec, input_credentials, stats
             ):
                 q.add(execution)
             logger.info(
@@ -605,7 +620,11 @@ class Executor:
                 )
                 running_executions[exec_data.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
-                    (queue, exec_data),
+                    (
+                        queue,
+                        exec_data,
+                        graph_exec.node_input_credentials.get(exec_data.node_id),
+                    ),
                     callback=make_exec_callback(exec_data),
                 )
 
@@ -650,11 +669,17 @@ class ExecutionManager(AppService):
     def __init__(self):
         super().__init__(port=Config().execution_manager_port)
         self.use_db = True
+        self.use_supabase = True
         self.pool_size = Config().num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
     def run_service(self):
+        from autogpt_libs.supabase_integration_credentials_store import (
+            SupabaseIntegrationCredentialsStore,
+        )
+
+        self.credentials_store = SupabaseIntegrationCredentialsStore(self.supabase)
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
@@ -695,7 +720,10 @@ class ExecutionManager(AppService):
         graph: Graph | None = self.run_and_wait(get_graph(graph_id, user_id=user_id))
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
+
         graph.validate_graph(for_run=True)
+        node_input_credentials = self._get_node_input_credentials(graph, user_id)
+
         nodes_input = []
         for node in graph.starting_nodes:
             input_data = {}
@@ -741,6 +769,7 @@ class ExecutionManager(AppService):
             graph_id=graph_id,
             graph_exec_id=graph_exec_id,
             start_node_execs=starting_node_execs,
+            node_input_credentials=node_input_credentials,
         )
         self.queue.add(graph_exec)
 
@@ -786,6 +815,58 @@ class ExecutionManager(AppService):
                     )
                 )
                 self.agent_server_client.send_execution_update(exec_update.model_dump())
+
+    def _get_node_input_credentials(
+        self, graph: Graph, user_id: str
+    ) -> dict[str, Credentials]:
+        """Gets all credentials for all nodes of the graph"""
+
+        node_credentials: dict[str, Credentials] = {}
+
+        for node in graph.nodes:
+            block = get_block(node.block_id)
+            if not block:
+                raise ValueError(f"Unknown block {node.block_id} for node #{node.id}")
+
+            # Find any fields of type CredentialsMetaInput
+            model_fields = cast(type[BaseModel], block.input_schema).model_fields
+            if CREDENTIALS_FIELD_NAME not in model_fields:
+                continue
+
+            field = model_fields[CREDENTIALS_FIELD_NAME]
+
+            # The BlockSchema class enforces that a `credentials` field is always a
+            # `CredentialsMetaInput`, so we can safely assume this here.
+            credentials_meta_type = cast(CredentialsMetaInput, field.annotation)
+            credentials_meta = credentials_meta_type.model_validate(
+                node.input_default[CREDENTIALS_FIELD_NAME]
+            )
+            # Fetch the corresponding Credentials and perform sanity checks
+            credentials = self.credentials_store.get_creds_by_id(
+                user_id, credentials_meta.id
+            )
+            if not credentials:
+                raise ValueError(
+                    f"Unknown credentials #{credentials_meta.id} "
+                    f"for node #{node.id}"
+                )
+            if (
+                credentials.provider != credentials_meta.provider
+                or credentials.type != credentials_meta.type
+            ):
+                logger.warning(
+                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                    "type/provider mismatch: "
+                    f"{credentials_meta.type}<>{credentials.type};"
+                    f"{credentials_meta.provider}<>{credentials.provider}"
+                )
+                raise ValueError(
+                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                    "type/provider mismatch"
+                )
+            node_credentials[node.id] = credentials
+
+        return node_credentials
 
 
 def llprint(message: str):

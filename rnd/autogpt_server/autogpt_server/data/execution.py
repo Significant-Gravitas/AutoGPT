@@ -4,6 +4,7 @@ from enum import Enum
 from multiprocessing import Manager
 from typing import Any, Generic, TypeVar
 
+from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
@@ -24,6 +25,7 @@ class GraphExecution(BaseModel):
     graph_exec_id: str
     start_node_execs: list["NodeExecution"]
     graph_id: str
+    node_input_credentials: dict[str, Credentials]  # dict[node_id, Credentials]
 
 
 class NodeExecution(BaseModel):
