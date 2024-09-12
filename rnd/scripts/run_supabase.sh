@@ -31,7 +31,11 @@ fi
 
 # Initialize Supabase project
 echo "Initializing Supabase project..."
-supabase init
+if supabase init; then
+    echo "Supabase project initialized successfully."
+else
+    echo "Supabase initialization failed. Proceeding to start Supabase..."
+fi
 
 # Start Supabase
 echo "Starting Supabase..."
