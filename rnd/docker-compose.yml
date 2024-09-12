@@ -74,6 +74,8 @@ services:
       postgres:
         condition: service_healthy
       migrate:
+        condition: service_started
+      supabase:
         condition: service_completed_successfully
       supabase:
         condition: service_completed_successfully
@@ -105,6 +107,8 @@ services:
       postgres:
         condition: service_healthy
       migrate:
+        condition: service_started
+      supabase:
         condition: service_completed_successfully
       supabase:
         condition: service_completed_successfully
