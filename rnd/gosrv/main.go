@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/gin-contrib/zap"
@@ -31,15 +32,28 @@ func main() {
 	}
 	// Initialize Gin router
 	r := gin.New()
+	// Set the port
+	port := cfg.ServerAddress
+	if port == "" {
+		port = "8080" // Default port if not specified in config
+	}
+	r.Run(":" + port)
 
 	// Use middleware
 	r.Use(ginzap.Ginzap(logger, time.RFC1123, true))
 	r.Use(ginzap.RecoveryWithZap(logger, true))
 	r.Use(middleware.Gzip())
 
+	// Route welcome
+	r.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "Welcome to the Marketplace API")
+	})
+
+
 	// Setup routes
 	api := r.Group("/api")
 	{
+
 		agents := api.Group("/agents")
 		{
 			agents.GET("", handlers.GetAgents(db))
