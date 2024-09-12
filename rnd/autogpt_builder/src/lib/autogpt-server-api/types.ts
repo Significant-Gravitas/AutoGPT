@@ -1,16 +1,25 @@
 /* Mirror of autogpt_server/data/block.py:Block */
+
+export type Category = {
+  category: string;
+  description: string;
+};
+
 export type Block = {
   id: string;
   name: string;
   description: string;
+  categories: Category[];
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
+  staticOutput: boolean;
+  uiType: BlockUIType;
 };
 
 export type BlockIORootSchema = {
   type: "object";
   properties: { [key: string]: BlockIOSubSchema };
-  required?: string[];
+  required?: (keyof BlockIORootSchema["properties"])[];
   additionalProperties?: { type: string };
 };
 
@@ -27,17 +36,18 @@ type BlockIOSimpleTypeSubSchema =
   | BlockIOBooleanSubSchema
   | BlockIONullSubSchema;
 
-type BlockIOSubSchemaMeta = {
+export type BlockIOSubSchemaMeta = {
   title?: string;
   description?: string;
   placeholder?: string;
+  advanced?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   properties: { [key: string]: BlockIOSubSchema };
   default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
-  required?: keyof BlockIOObjectSubSchema["properties"][];
+  required?: (keyof BlockIOObjectSubSchema["properties"])[];
 };
 
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
@@ -110,9 +120,10 @@ export type Link = {
   sink_id: string;
   source_name: string;
   sink_name: string;
+  is_static: boolean;
 };
 
-export type LinkCreatable = Omit<Link, "id"> & {
+export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
@@ -167,3 +178,15 @@ export type NodeExecutionResult = {
   start_time?: Date;
   end_time?: Date;
 };
+
+export type User = {
+  id: string;
+  email: string;
+};
+
+export enum BlockUIType {
+  STANDARD = "Standard",
+  INPUT = "Input",
+  OUTPUT = "Output",
+  NOTE = "Note",
+}

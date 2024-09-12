@@ -1,13 +1,16 @@
-import json
 import re
 from typing import Any
 
+from jinja2 import BaseLoader, Environment
 from pydantic import Field
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from autogpt_server.util import json
+
+jinja = Environment(loader=BaseLoader())
 
 
-class TextMatcherBlock(Block):
+class MatchTextPatternBlock(Block):
     class Input(BlockSchema):
         text: Any = Field(description="Text to match")
         match: str = Field(description="Pattern (Regex) to match")
@@ -26,8 +29,8 @@ class TextMatcherBlock(Block):
             " forwards the provided data to positive (if matching) or"
             " negative (if not matching) output.",
             categories={BlockCategory.TEXT},
-            input_schema=TextMatcherBlock.Input,
-            output_schema=TextMatcherBlock.Output,
+            input_schema=MatchTextPatternBlock.Input,
+            output_schema=MatchTextPatternBlock.Output,
             test_input=[
                 {"text": "ABC", "match": "ab", "data": "X", "case_sensitive": False},
                 {"text": "ABC", "match": "ab", "data": "Y", "case_sensitive": True},
@@ -61,7 +64,7 @@ class TextMatcherBlock(Block):
             yield "negative", output
 
 
-class TextParserBlock(Block):
+class ExtractTextInformationBlock(Block):
     class Input(BlockSchema):
         text: Any = Field(description="Text to parse")
         pattern: str = Field(description="Pattern (Regex) to parse")
@@ -78,8 +81,8 @@ class TextParserBlock(Block):
             id="3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
             description="This block extracts the text from the given text using the pattern (regex).",
             categories={BlockCategory.TEXT},
-            input_schema=TextParserBlock.Input,
-            output_schema=TextParserBlock.Output,
+            input_schema=ExtractTextInformationBlock.Input,
+            output_schema=ExtractTextInformationBlock.Output,
             test_input=[
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 1},
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 0},
@@ -113,15 +116,10 @@ class TextParserBlock(Block):
             yield "negative", text
 
 
-class TextFormatterBlock(Block):
+class FillTextTemplateBlock(Block):
     class Input(BlockSchema):
-        texts: list[str] = Field(description="Texts (list) to format", default=[])
-        named_texts: dict[str, str] = Field(
-            description="Texts (dict) to format", default={}
-        )
-        format: str = Field(
-            description="Template to format the text using `texts` and `named_texts`",
-        )
+        values: dict[str, Any] = Field(description="Values (dict) to be used in format")
+        format: str = Field(description="Template to format the text using `values`")
 
     class Output(BlockSchema):
         output: str
@@ -131,35 +129,36 @@ class TextFormatterBlock(Block):
             id="db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
             description="This block formats the given texts using the format template.",
             categories={BlockCategory.TEXT},
-            input_schema=TextFormatterBlock.Input,
-            output_schema=TextFormatterBlock.Output,
+            input_schema=FillTextTemplateBlock.Input,
+            output_schema=FillTextTemplateBlock.Output,
             test_input=[
-                {"texts": ["Hello"], "format": "{texts[0]}"},
                 {
-                    "texts": ["Hello", "World!"],
-                    "named_texts": {"name": "Alice"},
-                    "format": "{texts[0]} {texts[1]} {name}",
+                    "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
+                    "format": "{hello}, {world} {{name}}",
                 },
-                {"format": "Hello, World!"},
+                {
+                    "values": {"list": ["Hello", " World!"]},
+                    "format": "{% for item in list %}{{ item }}{% endfor %}",
+                },
             ],
             test_output=[
-                ("output", "Hello"),
-                ("output", "Hello World! Alice"),
-                ("output", "Hello, World!"),
+                ("output", "Hello, World! Alice"),
+                ("output", "Hello World!"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        yield "output", input_data.format.format(
-            texts=input_data.texts,
-            **input_data.named_texts,
-        )
+        # For python.format compatibility: replace all {...} with {{..}}.
+        # But avoid replacing {{...}} to {{{...}}}.
+        fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
+        template = jinja.from_string(fmt)
+        yield "output", template.render(**input_data.values)
 
 
-class TextCombinerBlock(Block):
+class CombineTextsBlock(Block):
     class Input(BlockSchema):
-        input1: str = Field(description="First text input", default="a")
-        input2: str = Field(description="Second text input", default="b")
+        input: list[str] = Field(description="text input to combine")
+        delimiter: str = Field(description="Delimiter to combine texts", default="")
 
     class Output(BlockSchema):
         output: str = Field(description="Combined text")
@@ -169,18 +168,18 @@ class TextCombinerBlock(Block):
             id="e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
             description="This block combines multiple input texts into a single output text.",
             categories={BlockCategory.TEXT},
-            input_schema=TextCombinerBlock.Input,
-            output_schema=TextCombinerBlock.Output,
+            input_schema=CombineTextsBlock.Input,
+            output_schema=CombineTextsBlock.Output,
             test_input=[
-                {"input1": "Hello world I like ", "input2": "cake and to go for walks"},
-                {"input1": "This is a test. ", "input2": "Let's see how it works."},
+                {"input": ["Hello world I like ", "cake and to go for walks"]},
+                {"input": ["This is a test", "Hi!"], "delimiter": "! "},
             ],
             test_output=[
                 ("output", "Hello world I like cake and to go for walks"),
-                ("output", "This is a test. Let's see how it works."),
+                ("output", "This is a test! Hi!"),
             ],
         )
 
     def run(self, input_data: Input) -> BlockOutput:
-        combined_text = (input_data.input1 or "") + (input_data.input2 or "")
+        combined_text = input_data.delimiter.join(input_data.input)
         yield "output", combined_text

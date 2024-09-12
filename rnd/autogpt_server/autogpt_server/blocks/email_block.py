@@ -45,7 +45,7 @@ class SendEmailBlock(Block):
         super().__init__(
             id="a1234567-89ab-cdef-0123-456789abcdef",
             description="This block sends an email using the provided SMTP credentials.",
-            categories={BlockCategory.TEXT},
+            categories={BlockCategory.OUTPUT},
             input_schema=SendEmailBlock.Input,
             output_schema=SendEmailBlock.Output,
             test_input={

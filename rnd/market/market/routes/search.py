@@ -1,6 +1,7 @@
 import typing
 
 import fastapi
+import prisma.enums
 
 import market.db
 import market.utils.extension_types
@@ -25,6 +26,9 @@ async def search(
     sort_order: typing.Literal["desc", "asc"] = fastapi.Query(
         "desc", description="The sort order based on sort_by"
     ),
+    submission_status: prisma.enums.SubmissionStatus = fastapi.Query(
+        None, description="The submission status to filter by"
+    ),
 ) -> typing.List[market.utils.extension_types.AgentsWithRank]:
     """searches endpoint for agents
 
@@ -45,4 +49,5 @@ async def search(
         description_threshold=description_threshold,
         sort_by=sort_by,
         sort_order=sort_order,
+        submission_status=submission_status,
     )
