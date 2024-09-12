@@ -54,7 +54,7 @@ services:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
       target: server
-    command: ["python", "-m", "autogpt_server.rest"]
+    command: ["sh", "-c", "sleep 5 && python -m autogpt_server.rest"]
     develop:
       watch:
         - path: ./
@@ -86,7 +86,7 @@ services:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
       target: server
-    command: ["python", "-m", "autogpt_server.exec"]
+    command: ["sh", "-c", "sleep 5 && python -m autogpt_server.exec"]
     develop:
       watch:
         - path: ./
@@ -117,7 +117,7 @@ services:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
       target: server
-    command: ["python", "-m", "autogpt_server.ws"]
+    command: ["sh", "-c", "sleep 5 && python -m autogpt_server.ws"]
     develop:
       watch:
         - path: ./
@@ -135,7 +135,7 @@ services:
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
     ports:
-      - "8001:8000"
+      - "8001:8001"
     networks:
       - app-network
 
