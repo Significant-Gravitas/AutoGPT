@@ -1,4 +1,7 @@
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+from google.auth.external_account_authorized_user import (
+    Credentials as ExternalAccountCredentials,
+)
 from google.auth.transport.requests import AuthorizedSession, Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -57,7 +60,9 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             scopes=google_creds.scopes,
         )
 
-    def _request_email(self, creds: Credentials) -> str | None:
+    def _request_email(
+        self, creds: Credentials | ExternalAccountCredentials
+    ) -> str | None:
         session = AuthorizedSession(creds)
         response = session.get(self.EMAIL_ENDPOINT)
         if not response.ok:
