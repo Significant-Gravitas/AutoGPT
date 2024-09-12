@@ -40,7 +40,6 @@ services:
       timeout: 5s
       retries: 5
 
-
   redis:
     image: redis:latest
     command: redis-server --requirepass password
@@ -48,6 +47,11 @@ services:
       - "6379:6379"
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   rest_server:
     build:
@@ -62,7 +66,7 @@ services:
           action: rebuild
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       migrate:
@@ -94,7 +98,7 @@ services:
           action: rebuild
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       migrate:
@@ -124,9 +128,12 @@ services:
           target: rnd/autogpt_server/
           action: rebuild
     depends_on:
-      - postgres
-      - redis
-      - migrate
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
@@ -149,8 +156,10 @@ services:
           target: rnd/market/
           action: rebuild
     depends_on:
-      - postgres
-      - migrate
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
     ports:
@@ -169,10 +178,14 @@ services:
           target: rnd/autogpt_builder/
           action: rebuild
     depends_on:
-      - postgres
-      - rest_server
-      - websocket_server
-      - migrate
+      postgres:
+        condition: service_healthy
+      rest_server:
+        condition: service_started
+      websocket_server:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api
@@ -182,6 +195,7 @@ services:
       - "3000:3000"
     networks:
       - app-network
+
 networks:
-     app-network:
-       driver: bridge
+  app-network:
+    driver: bridge
