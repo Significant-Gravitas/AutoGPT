@@ -30,7 +30,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
     networks:
       - app-network
     restart: on-failure
@@ -68,7 +68,7 @@ services:
       migrate:
         condition: service_started
     environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
@@ -100,7 +100,7 @@ services:
       migrate:
         condition: service_started
     environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
@@ -128,7 +128,7 @@ services:
       - redis
       - migrate
     environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
@@ -152,7 +152,7 @@ services:
       - postgres
       - migrate
     environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
     ports:
       - "8015:8000"
     networks:
@@ -174,7 +174,7 @@ services:
       - websocket_server
       - migrate
     environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api
       - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
       - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
