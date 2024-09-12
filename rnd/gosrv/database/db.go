@@ -435,5 +435,375 @@ func CreateAgentInstalledEvent(ctx context.Context, db *pgxpool.Pool, eventData 
 	logger.Info("Agent installed event created successfully")
 	return nil
 }
+
+
+
+// Admin Queries
+
+func CreateAgentEntry(ctx context.Context, db *pgxpool.Pool, agent models.Agent) (models.Agent, error) {
+	logger := zap.L().With(zap.String("function", "CreateAgentEntry"))
+	logger.Info("Creating agent entry")
+
+	query := `
+		INSERT INTO agents (id, name, description, author, keywords, categories, graph)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, name, description, author, keywords, categories, graph
+	`
+	var createdAgent models.Agent
+	err := db.QueryRow(ctx, query, 
+		agent.ID, 
+		agent.Name, 
+		agent.Description, 
+		agent.Author, 
+		agent.Keywords, 
+		agent.Categories, 
+		agent.Graph,
+	).Scan(
+		&createdAgent.ID,
+		&createdAgent.Name,
+		&createdAgent.Description,
+		&createdAgent.Author,
+		&createdAgent.Keywords,
+		&createdAgent.Categories,
+		&createdAgent.Graph,
+	)
+
+	if err != nil {
+		logger.Error("Failed to create agent entry", zap.Error(err))
+		return models.Agent{}, err
+	}
 	
 
+	logger.Info("Agent entry created successfully", zap.String("agentID", agent.ID))
+	return createdAgent, nil
+}
+
+
+func SetAgentFeatured(ctx context.Context, db *pgxpool.Pool, agentID string, isActive bool, featuredCategories []string) (*models.FeaturedAgent, error) {
+	logger := zap.L().With(zap.String("function", "SetAgentFeatured"))
+	logger.Info("Setting agent featured status", zap.String("agentID", agentID), zap.Bool("isActive", isActive))
+
+	// Check if the agent exists
+	var exists bool
+	err := db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM agents WHERE id = $1)", agentID).Scan(&exists)
+	if err != nil {
+		logger.Error("Failed to check if agent exists", zap.Error(err))
+		return nil, fmt.Errorf("failed to check if agent exists: %w", err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("agent with ID %s not found", agentID)
+	}
+
+	var query string
+	var args []interface{}
+
+	if isActive {
+		// Set the agent as featured
+		query = `
+			INSERT INTO featured_agent (agent_id, featured_categories, is_active)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (agent_id) DO UPDATE
+			SET featured_categories = $2, is_active = $3
+			RETURNING agent_id, featured_categories, is_active
+		`
+		args = []interface{}{agentID, featuredCategories, isActive}
+	} else {
+		// Unset the agent as featured
+		query = `
+			DELETE FROM featured_agent
+			WHERE agent_id = $1
+			RETURNING agent_id, featured_categories, is_active
+		`
+		args = []interface{}{agentID}
+	}
+
+	var featuredAgent models.FeaturedAgent
+	err = db.QueryRow(ctx, query, args...).Scan(
+		&featuredAgent.AgentID,
+		&featuredAgent.FeaturedCategories,
+		&featuredAgent.IsActive,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows && !isActive {
+			logger.Info("Agent was not featured, no action needed", zap.String("agentID", agentID))
+			return nil, nil
+		}
+		logger.Error("Failed to set agent featured status", zap.Error(err))
+		return nil, fmt.Errorf("failed to set agent featured status: %w", err)
+	}
+
+	if isActive {
+		logger.Info("Agent set as featured successfully", zap.String("agentID", agentID))
+	} else {
+		logger.Info("Agent unset as featured successfully", zap.String("agentID", agentID))
+	}
+	return &featuredAgent, nil
+}
+
+func GetAgentFeatured(ctx context.Context, db *pgxpool.Pool, agentID string) (*models.FeaturedAgent, error) {
+	logger := zap.L().With(zap.String("function", "GetAgentFeatured"))
+	logger.Info("Getting featured agent", zap.String("agentID", agentID))
+
+	query := `
+		SELECT agent_id, featured_categories, is_active
+		FROM featured_agent
+		WHERE agent_id = $1
+	`
+
+	var featuredAgent models.FeaturedAgent
+	err := db.QueryRow(ctx, query, agentID).Scan(
+		&featuredAgent.AgentID,
+		&featuredAgent.FeaturedCategories,
+		&featuredAgent.IsActive,
+	)
+
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+
+	if err != nil {
+		logger.Error("Failed to get featured agent", zap.Error(err))
+		return nil, fmt.Errorf("failed to get featured agent: %w", err)
+	}
+
+	logger.Info("Featured agent retrieved successfully", zap.String("agentID", agentID))
+	return &featuredAgent, nil
+}
+
+func RemoveFeaturedCategory(ctx context.Context, db *pgxpool.Pool, agentID string, category string) (*models.FeaturedAgent, error) {
+	logger := zap.L().With(zap.String("function", "RemoveFeaturedCategory"))
+	logger.Info("Removing featured category", zap.String("agentID", agentID), zap.String("category", category))
+
+	query := `
+		UPDATE featured_agent
+		SET featured_categories = array_remove(featured_categories, $1)
+		WHERE agent_id = $2
+		RETURNING agent_id, featured_categories, is_active
+	`
+
+	var featuredAgent models.FeaturedAgent
+	err := db.QueryRow(ctx, query, category, agentID).Scan(
+		&featuredAgent.AgentID,
+		&featuredAgent.FeaturedCategories,
+		&featuredAgent.IsActive,
+	)
+
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+
+	if err != nil {
+		logger.Error("Failed to remove featured category", zap.Error(err))
+		return nil, fmt.Errorf("failed to remove featured category: %w", err)
+	}
+
+	logger.Info("Featured category removed successfully", zap.String("agentID", agentID), zap.String("category", category))
+	return &featuredAgent, nil
+}
+
+func GetNotFeaturedAgents(ctx context.Context, db *pgxpool.Pool, page, pageSize int) ([]models.Agent, error) {
+	logger := zap.L().With(zap.String("function", "GetNotFeaturedAgents"))
+	logger.Info("Getting not featured agents", zap.Int("page", page), zap.Int("pageSize", pageSize))
+
+	offset := (page - 1) * pageSize
+
+	query := `
+		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph
+		FROM agents a
+		LEFT JOIN featured_agent fa ON a.id = fa.agent_id
+		WHERE (fa.agent_id IS NULL OR fa.featured_categories = '{}')
+			AND a.submission_status = 'APPROVED'
+		ORDER BY a.created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := db.Query(ctx, query, pageSize, offset)
+	if err != nil {
+		logger.Error("Failed to query not featured agents", zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []models.Agent
+	for rows.Next() {
+		var agent models.Agent
+		err := rows.Scan(
+			&agent.ID,
+			&agent.Name,
+			&agent.Description,
+			&agent.Author,
+			&agent.Keywords,
+			&agent.Categories,
+			&agent.Graph,
+		)
+		if err != nil {
+			logger.Error("Failed to scan not featured agent row", zap.Error(err))
+			return nil, err
+		}
+		agents = append(agents, agent)
+	}
+
+	logger.Info("Not featured agents retrieved", zap.Int("count", len(agents)))
+	return agents, nil
+}
+
+func GetAgentSubmissions(ctx context.Context, db *pgxpool.Pool, page, pageSize int, name, keyword, category *string, sortBy, sortOrder string) ([]models.AgentWithMetadata, int, error) {
+	logger := zap.L().With(zap.String("function", "GetAgentSubmissions"))
+	logger.Info("Getting agent submissions", zap.Int("page", page), zap.Int("pageSize", pageSize))
+
+	offset := (page - 1) * pageSize
+
+	query := `
+		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph, a.created_at, a.updated_at, a.version, a.submission_status, a.submission_review_date, a.submission_review_comments
+		FROM agents a
+		WHERE a.submission_status = 'PENDING'
+	`
+
+	args := []interface{}{}
+	argCount := 1
+
+	if name != nil {
+		query += fmt.Sprintf(" AND a.name ILIKE $%d", argCount)
+		args = append(args, "%"+*name+"%")
+		argCount++
+	}
+
+	if keyword != nil {
+		query += fmt.Sprintf(" AND $%d = ANY(a.keywords)", argCount)
+		args = append(args, *keyword)
+		argCount++
+	}
+
+	if category != nil {
+		query += fmt.Sprintf(" AND $%d = ANY(a.categories)", argCount)
+		args = append(args, *category)
+		argCount++
+	}
+
+	// Add sorting
+	query += fmt.Sprintf(" ORDER BY a.%s %s", sortBy, sortOrder)
+
+	// Add pagination
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argCount, argCount+1)
+	args = append(args, pageSize, offset)
+
+	rows, err := db.Query(ctx, query, args...)
+	if err != nil {
+		logger.Error("Failed to query agent submissions", zap.Error(err))
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var agents []models.AgentWithMetadata
+	for rows.Next() {
+		var agent models.AgentWithMetadata
+		err := rows.Scan(
+			&agent.ID,
+			&agent.Name,
+			&agent.Description,
+			&agent.Author,
+			&agent.Keywords,
+			&agent.Categories,
+			&agent.Graph,
+			&agent.CreatedAt,
+			&agent.UpdatedAt,
+			&agent.Version,
+			&agent.SubmissionStatus,
+			&agent.SubmissionReviewDate,
+			&agent.SubmissionReviewComments,
+		)
+		if err != nil {
+			logger.Error("Failed to scan agent submission row", zap.Error(err))
+			return nil, 0, err
+		}
+		agents = append(agents, agent)
+	}
+
+	// Get total count
+	countQuery := `SELECT COUNT(*) FROM agents WHERE submission_status = 'PENDING'`
+	var totalCount int
+	err = db.QueryRow(ctx, countQuery).Scan(&totalCount)
+	if err != nil {
+		logger.Error("Failed to get total count of agent submissions", zap.Error(err))
+		return nil, 0, err
+	}
+
+	logger.Info("Agent submissions retrieved", zap.Int("count", len(agents)))
+	return agents, totalCount, nil
+}
+
+func ReviewSubmission(ctx context.Context, db *pgxpool.Pool, agentID string, version int, status models.SubmissionStatus, comments *string) (*models.AgentWithMetadata, error) {
+	logger := zap.L().With(zap.String("function", "ReviewSubmission"))
+	logger.Info("Reviewing agent submission", zap.String("agentID", agentID), zap.Int("version", version))
+
+	query := `
+		UPDATE agents
+		SET submission_status = $1, 
+			submission_review_date = NOW(),
+			submission_review_comments = $2
+		WHERE id = $3 AND version = $4
+		RETURNING id, name, description, author, keywords, categories, graph, created_at, updated_at, version, submission_status, submission_review_date, submission_review_comments
+	`
+
+	var agent models.AgentWithMetadata
+	err := db.QueryRow(ctx, query, status, comments, agentID, version).Scan(
+		&agent.ID,
+		&agent.Name,
+		&agent.Description,
+		&agent.Author,
+		&agent.Keywords,
+		&agent.Categories,
+		&agent.Graph,
+		&agent.CreatedAt,
+		&agent.UpdatedAt,
+		&agent.Version,
+		&agent.SubmissionStatus,
+		&agent.SubmissionReviewDate,
+		&agent.SubmissionReviewComments,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			logger.Error("Agent submission not found", zap.String("agentID", agentID), zap.Int("version", version))
+			return nil, fmt.Errorf("agent submission not found")
+		}
+		logger.Error("Failed to review agent submission", zap.Error(err))
+		return nil, err
+	}
+
+	logger.Info("Agent submission reviewed successfully", zap.String("agentID", agentID), zap.Int("version", version))
+	return &agent, nil
+}
+
+func GetAllCategories(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
+	logger := zap.L().With(zap.String("function", "GetAllCategories"))
+	logger.Info("Getting all categories")
+
+	query := `
+		SELECT DISTINCT unnest(categories) AS category
+		FROM agents
+		ORDER BY category
+	`
+
+	rows, err := db.Query(ctx, query)
+	if err != nil {
+		logger.Error("Failed to query categories", zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []string
+	for rows.Next() {
+		var category string
+		err := rows.Scan(&category)
+		if err != nil {
+			logger.Error("Failed to scan category row", zap.Error(err))
+			return nil, err
+		}
+		categories = append(categories, category)
+	}
+
+	logger.Info("Categories retrieved", zap.Int("count", len(categories)))
+	return categories, nil
+}
