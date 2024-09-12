@@ -1,17 +1,27 @@
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, Literal
 
 import prisma.types
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink
-from pydantic import PrivateAttr
+from pydantic import BaseModel, PrivateAttr
+from pydantic_core import PydanticUndefinedType
 
-from autogpt_server.blocks.basic import InputBlock, OutputBlock
+from autogpt_server.blocks.basic import AgentInputBlock, AgentOutputBlock
 from autogpt_server.data.block import BlockInput, get_block, get_blocks
 from autogpt_server.data.db import BaseDbModel, transaction
 from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.util import json
+
+logger = logging.getLogger(__name__)
+
+
+class InputSchemaItem(BaseModel):
+    node_id: str
+    description: str | None = None
+    title: str | None = None
 
 
 class Link(BaseDbModel):
@@ -96,7 +106,9 @@ class Graph(GraphMeta):
     def starting_nodes(self) -> list[Node]:
         outbound_nodes = {link.sink_id for link in self.links}
         input_nodes = {
-            v.id for v in self.nodes if isinstance(get_block(v.block_id), InputBlock)
+            v.id
+            for v in self.nodes
+            if isinstance(get_block(v.block_id), AgentInputBlock)
         }
         return [
             node
@@ -106,7 +118,9 @@ class Graph(GraphMeta):
 
     @property
     def ending_nodes(self) -> list[Node]:
-        return [v for v in self.nodes if isinstance(get_block(v.block_id), OutputBlock)]
+        return [
+            v for v in self.nodes if isinstance(get_block(v.block_id), AgentOutputBlock)
+        ]
 
     @property
     def subgraph_map(self) -> dict[str, str]:
@@ -169,7 +183,9 @@ class Graph(GraphMeta):
                 + [sanitize(link.sink_name) for link in node.input_links]
             )
             for name in block.input_schema.get_required_fields():
-                if name not in provided_inputs and not isinstance(block, InputBlock):
+                if name not in provided_inputs and not isinstance(
+                    block, AgentInputBlock
+                ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
                     )
@@ -183,7 +199,7 @@ class Graph(GraphMeta):
         def is_input_output_block(nid: str) -> bool:
             bid = node_map[nid].block_id
             b = get_block(bid)
-            return isinstance(b, InputBlock) or isinstance(b, OutputBlock)
+            return isinstance(b, AgentInputBlock) or isinstance(b, AgentOutputBlock)
 
         # subgraphs: all nodes in subgraph must be present in the graph.
         for subgraph_id, node_ids in self.subgraphs.items():
@@ -232,6 +248,43 @@ class Graph(GraphMeta):
 
             # TODO: Add type compatibility check here.
 
+    def get_input_schema(self) -> list[InputSchemaItem]:
+        """
+        Walks the graph and returns all the inputs that are either not:
+        - static
+        - provided by parent node
+        """
+        input_schema = []
+        for node in self.nodes:
+            block = get_block(node.block_id)
+            if not block:
+                continue
+
+            for input_name, input_schema_item in (
+                block.input_schema.jsonschema().get("properties", {}).items()
+            ):
+                # Check if the input is not static and not provided by a parent node
+                if (
+                    input_name not in node.input_default
+                    and not any(
+                        link.sink_name == input_name for link in node.input_links
+                    )
+                    and isinstance(
+                        block.input_schema.model_fields.get(input_name).default,
+                        PydanticUndefinedType,
+                    )
+                ):
+
+                    input_schema.append(
+                        InputSchemaItem(
+                            node_id=node.id,
+                            description=input_schema_item.get("description"),
+                            title=input_schema_item.get("title"),
+                        )
+                    )
+
+        return input_schema
+
     @staticmethod
     def from_db(graph: AgentGraph):
         nodes = [
@@ -276,12 +329,12 @@ AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
 # --------------------- Model functions --------------------- #
 
 
-async def get_node(node_id: str) -> Node | None:
+async def get_node(node_id: str) -> Node:
     node = await AgentNode.prisma().find_unique_or_raise(
         where={"id": node_id},
         include=AGENT_NODE_INCLUDE,
     )
-    return Node.from_db(node) if node else None
+    return Node.from_db(node)
 
 
 async def get_graphs_meta(
@@ -481,17 +534,19 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "graph_templates"
 async def import_packaged_templates() -> None:
     templates_in_db = await get_graphs_meta(filter_by="template")
 
-    print("Loading templates...")
+    logging.info("Loading templates...")
     for template_file in TEMPLATES_DIR.glob("*.json"):
         template_data = json.loads(template_file.read_bytes())
 
         template = Graph.model_validate(template_data)
         if not template.is_template:
-            print(f"WARNING: pre-packaged graph file {template_file} is not a template")
+            logging.warning(
+                f"pre-packaged graph file {template_file} is not a template"
+            )
             continue
         if (
             exists := next((t for t in templates_in_db if t.id == template.id), None)
         ) and exists.version >= template.version:
             continue
         await create_graph(template, DEFAULT_USER_ID)
-        print(f"Loaded template '{template.name}' ({template.id})")
+        logging.info(f"Loaded template '{template.name}' ({template.id})")

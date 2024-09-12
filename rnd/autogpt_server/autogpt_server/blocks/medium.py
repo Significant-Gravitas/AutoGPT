@@ -6,7 +6,7 @@ from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSc
 from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
 
 
-class CreateMediumPostBlock(Block):
+class PublishToMediumBlock(Block):
     class Input(BlockSchema):
         author_id: BlockSecret = SecretField(
             key="medium_author_id",
@@ -57,7 +57,6 @@ class CreateMediumPostBlock(Block):
     class Output(BlockSchema):
         post_id: str = SchemaField(description="The ID of the created Medium post")
         post_url: str = SchemaField(description="The URL of the created Medium post")
-        author_id: str = SchemaField(description="The Medium user ID of the author")
         published_at: int = SchemaField(
             description="The timestamp when the post was published"
         )
@@ -68,8 +67,8 @@ class CreateMediumPostBlock(Block):
     def __init__(self):
         super().__init__(
             id="3f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
-            input_schema=CreateMediumPostBlock.Input,
-            output_schema=CreateMediumPostBlock.Output,
+            input_schema=PublishToMediumBlock.Input,
+            output_schema=PublishToMediumBlock.Output,
             categories={BlockCategory.SOCIAL},
             test_input={
                 "author_id": "1234567890abcdef",
@@ -85,7 +84,6 @@ class CreateMediumPostBlock(Block):
             test_output=[
                 ("post_id", "e6f36a"),
                 ("post_url", "https://medium.com/@username/test-post-e6f36a"),
-                ("author_id", "1234567890abcdef"),
                 ("published_at", 1626282600),
             ],
             test_mock={
@@ -156,7 +154,6 @@ class CreateMediumPostBlock(Block):
             if "data" in response:
                 yield "post_id", response["data"]["id"]
                 yield "post_url", response["data"]["url"]
-                yield "author_id", response["data"]["authorId"]
                 yield "published_at", response["data"]["publishedAt"]
             else:
                 error_message = response.get("errors", [{}])[0].get(

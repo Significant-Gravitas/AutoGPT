@@ -1,6 +1,5 @@
 .custom-node {
   color: #000000;
-  width: 500px;
   box-sizing: border-box;
   transition: border-color 0.3s ease-in-out;
 }
@@ -100,16 +99,6 @@
   margin-top: 5px;
 }
 
-.node-output {
-  margin-top: 5px;
-  margin-bottom: 5px;
-  background: #fff;
-  border: 1px solid #000; /* Border for output section */
-  padding: 10px;
-  border-radius: 10px;
-  width: 100%;
-}
-
 .error-message {
   color: #d9534f;
   font-size: 13px;
@@ -135,7 +124,7 @@
 }
 
 .queued {
-  border-color: #25e6e6; /* Cyanic border for failed nodes */
+  border-color: #25e6e6; /* Cyan border for queued nodes */
 }
 
 .custom-switch {

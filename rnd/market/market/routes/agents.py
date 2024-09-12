@@ -248,7 +248,7 @@ async def top_agents_by_downloads(
                     updatedAt=item.agent.updatedAt,
                     views=item.views,
                     downloads=item.downloads,
-                    submission_status=item.agent.submissionStatus,
+                    submissionStatus=item.agent.submissionStatus,
                 )
                 for item in result.analytics
                 if item.agent is not None
@@ -324,7 +324,7 @@ async def get_featured_agents(
                         and len(item.agent.AnalyticsTracker) > 0
                         else 0
                     ),
-                    submission_status=item.agent.submissionStatus,
+                    submissionStatus=item.agent.submissionStatus,
                 )
                 for item in result.featured_agents
                 if item.agent is not None

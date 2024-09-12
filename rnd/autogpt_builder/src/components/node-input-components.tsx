@@ -10,7 +10,7 @@ import {
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import { FC, useState } from "react";
+import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -296,23 +296,31 @@ const NodeKeyValueInput: FC<{
   className,
   displayName,
 }) => {
-  let defaultEntries = new Map<string, any>();
-  connections
-    .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
-    .forEach((c) => {
-      const key = c.targetHandle.slice(`${selfKey}_#_`.length);
-      defaultEntries.set(key, "");
+  const getPairValues = useCallback(() => {
+    let defaultEntries = new Map<string, any>();
+
+    connections
+      .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
+      .forEach((c) => {
+        const key = c.targetHandle.slice(`${selfKey}_#_`.length);
+        defaultEntries.set(key, "");
+      });
+
+    Object.entries(entries ?? schema.default ?? {}).forEach(([key, value]) => {
+      defaultEntries.set(key, value);
     });
-  Object.entries(entries ?? schema.default ?? {}).forEach(([key, value]) => {
-    defaultEntries.set(key, value);
-  });
+
+    return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
+  }, [connections, entries, schema.default, selfKey]);
 
   const [keyValuePairs, setKeyValuePairs] = useState<
-    {
-      key: string;
-      value: string | number | null;
-    }[]
-  >(Array.from(defaultEntries, ([key, value]) => ({ key, value })));
+    { key: string; value: string | number | null }[]
+  >([]);
+
+  useEffect(
+    () => setKeyValuePairs(getPairValues()),
+    [connections, entries, schema.default, getPairValues],
+  );
 
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
     setKeyValuePairs(newPairs);
@@ -373,7 +381,7 @@ const NodeKeyValueInput: FC<{
                   type="text"
                   placeholder="Value"
                   value={value ?? ""}
-                  onChange={(e) =>
+                  onBlur={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: key,
@@ -522,7 +530,7 @@ const NodeStringInput: FC<{
 }> = ({
   selfKey,
   schema,
-  value,
+  value = "",
   error,
   handleInputChange,
   handleInputClick,
@@ -560,7 +568,7 @@ const NodeStringInput: FC<{
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
-            onChange={(e) => handleInputChange(selfKey, e.target.value)}
+            onBlur={(e) => handleInputChange(selfKey, e.target.value)}
             className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
           />
           <Button
@@ -574,6 +582,52 @@ const NodeStringInput: FC<{
           </Button>
         </div>
       )}
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
+
+export const NodeTextBoxInput: FC<{
+  selfKey: string;
+  schema: BlockIOStringSubSchema;
+  value?: string;
+  error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value = "",
+  error,
+  handleInputChange,
+  handleInputClick,
+  className,
+  displayName,
+}) => {
+  return (
+    <div className={className}>
+      <div
+        className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4"
+        onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
+      >
+        <textarea
+          id={selfKey}
+          value={schema.secret && value ? "********" : value}
+          readOnly={schema.secret}
+          placeholder={
+            schema?.placeholder || `Enter ${beautifyString(displayName)}`
+          }
+          onChange={(e) => handleInputChange(selfKey, e.target.value)}
+          onBlur={(e) => handleInputChange(selfKey, e.target.value)}
+          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none"
+          style={{
+            fontSize: "min(1em, 16px)",
+            lineHeight: "1.2",
+          }}
+        />
+      </div>
       {error && <span className="error-message">{error}</span>}
     </div>
   );
@@ -605,9 +659,7 @@ const NodeNumberInput: FC<{
           type="number"
           id={selfKey}
           value={value}
-          onChange={(e) =>
-            handleInputChange(selfKey, parseFloat(e.target.value))
-          }
+          onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
           }

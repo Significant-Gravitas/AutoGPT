@@ -3,7 +3,7 @@ import {
   ConnectionLineComponentProps,
   getBezierPath,
   Position,
-} from "reactflow";
+} from "@xyflow/react";
 
 const ConnectionLine: React.FC<ConnectionLineComponentProps> = ({
   fromPosition,

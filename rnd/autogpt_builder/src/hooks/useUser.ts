@@ -10,6 +10,7 @@ const useUser = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     if (isSupabaseLoading || !supabase) {
@@ -19,16 +20,21 @@ const useUser = () => {
     const fetchUser = async () => {
       try {
         setIsLoading(true);
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        setUser(user);
-        setSession(session);
+        const { data: userData, error: userError } =
+          await supabase.auth.getUser();
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
+
+        if (userError) throw new Error(`User error: ${userError.message}`);
+        if (sessionError)
+          throw new Error(`Session error: ${sessionError.message}`);
+
+        setUser(userData.user);
+        setSession(sessionData.session);
+        setRole(userData.user?.role || null);
       } catch (e) {
-        setError("Failed to fetch user data");
+        setError(e instanceof Error ? e.message : "Failed to fetch user data");
+        console.error("Error in useUser hook:", e);
       } finally {
         setIsLoading(false);
       }
@@ -41,13 +47,21 @@ const useUser = () => {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setRole(session?.user?.role || null);
+
       setIsLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, [supabase, isSupabaseLoading]);
 
-  return { user, session, isLoading: isLoading || isSupabaseLoading, error };
+  return {
+    user,
+    session,
+    role,
+    isLoading: isLoading || isSupabaseLoading,
+    error,
+  };
 };
 
 export default useUser;

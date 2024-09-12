@@ -6,7 +6,20 @@ export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, value, ...props }, ref) => {
+    // This ref allows the `Input` component to be both controlled and uncontrolled.
+    // The HTMLvalue will only be updated if the value prop changes, but the user can still type in the input.
+    ref = ref || React.createRef<HTMLInputElement>();
+    React.useEffect(() => {
+      if (
+        ref &&
+        ref.current &&
+        ref.current.value !== value &&
+        type !== "file"
+      ) {
+        ref.current.value = value;
+      }
+    }, [value, type, ref]);
     return (
       <input
         type={type}
@@ -16,6 +29,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className,
         )}
         ref={ref}
+        defaultValue={type !== "file" ? value : undefined}
         {...props}
       />
     );

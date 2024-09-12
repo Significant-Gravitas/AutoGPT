@@ -1,7 +1,7 @@
 from prisma.models import User
 
-from autogpt_server.blocks.basic import InputBlock, PrintingBlock
-from autogpt_server.blocks.text import TextFormatterBlock
+from autogpt_server.blocks.basic import AgentInputBlock, PrintToConsoleBlock
+from autogpt_server.blocks.text import FillTextTemplateBlock
 from autogpt_server.data import graph
 from autogpt_server.data.graph import create_graph
 from autogpt_server.data.user import get_or_create_user
@@ -20,41 +20,41 @@ async def create_test_user() -> User:
 
 def create_test_graph() -> graph.Graph:
     """
-    ValueBlock
+    InputBlock
                \
-                 ---- TextFormatterBlock ---- PrintingBlock
+                 ---- FillTextTemplateBlock ---- PrintToConsoleBlock
                /
-    ValueBlock
+    InputBlock
     """
     nodes = [
         graph.Node(
-            block_id=InputBlock().id,
-            input_default={"key": "input_1"},
+            block_id=AgentInputBlock().id,
+            input_default={"name": "input_1"},
         ),
         graph.Node(
-            block_id=InputBlock().id,
-            input_default={"key": "input_2"},
+            block_id=AgentInputBlock().id,
+            input_default={"name": "input_2"},
         ),
         graph.Node(
-            block_id=TextFormatterBlock().id,
+            block_id=FillTextTemplateBlock().id,
             input_default={
                 "format": "{a}, {b}{c}",
                 "values_#_c": "!!!",
             },
         ),
-        graph.Node(block_id=PrintingBlock().id),
+        graph.Node(block_id=PrintToConsoleBlock().id),
     ]
     links = [
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
-            source_name="output",
+            source_name="result",
             sink_name="values_#_a",
         ),
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
-            source_name="output",
+            source_name="result",
             sink_name="values_#_b",
         ),
         graph.Link(
