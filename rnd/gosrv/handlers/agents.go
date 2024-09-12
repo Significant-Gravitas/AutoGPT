@@ -14,7 +14,7 @@ import (
 	"github.com/swiftyos/market/utils"
 )
 
-func ListAgents(db *pgxpool.Pool) gin.HandlerFunc {
+func GetAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "ListAgents"))
 		// Get pagination parameters from context
@@ -247,7 +247,7 @@ func GetFeaturedAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
-func Search(db *pgxpool.Pool) gin.HandlerFunc {
+func SearchAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "Search"))
 		logger.Info("Handling search request")

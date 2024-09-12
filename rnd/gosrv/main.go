@@ -42,13 +42,13 @@ func main() {
 	{
 		agents := api.Group("/agents")
 		{
-			agents.GET("", handlers.ListAgents(db))
+			agents.GET("", handlers.GetAgents(db))
 			agents.GET("/:agent_id", handlers.GetAgentDetails(db))
 			agents.GET("/:agent_id/download", handlers.DownloadAgent(db))
 			agents.GET("/:agent_id/download-file", handlers.DownloadAgentFile(db))
 			agents.GET("/top-downloads", handlers.TopAgentsByDownloads(db))
 			agents.GET("/featured", handlers.GetFeaturedAgents(db))
-			agents.GET("/search", handlers.Search(db))
+			agents.GET("/search", handlers.SearchAgents(db))
 			agents.POST("/submit", middleware.Auth(cfg), handlers.SubmitAgent(db))
 		}
 
