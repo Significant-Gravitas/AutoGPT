@@ -498,6 +498,25 @@ class AgentServer(AppService):
         return await execution_db.list_executions(graph_id, graph_version)
 
     @classmethod
+    async def get_graph_run_status(
+        cls,
+        graph_id: str,
+        graph_exec_id: str,
+        user_id: Annotated[str, Depends(get_user_id)],
+    ) -> execution_db.ExecutionStatus:
+        graph = await graph_db.get_graph(graph_id, user_id=user_id)
+        if not graph:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+
+        execution = await execution_db.get_graph_execution(graph_exec_id, user_id)
+        if not execution:
+            raise HTTPException(
+                status_code=404, detail=f"Execution #{graph_exec_id} not found."
+            )
+
+        return execution.executionStatus
+
+    @classmethod
     async def get_graph_run_node_execution_results(
         cls,
         graph_id: str,

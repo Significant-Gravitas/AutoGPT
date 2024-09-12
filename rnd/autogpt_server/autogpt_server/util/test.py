@@ -84,25 +84,18 @@ class SpinTestServer:
 
 
 async def wait_execution(
-    exec_manager: ExecutionManager,
     user_id: str,
     graph_id: str,
     graph_exec_id: str,
-    num_execs: int,
     timeout: int = 20,
 ) -> list:
     async def is_execution_completed():
-        execs = await AgentServer().get_graph_run_node_execution_results(
+        status = await AgentServer().get_graph_run_status(
             graph_id, graph_exec_id, user_id
         )
-        return (
-            exec_manager.queue.empty()
-            and len(execs) == num_execs
-            and all(
-                v.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
-                for v in execs
-            )
-        )
+        if status == ExecutionStatus.FAILED:
+            raise Exception("Execution failed")
+        return status == ExecutionStatus.COMPLETED
 
     # Wait for the executions to complete
     for i in range(timeout):
