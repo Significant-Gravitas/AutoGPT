@@ -9,7 +9,7 @@ from prisma.models import AgentGraph, AgentNode, AgentNodeLink
 from pydantic import BaseModel, PrivateAttr
 from pydantic_core import PydanticUndefinedType
 
-from autogpt_server.blocks.basic import InputBlock, OutputBlock
+from autogpt_server.blocks.basic import AgentInputBlock, AgentOutputBlock
 from autogpt_server.data.block import BlockInput, get_block, get_blocks
 from autogpt_server.data.db import BaseDbModel, transaction
 from autogpt_server.data.user import DEFAULT_USER_ID
@@ -106,7 +106,9 @@ class Graph(GraphMeta):
     def starting_nodes(self) -> list[Node]:
         outbound_nodes = {link.sink_id for link in self.links}
         input_nodes = {
-            v.id for v in self.nodes if isinstance(get_block(v.block_id), InputBlock)
+            v.id
+            for v in self.nodes
+            if isinstance(get_block(v.block_id), AgentInputBlock)
         }
         return [
             node
@@ -116,7 +118,9 @@ class Graph(GraphMeta):
 
     @property
     def ending_nodes(self) -> list[Node]:
-        return [v for v in self.nodes if isinstance(get_block(v.block_id), OutputBlock)]
+        return [
+            v for v in self.nodes if isinstance(get_block(v.block_id), AgentOutputBlock)
+        ]
 
     @property
     def subgraph_map(self) -> dict[str, str]:
@@ -179,7 +183,9 @@ class Graph(GraphMeta):
                 + [sanitize(link.sink_name) for link in node.input_links]
             )
             for name in block.input_schema.get_required_fields():
-                if name not in provided_inputs and not isinstance(block, InputBlock):
+                if name not in provided_inputs and not isinstance(
+                    block, AgentInputBlock
+                ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
                     )
@@ -193,7 +199,7 @@ class Graph(GraphMeta):
         def is_input_output_block(nid: str) -> bool:
             bid = node_map[nid].block_id
             b = get_block(bid)
-            return isinstance(b, InputBlock) or isinstance(b, OutputBlock)
+            return isinstance(b, AgentInputBlock) or isinstance(b, AgentOutputBlock)
 
         # subgraphs: all nodes in subgraph must be present in the graph.
         for subgraph_id, node_ids in self.subgraphs.items():
