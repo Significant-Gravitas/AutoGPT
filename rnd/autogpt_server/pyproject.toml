@@ -10,11 +10,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-agpt = { path = "../../autogpt", develop = true }
 aio-pika = "^9.4.3"
 anthropic = "^0.25.1"
 apscheduler = "^3.10.4"
-autogpt-forge = { path = "../../forge", develop = true }
 autogpt-libs = { path = "../autogpt_libs" }
 click = "^8.1.7"
 croniter = "^2.0.5"
