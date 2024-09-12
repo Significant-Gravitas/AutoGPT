@@ -46,7 +46,7 @@ export default class MarketplaceAPI {
     pageSize: number = 10,
   ): Promise<AgentListResponse> {
     return this._get(
-      `/top-downloads/agents?page=${page}&page_size=${pageSize}`,
+      `agents/top-downloads?page=${page}&page_size=${pageSize}`,
     );
   }
 
@@ -54,7 +54,7 @@ export default class MarketplaceAPI {
     page: number = 1,
     pageSize: number = 10,
   ): Promise<AgentListResponse> {
-    return this._get(`/featured/agents?page=${page}&page_size=${pageSize}`);
+    return this._get(`/agents/featured?page=${page}&page_size=${pageSize}`);
   }
 
   async searchAgents(

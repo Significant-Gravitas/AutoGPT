@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'market'
+    static_configs:
+      - targets: ['market:8015']
+    metrics_path: '/metrics'
+    scheme: 'http'
+

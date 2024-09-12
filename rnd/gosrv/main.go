@@ -58,6 +58,9 @@ func main() {
 	} else {
 		corsConfig.AllowOrigins = []string{"*"} // Fallback to allow all origins if not specified
 	}
+	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, "Authorization")
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+	corsConfig.AllowCredentials = true
 	r.Use(cors.New(corsConfig))
 
 	// Route welcome
@@ -67,7 +70,10 @@ func main() {
 
 
 	// Setup routes
-	api := r.Group("/api")
+	// [Error] Request header field Authorization is not allowed by Access-Control-Allow-Headers.
+	// [Error] Fetch API cannot load http://localhost:8015/api/v1/market/featured/agents?page=1&page_size=10 due to access control checks.
+	// [Error] Failed to load resource: Request header field Authorization is not allowed by Access-Control-Allow-Headers. (agents, line 0)
+	api := r.Group("/api/v1/market/")
 	{
 
 		agents := api.Group("/agents")

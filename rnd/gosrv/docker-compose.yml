@@ -13,4 +13,35 @@ services:
     ports:
       - "5432:5432"
 
-    
+  market:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8015:8015"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8015/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - market
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "9091:3000"
+    depends_on:
+      - prometheus
