@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Depado/ginprom"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/swiftyos/market/config"
@@ -49,6 +50,15 @@ func main() {
 	r.Use(ginzap.Ginzap(logger, time.RFC1123, true))
 	r.Use(ginzap.RecoveryWithZap(logger, true))
 	r.Use(middleware.Gzip())
+
+	// Update CORS configuration
+	corsConfig := cors.DefaultConfig()
+	if len(cfg.CORSAllowOrigins) > 0 {
+		corsConfig.AllowOrigins = cfg.CORSAllowOrigins
+	} else {
+		corsConfig.AllowOrigins = []string{"*"} // Fallback to allow all origins if not specified
+	}
+	r.Use(cors.New(corsConfig))
 
 	// Route welcome
 	r.GET("/", func(c *gin.Context) {

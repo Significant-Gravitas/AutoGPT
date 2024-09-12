@@ -13,6 +13,7 @@ type Config struct {
 	AuthEnabled   bool   `mapstructure:"authenabled"`
 	JWTSecret     string `mapstructure:"jwtsecret"`
 	JWTAlgorithm  string `mapstructure:"jwtalgorithm"`
+	CORSAllowOrigins []string `mapstructure:"corsalloworigins"`
 }
 
 func Load(configFile ...string) (*Config, error) {
