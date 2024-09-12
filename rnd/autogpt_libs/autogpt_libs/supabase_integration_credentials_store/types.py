@@ -27,12 +27,18 @@ class OAuth2Credentials(_BaseCredentials):
     scopes: list[str]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    def bearer(self) -> str:
+        return f"Bearer {self.access_token.get_secret_value()}"
+
 
 class APIKeyCredentials(_BaseCredentials):
     type: Literal["api_key"] = "api_key"
     api_key: SecretStr
     expires_at: Optional[int]
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
+
+    def bearer(self) -> str:
+        return f"Bearer {self.api_key.get_secret_value()}"
 
 
 Credentials = Annotated[

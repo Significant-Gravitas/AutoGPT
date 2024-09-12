@@ -1,20 +1,34 @@
 import base64
+from typing import Literal
 
 import requests
-from pydantic import BaseModel, ConfigDict, Field
+from autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+    OAuth2Credentials,
+)
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from autogpt_server.data.model import BlockSecret, SchemaField, SecretField
+from autogpt_server.data.model import (
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
+GithubCredentials = APIKeyCredentials | OAuth2Credentials
+GithubCredentialsInput = CredentialsMetaInput[
+    Literal["github"], Literal["api_key", "oauth2"]
+]
 
-class GithubCredentials(BaseModel):
-    github_oauth_token: BlockSecret = SecretField(key="github_oauth_token")
-
-    model_config = ConfigDict(title="GitHub Credentials")
+GITHUB_CREDS_FIELD: GithubCredentialsInput = CredentialsField(
+    provider="github",
+    supported_credential_types={"api_key", "oauth2"},
+    description="GitHub OAuth credentials",
+)
 
 
 class GithubCommentBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         issue_url: str = SchemaField(
             description="URL of the GitHub issue or pull request",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -22,10 +36,6 @@ class GithubCommentBlock(Block):
         comment: str = SchemaField(
             description="Comment to post on the issue or pull request",
             placeholder="Enter your comment",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -44,7 +54,7 @@ class GithubCommentBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "comment": "This is a test comment.",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -55,7 +65,9 @@ class GithubCommentBlock(Block):
         )
 
     @staticmethod
-    def post_comment(creds: GithubCredentials, issue_url: str, comment: str) -> str:
+    def post_comment(
+        credentials: GithubCredentials, issue_url: str, comment: str
+    ) -> str:
         try:
             if "/pull/" in issue_url:
                 api_url = (
@@ -71,7 +83,7 @@ class GithubCommentBlock(Block):
                 )
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"body": comment}
@@ -83,9 +95,15 @@ class GithubCommentBlock(Block):
         except Exception as e:
             return f"Failed to post comment: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.post_comment(
-            input_data.creds,
+            credentials,
             input_data.issue_url,
             input_data.comment,
         )
@@ -97,6 +115,7 @@ class GithubCommentBlock(Block):
 
 class GithubMakeIssueBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -106,10 +125,6 @@ class GithubMakeIssueBlock(Block):
         )
         body: str = SchemaField(
             description="Body of the issue", placeholder="Enter the issue body"
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -129,7 +144,7 @@ class GithubMakeIssueBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "title": "Test Issue",
                 "body": "This is a test issue.",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -141,12 +156,12 @@ class GithubMakeIssueBlock(Block):
 
     @staticmethod
     def create_issue(
-        creds: GithubCredentials, repo_url: str, title: str, body: str
+        credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> str:
         try:
             api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"title": title, "body": body}
@@ -158,9 +173,15 @@ class GithubMakeIssueBlock(Block):
         except Exception as e:
             return f"Failed to create issue: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.create_issue(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
             input_data.title,
             input_data.body,
@@ -173,6 +194,7 @@ class GithubMakeIssueBlock(Block):
 
 class GithubMakePRBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -192,10 +214,6 @@ class GithubMakePRBlock(Block):
         base: str = SchemaField(
             description="The name of the branch you want the changes pulled into.",
             placeholder="Enter the base branch",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -219,7 +237,7 @@ class GithubMakePRBlock(Block):
                 "body": "This is a test pull request.",
                 "head": "feature-branch",
                 "base": "main",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -231,7 +249,7 @@ class GithubMakePRBlock(Block):
 
     @staticmethod
     def create_pr(
-        creds: GithubCredentials,
+        credentials: GithubCredentials,
         repo_url: str,
         title: str,
         body: str,
@@ -243,7 +261,7 @@ class GithubMakePRBlock(Block):
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = f"https://api.github.com/repos/{repo_path}/pulls"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"title": title, "body": body, "head": head, "base": base}
@@ -260,9 +278,15 @@ class GithubMakePRBlock(Block):
         except Exception as e:
             return f"Failed to create pull request: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.create_pr(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
             input_data.title,
             input_data.body,
@@ -277,13 +301,10 @@ class GithubMakePRBlock(Block):
 
 class GithubReadIssueBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         issue_url: str = SchemaField(
             description="URL of the GitHub issue",
             placeholder="https://github.com/owner/repo/issues/1",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -303,7 +324,7 @@ class GithubReadIssueBlock(Block):
             output_schema=GithubReadIssueBlock.Output,
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -322,12 +343,14 @@ class GithubReadIssueBlock(Block):
         )
 
     @staticmethod
-    def read_issue(creds: GithubCredentials, issue_url: str) -> tuple[str, str, str]:
+    def read_issue(
+        credentials: GithubCredentials, issue_url: str
+    ) -> tuple[str, str, str]:
         try:
             api_url = issue_url.replace("github.com", "api.github.com/repos")
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -343,9 +366,15 @@ class GithubReadIssueBlock(Block):
         except Exception as e:
             return f"Failed to read issue: {str(e)}", "", ""
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         title, body, user = self.read_issue(
-            input_data.creds,
+            credentials,
             input_data.issue_url,
         )
         if "Failed" in title:
@@ -358,13 +387,10 @@ class GithubReadIssueBlock(Block):
 
 class GithubReadPRBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
         include_pr_changes: bool = SchemaField(
             description="Whether to include the changes made in the pull request",
@@ -389,7 +415,7 @@ class GithubReadPRBlock(Block):
             output_schema=GithubReadPRBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
                 "include_pr_changes": True,
@@ -411,14 +437,14 @@ class GithubReadPRBlock(Block):
         )
 
     @staticmethod
-    def read_pr(creds: GithubCredentials, pr_url: str) -> tuple[str, str, str]:
+    def read_pr(credentials: GithubCredentials, pr_url: str) -> tuple[str, str, str]:
         try:
             api_url = pr_url.replace("github.com", "api.github.com/repos").replace(
                 "/pull/", "/issues/"
             )
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -435,7 +461,7 @@ class GithubReadPRBlock(Block):
             return f"Failed to read pull request: {str(e)}", "", ""
 
     @staticmethod
-    def read_pr_changes(creds: GithubCredentials, pr_url: str) -> str:
+    def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
         try:
             api_url = (
                 pr_url.replace("github.com", "api.github.com/repos").replace(
@@ -445,7 +471,7 @@ class GithubReadPRBlock(Block):
             )
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -464,9 +490,15 @@ class GithubReadPRBlock(Block):
         except Exception as e:
             return f"Failed to read PR changes: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         title, body, user = self.read_pr(
-            input_data.creds,
+            credentials,
             input_data.pr_url,
         )
         if "Failed" in title:
@@ -478,7 +510,7 @@ class GithubReadPRBlock(Block):
 
         if input_data.include_pr_changes:
             changes = self.read_pr_changes(
-                input_data.creds,
+                credentials,
                 input_data.pr_url,
             )
             if "Failed" in changes:
@@ -491,13 +523,10 @@ class GithubReadPRBlock(Block):
 
 class GithubListIssuesBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -515,7 +544,7 @@ class GithubListIssuesBlock(Block):
             output_schema=GithubListIssuesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -541,11 +570,13 @@ class GithubListIssuesBlock(Block):
         )
 
     @staticmethod
-    def list_issues(creds: GithubCredentials, repo_url: str) -> list[dict[str, str]]:
+    def list_issues(
+        credentials: GithubCredentials, repo_url: str
+    ) -> list[dict[str, str]]:
         try:
             api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -561,9 +592,15 @@ class GithubListIssuesBlock(Block):
         except Exception as e:
             return [{"title": "Error", "url": f"Failed to list issues: {str(e)}"}]
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         issues = self.list_issues(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
         )
         if any("Failed" in issue["url"] for issue in issues):
@@ -574,13 +611,10 @@ class GithubListIssuesBlock(Block):
 
 class GithubReadTagsBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -598,7 +632,7 @@ class GithubReadTagsBlock(Block):
             output_schema=GithubReadTagsBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -624,12 +658,14 @@ class GithubReadTagsBlock(Block):
         )
 
     @staticmethod
-    def list_tags(creds: GithubCredentials, repo_url: str) -> list[dict[str, str]]:
+    def list_tags(
+        credentials: GithubCredentials, repo_url: str
+    ) -> list[dict[str, str]]:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = f"https://api.github.com/repos/{repo_path}/tags"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -649,9 +685,15 @@ class GithubReadTagsBlock(Block):
         except Exception as e:
             return [{"name": "Error", "url": f"Failed to list tags: {str(e)}"}]
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         tags = self.list_tags(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
         )
         if any("Failed" in tag["url"] for tag in tags):
@@ -662,13 +704,10 @@ class GithubReadTagsBlock(Block):
 
 class GithubReadBranchesBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -686,7 +725,7 @@ class GithubReadBranchesBlock(Block):
             output_schema=GithubReadBranchesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -712,13 +751,15 @@ class GithubReadBranchesBlock(Block):
         )
 
     @staticmethod
-    def list_branches(creds: GithubCredentials, repo_url: str) -> list[dict[str, str]]:
+    def list_branches(
+        credentials: GithubCredentials, repo_url: str
+    ) -> list[dict[str, str]]:
         try:
             api_url = (
                 repo_url.replace("github.com", "api.github.com/repos") + "/branches"
             )
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -735,9 +776,15 @@ class GithubReadBranchesBlock(Block):
         except Exception as e:
             return [{"name": "Error", "url": f"Failed to list branches: {str(e)}"}]
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         branches = self.list_branches(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
         )
         if any("Failed" in branch["url"] for branch in branches):
@@ -748,13 +795,10 @@ class GithubReadBranchesBlock(Block):
 
 class GithubReadDiscussionsBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
         num_discussions: int = SchemaField(
             description="Number of discussions to fetch", default=5
@@ -777,7 +821,7 @@ class GithubReadDiscussionsBlock(Block):
             output_schema=GithubReadDiscussionsBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
                 "num_discussions": 3,
@@ -805,7 +849,7 @@ class GithubReadDiscussionsBlock(Block):
 
     @staticmethod
     def list_discussions(
-        creds: GithubCredentials, repo_url: str, num_discussions: int
+        credentials: GithubCredentials, repo_url: str, num_discussions: int
     ) -> list[dict[str, str]]:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
@@ -824,7 +868,7 @@ class GithubReadDiscussionsBlock(Block):
             """
             variables = {"owner": owner, "repo": repo, "num": num_discussions}
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -845,9 +889,15 @@ class GithubReadDiscussionsBlock(Block):
         except Exception as e:
             return [{"title": "Error", "url": f"Failed to list discussions: {str(e)}"}]
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         discussions = self.list_discussions(
-            input_data.creds, input_data.repo_url, input_data.num_discussions
+            credentials, input_data.repo_url, input_data.num_discussions
         )
         if any("Failed" in discussion["url"] for discussion in discussions):
             yield "error", discussions[0]["url"]
@@ -857,13 +907,10 @@ class GithubReadDiscussionsBlock(Block):
 
 class GithubReadReleasesBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -881,7 +928,7 @@ class GithubReadReleasesBlock(Block):
             output_schema=GithubReadReleasesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -907,12 +954,14 @@ class GithubReadReleasesBlock(Block):
         )
 
     @staticmethod
-    def list_releases(creds: GithubCredentials, repo_url: str) -> list[dict[str, str]]:
+    def list_releases(
+        credentials: GithubCredentials, repo_url: str
+    ) -> list[dict[str, str]]:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = f"https://api.github.com/repos/{repo_path}/releases"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -929,9 +978,15 @@ class GithubReadReleasesBlock(Block):
         except Exception as e:
             return [{"name": "Error", "url": f"Failed to list releases: {str(e)}"}]
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         releases = self.list_releases(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
         )
         if any("Failed" in release["url"] for release in releases):
@@ -942,6 +997,7 @@ class GithubReadReleasesBlock(Block):
 
 class GithubAddLabelBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         issue_url: str = SchemaField(
             description="URL of the GitHub issue or pull request",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -949,10 +1005,6 @@ class GithubAddLabelBlock(Block):
         label: str = SchemaField(
             description="Label to add to the issue or pull request",
             placeholder="Enter the label",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -971,7 +1023,7 @@ class GithubAddLabelBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "label": "bug",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -980,7 +1032,7 @@ class GithubAddLabelBlock(Block):
         )
 
     @staticmethod
-    def add_label(creds: GithubCredentials, issue_url: str, label: str) -> str:
+    def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
         try:
             # Convert the provided GitHub URL to the API URL
             if "/pull/" in issue_url:
@@ -999,7 +1051,7 @@ class GithubAddLabelBlock(Block):
             print(f"Constructed API URL: {api_url}")
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"labels": [label]}
@@ -1009,13 +1061,19 @@ class GithubAddLabelBlock(Block):
 
             return "Label added successfully"
         except requests.exceptions.HTTPError as http_err:
-            return f"HTTP error occurred: {http_err} - {response.text}"
+            return f"HTTP error occurred: {http_err} - {http_err.response.text}"
         except Exception as e:
             return f"Failed to add label: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.add_label(
-            input_data.creds,
+            credentials,
             input_data.issue_url,
             input_data.label,
         )
@@ -1027,6 +1085,7 @@ class GithubAddLabelBlock(Block):
 
 class GithubRemoveLabelBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         issue_url: str = SchemaField(
             description="URL of the GitHub issue or pull request",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -1034,10 +1093,6 @@ class GithubRemoveLabelBlock(Block):
         label: str = SchemaField(
             description="Label to remove from the issue or pull request",
             placeholder="Enter the label",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1056,7 +1111,7 @@ class GithubRemoveLabelBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "label": "bug",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1067,7 +1122,7 @@ class GithubRemoveLabelBlock(Block):
         )
 
     @staticmethod
-    def remove_label(creds: GithubCredentials, issue_url: str, label: str) -> str:
+    def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
         try:
             # Convert the provided GitHub URL to the API URL
             if "/pull/" in issue_url:
@@ -1087,7 +1142,7 @@ class GithubRemoveLabelBlock(Block):
             print(f"Constructed API URL: {api_url}")
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -1096,13 +1151,19 @@ class GithubRemoveLabelBlock(Block):
 
             return "Label removed successfully"
         except requests.exceptions.HTTPError as http_err:
-            return f"HTTP error occurred: {http_err} - {response.text}"
+            return f"HTTP error occurred: {http_err} - {http_err.response.text}"
         except Exception as e:
             return f"Failed to remove label: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.remove_label(
-            input_data.creds,
+            credentials,
             input_data.issue_url,
             input_data.label,
         )
@@ -1114,6 +1175,7 @@ class GithubRemoveLabelBlock(Block):
 
 class GithubAssignReviewerBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
@@ -1121,10 +1183,6 @@ class GithubAssignReviewerBlock(Block):
         reviewer: str = SchemaField(
             description="Username of the reviewer to assign",
             placeholder="Enter the reviewer's username",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1145,7 +1203,7 @@ class GithubAssignReviewerBlock(Block):
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "reviewer": "reviewer_username",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1156,7 +1214,9 @@ class GithubAssignReviewerBlock(Block):
         )
 
     @staticmethod
-    def assign_reviewer(creds: GithubCredentials, pr_url: str, reviewer: str) -> str:
+    def assign_reviewer(
+        credentials: GithubCredentials, pr_url: str, reviewer: str
+    ) -> str:
         try:
             # Convert the PR URL to the appropriate API endpoint
             api_url = (
@@ -1170,7 +1230,7 @@ class GithubAssignReviewerBlock(Block):
             print(f"Constructed API URL: {api_url}")
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"reviewers": [reviewer]}
@@ -1183,16 +1243,22 @@ class GithubAssignReviewerBlock(Block):
 
             return "Reviewer assigned successfully"
         except requests.exceptions.HTTPError as http_err:
-            if response.status_code == 422:
-                return f"Failed to assign reviewer: The reviewer '{reviewer}' may not have permission or the pull request is not in a valid state. Detailed error: {response.text}"
+            if http_err.response.status_code == 422:
+                return f"Failed to assign reviewer: The reviewer '{reviewer}' may not have permission or the pull request is not in a valid state. Detailed error: {http_err.response.text}"
             else:
-                return f"HTTP error occurred: {http_err} - {response.text}"
+                return f"HTTP error occurred: {http_err} - {http_err.response.text}"
         except Exception as e:
             return f"Failed to assign reviewer: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.assign_reviewer(
-            input_data.creds,
+            credentials,
             input_data.pr_url,
             input_data.reviewer,
         )
@@ -1204,6 +1270,7 @@ class GithubAssignReviewerBlock(Block):
 
 class GithubUnassignReviewerBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
@@ -1211,10 +1278,6 @@ class GithubUnassignReviewerBlock(Block):
         reviewer: str = SchemaField(
             description="Username of the reviewer to unassign",
             placeholder="Enter the reviewer's username",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1235,7 +1298,7 @@ class GithubUnassignReviewerBlock(Block):
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "reviewer": "reviewer_username",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1246,7 +1309,9 @@ class GithubUnassignReviewerBlock(Block):
         )
 
     @staticmethod
-    def unassign_reviewer(creds: GithubCredentials, pr_url: str, reviewer: str) -> str:
+    def unassign_reviewer(
+        credentials: GithubCredentials, pr_url: str, reviewer: str
+    ) -> str:
         try:
             api_url = (
                 pr_url.replace("github.com", "api.github.com/repos").replace(
@@ -1255,7 +1320,7 @@ class GithubUnassignReviewerBlock(Block):
                 + "/requested_reviewers"
             )
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"reviewers": [reviewer]}
@@ -1267,9 +1332,15 @@ class GithubUnassignReviewerBlock(Block):
         except Exception as e:
             return f"Failed to unassign reviewer: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.unassign_reviewer(
-            input_data.creds,
+            credentials,
             input_data.pr_url,
             input_data.reviewer,
         )
@@ -1281,13 +1352,10 @@ class GithubUnassignReviewerBlock(Block):
 
 class GithubListReviewersBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1307,7 +1375,7 @@ class GithubListReviewersBlock(Block):
             output_schema=GithubListReviewersBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1333,7 +1401,9 @@ class GithubListReviewersBlock(Block):
         )
 
     @staticmethod
-    def list_reviewers(creds: GithubCredentials, pr_url: str) -> list[dict[str, str]]:
+    def list_reviewers(
+        credentials: GithubCredentials, pr_url: str
+    ) -> list[dict[str, str]]:
         try:
             api_url = (
                 pr_url.replace("github.com", "api.github.com/repos").replace(
@@ -1342,7 +1412,7 @@ class GithubListReviewersBlock(Block):
                 + "/requested_reviewers"
             )
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -1359,9 +1429,15 @@ class GithubListReviewersBlock(Block):
         except Exception as e:
             return [{"username": "Error", "url": f"Failed to list reviewers: {str(e)}"}]
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         reviewers = self.list_reviewers(
-            input_data.creds,
+            credentials,
             input_data.pr_url,
         )
         if any("Failed" in reviewer["url"] for reviewer in reviewers):
@@ -1372,6 +1448,7 @@ class GithubListReviewersBlock(Block):
 
 class GithubAssignIssueBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         issue_url: str = SchemaField(
             description="URL of the GitHub issue",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -1379,10 +1456,6 @@ class GithubAssignIssueBlock(Block):
         assignee: str = SchemaField(
             description="Username to assign to the issue",
             placeholder="Enter the username",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1403,7 +1476,7 @@ class GithubAssignIssueBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "assignee": "username1",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1415,7 +1488,7 @@ class GithubAssignIssueBlock(Block):
 
     @staticmethod
     def assign_issue(
-        creds: GithubCredentials,
+        credentials: GithubCredentials,
         issue_url: str,
         assignee: str,
     ) -> str:
@@ -1427,7 +1500,7 @@ class GithubAssignIssueBlock(Block):
             api_url = f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"assignees": [assignee]}
@@ -1441,9 +1514,15 @@ class GithubAssignIssueBlock(Block):
         except Exception as e:
             return f"Failed to assign issue: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.assign_issue(
-            input_data.creds,
+            credentials,
             input_data.issue_url,
             input_data.assignee,
         )
@@ -1455,6 +1534,7 @@ class GithubAssignIssueBlock(Block):
 
 class GithubUnassignIssueBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         issue_url: str = SchemaField(
             description="URL of the GitHub issue",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -1462,10 +1542,6 @@ class GithubUnassignIssueBlock(Block):
         assignee: str = SchemaField(
             description="Username to unassign from the issue",
             placeholder="Enter the username",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1486,7 +1562,7 @@ class GithubUnassignIssueBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "assignee": "username1",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1498,7 +1574,7 @@ class GithubUnassignIssueBlock(Block):
 
     @staticmethod
     def unassign_issue(
-        creds: GithubCredentials,
+        credentials: GithubCredentials,
         issue_url: str,
         assignee: str,
     ) -> str:
@@ -1510,7 +1586,7 @@ class GithubUnassignIssueBlock(Block):
             api_url = f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
 
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
             data = {"assignees": [assignee]}
@@ -1524,9 +1600,15 @@ class GithubUnassignIssueBlock(Block):
         except Exception as e:
             return f"Failed to unassign issue: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.unassign_issue(
-            input_data.creds,
+            credentials,
             input_data.issue_url,
             input_data.assignee,
         )
@@ -1538,13 +1620,10 @@ class GithubUnassignIssueBlock(Block):
 
 class GithubReadCodeownersFileBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1562,7 +1641,7 @@ class GithubReadCodeownersFileBlock(Block):
             output_schema=GithubReadCodeownersFileBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1573,12 +1652,12 @@ class GithubReadCodeownersFileBlock(Block):
         )
 
     @staticmethod
-    def read_codeowners(creds: GithubCredentials, repo_url: str) -> str:
+    def read_codeowners(credentials: GithubCredentials, repo_url: str) -> str:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = f"https://api.github.com/repos/{repo_path}/contents/.github/CODEOWNERS?ref=master"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -1592,9 +1671,15 @@ class GithubReadCodeownersFileBlock(Block):
         except Exception as e:
             return f"Failed to read CODEOWNERS file: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         content = self.read_codeowners(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
         )
         if "Failed" not in content:
@@ -1605,6 +1690,7 @@ class GithubReadCodeownersFileBlock(Block):
 
 class GithubReadFileFromMasterBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1612,10 +1698,6 @@ class GithubReadFileFromMasterBlock(Block):
         file_path: str = SchemaField(
             description="Path to the file in the repository",
             placeholder="path/to/file",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1634,7 +1716,7 @@ class GithubReadFileFromMasterBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "file_path": "path/to/file",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1643,12 +1725,12 @@ class GithubReadFileFromMasterBlock(Block):
         )
 
     @staticmethod
-    def read_file(creds: GithubCredentials, repo_url: str, file_path: str) -> str:
+    def read_file(credentials: GithubCredentials, repo_url: str, file_path: str) -> str:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = f"https://api.github.com/repos/{repo_path}/contents/{file_path}?ref=master"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -1662,9 +1744,15 @@ class GithubReadFileFromMasterBlock(Block):
         except Exception as e:
             return f"Failed to read file: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         content = self.read_file(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
             input_data.file_path,
         )
@@ -1676,6 +1764,7 @@ class GithubReadFileFromMasterBlock(Block):
 
 class GithubReadFileFolderRepoBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1687,10 +1776,6 @@ class GithubReadFileFolderRepoBlock(Block):
         branch: str = SchemaField(
             description="Branch name to read from",
             placeholder="branch_name",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1710,7 +1795,7 @@ class GithubReadFileFolderRepoBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "path": "path/to/file_or_folder",
                 "branch": "branch_name",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1722,7 +1807,7 @@ class GithubReadFileFolderRepoBlock(Block):
 
     @staticmethod
     def read_content(
-        creds: GithubCredentials, repo_url: str, path: str, branch: str
+        credentials: GithubCredentials, repo_url: str, path: str, branch: str
     ) -> str:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
@@ -1730,7 +1815,7 @@ class GithubReadFileFolderRepoBlock(Block):
                 f"https://api.github.com/repos/{repo_path}/contents/{path}?ref={branch}"
             )
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -1748,9 +1833,15 @@ class GithubReadFileFolderRepoBlock(Block):
         except Exception as e:
             return f"Failed to read content: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         content = self.read_content(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
             input_data.path,
             input_data.branch,
@@ -1763,6 +1854,7 @@ class GithubReadFileFolderRepoBlock(Block):
 
 class GithubMakeBranchBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1774,10 +1866,6 @@ class GithubMakeBranchBlock(Block):
         source_branch: str = SchemaField(
             description="Name of the source branch",
             placeholder="source_branch_name",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1797,7 +1885,7 @@ class GithubMakeBranchBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "new_branch": "new_branch_name",
                 "source_branch": "source_branch_name",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1809,13 +1897,16 @@ class GithubMakeBranchBlock(Block):
 
     @staticmethod
     def create_branch(
-        creds: GithubCredentials, repo_url: str, new_branch: str, source_branch: str
+        credentials: GithubCredentials,
+        repo_url: str,
+        new_branch: str,
+        source_branch: str,
     ) -> str:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             ref_api_url = f"https://api.github.com/repos/{repo_path}/git/refs/heads/{source_branch}"
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -1836,9 +1927,15 @@ class GithubMakeBranchBlock(Block):
         except Exception as e:
             return f"Failed to create branch: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.create_branch(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
             input_data.new_branch,
             input_data.source_branch,
@@ -1851,6 +1948,7 @@ class GithubMakeBranchBlock(Block):
 
 class GithubDeleteBranchBlock(Block):
     class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1858,10 +1956,6 @@ class GithubDeleteBranchBlock(Block):
         branch: str = SchemaField(
             description="Name of the branch to delete",
             placeholder="branch_name",
-        )
-        creds: GithubCredentials = Field(
-            description="GitHub OAuth credentials",
-            default=GithubCredentials(),
         )
 
     class Output(BlockSchema):
@@ -1880,7 +1974,7 @@ class GithubDeleteBranchBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "branch": "branch_name",
-                "creds": {
+                "credentials": {
                     "github_oauth_token": "your-github-oauth-token",
                 },
             },
@@ -1891,14 +1985,16 @@ class GithubDeleteBranchBlock(Block):
         )
 
     @staticmethod
-    def delete_branch(creds: GithubCredentials, repo_url: str, branch: str) -> str:
+    def delete_branch(
+        credentials: GithubCredentials, repo_url: str, branch: str
+    ) -> str:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = (
                 f"https://api.github.com/repos/{repo_path}/git/refs/heads/{branch}"
             )
             headers = {
-                "Authorization": f"Bearer {creds.github_oauth_token.get_secret_value()}",
+                "Authorization": credentials.bearer(),
                 "Accept": "application/vnd.github.v3+json",
             }
 
@@ -1911,9 +2007,15 @@ class GithubDeleteBranchBlock(Block):
         except Exception as e:
             return f"Failed to delete branch: {str(e)}"
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         status = self.delete_branch(
-            input_data.creds,
+            credentials,
             input_data.repo_url,
             input_data.branch,
         )
