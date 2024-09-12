@@ -24,6 +24,7 @@ LlmApiKeys = {
 class ModelMetadata(NamedTuple):
     provider: str
     context_window: int
+    cost_factor: int
 
 
 class LlmModel(str, Enum):
@@ -55,25 +56,28 @@ class LlmModel(str, Enum):
 
 
 MODEL_METADATA = {
-    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000),
-    LlmModel.GPT4O: ModelMetadata("openai", 128000),
-    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000),
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385),
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000),
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000),
-    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192),
-    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192),
-    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768),
-    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192),
-    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192),
-    LlmModel.LLAMA3_1_405B: ModelMetadata(
-        "groq", 8192
-    ),  # Limited to 16k during preview
-    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072),
-    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
+    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=10),
+    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=12),
+    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=11),
+    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=8),
+    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=14),
+    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=13),
+    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=6),
+    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=9),
+    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=7),
+    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=6),
+    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=7),
+    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=10),
+    # Limited to 16k during preview
+    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=15),
+    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=13),
+    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
+    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
 }
+
+for model in LlmModel:
+    if model not in MODEL_METADATA:
+        raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
 
 class AIStructuredResponseGeneratorBlock(Block):
@@ -301,7 +305,7 @@ class AITextGeneratorBlock(Block):
             yield "error", str(e)
 
 
-class TextSummarizerBlock(Block):
+class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
         model: LlmModel = LlmModel.GPT4_TURBO
@@ -319,8 +323,8 @@ class TextSummarizerBlock(Block):
             id="c3d4e5f6-7g8h-9i0j-1k2l-m3n4o5p6q7r8",
             description="Utilize a Large Language Model (LLM) to summarize a long text.",
             categories={BlockCategory.AI, BlockCategory.TEXT},
-            input_schema=TextSummarizerBlock.Input,
-            output_schema=TextSummarizerBlock.Output,
+            input_schema=AITextSummarizerBlock.Input,
+            output_schema=AITextSummarizerBlock.Output,
             test_input={"text": "Lorem ipsum..." * 100},
             test_output=("summary", "Final summary of a long text"),
             test_mock={
@@ -412,7 +416,7 @@ class TextSummarizerBlock(Block):
         else:
             # If combined summaries are still too long, recursively summarize
             return self._run(
-                TextSummarizerBlock.Input(
+                AITextSummarizerBlock.Input(
                     text=combined_text,
                     api_key=input_data.api_key,
                     model=input_data.model,

@@ -126,7 +126,7 @@ services:
       - AUTH_ENABLED=false
       - PYRO_HOST=0.0.0.0
     ports:
-      - "8001:8000"
+      - "8001:8001"
     networks:
       - app-network
 
