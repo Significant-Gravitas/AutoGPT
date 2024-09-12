@@ -1,6 +1,6 @@
 from prisma.models import User
 
-from autogpt_server.blocks.basic import InputBlock, PrintToConsoleBlock
+from autogpt_server.blocks.basic import AgentInputBlock, PrintToConsoleBlock
 from autogpt_server.blocks.text import FillTextTemplateBlock
 from autogpt_server.data import graph
 from autogpt_server.data.graph import create_graph
@@ -20,19 +20,19 @@ async def create_test_user() -> User:
 
 def create_test_graph() -> graph.Graph:
     """
-    StoreValueBlock
+    InputBlock
                \
                  ---- FillTextTemplateBlock ---- PrintToConsoleBlock
                /
-    StoreValueBlock
+    InputBlock
     """
     nodes = [
         graph.Node(
-            block_id=InputBlock().id,
+            block_id=AgentInputBlock().id,
             input_default={"name": "input_1"},
         ),
         graph.Node(
-            block_id=InputBlock().id,
+            block_id=AgentInputBlock().id,
             input_default={"name": "input_2"},
         ),
         graph.Node(
