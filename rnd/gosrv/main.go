@@ -43,31 +43,31 @@ func main() {
 	{
 		agents := api.Group("/agents")
 		{
-			agents.GET("", handlers.ListAgents(db, logger))
-			agents.GET("/:agent_id", handlers.GetAgentDetails(db, logger))
-			agents.GET("/:agent_id/download", handlers.DownloadAgent(db, logger))
-			agents.GET("/:agent_id/download-file", handlers.DownloadAgentFile(db, logger))
-			agents.GET("/top-downloads", handlers.TopAgentsByDownloads(db, logger))
-			agents.GET("/featured", handlers.GetFeaturedAgents(db, logger))
-			agents.GET("/search", handlers.Search(db, logger))
-			agents.POST("/submit", middleware.Auth(cfg), handlers.SubmitAgent(db, logger))
+			agents.GET("", handlers.ListAgents(db))
+			agents.GET("/:agent_id", handlers.GetAgentDetails(db))
+			agents.GET("/:agent_id/download", handlers.DownloadAgent(db))
+			agents.GET("/:agent_id/download-file", handlers.DownloadAgentFile(db))
+			agents.GET("/top-downloads", handlers.TopAgentsByDownloads(db))
+			agents.GET("/featured", handlers.GetFeaturedAgents(db))
+			agents.GET("/search", handlers.Search(db))
+			agents.POST("/submit", middleware.Auth(cfg), handlers.SubmitAgent(db))
 		}
 
 		// Admin routes
 		admin := api.Group("/admin")
 		{
-			admin.POST("/agent", middleware.Auth(cfg), handlers.CreateAgentEntry(db, logger))
-			admin.POST("/agent/featured/:agent_id", middleware.Auth(cfg), handlers.SetAgentFeatured(db, logger))
-			admin.GET("/agent/featured/:agent_id", middleware.Auth(cfg), handlers.GetAgentFeatured(db, logger))
-			admin.DELETE("/agent/featured/:agent_id", middleware.Auth(cfg), handlers.UnsetAgentFeatured(db, logger))
-			admin.GET("/agent/not-featured", middleware.Auth(cfg), handlers.GetNotFeaturedAgents(db, logger))
-			admin.GET("/agent/submissions", middleware.Auth(cfg), handlers.GetAgentSubmissions(db, logger))
-			admin.POST("/agent/submissions", middleware.Auth(cfg), handlers.ReviewSubmission(db, logger))
-			admin.GET("/categories", handlers.GetCategories(db, logger))
+			admin.POST("/agent", middleware.Auth(cfg), handlers.CreateAgentEntry(db))
+			admin.POST("/agent/featured/:agent_id", middleware.Auth(cfg), handlers.SetAgentFeatured(db))
+			admin.GET("/agent/featured/:agent_id", middleware.Auth(cfg), handlers.GetAgentFeatured(db))
+			admin.DELETE("/agent/featured/:agent_id", middleware.Auth(cfg), handlers.UnsetAgentFeatured(db))
+			admin.GET("/agent/not-featured", middleware.Auth(cfg), handlers.GetNotFeaturedAgents(db))
+			admin.GET("/agent/submissions", middleware.Auth(cfg), handlers.GetAgentSubmissions(db))
+			admin.POST("/agent/submissions", middleware.Auth(cfg), handlers.ReviewSubmission(db))
+			admin.GET("/categories", handlers.GetCategories(db))
 		}
 
 		// Analytics routes
-		api.POST("/agent-installed", handlers.AgentInstalled(db, logger))
+		api.POST("/agent-installed", handlers.AgentInstalled(db))
 	}
 
 	// Start server

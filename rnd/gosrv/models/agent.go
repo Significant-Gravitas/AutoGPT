@@ -85,3 +85,9 @@ type FeaturedAgent struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	UpdatedAt          time.Time `json:"updatedAt"`
 }
+
+type AgentFile struct {
+	ID    string      `json:"id"`
+	Name  string      `json:"name"`
+	Graph interface{} `json:"graph"`
+}
