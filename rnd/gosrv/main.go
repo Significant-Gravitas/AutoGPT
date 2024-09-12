@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Depado/ginprom"
 	"github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/swiftyos/market/config"
@@ -38,7 +39,12 @@ func main() {
 		port = "8080" // Default port if not specified in config
 	}
 	r.Run(":" + port)
-
+	p := ginprom.New(
+		ginprom.Engine(r),
+		ginprom.Subsystem("gin"),
+		ginprom.Path("/metrics"),
+	)
+	r.Use(p.Instrument())
 	// Use middleware
 	r.Use(ginzap.Ginzap(logger, time.RFC1123, true))
 	r.Use(ginzap.RecoveryWithZap(logger, true))
