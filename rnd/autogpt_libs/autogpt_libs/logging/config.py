@@ -1,6 +1,5 @@
 """Logging module for Auto-GPT."""
 
-
 import logging
 import sys
 from pathlib import Path
@@ -63,9 +62,7 @@ class LoggingConfig(BaseSettings):
         return v
 
 
-def configure_logging(
-    force_cloud_logging: bool = False
-) -> None:
+def configure_logging(force_cloud_logging: bool = False) -> None:
     """Configure the native logging module based on the LoggingConfig settings.
 
     This function sets up logging handlers and formatters according to the
@@ -89,25 +86,22 @@ def configure_logging(
 
     # Cloud logging setup
     if config.enable_cloud_logging or force_cloud_logging:
-        try:
-            import google.cloud.logging
-            from google.cloud.logging.handlers import CloudLoggingHandler
-            from google.cloud.logging_v2.handlers.transports.sync import SyncTransport
+        import google.cloud.logging
+        from google.cloud.logging.handlers import CloudLoggingHandler
+        from google.cloud.logging_v2.handlers.transports.sync import SyncTransport
 
-            client = google.cloud.logging.Client()
-            cloud_handler = CloudLoggingHandler(
-                client,
-                name="autogpt_logs",
-                transport=SyncTransport,
-            )
-            cloud_handler.setLevel(config.level)
-            cloud_handler.setFormatter(StructuredLoggingFormatter())
-            log_handlers.append(cloud_handler)
-            print("Cloud logging enabled")
-        except Exception as e:
-            print(f"Failed to set up cloud logging: {str(e)}")
+        client = google.cloud.logging.Client()
+        cloud_handler = CloudLoggingHandler(
+            client,
+            name="autogpt_logs",
+            transport=SyncTransport,
+        )
+        cloud_handler.setLevel(config.level)
+        cloud_handler.setFormatter(StructuredLoggingFormatter())
+        log_handlers.append(cloud_handler)
+        print("Cloud logging enabled")
     else:
-         # Console output handlers
+        # Console output handlers
         stdout = logging.StreamHandler(stream=sys.stdout)
         stdout.setLevel(config.level)
         stdout.addFilter(BelowLevelFilter(logging.WARNING))
@@ -131,9 +125,9 @@ def configure_logging(
         # create log directory if it doesn't exist
         if not config.log_dir.exists():
             config.log_dir.mkdir(parents=True, exist_ok=True)
-        
+
         print(f"Log directory: {config.log_dir}")
-        
+
         # Activity log handler (INFO and above)
         activity_log_handler = logging.FileHandler(
             config.log_dir / LOG_FILE, "a", "utf-8"
@@ -150,7 +144,9 @@ def configure_logging(
                 config.log_dir / DEBUG_LOG_FILE, "a", "utf-8"
             )
             debug_log_handler.setLevel(logging.DEBUG)
-            debug_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
+            debug_log_handler.setFormatter(
+                AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True)
+            )
             log_handlers.append(debug_log_handler)
 
         # Error log handler (ERROR and above)
@@ -160,7 +156,7 @@ def configure_logging(
         error_log_handler.setLevel(logging.ERROR)
         error_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
         log_handlers.append(error_log_handler)
-        print("File logging enabled")       
+        print("File logging enabled")
 
     # Configure the root logger
     logging.basicConfig(
@@ -168,4 +164,3 @@ def configure_logging(
         level=config.level,
         handlers=log_handlers,
     )
-
