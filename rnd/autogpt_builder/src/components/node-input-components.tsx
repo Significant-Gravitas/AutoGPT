@@ -10,7 +10,7 @@ import {
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import { FC, useCallback, useEffect, useState } from "react";
+import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -582,6 +582,52 @@ const NodeStringInput: FC<{
           </Button>
         </div>
       )}
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
+
+export const NodeTextBoxInput: FC<{
+  selfKey: string;
+  schema: BlockIOStringSubSchema;
+  value?: string;
+  error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value = "",
+  error,
+  handleInputChange,
+  handleInputClick,
+  className,
+  displayName,
+}) => {
+  return (
+    <div className={className}>
+      <div
+        className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4"
+        onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
+      >
+        <textarea
+          id={selfKey}
+          value={schema.secret && value ? "********" : value}
+          readOnly={schema.secret}
+          placeholder={
+            schema?.placeholder || `Enter ${beautifyString(displayName)}`
+          }
+          onChange={(e) => handleInputChange(selfKey, e.target.value)}
+          onBlur={(e) => handleInputChange(selfKey, e.target.value)}
+          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none"
+          style={{
+            fontSize: "min(1em, 16px)",
+            lineHeight: "1.2",
+          }}
+        />
+      </div>
       {error && <span className="error-message">{error}</span>}
     </div>
   );

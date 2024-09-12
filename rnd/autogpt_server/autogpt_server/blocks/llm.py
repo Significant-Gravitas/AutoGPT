@@ -438,7 +438,7 @@ class Message(BlockSchema):
 class AIConversationBlock(Block):
     class Input(BlockSchema):
         messages: List[Message] = SchemaField(
-            description="List of messages in the conversation.", min_items=1
+            description="List of messages in the conversation.", min_length=1
         )
         model: LlmModel = SchemaField(
             default=LlmModel.GPT4_TURBO,

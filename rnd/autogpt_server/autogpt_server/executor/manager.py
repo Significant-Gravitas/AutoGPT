@@ -17,7 +17,7 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from autogpt_server.server.rest_api import AgentServer
 
-from autogpt_server.blocks.basic import InputBlock
+from autogpt_server.blocks.basic import AgentInputBlock
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, BlockData, BlockInput, get_block
 from autogpt_server.data.execution import (
@@ -727,7 +727,7 @@ class ExecutionManager(AppService):
         nodes_input = []
         for node in graph.starting_nodes:
             input_data = {}
-            if isinstance(get_block(node.block_id), InputBlock):
+            if isinstance(get_block(node.block_id), AgentInputBlock):
                 name = node.input_default.get("name")
                 if name and name in data:
                     input_data = {"value": data[name]}
