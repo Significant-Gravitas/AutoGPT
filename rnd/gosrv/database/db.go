@@ -411,3 +411,29 @@ func Search(ctx context.Context, db *pgxpool.Pool, query string, categories []st
 	logger.Info("Search completed", zap.Int("results", len(agents)))
 	return agents, nil
 }
+
+func CreateAgentInstalledEvent(ctx context.Context, db *pgxpool.Pool, eventData models.InstallTracker) error {
+	logger := zap.L().With(zap.String("function", "CreateAgentInstalledEvent"))
+	logger.Info("Creating agent installed event")
+
+	query := `
+		INSERT INTO install_tracker (marketplace_agent_id, installed_agent_id, installation_location)
+		VALUES ($1, $2, $3)
+	`
+
+	_, err := db.Exec(ctx, query, 
+		eventData.MarketplaceAgentID, 
+		eventData.InstalledAgentID, 
+		eventData.InstallationLocation,
+	)
+
+	if err != nil {
+		logger.Error("Failed to create agent installed event", zap.Error(err))
+		return fmt.Errorf("failed to create agent installed event: %w", err)
+	}
+
+	logger.Info("Agent installed event created successfully")
+	return nil
+}
+	
+
