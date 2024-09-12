@@ -1,6 +1,6 @@
 import os
 
-from autogpt_libs.logging.config import LogFormatName
+from autogpt_libs.logging.config import configure_logging
 
 
 def configure_logging():
@@ -11,7 +11,7 @@ def configure_logging():
     if os.getenv("APP_ENV") != "cloud":
         configure_logging()
     else:
-        configure_logging(log_format=LogFormatName.STRUCTURED)
+        configure_logging(force_cloud_logging=True)
 
     # Silence httpx logger
     logging.getLogger("httpx").setLevel(logging.WARNING)

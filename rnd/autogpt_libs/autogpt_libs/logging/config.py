@@ -1,15 +1,12 @@
 """Logging module for Auto-GPT."""
 
-from __future__ import annotations
 
-import enum
 import logging
-import os
 import sys
 from pathlib import Path
-from typing import Optional
 
-from .crazyconf import SystemConfiguration, UserConfigurable
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from .filters import BelowLevelFilter
 from .formatters import AGPTFormatter, StructuredLoggingFormatter
 
@@ -19,173 +16,183 @@ DEBUG_LOG_FILE = "debug.log"
 ERROR_LOG_FILE = "error.log"
 
 SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(title)s%(message)s"
+
 DEBUG_LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(filename)s:%(lineno)d" "  %(title)s%(message)s"
 )
 
-SPEECH_OUTPUT_LOGGER = "VOICE"
-USER_FRIENDLY_OUTPUT_LOGGER = "USER_FRIENDLY_OUTPUT"
 
+class LoggingConfig(BaseSettings):
 
-class LogFormatName(str, enum.Enum):
-    SIMPLE = "simple"
-    DEBUG = "debug"
-    STRUCTURED = "structured_google_cloud"
-
-
-TEXT_LOG_FORMAT_MAP = {
-    LogFormatName.DEBUG: DEBUG_LOG_FORMAT,
-    LogFormatName.SIMPLE: SIMPLE_LOG_FORMAT,
-}
-
-
-class LoggingConfig(SystemConfiguration):
-    level: int = UserConfigurable(
-        default=logging.INFO,
-        from_env=lambda: logging.getLevelName(os.getenv("LOG_LEVEL", "INFO")),
+    level: str = Field(
+        default="INFO",
+        description="Logging level",
+        validation_alias="LOG_LEVEL",
     )
 
-    # Console output
-    log_format: LogFormatName = UserConfigurable(
-        default=LogFormatName.SIMPLE, from_env="LOG_FORMAT"
-    )
-    plain_console_output: bool = UserConfigurable(
+    enable_cloud_logging: bool = Field(
         default=False,
-        from_env=lambda: os.getenv("PLAIN_OUTPUT", "False") == "True",
+        description="Enable logging to Google Cloud Logging",
+        validation_alias="ENABLE_CLOUD_LOGGING",
+    )
+
+    enable_file_logging: bool = Field(
+        default=True,
+        description="Enable logging to file",
+        validation_alias="ENABLE_FILE_LOGGING",
+    )
+
+    enable_console_logging: bool = Field(
+        default=True,
+        description="Enable logging to console",
+        validation_alias="ENABLE_CONSOLE_LOGGING",
+    )
+
+    enable_json_logging: bool = Field(
+        default=False,
+        description="Enable logging to JSON file",
+        validation_alias="ENABLE_JSON_LOGGING",
     )
 
     # File output
-    log_dir: Path = LOG_DIR
-    log_file_format: Optional[LogFormatName] = UserConfigurable(
-        default=LogFormatName.SIMPLE,
-        from_env=lambda: os.getenv(  # type: ignore
-            "LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple")
-        ),
+    log_dir: Path = Field(
+        default=LOG_DIR,
+        description="Log directory",
     )
+
+    model_config = SettingsConfigDict(
+        env_prefix="",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def parse_log_level(cls, v):
+        if isinstance(v, str):
+            v = v.upper()
+            if v not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+                raise ValueError(f"Invalid log level: {v}")
+            return v
+        return v
 
 
 def configure_logging(
-    debug: bool = False,
-    level: Optional[int | str] = None,
-    log_dir: Optional[Path] = None,
-    log_format: Optional[LogFormatName | str] = None,
-    log_file_format: Optional[LogFormatName | str] = None,
-    plain_console_output: Optional[bool] = None,
-    config: Optional[LoggingConfig] = None,
+        force_cloud_logging: bool = False
 ) -> None:
-    """Configure the native logging module, based on the environment config and any
-    specified overrides.
+    """Configure the native logging module based on the LoggingConfig settings.
 
-    Arguments override values specified in the environment.
-    Overrides are also applied to `config`, if passed.
+    This function sets up logging handlers and formatters according to the
+    configuration specified in the LoggingConfig object. It supports various
+    logging outputs including console, file, cloud, and JSON logging.
 
-    Should be usable as `configure_logging(**config.logging.dict())`, where
-    `config.logging` is a `LoggingConfig` object.
+    The function uses the LoggingConfig object to determine which logging
+    features to enable and how to configure them. This includes setting
+    log levels, log formats, and output destinations.
+
+    No arguments are required as the function creates its own LoggingConfig
+    instance internally.
+
+    Note: This function is typically called at the start of the application
+    to set up the logging infrastructure.
     """
-    if debug and level:
-        raise ValueError("Only one of either 'debug' and 'level' arguments may be set")
 
-    # Parse arguments
-    if isinstance(level, str):
-        if type(_level := logging.getLevelName(level.upper())) is int:
-            level = _level
-        else:
-            raise ValueError(f"Unknown log level '{level}'")
-    if isinstance(log_format, str):
-        if log_format in LogFormatName._value2member_map_:
-            log_format = LogFormatName(log_format)
-        elif not isinstance(log_format, LogFormatName):
-            raise ValueError(f"Unknown log format '{log_format}'")
-    if isinstance(log_file_format, str):
-        if log_file_format in LogFormatName._value2member_map_:
-            log_file_format = LogFormatName(log_file_format)
-        elif not isinstance(log_file_format, LogFormatName):
-            raise ValueError(f"Unknown log format '{log_format}'")
-
-    config = config or LoggingConfig.from_env()
-
-    # Aggregate env config + arguments
-    config.level = logging.DEBUG if debug else level or config.level
-    config.log_dir = log_dir or config.log_dir
-    config.log_format = log_format or (
-        LogFormatName.DEBUG if debug else config.log_format
-    )
-    config.log_file_format = log_file_format or log_format or config.log_file_format
-    config.plain_console_output = (
-        plain_console_output
-        if plain_console_output is not None
-        else config.plain_console_output
-    )
-
-    # Structured logging is used for cloud environments,
-    # where logging to a file makes no sense.
-    if config.log_format == LogFormatName.STRUCTURED:
-        config.plain_console_output = True
-        config.log_file_format = None
-
-    # create log directory if it doesn't exist
-    if not config.log_dir.exists():
-        config.log_dir.mkdir()
+    config = LoggingConfig()
 
     log_handlers: list[logging.Handler] = []
 
-    if config.log_format in (LogFormatName.DEBUG, LogFormatName.SIMPLE):
-        console_format_template = TEXT_LOG_FORMAT_MAP[config.log_format]
-        console_formatter = AGPTFormatter(console_format_template)
-    else:
-        console_formatter = StructuredLoggingFormatter()
-        console_format_template = SIMPLE_LOG_FORMAT
+    # Cloud logging setup
+    if config.enable_cloud_logging or force_cloud_logging:
+        try:
+            import google.cloud.logging
+            from google.cloud.logging.handlers import CloudLoggingHandler
+            from google.cloud.logging_v2.handlers.transports.sync import SyncTransport
 
-    # Console output handlers
-    stdout = logging.StreamHandler(stream=sys.stdout)
-    stdout.setLevel(config.level)
-    stdout.addFilter(BelowLevelFilter(logging.WARNING))
-    stdout.setFormatter(console_formatter)
-    stderr = logging.StreamHandler()
-    stderr.setLevel(logging.WARNING)
-    stderr.setFormatter(console_formatter)
-    log_handlers += [stdout, stderr]
-
-    # File output handlers
-    if config.log_file_format is not None:
-        if config.level < logging.ERROR:
-            file_output_format_template = TEXT_LOG_FORMAT_MAP[config.log_file_format]
-            file_output_formatter = AGPTFormatter(
-                file_output_format_template, no_color=True
+            client = google.cloud.logging.Client()
+            cloud_handler = CloudLoggingHandler(
+                client,
+                name="autogpt_logs",
+                transport=SyncTransport,
             )
-
-            # INFO log file handler
-            activity_log_handler = logging.FileHandler(
-                config.log_dir / LOG_FILE, "a", "utf-8"
+            cloud_handler.setLevel(config.level)
+            cloud_handler.setFormatter(StructuredLoggingFormatter())
+            log_handlers.append(cloud_handler)
+            print("Cloud logging enabled")
+        except ImportError:
+            print(
+                "Cloud logging requested but google-cloud-logging is not installed. "
+                "Please install it with 'pip install google-cloud-logging'."
             )
-            activity_log_handler.setLevel(config.level)
-            activity_log_handler.setFormatter(file_output_formatter)
-            log_handlers += [activity_log_handler]
+        except Exception as e:
+            print(f"Failed to set up cloud logging: {str(e)}")
 
-        # ERROR log file handler
+    # File logging setup
+    if config.enable_file_logging:
+        # create log directory if it doesn't exist
+        if not config.log_dir.exists():
+            config.log_dir.mkdir(parents=True, exist_ok=True)
+
+        # Activity log handler (INFO and above)
+        activity_log_handler = logging.FileHandler(
+            config.log_dir / LOG_FILE, "a", "utf-8"
+        )
+        activity_log_handler.setLevel(config.level)
+        activity_log_handler.setFormatter(
+            AGPTFormatter(SIMPLE_LOG_FORMAT, no_color=True)
+        )
+        log_handlers.append(activity_log_handler)
+
+        # Debug log handler (all levels)
+        debug_log_handler = logging.FileHandler(
+            config.log_dir / DEBUG_LOG_FILE, "a", "utf-8"
+        )
+        debug_log_handler.setLevel(logging.DEBUG)
+        debug_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
+        log_handlers.append(debug_log_handler)
+
+        # Error log handler (ERROR and above)
         error_log_handler = logging.FileHandler(
             config.log_dir / ERROR_LOG_FILE, "a", "utf-8"
         )
         error_log_handler.setLevel(logging.ERROR)
         error_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
-        log_handlers += [error_log_handler]
+        log_handlers.append(error_log_handler)
+
+        print("File logging enabled")
+
+    if config.enable_console_logging:
+        # Console output handlers
+        stdout = logging.StreamHandler(stream=sys.stdout)
+        stdout.setLevel(config.level)
+        stdout.addFilter(BelowLevelFilter(logging.WARNING))
+        if config.level == logging.DEBUG:
+            stdout.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
+        else:
+            stdout.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
+
+        stderr = logging.StreamHandler()
+        stderr.setLevel(logging.WARNING)
+        if config.level == logging.DEBUG:
+            stderr.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
+        else:
+            stderr.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
+
+        log_handlers += [stdout, stderr]
+        print("Console logging enabled")
 
     # Configure the root logger
     logging.basicConfig(
-        format=console_format_template,
+        format=DEBUG_LOG_FORMAT if config.level == logging.DEBUG else SIMPLE_LOG_FORMAT,
         level=config.level,
         handlers=log_handlers,
     )
 
-    # Speech output
-    speech_output_logger = logging.getLogger(SPEECH_OUTPUT_LOGGER)
-    speech_output_logger.setLevel(logging.INFO)
-    speech_output_logger.propagate = False
-
-    # JSON logger with better formatting
-    json_logger = logging.getLogger("JSON_LOGGER")
-    json_logger.setLevel(logging.DEBUG)
-    json_logger.propagate = False
+    if config.enable_json_logging:
+        # JSON logger with better formatting
+        json_logger = logging.getLogger("JSON_LOGGER")
+        json_logger.setLevel(logging.DEBUG)
+        json_logger.propagate = False
 
     # Disable debug logging from OpenAI library
     openai_logger = logging.getLogger("openai")

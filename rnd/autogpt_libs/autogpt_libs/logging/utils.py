@@ -25,9 +25,3 @@ def print_attribute(
             "color": value_color,
         },
     )
-
-
-def speak(message: str, level: int = logging.INFO) -> None:
-    from .config import SPEECH_OUTPUT_LOGGER
-
-    logging.getLogger(SPEECH_OUTPUT_LOGGER).log(level, message)
