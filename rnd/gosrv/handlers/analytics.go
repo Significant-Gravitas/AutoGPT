@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"go.uber.org/zap"
 	"github.com/swiftyos/market/database"
+	"go.uber.org/zap"
 
 	"github.com/swiftyos/market/models"
 )
@@ -22,9 +22,9 @@ func AgentInstalled(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 
 		err := database.CreateAgentInstalledEvent(c.Request.Context(), db, models.InstallTracker{
-			MarketplaceAgentID:    eventData.MarketplaceAgentID,
-			InstalledAgentID:      eventData.InstalledAgentID,
-			InstallationLocation:  eventData.InstallationLocation,
+			MarketplaceAgentID:   eventData.MarketplaceAgentID,
+			InstalledAgentID:     eventData.InstalledAgentID,
+			InstallationLocation: eventData.InstallationLocation,
 		})
 		if err != nil {
 			logger.Error("Failed to process agent installed event", zap.Error(err))

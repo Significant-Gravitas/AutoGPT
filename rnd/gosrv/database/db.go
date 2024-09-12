@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 func NewDB(cfg *config.Config) (*pgxpool.Pool, error) {
 	return pgxpool.New(context.Background(), cfg.DatabaseURL)
 }
@@ -262,8 +261,6 @@ func GetTopAgentsByDownloads(ctx context.Context, db *pgxpool.Pool, page, pageSi
 		agents = append(agents, agent)
 	}
 
-	
-
 	var totalCount int
 	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM agents WHERE submission_status = 'APPROVED'").Scan(&totalCount)
 	if err != nil {
@@ -421,9 +418,9 @@ func CreateAgentInstalledEvent(ctx context.Context, db *pgxpool.Pool, eventData 
 		VALUES ($1, $2, $3)
 	`
 
-	_, err := db.Exec(ctx, query, 
-		eventData.MarketplaceAgentID, 
-		eventData.InstalledAgentID, 
+	_, err := db.Exec(ctx, query,
+		eventData.MarketplaceAgentID,
+		eventData.InstalledAgentID,
 		eventData.InstallationLocation,
 	)
 
@@ -435,8 +432,6 @@ func CreateAgentInstalledEvent(ctx context.Context, db *pgxpool.Pool, eventData 
 	logger.Info("Agent installed event created successfully")
 	return nil
 }
-
-
 
 // Admin Queries
 
@@ -450,13 +445,13 @@ func CreateAgentEntry(ctx context.Context, db *pgxpool.Pool, agent models.Agent)
 		RETURNING id, name, description, author, keywords, categories, graph
 	`
 	var createdAgent models.Agent
-	err := db.QueryRow(ctx, query, 
-		agent.ID, 
-		agent.Name, 
-		agent.Description, 
-		agent.Author, 
-		agent.Keywords, 
-		agent.Categories, 
+	err := db.QueryRow(ctx, query,
+		agent.ID,
+		agent.Name,
+		agent.Description,
+		agent.Author,
+		agent.Keywords,
+		agent.Categories,
 		agent.Graph,
 	).Scan(
 		&createdAgent.ID,
@@ -472,12 +467,10 @@ func CreateAgentEntry(ctx context.Context, db *pgxpool.Pool, agent models.Agent)
 		logger.Error("Failed to create agent entry", zap.Error(err))
 		return models.Agent{}, err
 	}
-	
 
 	logger.Info("Agent entry created successfully", zap.String("agentID", agent.ID))
 	return createdAgent, nil
 }
-
 
 func SetAgentFeatured(ctx context.Context, db *pgxpool.Pool, agentID string, isActive bool, featuredCategories []string) (*models.FeaturedAgent, error) {
 	logger := zap.L().With(zap.String("function", "SetAgentFeatured"))

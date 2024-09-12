@@ -174,5 +174,3 @@ func TestFeaturedAgentJSON(t *testing.T) {
 	assert.Equal(t, now, featured.CreatedAt)
 	assert.Equal(t, now, featured.UpdatedAt)
 }
-
-

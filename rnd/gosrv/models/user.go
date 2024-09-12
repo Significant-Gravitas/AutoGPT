@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/golang-jwt/jwt/v4"
 	"fmt"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 type User struct {

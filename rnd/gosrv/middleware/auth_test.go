@@ -200,7 +200,7 @@ func TestAuthDisabled(t *testing.T) {
 	// Create a mock gin.Context
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest("GET", "/", nil)
- 
+
 	Auth(cfg)(c)
 
 	assert.False(t, c.IsAborted())
