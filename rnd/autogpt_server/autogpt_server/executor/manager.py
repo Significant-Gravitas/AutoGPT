@@ -62,6 +62,10 @@ def get_log_metadata(
     }
 
 
+def get_log_prefix(graph_eid: str, node_eid: str, block_name: str = "-"):
+    return f"[ExecutionManager][graph-eid-{graph_eid}|node-eid-{node_eid}|{block_name}]"
+
+
 T = TypeVar("T")
 ExecutionStream = Generator[NodeExecution, None, None]
 
@@ -114,10 +118,15 @@ def execute_node(
         node_id=node_id,
         block_name=node_block.name,
     )
+    prefix = get_log_prefix(
+        graph_eid=graph_exec_id,
+        node_eid=node_exec_id,
+        block_name=node_block.name,
+    )
     input_data, error = validate_exec(node, data.data, resolve_input=False)
     if input_data is None:
         logger.error(
-            "Skip execution, input validation error",
+            "{prefix} Skip execution, input validation error",
             extra={"json_fields": {**log_metadata, "error": error}},
         )
         return
@@ -126,7 +135,7 @@ def execute_node(
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
     logger.info(
-        "Executed node with input",
+        f"{prefix} Executed node with input",
         extra={"json_fields": {**log_metadata, "input": input_data_str}},
     )
     update_execution(ExecutionStatus.RUNNING)
@@ -136,7 +145,7 @@ def execute_node(
         for output_name, output_data in node_block.execute(input_data):
             output_size += len(json.dumps(output_data))
             logger.info(
-                "Node produced output",
+                f"{prefix} Node produced output",
                 extra={"json_fields": {**log_metadata, output_name: output_data}},
             )
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
@@ -157,7 +166,7 @@ def execute_node(
     except Exception as e:
         error_msg = f"{e.__class__.__name__}: {e}"
         logger.exception(
-            "Node execution failed with error",
+            f"{prefix} Node execution failed with error",
             extra={"json_fields": {**log_metadata, error: error_msg}},
         )
         wait(upsert_execution_output(node_exec_id, "error", error_msg))
@@ -441,10 +450,15 @@ class Executor:
             node_id=node_exec.node_id,
             block_name="-",
         )
+        prefix = get_log_prefix(
+            graph_eid=node_exec.graph_exec_id,
+            node_eid=node_exec.node_exec_id,
+            block_name="-",
+        )
 
         execution_stats = {}
         timing_info, _ = cls._on_node_execution(
-            q, node_exec, log_metadata, execution_stats
+            q, node_exec, log_metadata, prefix, execution_stats
         )
         execution_stats["walltime"] = timing_info.wall_time
         execution_stats["cputime"] = timing_info.cpu_time
@@ -460,11 +474,12 @@ class Executor:
         q: ExecutionQueue[NodeExecution],
         node_exec: NodeExecution,
         log_metadata: dict,
+        prefix: str,
         stats: dict[str, Any] | None = None,
     ):
         try:
             logger.info(
-                f"Start node execution {node_exec.node_exec_id}",
+                f"{prefix} Start node execution {node_exec.node_exec_id}",
                 extra={"json_fields": {**log_metadata}},
             )
             for execution in execute_node(
@@ -472,7 +487,7 @@ class Executor:
             ):
                 q.add(execution)
             logger.info(
-                f"Finished node execution {node_exec.node_exec_id}",
+                f"{prefix} Finished node execution {node_exec.node_exec_id}",
                 extra={"json_fields": {**log_metadata}},
             )
         except Exception as e:
@@ -524,8 +539,13 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
+        prefix = get_log_prefix(
+            graph_eid=graph_exec.graph_exec_id,
+            node_eid="*",
+            block_name="-",
+        )
         timing_info, node_count = cls._on_graph_execution(
-            graph_exec, cancel, log_metadata
+            graph_exec, cancel, log_metadata, prefix
         )
 
         cls.loop.run_until_complete(
@@ -542,10 +562,14 @@ class Executor:
     @classmethod
     @time_measured
     def _on_graph_execution(
-        cls, graph_exec: GraphExecution, cancel: threading.Event, log_metadata: dict
+        cls,
+        graph_exec: GraphExecution,
+        cancel: threading.Event,
+        log_metadata: dict,
+        prefix: str,
     ) -> int:
         logger.info(
-            f"Start graph execution {graph_exec.graph_exec_id}",
+            f"{prefix} Start graph execution {graph_exec.graph_exec_id}",
             extra={"json_fields": {**log_metadata}},
         )
         n_node_executions = 0
@@ -558,7 +582,7 @@ class Executor:
                 return
             cls.executor.terminate()
             logger.info(
-                f"Terminated graph execution {graph_exec.graph_exec_id}",
+                f"{prefix} Terminated graph execution {graph_exec.graph_exec_id}",
                 extra={"json_fields": {**log_metadata}},
             )
             cls._init_node_executor_pool()
@@ -599,7 +623,7 @@ class Executor:
                     execution.wait()
 
                 logger.debug(
-                    f"Dispatching node execution {exec_data.node_exec_id} "
+                    f"{prefix} Dispatching node execution {exec_data.node_exec_id} "
                     f"for node {exec_data.node_id}",
                     extra={**log_metadata},
                 )
@@ -630,12 +654,12 @@ class Executor:
                         execution.wait(3)
 
             logger.info(
-                f"Finished graph execution {graph_exec.graph_exec_id}",
+                f"{prefix} Finished graph execution {graph_exec.graph_exec_id}",
                 extra={"json_fields": {**log_metadata}},
             )
         except Exception as e:
             logger.exception(
-                f"Failed graph execution {graph_exec.graph_exec_id}: {e}",
+                f"{prefix} Failed graph execution {graph_exec.graph_exec_id}: {e}",
                 extra={"json_fields": {**log_metadata}},
             )
         finally:
