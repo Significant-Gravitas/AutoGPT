@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from .filters import BelowLevelFilter
 from .formatters import AGPTFormatter, StructuredLoggingFormatter
 
-LOG_DIR = Path(__file__).parent.parent.parent / "logs"
+LOG_DIR = Path(__file__).parent.parent.parent.parent / "logs"
 LOG_FILE = "activity.log"
 DEBUG_LOG_FILE = "debug.log"
 ERROR_LOG_FILE = "error.log"
@@ -33,27 +33,12 @@ class LoggingConfig(BaseSettings):
     enable_cloud_logging: bool = Field(
         default=False,
         description="Enable logging to Google Cloud Logging",
-        validation_alias="ENABLE_CLOUD_LOGGING",
     )
 
     enable_file_logging: bool = Field(
-        default=True,
-        description="Enable logging to file",
-        validation_alias="ENABLE_FILE_LOGGING",
-    )
-
-    enable_console_logging: bool = Field(
-        default=True,
-        description="Enable logging to console",
-        validation_alias="ENABLE_CONSOLE_LOGGING",
-    )
-
-    enable_json_logging: bool = Field(
         default=False,
-        description="Enable logging to JSON file",
-        validation_alias="ENABLE_JSON_LOGGING",
+        description="Enable logging to file",
     )
-
     # File output
     log_dir: Path = Field(
         default=LOG_DIR,
@@ -79,7 +64,7 @@ class LoggingConfig(BaseSettings):
 
 
 def configure_logging(
-        force_cloud_logging: bool = False
+    force_cloud_logging: bool = False
 ) -> None:
     """Configure the native logging module based on the LoggingConfig settings.
 
@@ -119,50 +104,10 @@ def configure_logging(
             cloud_handler.setFormatter(StructuredLoggingFormatter())
             log_handlers.append(cloud_handler)
             print("Cloud logging enabled")
-        except ImportError:
-            print(
-                "Cloud logging requested but google-cloud-logging is not installed. "
-                "Please install it with 'pip install google-cloud-logging'."
-            )
         except Exception as e:
             print(f"Failed to set up cloud logging: {str(e)}")
-
-    # File logging setup
-    if config.enable_file_logging:
-        # create log directory if it doesn't exist
-        if not config.log_dir.exists():
-            config.log_dir.mkdir(parents=True, exist_ok=True)
-
-        # Activity log handler (INFO and above)
-        activity_log_handler = logging.FileHandler(
-            config.log_dir / LOG_FILE, "a", "utf-8"
-        )
-        activity_log_handler.setLevel(config.level)
-        activity_log_handler.setFormatter(
-            AGPTFormatter(SIMPLE_LOG_FORMAT, no_color=True)
-        )
-        log_handlers.append(activity_log_handler)
-
-        # Debug log handler (all levels)
-        debug_log_handler = logging.FileHandler(
-            config.log_dir / DEBUG_LOG_FILE, "a", "utf-8"
-        )
-        debug_log_handler.setLevel(logging.DEBUG)
-        debug_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
-        log_handlers.append(debug_log_handler)
-
-        # Error log handler (ERROR and above)
-        error_log_handler = logging.FileHandler(
-            config.log_dir / ERROR_LOG_FILE, "a", "utf-8"
-        )
-        error_log_handler.setLevel(logging.ERROR)
-        error_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
-        log_handlers.append(error_log_handler)
-
-        print("File logging enabled")
-
-    if config.enable_console_logging:
-        # Console output handlers
+    else:
+         # Console output handlers
         stdout = logging.StreamHandler(stream=sys.stdout)
         stdout.setLevel(config.level)
         stdout.addFilter(BelowLevelFilter(logging.WARNING))
@@ -181,6 +126,42 @@ def configure_logging(
         log_handlers += [stdout, stderr]
         print("Console logging enabled")
 
+    # File logging setup
+    if config.enable_file_logging:
+        # create log directory if it doesn't exist
+        if not config.log_dir.exists():
+            config.log_dir.mkdir(parents=True, exist_ok=True)
+        
+        print(f"Log directory: {config.log_dir}")
+        
+        # Activity log handler (INFO and above)
+        activity_log_handler = logging.FileHandler(
+            config.log_dir / LOG_FILE, "a", "utf-8"
+        )
+        activity_log_handler.setLevel(config.level)
+        activity_log_handler.setFormatter(
+            AGPTFormatter(SIMPLE_LOG_FORMAT, no_color=True)
+        )
+        log_handlers.append(activity_log_handler)
+
+        if config.level == logging.DEBUG:
+            # Debug log handler (all levels)
+            debug_log_handler = logging.FileHandler(
+                config.log_dir / DEBUG_LOG_FILE, "a", "utf-8"
+            )
+            debug_log_handler.setLevel(logging.DEBUG)
+            debug_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
+            log_handlers.append(debug_log_handler)
+
+        # Error log handler (ERROR and above)
+        error_log_handler = logging.FileHandler(
+            config.log_dir / ERROR_LOG_FILE, "a", "utf-8"
+        )
+        error_log_handler.setLevel(logging.ERROR)
+        error_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
+        log_handlers.append(error_log_handler)
+        print("File logging enabled")       
+
     # Configure the root logger
     logging.basicConfig(
         format=DEBUG_LOG_FORMAT if config.level == logging.DEBUG else SIMPLE_LOG_FORMAT,
@@ -188,12 +169,3 @@ def configure_logging(
         handlers=log_handlers,
     )
 
-    if config.enable_json_logging:
-        # JSON logger with better formatting
-        json_logger = logging.getLogger("JSON_LOGGER")
-        json_logger.setLevel(logging.DEBUG)
-        json_logger.propagate = False
-
-    # Disable debug logging from OpenAI library
-    openai_logger = logging.getLogger("openai")
-    openai_logger.setLevel(logging.WARNING)
