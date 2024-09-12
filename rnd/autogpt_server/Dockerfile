@@ -60,12 +60,6 @@ COPY rnd/autogpt_server/poetry.lock rnd/autogpt_server/pyproject.toml /app/rnd/a
 
 WORKDIR /app/rnd/autogpt_server
 
-FROM server_dependencies AS server_prisma
-
-COPY rnd/autogpt_server/schema.prisma ./
-RUN poetry config virtualenvs.create false \
-    && poetry run prisma generate
-
 FROM server_dependencies AS server
 
 COPY rnd/autogpt_server /app/rnd/autogpt_server
