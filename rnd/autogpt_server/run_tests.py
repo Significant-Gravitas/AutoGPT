@@ -8,7 +8,8 @@ def wait_for_postgres(max_retries=5, delay=5):
         try:
             result = subprocess.run(
                 [
-                    "docker-compose",
+                    "docker",
+                    "compose",
                     "-f",
                     "docker-compose.test.yaml",
                     "exec",
@@ -45,7 +46,8 @@ def test():
     # Start PostgreSQL with Docker Compose
     run_command(
         [
-            "docker-compose",
+            "docker",
+            "compose",
             "-f",
             "docker-compose.test.yaml",
             "up",
@@ -55,7 +57,7 @@ def test():
     )
 
     if not wait_for_postgres():
-        run_command(["docker-compose", "-f", "docker-compose.test.yaml", "down"])
+        run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
         sys.exit(1)
 
     # Run Prisma migrations
@@ -64,6 +66,6 @@ def test():
     # Run the tests
     result = subprocess.run(["pytest"] + sys.argv[1:], check=False)
 
-    run_command(["docker-compose", "-f", "docker-compose.test.yaml", "down"])
+    run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
 
     sys.exit(result.returncode)

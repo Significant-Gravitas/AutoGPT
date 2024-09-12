@@ -101,7 +101,7 @@ docker compose down
 If you run into issues with dangling orphans, try:
 
 ```sh
-docker-compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
+docker compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
 ```
 
 ## Testing
@@ -182,6 +182,13 @@ The services run in independent Python processes and communicate through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.
 
 Currently, the IPC is done using Pyro5 and abstracted in a way that allows a function decorated with `@expose` to be called from a different process.
+
+
+By default the daemons run on the following ports: 
+
+Execution Manager Daemon: 8002
+Execution Scheduler Daemon: 8003
+Rest Server Daemon: 8004
 
 ## Adding a New Agent Block
 
