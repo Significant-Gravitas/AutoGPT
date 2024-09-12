@@ -1,5 +1,5 @@
 ServerAddress: ":8015"
-DatabaseURL: "postgresql://agpt_user:pass123@localhost:5432/agpt_marketplace?connect_timeout=60"
+DatabaseURL: "postgresql://agpt_user:pass123@localhost:5433/agpt_marketplace?connect_timeout=60"
 JWTSecret: "Z86RsQ+nhSk+A8ODJX1kQA11JCk9nlw8n+MRdSgmR+P1sMPTTDG1rjBTwj7Ucjb3TRHSVxkCNPgXISmzU/vMkA=="
 JWTAlgorithm: "HS256"
 CORSAllowOrigins:

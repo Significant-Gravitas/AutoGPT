@@ -30,7 +30,7 @@ func GetAgents(ctx context.Context, db *pgxpool.Pool, page int, pageSize int, na
 		zap.String("categories", utils.StringOrNil(categories)))
 
 	query := `
-		SELECT * FROM agents
+		SELECT * FROM "Agents"
 		WHERE submission_status = 'APPROVED'
 		AND ($3::text IS NULL OR name ILIKE '%' || $3 || '%')
 		AND ($4::text IS NULL OR $4 = ANY(keywords))
@@ -111,7 +111,7 @@ func SubmitAgent(ctx context.Context, db *pgxpool.Pool, request models.AddAgentR
 
 	// Insert the agent into the database
 	_, err = tx.Exec(ctx, `
-		INSERT INTO agents (id, name, description, author, keywords, categories, graph, version, created_at, updated_at, submission_date, submission_status)
+		INSERT INTO "Agents" (id, name, description, author, keywords, categories, graph, version, created_at, updated_at, submission_date, submission_status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`, agentWithMetadata.ID, agentWithMetadata.Name, agentWithMetadata.Description, agentWithMetadata.Author,
 		agentWithMetadata.Keywords, agentWithMetadata.Categories, agentWithMetadata.Graph,
@@ -139,7 +139,7 @@ func GetAgentDetails(ctx context.Context, db *pgxpool.Pool, agentID string) (*mo
 
 	query := `
 		SELECT id, name, description, author, keywords, categories, graph, version, created_at, updated_at, submission_date, submission_status
-		FROM agents
+		FROM "Agents"
 		WHERE id = $1
 	`
 
@@ -176,7 +176,7 @@ func IncrementDownloadCount(ctx context.Context, db *pgxpool.Pool, agentID strin
 	logger := zap.L().With(zap.String("function", "IncrementDownloadCount"))
 
 	query := `
-		UPDATE agents
+		UPDATE "Agents"
 		SET download_count = download_count + 1
 		WHERE id = $1
 	`
@@ -196,7 +196,7 @@ func GetAgentFile(ctx context.Context, db *pgxpool.Pool, agentID string) (*model
 
 	query := `
 		SELECT id, name, graph
-		FROM agents
+		FROM "Agents"
 		WHERE id = $1
 	`
 
@@ -227,8 +227,8 @@ func GetTopAgentsByDownloads(ctx context.Context, db *pgxpool.Pool, page, pageSi
 
 	query := `
 		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph, at.downloads
-		FROM agents a
-		JOIN analytics_tracker at ON a.id = at.agent_id
+		FROM "Agents" a
+		JOIN "AnalyticsTracker" at ON a.id = at.agent_id
 		WHERE a.submission_status = 'APPROVED'
 		ORDER BY at.downloads DESC
 		LIMIT $1 OFFSET $2
@@ -262,7 +262,7 @@ func GetTopAgentsByDownloads(ctx context.Context, db *pgxpool.Pool, page, pageSi
 	}
 
 	var totalCount int
-	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM agents WHERE submission_status = 'APPROVED'").Scan(&totalCount)
+	err = db.QueryRow(ctx, `SELECT COUNT(*) FROM "Agents" WHERE submission_status = 'APPROVED'`).Scan(&totalCount)
 	if err != nil {
 		logger.Error("Failed to get total count", zap.Error(err))
 		return nil, 0, err
@@ -279,8 +279,8 @@ func GetFeaturedAgents(ctx context.Context, db *pgxpool.Pool, category string, p
 
 	query := `
 		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph
-		FROM agents a
-		JOIN featured_agent fa ON a.id = fa.agent_id
+		FROM "Agents" a
+		JOIN "FeaturedAgent" fa ON a.id = fa.agent_id
 		WHERE $1 = ANY(fa.featured_categories) AND fa.is_active = true AND a.submission_status = 'APPROVED'
 		ORDER BY a.created_at DESC
 		LIMIT $2 OFFSET $3
@@ -313,7 +313,7 @@ func GetFeaturedAgents(ctx context.Context, db *pgxpool.Pool, category string, p
 	}
 
 	var totalCount int
-	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM featured_agent fa JOIN agents a ON fa.agent_id = a.id WHERE $1 = ANY(fa.featured_categories) AND fa.is_active = true AND a.submission_status = 'APPROVED'", category).Scan(&totalCount)
+	err = db.QueryRow(ctx, `SELECT COUNT(*) FROM "FeaturedAgent" fa JOIN "Agents" a ON fa.agent_id = a.id WHERE $1 = ANY(fa.featured_categories) AND fa.is_active = true AND a.submission_status = 'APPROVED'`, category).Scan(&totalCount)
 	if err != nil {
 		logger.Error("Failed to get total count of featured agents", zap.Error(err))
 		return nil, 0, err
@@ -366,7 +366,7 @@ func Search(ctx context.Context, db *pgxpool.Pool, query string, categories []st
 			a.submission_status,
 			a.submission_date,
 			ts_rank(CAST(a.search AS tsvector), query.q) AS rank
-		FROM agents a, query
+		FROM "Agents" a, query
 		WHERE a.submission_status = 'APPROVED' %s
 		ORDER BY %s
 		LIMIT $2
@@ -478,7 +478,7 @@ func SetAgentFeatured(ctx context.Context, db *pgxpool.Pool, agentID string, isA
 
 	// Check if the agent exists
 	var exists bool
-	err := db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM agents WHERE id = $1)", agentID).Scan(&exists)
+	err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM "Agents" WHERE id = $1)`, agentID).Scan(&exists)
 	if err != nil {
 		logger.Error("Failed to check if agent exists", zap.Error(err))
 		return nil, fmt.Errorf("failed to check if agent exists: %w", err)
@@ -493,7 +493,7 @@ func SetAgentFeatured(ctx context.Context, db *pgxpool.Pool, agentID string, isA
 	if isActive {
 		// Set the agent as featured
 		query = `
-			INSERT INTO featured_agent (agent_id, featured_categories, is_active)
+			INSERT INTO "FeaturedAgent" (agent_id, featured_categories, is_active)
 			VALUES ($1, $2, $3)
 			ON CONFLICT (agent_id) DO UPDATE
 			SET featured_categories = $2, is_active = $3
@@ -503,7 +503,7 @@ func SetAgentFeatured(ctx context.Context, db *pgxpool.Pool, agentID string, isA
 	} else {
 		// Unset the agent as featured
 		query = `
-			DELETE FROM featured_agent
+			DELETE FROM "FeaturedAgent"
 			WHERE agent_id = $1
 			RETURNING agent_id, featured_categories, is_active
 		`
@@ -540,7 +540,7 @@ func GetAgentFeatured(ctx context.Context, db *pgxpool.Pool, agentID string) (*m
 
 	query := `
 		SELECT agent_id, featured_categories, is_active
-		FROM featured_agent
+		FROM "FeaturedAgent"
 		WHERE agent_id = $1
 	`
 
@@ -569,7 +569,7 @@ func RemoveFeaturedCategory(ctx context.Context, db *pgxpool.Pool, agentID strin
 	logger.Info("Removing featured category", zap.String("agentID", agentID), zap.String("category", category))
 
 	query := `
-		UPDATE featured_agent
+		UPDATE "FeaturedAgent"
 		SET featured_categories = array_remove(featured_categories, $1)
 		WHERE agent_id = $2
 		RETURNING agent_id, featured_categories, is_active
@@ -603,8 +603,8 @@ func GetNotFeaturedAgents(ctx context.Context, db *pgxpool.Pool, page, pageSize 
 
 	query := `
 		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph
-		FROM agents a
-		LEFT JOIN featured_agent fa ON a.id = fa.agent_id
+		FROM "Agents" a
+		LEFT JOIN "FeaturedAgent" fa ON a.id = fa.agent_id
 		WHERE (fa.agent_id IS NULL OR fa.featured_categories = '{}')
 			AND a.submission_status = 'APPROVED'
 		ORDER BY a.created_at DESC
@@ -649,7 +649,7 @@ func GetAgentSubmissions(ctx context.Context, db *pgxpool.Pool, page, pageSize i
 
 	query := `
 		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph, a.created_at, a.updated_at, a.version, a.submission_status, a.submission_review_date, a.submission_review_comments
-		FROM agents a
+		FROM "Agents" a
 		WHERE a.submission_status = 'PENDING'
 	`
 
@@ -714,7 +714,7 @@ func GetAgentSubmissions(ctx context.Context, db *pgxpool.Pool, page, pageSize i
 	}
 
 	// Get total count
-	countQuery := `SELECT COUNT(*) FROM agents WHERE submission_status = 'PENDING'`
+	countQuery := `SELECT COUNT(*) FROM "Agents" WHERE submission_status = 'PENDING'`
 	var totalCount int
 	err = db.QueryRow(ctx, countQuery).Scan(&totalCount)
 	if err != nil {
@@ -731,7 +731,7 @@ func ReviewSubmission(ctx context.Context, db *pgxpool.Pool, agentID string, ver
 	logger.Info("Reviewing agent submission", zap.String("agentID", agentID), zap.Int("version", version))
 
 	query := `
-		UPDATE agents
+		UPDATE "Agents"
 		SET submission_status = $1, 
 			submission_review_date = NOW(),
 			submission_review_comments = $2
@@ -775,7 +775,7 @@ func GetAllCategories(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
 
 	query := `
 		SELECT DISTINCT unnest(categories) AS category
-		FROM agents
+		FROM "Agents"
 		ORDER BY category
 	`
 

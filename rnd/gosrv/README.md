@@ -32,7 +32,7 @@ The project is organized into several packages:
 
 4. Run database migrations:
    ```
-   migrate -source file://database/migrations -database "postgresql://user:password@localhost:5432/dbname?sslmode=disable" up
+   migrate -source file://database/migrations -database "postgresql://agpt_user:pass123@localhost:5432/apgt_marketplace?sslmode=disable" up
    ```
 
 ## Running the Application

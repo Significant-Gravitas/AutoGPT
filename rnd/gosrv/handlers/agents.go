@@ -204,16 +204,16 @@ func TopAgentsByDownloads(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
-func GetFeaturedAgents(db *pgxpool.Pool) gin.HandlerFunc {
+func GetFeaturedAgents(db *pgxpool.Pool, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "GetFeaturedAgents"))
+		logger := logger.With(zap.String("function", "GetFeaturedAgents"))
 		logger.Info("Handling request for featured agents")
 
 		category := c.Query("category")
 		if category == "" {
-			logger.Error("Category is required")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Category is required"})
-			return
+			logger.Debug("No category specified, fetching all featured agents")
+		} else {
+			logger.Debug("Fetching featured agents for category", zap.String("category", category))
 		}
 
 		page, err := strconv.Atoi(c.DefaultQuery("page", "1"))

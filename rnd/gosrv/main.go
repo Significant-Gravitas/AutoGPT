@@ -83,7 +83,7 @@ func main() {
 			agents.GET("/:agent_id/download", handlers.DownloadAgent(db))
 			agents.GET("/:agent_id/download-file", handlers.DownloadAgentFile(db))
 			agents.GET("/top-downloads", handlers.TopAgentsByDownloads(db))
-			agents.GET("/featured", handlers.GetFeaturedAgents(db))
+			agents.GET("/featured", handlers.GetFeaturedAgents(db, logger))
 			agents.GET("/search", handlers.SearchAgents(db))
 			agents.POST("/submit", middleware.Auth(cfg), handlers.SubmitAgent(db))
 		}
