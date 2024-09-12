@@ -7,6 +7,7 @@ import (
 type Config struct {
 	ServerAddress string
 	DatabaseURL   string
+	AuthEnabled   bool
 	JWTSecret     string
 	JWTAlgorithm  string
 }

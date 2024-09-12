@@ -43,7 +43,7 @@ func main() {
 	{
 		agents := api.Group("/agents")
 		{
-			agents.POST("/submit", middleware.Auth(), handlers.SubmitAgent(db, logger))
+			agents.POST("/submit", middleware.Auth(cfg), handlers.SubmitAgent(db, logger))
 		}
 	}
 
