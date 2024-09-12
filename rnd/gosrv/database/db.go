@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -220,3 +221,193 @@ func GetAgentFile(ctx context.Context, db *pgxpool.Pool, agentID string) (*model
 	return &agentFile, nil
 }
 
+func GetTopAgentsByDownloads(ctx context.Context, db *pgxpool.Pool, page, pageSize int) ([]models.AgentWithDownloads, int, error) {
+	logger := zap.L().With(zap.String("function", "GetTopAgentsByDownloads"))
+
+	offset := (page - 1) * pageSize
+
+	query := `
+		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph, at.downloads
+		FROM agents a
+		JOIN analytics_tracker at ON a.id = at.agent_id
+		WHERE a.submission_status = 'APPROVED'
+		ORDER BY at.downloads DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := db.Query(ctx, query, pageSize, offset)
+	if err != nil {
+		logger.Error("Failed to query top agents", zap.Error(err))
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var agents []models.AgentWithDownloads
+	for rows.Next() {
+		var agent models.AgentWithDownloads
+		err := rows.Scan(
+			&agent.ID,
+			&agent.Name,
+			&agent.Description,
+			&agent.Author,
+			&agent.Keywords,
+			&agent.Categories,
+			&agent.Graph,
+			&agent.Downloads,
+		)
+		if err != nil {
+			logger.Error("Failed to scan agent row", zap.Error(err))
+			return nil, 0, err
+		}
+		agents = append(agents, agent)
+	}
+
+	
+
+	var totalCount int
+	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM agents WHERE submission_status = 'APPROVED'").Scan(&totalCount)
+	if err != nil {
+		logger.Error("Failed to get total count", zap.Error(err))
+		return nil, 0, err
+	}
+
+	logger.Info("Top agents retrieved", zap.Int("count", len(agents)))
+	return agents, totalCount, nil
+}
+
+func GetFeaturedAgents(ctx context.Context, db *pgxpool.Pool, category string, page, pageSize int) ([]models.Agent, int, error) {
+	logger := zap.L().With(zap.String("function", "GetFeaturedAgents"))
+
+	offset := (page - 1) * pageSize
+
+	query := `
+		SELECT a.id, a.name, a.description, a.author, a.keywords, a.categories, a.graph
+		FROM agents a
+		JOIN featured_agent fa ON a.id = fa.agent_id
+		WHERE $1 = ANY(fa.featured_categories) AND fa.is_active = true AND a.submission_status = 'APPROVED'
+		ORDER BY a.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := db.Query(ctx, query, category, pageSize, offset)
+	if err != nil {
+		logger.Error("Failed to query featured agents", zap.Error(err))
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var agents []models.Agent
+	for rows.Next() {
+		var agent models.Agent
+		err := rows.Scan(
+			&agent.ID,
+			&agent.Name,
+			&agent.Description,
+			&agent.Author,
+			&agent.Keywords,
+			&agent.Categories,
+			&agent.Graph,
+		)
+		if err != nil {
+			logger.Error("Failed to scan featured agent row", zap.Error(err))
+			return nil, 0, err
+		}
+		agents = append(agents, agent)
+	}
+
+	var totalCount int
+	err = db.QueryRow(ctx, "SELECT COUNT(*) FROM featured_agent fa JOIN agents a ON fa.agent_id = a.id WHERE $1 = ANY(fa.featured_categories) AND fa.is_active = true AND a.submission_status = 'APPROVED'", category).Scan(&totalCount)
+	if err != nil {
+		logger.Error("Failed to get total count of featured agents", zap.Error(err))
+		return nil, 0, err
+	}
+
+	logger.Info("Featured agents retrieved", zap.Int("count", len(agents)))
+	return agents, totalCount, nil
+}
+
+func Search(ctx context.Context, db *pgxpool.Pool, query string, categories []string, page, pageSize int, sortBy, sortOrder string) ([]models.AgentWithRank, error) {
+	logger := zap.L().With(zap.String("function", "Search"))
+
+	offset := (page - 1) * pageSize
+
+	categoryFilter := ""
+	if len(categories) > 0 {
+		categoryConditions := make([]string, len(categories))
+		for i, cat := range categories {
+			categoryConditions[i] = fmt.Sprintf("'%s' = ANY(a.categories)", cat)
+		}
+		categoryFilter = "AND (" + strings.Join(categoryConditions, " OR ") + ")"
+	}
+
+	orderByClause := ""
+	switch sortBy {
+	case "createdAt", "updatedAt":
+		orderByClause = fmt.Sprintf(`a."%s" %s, rank DESC`, sortBy, sortOrder)
+	case "name":
+		orderByClause = fmt.Sprintf(`a.name %s, rank DESC`, sortOrder)
+	default:
+		orderByClause = `rank DESC, a."createdAt" DESC`
+	}
+
+	sqlQuery := fmt.Sprintf(`
+		WITH query AS (
+			SELECT to_tsquery(string_agg(lexeme || ':*', ' & ' ORDER BY positions)) AS q 
+			FROM unnest(to_tsvector($1))
+		)
+		SELECT 
+			a.id, 
+			a.created_at, 
+			a.updated_at, 
+			a.version, 
+			a.name, 
+			LEFT(a.description, 500) AS description, 
+			a.author, 
+			a.keywords, 
+			a.categories, 
+			a.graph,
+			a.submission_status,
+			a.submission_date,
+			ts_rank(CAST(a.search AS tsvector), query.q) AS rank
+		FROM agents a, query
+		WHERE a.submission_status = 'APPROVED' %s
+		ORDER BY %s
+		LIMIT $2
+		OFFSET $3
+	`, categoryFilter, orderByClause)
+
+	rows, err := db.Query(ctx, sqlQuery, query, pageSize, offset)
+	if err != nil {
+		logger.Error("Failed to execute search query", zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []models.AgentWithRank
+	for rows.Next() {
+		var agent models.AgentWithRank
+		err := rows.Scan(
+			&agent.ID,
+			&agent.CreatedAt,
+			&agent.UpdatedAt,
+			&agent.Version,
+			&agent.Name,
+			&agent.Description,
+			&agent.Author,
+			&agent.Keywords,
+			&agent.Categories,
+			&agent.Graph,
+			&agent.SubmissionStatus,
+			&agent.SubmissionDate,
+			&agent.Rank,
+		)
+		if err != nil {
+			logger.Error("Failed to scan search result row", zap.Error(err))
+			return nil, err
+		}
+		agents = append(agents, agent)
+	}
+
+	logger.Info("Search completed", zap.Int("results", len(agents)))
+	return agents, nil
+}

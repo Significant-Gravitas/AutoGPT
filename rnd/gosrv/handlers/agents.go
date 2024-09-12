@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -76,7 +77,7 @@ func GetAgentDetails(db *pgxpool.Pool) gin.HandlerFunc {
 
 		agentID := c.Param("id")
 		logger.Debug("Agent ID", zap.String("agentID", agentID))
-		
+
 		if agentID == "" {
 			logger.Error("Agent ID is required")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Agent ID is required"})
@@ -169,25 +170,126 @@ func DownloadAgentFile(db *pgxpool.Pool) gin.HandlerFunc {
 
 func TopAgentsByDownloads(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		
-		// TODO: Implement the database function to get top agents by downloads
-		// agents, err := database.GetTopAgentsByDownloads(c.Request.Context(), db, page, pageSize)
-		// if err != nil {
-		// 	logger.Error("Failed to fetch top agents", zap.Error(err))
-		// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch top agents"})
-		// 	return
-		// }
+		logger := zap.L().With(zap.String("function", "TopAgentsByDownloads"))
+		logger.Info("Handling request for top agents by downloads")
 
-		// c.JSON(http.StatusOK, agents)
+		page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+		if err != nil || page < 1 {
+			logger.Error("Invalid page number", zap.Error(err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page number"})
+			return
+		}
 
-		// For now, return a placeholder response
-		c.JSON(http.StatusOK, gin.H{"message": "Top agents by downloads will be implemented soon"})
+		pageSize, err := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+		if err != nil || pageSize < 1 {
+			logger.Error("Invalid page size", zap.Error(err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page size"})
+			return
+		}
+
+		agents, totalCount, err := database.GetTopAgentsByDownloads(c.Request.Context(), db, page, pageSize)
+		if err != nil {
+			logger.Error("Failed to fetch top agents", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch top agents"})
+			return
+		}
+
+		logger.Info("Successfully fetched top agents", zap.Int("count", len(agents)), zap.Int("totalCount", totalCount))
+		c.JSON(http.StatusOK, gin.H{
+			"agents":     agents,
+			"totalCount": totalCount,
+			"page":       page,
+			"pageSize":   pageSize,
+		})
 	}
 }
 
-func GetFeaturedAgents(db *pgxpool.Pool, logger *zap.Logger) gin.HandlerFunc {
+func GetFeaturedAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// TODO: Implement GetFeaturedAgents
-		c.JSON(501, gin.H{"message": "Not Implemented: GetFeaturedAgents"})
+		logger := zap.L().With(zap.String("function", "GetFeaturedAgents"))
+		logger.Info("Handling request for featured agents")
+
+		category := c.Query("category")
+		if category == "" {
+			logger.Error("Category is required")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Category is required"})
+			return
+		}
+
+		page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+		if err != nil || page < 1 {
+			logger.Error("Invalid page number", zap.Error(err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page number"})
+			return
+		}
+
+		pageSize, err := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+		if err != nil || pageSize < 1 {
+			logger.Error("Invalid page size", zap.Error(err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page size"})
+			return
+		}
+
+		agents, totalCount, err := database.GetFeaturedAgents(c.Request.Context(), db, category, page, pageSize)
+		if err != nil {
+			logger.Error("Failed to fetch featured agents", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch featured agents"})
+			return
+		}
+
+		logger.Info("Successfully fetched featured agents", zap.Int("count", len(agents)), zap.Int("totalCount", totalCount))
+		c.JSON(http.StatusOK, gin.H{
+			"agents":     agents,
+			"totalCount": totalCount,
+			"page":       page,
+			"pageSize":   pageSize,
+		})
+	}
+}
+
+func Search(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger := zap.L().With(zap.String("function", "Search"))
+		logger.Info("Handling search request")
+
+		query := c.Query("q")
+		if query == "" {
+			logger.Error("Search query is required")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Search query is required"})
+			return
+		}
+
+		categories := c.QueryArray("categories")
+
+		page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+		if err != nil || page < 1 {
+			logger.Error("Invalid page number", zap.Error(err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page number"})
+			return
+		}
+
+		pageSize, err := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+		if err != nil || pageSize < 1 {
+			logger.Error("Invalid page size", zap.Error(err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page size"})
+			return
+		}
+
+		sortBy := c.DefaultQuery("sortBy", "rank")
+		sortOrder := c.DefaultQuery("sortOrder", "DESC")
+
+		agents, err := database.Search(c.Request.Context(), db, query, categories, page, pageSize, sortBy, sortOrder)
+		if err != nil {
+			logger.Error("Failed to perform search", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to perform search"})
+			return
+		}
+
+		logger.Info("Successfully performed search", zap.Int("resultCount", len(agents)))
+		c.JSON(http.StatusOK, gin.H{
+			"agents":   agents,
+			"page":     page,
+			"pageSize": pageSize,
+		})
 	}
 }

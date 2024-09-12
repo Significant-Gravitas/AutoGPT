@@ -29,7 +29,6 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to connect to database", zap.Error(err))
 	}
-
 	// Initialize Gin router
 	r := gin.New()
 

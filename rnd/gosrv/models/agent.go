@@ -51,6 +51,17 @@ type AgentWithMetadata struct {
 	SubmissionReviewComments *string          `json:"submissionReviewComments,omitempty"`
 }
 
+// AgentWithRank extends AgentWithMetadata with a rank field for search results
+type AgentWithRank struct {
+	AgentWithMetadata
+	Rank float64 `json:"rank"`
+}
+
+type AgentWithDownloads struct {
+	AgentWithMetadata
+	Downloads int `json:"downloads"`
+}
+
 // AnalyticsTracker represents analytics data for an agent
 type AnalyticsTracker struct {
 	ID        string `json:"id"`
