@@ -5,6 +5,7 @@ from autogpt_server.data import db
 from autogpt_server.data.block import Block, initialize_blocks
 from autogpt_server.data.execution import ExecutionResult, ExecutionStatus
 from autogpt_server.data.queue import AsyncEventQueue
+from autogpt_server.data.user import create_default_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
 from autogpt_server.server.rest_api import get_user_id
@@ -64,6 +65,7 @@ class SpinTestServer:
 
         await db.connect()
         await initialize_blocks()
+        await create_default_user("false")
 
         return self
 
