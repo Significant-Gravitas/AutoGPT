@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
   Graph,
   GraphMeta,
@@ -28,7 +28,7 @@ export const FlowInfo: React.FC<
     flowVersion?: number | "all";
   }
 > = ({ flow, flowRuns, flowVersion, ...props }) => {
-  const api = new AutoGPTServerAPI();
+  const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(
@@ -41,11 +41,11 @@ export const FlowInfo: React.FC<
 
   useEffect(() => {
     api.getGraphAllVersions(flow.id).then((result) => setFlowVersions(result));
-  }, [flow.id]);
+  }, [flow.id, api]);
 
   return (
     <Card {...props}>
-      <CardHeader className="flex-row justify-between space-y-0 space-x-3">
+      <CardHeader className="flex-row justify-between space-x-3 space-y-0">
         <div>
           <CardTitle>
             {flow.name} <span className="font-light">v{flow.version}</span>

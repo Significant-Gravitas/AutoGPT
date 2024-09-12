@@ -1,6 +1,7 @@
+// THIS FILE IS AUTO-GENERATED, RUN `poetry run schema` TO UPDATE
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -11,11 +12,11 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id            String   @id // This should match the Supabase user ID
-  email         String   @unique
-  name          String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id // This should match the Supabase user ID
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   AgentGraphs                  AgentGraph[]
@@ -30,6 +31,8 @@ model User {
 model AgentGraph {
   id      String @default(uuid())
   version Int    @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   name        String?
   description String?
@@ -37,8 +40,8 @@ model AgentGraph {
   isTemplate  Boolean @default(false)
 
   // Link to User model
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
@@ -113,6 +116,8 @@ model AgentBlock {
 // This model describes the execution of an AgentGraph.
 model AgentGraphExecution {
   id String @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
@@ -121,8 +126,10 @@ model AgentGraphExecution {
   AgentNodeExecutions AgentNodeExecution[]
 
   // Link to User model
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  stats String? // JSON serialized object
 }
 
 // This model describes the execution of an AgentNode.
@@ -147,6 +154,8 @@ model AgentNodeExecution {
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
+
+  stats String? // JSON serialized object
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -170,6 +179,8 @@ model AgentNodeExecutionInputOutput {
 // This model describes the recurring execution schedule of an Agent.
 model AgentGraphExecutionSchedule {
   id String @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
@@ -183,8 +194,8 @@ model AgentGraphExecutionSchedule {
   lastUpdated DateTime @updatedAt
 
   // Link to User model
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   @@index([isEnabled])
 }

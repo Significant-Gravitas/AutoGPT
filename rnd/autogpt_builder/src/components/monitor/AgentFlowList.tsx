@@ -1,5 +1,5 @@
 import AutoGPTServerAPI, { GraphMeta } from "@/lib/autogpt-server-api";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import moment from "moment/moment";
 import { FlowRun } from "@/lib/types";
+import { DialogTitle } from "@/components/ui/dialog";
 
 export const AgentFlowList = ({
   flows,
@@ -44,14 +45,14 @@ export const AgentFlowList = ({
   className?: string;
 }) => {
   const [templates, setTemplates] = useState<GraphMeta[]>([]);
-  const api = new AutoGPTServerAPI();
+  const api = useMemo(() => new AutoGPTServerAPI(), []);
   useEffect(() => {
     api.listTemplates().then((templates) => setTemplates(templates));
-  }, []);
+  }, [api]);
 
   return (
     <Card className={className}>
-      <CardHeader className="flex-row justify-between items-center space-x-3 space-y-0">
+      <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
         <CardTitle>Agents</CardTitle>
 
         <div className="flex items-center">
@@ -102,8 +103,11 @@ export const AgentFlowList = ({
             </DropdownMenu>
 
             <DialogContent>
-              <DialogHeader className="text-lg">
-                Import an Agent (template) from a file
+              <DialogHeader>
+                <DialogTitle className="sr-only">Import Agent</DialogTitle>
+                <h2 className="text-lg font-semibold">
+                  Import an Agent (template) from a file
+                </h2>
               </DialogHeader>
               <AgentImportForm />
             </DialogContent>

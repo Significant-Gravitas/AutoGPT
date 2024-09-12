@@ -46,19 +46,44 @@ async def create_agent_entry(
 @router.post("/agent/featured/{agent_id}")
 async def set_agent_featured(
     agent_id: str,
-    category: str = "featured",
+    categories: list[str] = fastapi.Query(
+        default=["featured"],
+        description="The categories to set the agent as featured in",
+    ),
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
-):
+) -> market.model.FeaturedAgentResponse:
     """
     A basic endpoint to set an agent as featured in the database.
     """
     try:
-        await market.db.set_agent_featured(
-            agent_id, is_featured=True, category=category
+        agent = await market.db.set_agent_featured(
+            agent_id, is_active=True, featured_categories=categories
         )
-        return fastapi.responses.Response(status_code=200)
+        return market.model.FeaturedAgentResponse(**agent.model_dump())
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agent/featured/{agent_id}")
+async def get_agent_featured(
+    agent_id: str,
+    user: autogpt_libs.auth.User = fastapi.Depends(
+        autogpt_libs.auth.requires_admin_user
+    ),
+) -> market.model.FeaturedAgentResponse | None:
+    """
+    A basic endpoint to get an agent as featured in the database.
+    """
+    try:
+        agent = await market.db.get_agent_featured(agent_id)
+        if agent:
+            return market.model.FeaturedAgentResponse(**agent.model_dump())
+        else:
+            return None
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
     except Exception as e:
@@ -72,15 +97,46 @@ async def unset_agent_featured(
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
-):
+) -> market.model.FeaturedAgentResponse | None:
     """
     A basic endpoint to unset an agent as featured in the database.
     """
     try:
-        await market.db.set_agent_featured(
-            agent_id, is_featured=False, category=category
+        featured = await market.db.remove_featured_category(agent_id, category=category)
+        if featured:
+            return market.model.FeaturedAgentResponse(**featured.model_dump())
+        else:
+            return None
+    except market.db.AgentQueryError as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agent/not-featured")
+async def get_not_featured_agents(
+    page: int = fastapi.Query(1, ge=1, description="Page number"),
+    page_size: int = fastapi.Query(
+        10, ge=1, le=100, description="Number of items per page"
+    ),
+    user: autogpt_libs.auth.User = fastapi.Depends(
+        autogpt_libs.auth.requires_admin_user
+    ),
+) -> market.model.AgentListResponse:
+    """
+    A basic endpoint to get all not featured agents in the database.
+    """
+    try:
+        agents = await market.db.get_not_featured_agents(page=page, page_size=page_size)
+        return market.model.AgentListResponse(
+            agents=[
+                market.model.AgentResponse(**agent.model_dump()) for agent in agents
+            ],
+            total_count=len(agents),
+            page=page,
+            page_size=page_size,
+            total_pages=999,
         )
-        return fastapi.responses.Response(status_code=200)
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
     except Exception as e:
@@ -159,7 +215,7 @@ async def review_submission(
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
-):
+) -> prisma.models.Agents | None:
     """
     A basic endpoint to review a submission in the database.
     """
@@ -167,14 +223,26 @@ async def review_submission(
         f"Reviewing submission: {review_request.agent_id}, {review_request.version}"
     )
     try:
-        # await market.db.update_agent_entry(
-        #     agent_id=review_request.agent_id,
-        #     version=review_request.version,
-        #     submission_state=review_request.status,
-        #     comments=review_request.comments,
-        # )
-        return fastapi.responses.Response(status_code=200)
+        agent = await market.db.update_agent_entry(
+            agent_id=review_request.agent_id,
+            version=review_request.version,
+            submission_state=review_request.status,
+            comments=review_request.comments,
+        )
+        return agent
     except market.db.AgentQueryError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/categories")
+async def get_categories() -> market.model.CategoriesResponse:
+    """
+    A basic endpoint to get all available categories.
+    """
+    try:
+        categories = await market.db.get_all_categories()
+        return categories
     except Exception as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e))
