@@ -23,14 +23,19 @@ RUN pip3 install poetry
 COPY rnd/autogpt_libs /app/rnd/autogpt_libs
 COPY rnd/market/poetry.lock rnd/market/pyproject.toml /app/rnd/market/
 WORKDIR /app/rnd/market
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
+RUN poetry install --no-interaction --no-ansi
 
 # Generate Prisma client
 COPY rnd/market /app/rnd/market
-RUN poetry config virtualenvs.create false && poetry run prisma generate
+RUN poetry run prisma generate
 
 FROM python:3.11-slim-buster AS server_dependencies
+
+ENV POETRY_VERSION=1.8.3 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    PATH="$POETRY_HOME/bin:$PATH"
 
 WORKDIR /app
 
@@ -53,7 +58,7 @@ WORKDIR /app/rnd/market
 FROM server_dependencies AS server_prisma
 
 COPY rnd/market /app/rnd/market
-RUN poetry config virtualenvs.create false && poetry run prisma generate
+RUN poetry run prisma generate
 
 FROM server_prisma AS server
 

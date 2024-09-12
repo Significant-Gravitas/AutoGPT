@@ -61,7 +61,7 @@ FROM server_dependencies AS server_prisma
 COPY rnd/autogpt_server/schema.prisma ./
 RUN poetry run prisma generate
 
-FROM server_prisma AS server
+FROM server_dependencies AS server
 
 COPY rnd/autogpt_server /app/rnd/autogpt_server
 
