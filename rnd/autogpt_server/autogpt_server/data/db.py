@@ -31,7 +31,7 @@ async def connect(call_count=0):
     except Exception as e:
         if call_count <= 5:
             logger.info(f"[Prisma-{conn_id}] Connection failed: {e}. Retrying now..")
-            await asyncio.sleep(call_count)
+            await asyncio.sleep(2**call_count)
             await connect(call_count + 1)
         else:
             raise e

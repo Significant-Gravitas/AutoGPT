@@ -1,6 +1,6 @@
 import pytest
 
-from .depends import verify_user, requires_admin_user, requires_user
+from .depends import requires_admin_user, requires_user, verify_user
 
 
 def test_verify_user_no_payload():
