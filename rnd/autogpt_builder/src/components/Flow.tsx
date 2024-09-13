@@ -545,7 +545,6 @@ const FlowEditor: React.FC<{
     clearNodesStatusAndOutput();
   }, [clearNodesStatusAndOutput]);
 
-
   // This is to check for the Input and Output block, if they are used they are passed to Runner ui's input and output screen
   const getBlockInputsAndOutputs = useCallback(() => {
     const inputBlocks = nodes.filter(
@@ -584,7 +583,7 @@ const FlowEditor: React.FC<{
         result: node.data.executionResults?.at(-1)?.data?.output,
       };
     });
-  
+
     return { inputs, outputs };
   }, [nodes]);
 
