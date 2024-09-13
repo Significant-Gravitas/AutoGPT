@@ -71,9 +71,9 @@ func GetAgents(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 // @Param agent body models.AddAgentRequest true "Agent details"
 // @Success 200 {object} models.Agent
 // @Router /agents [post]
-func SubmitAgent(db *pgxpool.Pool) gin.HandlerFunc {
+func SubmitAgent(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "SubmitAgent"))
+		logger := log_ctx.With(zap.String("function", "SubmitAgent"))
 		var request models.AddAgentRequest
 		logger.Debug("Add Agent Request body", zap.Any("request", request))
 		if err := c.ShouldBindJSON(&request); err != nil {
@@ -106,9 +106,9 @@ func SubmitAgent(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param id path string true "Agent ID"
 // @Success 200 {object} models.Agent
 // @Router /agents/{id} [get]
-func GetAgentDetails(db *pgxpool.Pool) gin.HandlerFunc {
+func GetAgentDetails(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "GetAgentDetails"))
+		logger := log_ctx.With(zap.String("function", "GetAgentDetails"))
 
 		agentID := c.Param("id")
 		logger.Debug("Agent ID", zap.String("agentID", agentID))
@@ -143,9 +143,9 @@ func GetAgentDetails(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param id path string true "Agent ID"
 // @Success 200 {object} models.Agent
 // @Router /agents/{id}/download [get]
-func DownloadAgent(db *pgxpool.Pool) gin.HandlerFunc {
+func DownloadAgent(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "DownloadAgent"))
+		logger := log_ctx.With(zap.String("function", "DownloadAgent"))
 
 		agentID := c.Param("id")
 		if agentID == "" {
@@ -184,9 +184,9 @@ func DownloadAgent(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param id path string true "Agent ID"
 // @Success 200 {object} models.Agent
 // @Router /agents/{id}/download [get]
-func DownloadAgentFile(db *pgxpool.Pool) gin.HandlerFunc {
+func DownloadAgentFile(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "DownloadAgentFile"))
+		logger := log_ctx.With(zap.String("function", "DownloadAgentFile"))
 
 		agentID := c.Param("id")
 		if agentID == "" {
@@ -219,9 +219,9 @@ func DownloadAgentFile(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
-func TopAgentsByDownloads(db *pgxpool.Pool) gin.HandlerFunc {
+func TopAgentsByDownloads(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "TopAgentsByDownloads"))
+		logger := log_ctx.With(zap.String("function", "TopAgentsByDownloads"))
 		logger.Info("Handling request for top agents by downloads")
 
 		page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -321,9 +321,9 @@ func GetFeaturedAgents(db *pgxpool.Pool, logger *zap.Logger) gin.HandlerFunc {
 // @Param sortOrder query string false "Sort order"
 // @Success 200 {array} models.Agent
 // @Router /agents/search [get]
-func SearchAgents(db *pgxpool.Pool) gin.HandlerFunc {
+func SearchAgents(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "Search"))
+		logger := log_ctx.With(zap.String("function", "Search"))
 		logger.Info("Handling search request")
 
 		query := c.Query("q")

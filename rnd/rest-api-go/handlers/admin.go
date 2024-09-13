@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/swiftyos/market/database"
 	"github.com/swiftyos/market/models"
+	"go.uber.org/zap"
 )
 
 func requireAdminUser() gin.HandlerFunc {
@@ -44,7 +45,7 @@ func requireAdminUser() gin.HandlerFunc {
 // @Param request body models.AddAgentRequest true "Agent details"
 // @Success 200 {object} models.Agent
 // @Router /agents [post]
-func CreateAgentEntry(db *pgxpool.Pool) gin.HandlerFunc {
+func CreateAgentEntry(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
 		if c.IsAborted() {
@@ -85,7 +86,7 @@ func CreateAgentEntry(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param category query string false "Category"
 // @Success 200 {object} models.Agent
 // @Router /agent/featured/{agent_id} [post]
-func SetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
+func SetAgentFeatured(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
 		if c.IsAborted() {
@@ -118,7 +119,7 @@ func SetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param category query string false "Category"
 // @Success 200 {object} models.Agent
 // @Router /agent/featured/{agent_id} [get]
-func GetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
+func GetAgentFeatured(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
 		if c.IsAborted() {
@@ -152,7 +153,7 @@ func GetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param category query string false "Category"
 // @Success 200 {object} models.Agent
 // @Router /agent/featured/{agent_id} [delete]
-func UnsetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
+func UnsetAgentFeatured(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
 		if c.IsAborted() {
@@ -187,7 +188,7 @@ func UnsetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param page_size query int false "Page size"
 // @Success 200 {object} models.Agent
 // @Router /agent/not-featured [get]
-func GetNotFeaturedAgents(db *pgxpool.Pool) gin.HandlerFunc {
+func GetNotFeaturedAgents(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
 		if c.IsAborted() {
@@ -222,7 +223,7 @@ func GetNotFeaturedAgents(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param page_size query int false "Page size"
 // @Success 200 {object} models.Agent
 // @Router /agent/submissions [get]
-func GetAgentSubmissions(db *pgxpool.Pool) gin.HandlerFunc {
+func GetAgentSubmissions(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
 		if c.IsAborted() {
@@ -244,7 +245,7 @@ func GetAgentSubmissions(db *pgxpool.Pool) gin.HandlerFunc {
 // @Param status query string true "Status"
 // @Success 200 {object} models.Agent
 // @Router /agent/submissions/{agent_id} [post]
-func ReviewSubmission(db *pgxpool.Pool) gin.HandlerFunc {
+func ReviewSubmission(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
 		if c.IsAborted() {
@@ -264,7 +265,7 @@ func ReviewSubmission(db *pgxpool.Pool) gin.HandlerFunc {
 // @Produce json
 // @Success 200 {array} string
 // @Router /categories [get]
-func GetCategories(db *pgxpool.Pool) gin.HandlerFunc {
+func GetCategories(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.IsAborted() {
 			return

@@ -11,7 +11,7 @@ import (
 	"github.com/swiftyos/market/models"
 )
 
-func AgentInstalled(db *pgxpool.Pool) gin.HandlerFunc {
+func AgentInstalled(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "AgentInstalled"))
 		var eventData models.InstallTracker
