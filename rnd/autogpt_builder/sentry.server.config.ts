@@ -15,9 +15,9 @@ Sentry.init({
   debug: false,
 
   // Integrations
-  integrations: [Sentry.anrIntegration(),
+  integrations: [
+    Sentry.anrIntegration(),
     // NodeProfilingIntegration,
     // Sentry.fsIntegration(),
-    
   ],
 });

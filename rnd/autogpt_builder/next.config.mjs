@@ -78,7 +78,7 @@ export default withSentryConfig(nextConfig, {
             value: "js-profiling",
           },
         ],
-      }
+      },
     ];
   },
 });
