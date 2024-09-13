@@ -1,11 +1,11 @@
 "use server";
 
 import { TutorialStepData } from "@/lib/autogpt-server-api/types";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
+import AutoGPTServerAPIServer from "@/lib/autogpt-server-api/clientServer";
 
 export const sendTutorialStep = async (data: TutorialStepData) => {
   console.debug("sendTutorialStep", data);
-  const api = new AutoGPTServerAPI();
+  const api = new AutoGPTServerAPIServer();
 
   await api.logTutorialStep(data);
 };
