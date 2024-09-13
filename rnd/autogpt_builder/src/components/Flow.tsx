@@ -588,7 +588,9 @@ const FlowEditor: React.FC<{
             <SaveControl
               agentMeta={savedAgent}
               onSave={(isTemplate) => requestSave(isTemplate ?? false)}
+              agentDescription={agentDescription}
               onDescriptionChange={setAgentDescription}
+              agentName={agentName}
               onNameChange={setAgentName}
             />
           </ControlPanel>

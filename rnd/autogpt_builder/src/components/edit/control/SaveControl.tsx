@@ -18,6 +18,8 @@ import {
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
+  agentName: string;
+  agentDescription: string;
   onSave: (isTemplate: boolean | undefined) => void;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
@@ -35,7 +37,9 @@ interface SaveControlProps {
 export const SaveControl = ({
   agentMeta,
   onSave,
+  agentName,
   onNameChange,
+  agentDescription,
   onDescriptionChange,
 }: SaveControlProps) => {
   /**
@@ -75,7 +79,7 @@ export const SaveControl = ({
                 id="name"
                 placeholder="Enter your agent name"
                 className="col-span-3"
-                defaultValue={agentMeta?.name || ""}
+                value={agentName}
                 onChange={(e) => onNameChange(e.target.value)}
               />
               <Label htmlFor="description">Description</Label>
@@ -83,9 +87,21 @@ export const SaveControl = ({
                 id="description"
                 placeholder="Your agent description"
                 className="col-span-3"
-                defaultValue={agentMeta?.description || ""}
+                value={agentDescription}
                 onChange={(e) => onDescriptionChange(e.target.value)}
               />
+              {agentMeta?.version && (
+                <>
+                  <Label htmlFor="version">Version</Label>
+                  <Input
+                    id="version"
+                    placeholder="Version"
+                    className="col-span-3"
+                    value={agentMeta?.version || "-"}
+                    disabled
+                  />
+                </>
+              )}
             </div>
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
