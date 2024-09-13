@@ -8,11 +8,11 @@ import (
 )
 
 type Config struct {
-	ServerAddress string `mapstructure:"serveraddress"`
-	DatabaseURL   string `mapstructure:"databaseurl"`
-	AuthEnabled   bool   `mapstructure:"authenabled"`
-	JWTSecret     string `mapstructure:"jwtsecret"`
-	JWTAlgorithm  string `mapstructure:"jwtalgorithm"`
+	ServerAddress    string   `mapstructure:"serveraddress"`
+	DatabaseURL      string   `mapstructure:"databaseurl"`
+	AuthEnabled      bool     `mapstructure:"authenabled"`
+	JWTSecret        string   `mapstructure:"jwtsecret"`
+	JWTAlgorithm     string   `mapstructure:"jwtalgorithm"`
 	CORSAllowOrigins []string `mapstructure:"corsalloworigins"`
 }
 

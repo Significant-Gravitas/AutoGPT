@@ -10,8 +10,6 @@ import (
 	"github.com/swiftyos/market/models"
 )
 
-
-
 func requireAdminUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")

@@ -15,8 +15,6 @@ func TestGetPageFromContext_ValidPage(t *testing.T) {
 	assert.Equal(t, 5, result)
 }
 
-
-
 func TestGetPageFromContext_InvalidPageZero(t *testing.T) {
 	ctx := context.WithValue(context.Background(), pageKey, 0)
 	result := getPageFromContext(ctx)
