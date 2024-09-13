@@ -1,19 +1,19 @@
 -- Sample data for Agents table (10 agents)
 
-INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph")
-VALUES ('b609e5fd-c992-4be9-b68f-afc1980f93c0', 'AI Recruiter', 'An AI-powered tool that assists HR teams with talent acquisition, screening, and shortlisting.', 'Author1', ARRAY['recruitment', 'HR'], ARRAY['human resources', 'talent management'], '{"key": "value"}');
+INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph", "submissionStatus")
+VALUES ('b609e5fd-c992-4be9-b68f-afc1980f93c0', 'AI Recruiter', 'An AI-powered tool that assists HR teams with talent acquisition, screening, and shortlisting.', 'Author1', ARRAY['recruitment', 'HR'], ARRAY['human resources', 'talent management'], '{"key": "value"}', 'APPROVED');
 
-INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph")
-VALUES ('3b6d8f75-99d3-41e3-b484-4b2c5f835f5b', 'Customer Service Bot', 'A chatbot that provides 24/7 support and assistance to customers, handling common inquiries and issues.', 'Author2', ARRAY['customer service', 'chatbot'], ARRAY['customer experience', 'artificial intelligence'], '{"key": "value"}');
+INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph", "submissionStatus")
+VALUES ('3b6d8f75-99d3-41e3-b484-4b2c5f835f5b', 'Customer Service Bot', 'A chatbot that provides 24/7 support and assistance to customers, handling common inquiries and issues.', 'Author2', ARRAY['customer service', 'chatbot'], ARRAY['customer experience', 'artificial intelligence'], '{"key": "value"}', 'APPROVED');
 
-INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph")
-VALUES ('eaa773b1-5efa-485f-b2f0-2e05bae6d297', 'Financial Advisor', 'An AI-powered financial advisor that offers personalized investment recommendations and portfolio management.', 'Author3', ARRAY['finance', 'investment'], ARRAY['wealth management', 'artificial intelligence'], '{"key": "value"}');
+INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph", "submissionStatus")
+VALUES ('eaa773b1-5efa-485f-b2f0-2e05bae6d297', 'Financial Advisor', 'An AI-powered financial advisor that offers personalized investment recommendations and portfolio management.', 'Author3', ARRAY['finance', 'investment'], ARRAY['wealth management', 'artificial intelligence'], '{"key": "value"}', 'APPROVED');
 
-INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph")
-VALUES ('b47e40a7-ad5f-4b29-9eac-abd5b728f19a', 'AI Content Writer', 'An AI-powered tool that generates high-quality content for websites, blogs, and marketing materials.', 'Author4', ARRAY['content writing', 'AI'], ARRAY['marketing', 'artificial intelligence'], '{"key": "value"}');
+INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph", "submissionStatus")
+VALUES ('b47e40a7-ad5f-4b29-9eac-abd5b728f19a', 'AI Content Writer', 'An AI-powered tool that generates high-quality content for websites, blogs, and marketing materials.', 'Author4', ARRAY['content writing', 'AI'], ARRAY['marketing', 'artificial intelligence'], '{"key": "value"}', 'APPROVED');
 
-INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph")
-VALUES ('a4d3598f-6180-4e6d-96bf-6e15c3de05a9', 'AI Image Generator', 'An AI-powered tool that creates realistic images based on text prompts.', 'Author5', ARRAY['image generation', 'AI'], ARRAY['marketing', 'artificial intelligence'], '{"key": "value"}');
+INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph", "submissionStatus")
+VALUES ('a4d3598f-6180-4e6d-96bf-6e15c3de05a9', 'AI Image Generator', 'An AI-powered tool that creates realistic images based on text prompts.', 'Author5', ARRAY['image generation', 'AI'], ARRAY['marketing', 'artificial intelligence'], '{"key": "value"}', 'APPROVED');
 
 INSERT INTO "Agents" ("id", "name", "description", "author", "keywords", "categories", "graph")
 VALUES ('9f332ff3-4c74-4f5b-9838-65938a06711f', 'AI Video Editor', 'An AI-powered tool that edits and enhances videos with advanced AI algorithms.', 'Author6', ARRAY['video editing', 'AI'], ARRAY['marketing', 'artificial intelligence'], '{"key": "value"}');

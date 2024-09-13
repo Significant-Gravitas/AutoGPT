@@ -81,7 +81,7 @@ func main() {
 
 		agents := api.Group("/agents")
 		{
-			agents.GET("", handlers.GetAgents(db))
+			agents.GET("", handlers.GetAgents(db, logger))
 			agents.GET("/:agent_id", handlers.GetAgentDetails(db))
 			agents.GET("/:agent_id/download", handlers.DownloadAgent(db))
 			agents.GET("/:agent_id/download-file", handlers.DownloadAgentFile(db))

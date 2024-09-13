@@ -197,6 +197,33 @@ paths:
       consumes:
       - application/json
       description: Get Agents
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: pageSize
+        type: integer
+      - description: Agent Name
+        in: query
+        name: name
+        type: string
+      - collectionFormat: csv
+        description: Keywords
+        in: query
+        items:
+          type: string
+        name: keywords
+        type: array
+      - collectionFormat: csv
+        description: Categories
+        in: query
+        items:
+          type: string
+        name: categories
+        type: array
       produces:
       - application/json
       responses:

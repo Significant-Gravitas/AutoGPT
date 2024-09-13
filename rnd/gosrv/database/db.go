@@ -19,8 +19,8 @@ func NewDB(cfg *config.Config) (*pgxpool.Pool, error) {
 	return pgxpool.New(context.Background(), cfg.DatabaseURL)
 }
 
-func GetAgents(ctx context.Context, db *pgxpool.Pool, page int, pageSize int, name *string, keywords *string, categories *string) ([]models.Agent, error) {
-	logger := zap.L().With(zap.String("function", "GetAgents"))
+func GetAgents(ctx context.Context, db *pgxpool.Pool, logger *zap.Logger, page int, pageSize int, name *string, keywords *string, categories *string) ([]models.Agent, error) {
+	logger = logger.With(zap.String("function", "GetAgents")).With(zap.String("file", "db.go"))
 
 	logger.Debug("Query parameters",
 		zap.Int("page", page),
@@ -30,12 +30,12 @@ func GetAgents(ctx context.Context, db *pgxpool.Pool, page int, pageSize int, na
 		zap.String("categories", utils.StringOrNil(categories)))
 
 	query := `
-		SELECT * FROM "Agents"
-		WHERE submission_status = 'APPROVED'
+		SELECT "id", "name", "description", "author", "keywords", "categories", "graph" FROM "Agents"
+		WHERE "submissionStatus" = 'APPROVED'
 		AND ($3::text IS NULL OR name ILIKE '%' || $3 || '%')
 		AND ($4::text IS NULL OR $4 = ANY(keywords))
 		AND ($5::text IS NULL OR $5 = ANY(categories))
-		ORDER BY created_at DESC
+		ORDER BY "createdAt" DESC
 		LIMIT $1 OFFSET $2
 	`
 
@@ -70,6 +70,9 @@ func GetAgents(ctx context.Context, db *pgxpool.Pool, page int, pageSize int, na
 	}
 	logger.Info("Found agents", zap.Int("count", len(agents)))
 
+	if agents == nil {
+		agents = []models.Agent{}
+	}
 	return agents, err
 }
 

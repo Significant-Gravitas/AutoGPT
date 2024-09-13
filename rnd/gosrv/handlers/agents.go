@@ -23,11 +23,18 @@ import (
 // @Tags Agents
 // @Accept json
 // @Produce json
+// @Param page query int false "Page number"
+// @Param pageSize query int false "Page size"
+// @Param name query string false "Agent Name"
+// @Param keywords query []string false "Keywords"
+// @Param categories query []string false "Categories"
 // @Success 200 {array} models.Agent
 // @Router /agents [get]
-func GetAgents(db *pgxpool.Pool) gin.HandlerFunc {
+func GetAgents(db *pgxpool.Pool, log_ctx *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := zap.L().With(zap.String("function", "ListAgents"))
+		logger := log_ctx.With(zap.String("function", "GetAgents")).With(zap.String("file", "handlers/agents.go"))
+
+		logger.Info("Get Agents Request Started")
 		// Get pagination parameters from context
 		page := getPageFromContext(c.Request.Context())
 		pageSize := getPageSizeFromContext(c.Request.Context())
@@ -44,9 +51,10 @@ func GetAgents(db *pgxpool.Pool) gin.HandlerFunc {
 			zap.String("keywords", utils.StringOrNil(keywords)),
 			zap.String("categories", utils.StringOrNil(categories)))
 
-		agents, err := database.GetAgents(c.Request.Context(), db, page, pageSize, name, keywords, categories)
+		agents, err := database.GetAgents(c.Request.Context(), db, log_ctx, page, pageSize, name, keywords, categories)
+
 		if err != nil {
-			logger.Error("Failed to fetch agents", zap.Error(err))
+			logger.Error("Database requested returned error!", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch agents"})
 			return
 		}
