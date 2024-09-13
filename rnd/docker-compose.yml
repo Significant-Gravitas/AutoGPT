@@ -1,16 +1,4 @@
 services:
-  supabase:
-    image: ubuntu:latest
-    volumes:
-      - ./scripts/run_supabase.sh:/run_supabase.sh
-      - ./:/app
-    working_dir: /app
-    command: [ "/bin/bash", "/run_supabase.sh" ]
-    environment:
-      - DEBIAN_FRONTEND=noninteractive
-    networks:
-      - app-network
-
   postgres:
     image: ankane/pgvector:latest
     environment:
@@ -75,10 +63,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_started
-      supabase:
-        condition: service_completed_successfully
-      supabase:
-        condition: service_completed_successfully
     environment:
       - SUPABASE_URL=http://localhost:54321
       - SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
@@ -111,10 +95,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_started
-      supabase:
-        condition: service_completed_successfully
-      supabase:
-        condition: service_completed_successfully
     environment:
       - SUPABASE_URL=http://localhost:54321
       - SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
@@ -123,7 +103,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
-      - AUTH_ENABLED=false
+      - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
     ports:
@@ -146,8 +126,6 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
-      supabase:
-        condition: service_completed_successfully
     environment:
       - SUPABASE_URL=http://localhost:54321
       - SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
@@ -156,7 +134,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
-      - AUTH_ENABLED=false
+      - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
     ports:
       - "8001:8000"
@@ -171,8 +149,6 @@ services:
       postgres:
         condition: service_healthy
       migrate:
-        condition: service_completed_successfully
-      supabase:
         condition: service_completed_successfully
     environment:
       - SUPABASE_URL=http://localhost:54321
@@ -197,8 +173,6 @@ services:
       websocket_server:
         condition: service_started
       migrate:
-        condition: service_completed_successfully
-      supabase:
         condition: service_completed_successfully
     environment:
       - NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
