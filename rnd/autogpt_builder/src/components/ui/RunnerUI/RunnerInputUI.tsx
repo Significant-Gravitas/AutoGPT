@@ -46,6 +46,7 @@ export function RunnerInputUI({
   blockInputs,
   onInputChange,
   onRun,
+  isRunning,
 }: RunSettingsUiProps) {
   const inputCount = blockInputs.length;
 
@@ -148,8 +149,8 @@ export function RunnerInputUI({
           </ScrollArea>
         </div>
         <DialogFooter className="px-6 py-4">
-          <Button onClick={handleRun} className="px-8 py-2 text-lg">
-            Run
+          <Button onClick={handleRun} className="px-8 py-2 text-lg" disabled={isRunning}>
+            {isRunning ? "Running..." : "Run"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -545,33 +545,6 @@ const FlowEditor: React.FC<{
     clearNodesStatusAndOutput();
   }, [clearNodesStatusAndOutput]);
 
-  const editorControls: Control[] = [
-    {
-      label: "Undo",
-      icon: <IconUndo2 />,
-      onClick: handleUndo,
-    },
-    {
-      label: "Redo",
-      icon: <IconRedo2 />,
-      onClick: handleRedo,
-    },
-    {
-      label: !isRunning ? "Run" : "Stop",
-      icon: !isRunning ? <IconPlay /> : <IconSquare />,
-      onClick: !isRunning ? requestSaveAndRun : requestStopRun,
-    },
-    {
-      label: "Runner Settings",
-      icon: <IconSquareActivity />,
-      onClick: () => setIsRunnerInputOpen(true),
-    },
-    {
-      label: "Runner Output",
-      icon: <IconMegaphone />,
-      onClick: () => setIsRunnerOutputOpen(true),
-    },
-  ];
 
   // This is to check for the Input and Output block, if they are used they are passed to Runner ui's input and output screen
   const getBlockInputsAndOutputs = useCallback(() => {
@@ -587,7 +560,6 @@ const FlowEditor: React.FC<{
       id: node.id,
       type: "input" as const,
       inputSchema: node.data.inputSchema,
-      outputSchema: node.data.outputSchema,
       hardcodedValues: {
         name: node.data.hardcodedValues.name || "",
         description: node.data.hardcodedValues.description || "",
@@ -598,22 +570,55 @@ const FlowEditor: React.FC<{
       },
     }));
 
-    const outputs = outputBlocks.map((node) => ({
-      id: node.id,
-      type: "output" as const,
-      inputSchema: node.data.inputSchema,
-      outputSchema: node.data.outputSchema,
-      hardcodedValues: {
-        name: node.data.hardcodedValues.name || "Output",
-        description:
-          node.data.hardcodedValues.description || "Output from the agent",
-        value: node.data.hardcodedValues.value,
-      },
-      result: node.data.executionResults?.at(-1)?.data?.result,
-    }));
-
+    const outputs = outputBlocks.map((node) => {
+      return {
+        id: node.id,
+        type: "output" as const,
+        outputSchema: node.data.outputSchema,
+        hardcodedValues: {
+          name: node.data.hardcodedValues.name || "Output",
+          description:
+            node.data.hardcodedValues.description || "Output from the agent",
+          value: node.data.hardcodedValues.value,
+        },
+        result: node.data.executionResults?.at(-1)?.data?.output,
+      };
+    });
+  
     return { inputs, outputs };
   }, [nodes]);
+
+  const handleRunClick = useCallback(() => {
+    const { inputs } = getBlockInputsAndOutputs();
+    if (inputs.length > 0) {
+      setIsRunnerInputOpen(true);
+    } else {
+      requestSaveAndRun();
+    }
+  }, [getBlockInputsAndOutputs, setIsRunnerInputOpen, requestSaveAndRun]);
+
+  const editorControls: Control[] = [
+    {
+      label: "Undo",
+      icon: <IconUndo2 />,
+      onClick: handleUndo,
+    },
+    {
+      label: "Redo",
+      icon: <IconRedo2 />,
+      onClick: handleRedo,
+    },
+    {
+      label: !isRunning ? "Run" : "Stop",
+      icon: !isRunning ? <IconPlay /> : <IconSquare />,
+      onClick: !isRunning ? handleRunClick : requestStopRun,
+    },
+    {
+      label: "Runner Output",
+      icon: <IconMegaphone />,
+      onClick: () => setIsRunnerOutputOpen(true),
+    },
+  ];
 
   // This is to update the blocks when changes are made via the input Runner UI.
   const handleInputChange = useCallback(
@@ -683,8 +688,10 @@ const FlowEditor: React.FC<{
         blockInputs={getBlockInputsAndOutputs().inputs}
         onInputChange={handleInputChange}
         onRun={() => {
+          setIsRunnerInputOpen(false);
           requestSaveAndRun();
         }}
+        isRunning={isRunning}
       />
       <RunnerOutputUI
         isOpen={isRunnerOutputOpen}
