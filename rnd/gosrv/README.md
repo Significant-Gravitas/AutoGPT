@@ -96,3 +96,27 @@ The API provides various endpoints for agent management, user authentication, an
 - `/api/admin/*`: Various administrative endpoints (requires admin authentication)
 
 Refer to the `main.go` file for a complete list of endpoints and their corresponding handlers.
+
+
+# Swagger Documentation
+
+This project uses `gin-swagger` and `Swaggo` tools for automatic generation of API documentation in OpenAPI (Swagger) format. The documentation is based on comments added to the code using Swagger annotations.
+
+To view and interact with the generated Swagger documentation, follow these steps:
+
+1. Run your Gin server.
+2. Access the Swagger UI by navigating to `http://localhost:8015/docs/index.html` in your web browser.
+
+Alternatively, you can view the raw OpenAPI specification at `http://localhost:8015/docs/doc.json`.
+
+## Regenerating Swagger Documentation
+
+If you make changes to your codebase and want to regenerate the Swagger documentation, follow these steps:
+
+1. Run the `swag init` command in your project directory to create a new `docs.go` file (or update an existing one) with Swagger documentation comments based on your code:
+```bash
+swag init -g main.go
+```
+Replace `main.go` with the name of your main Go source file.
+
+3. Run your Gin server, and access the updated Swagger UI at `http://localhost:8015/docs/index.html`. You should see your documentation reflecting the latest changes in your codebase.
