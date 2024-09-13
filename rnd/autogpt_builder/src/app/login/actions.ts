@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
@@ -51,7 +52,7 @@ export async function signup(values: z.infer<typeof loginFormSchema>) {
     await supabase.auth.setSession(data.session);
   }
   if (data.user) {
-    const api = new AutoGPTServerAPI();
+    const api = new AutoGPTServerAPIServerSide();
 
     api.logCreateUser({
       email: values.email,
