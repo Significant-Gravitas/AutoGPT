@@ -1,0 +1,368 @@
+definitions:
+  models.AddAgentRequest:
+    properties:
+      author:
+        type: string
+      categories:
+        items:
+          type: string
+        type: array
+      graph:
+        $ref: '#/definitions/models.Graph'
+      keywords:
+        items:
+          type: string
+        type: array
+    type: object
+  models.Agent:
+    properties:
+      author:
+        type: string
+      categories:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      graph:
+        $ref: '#/definitions/models.Graph'
+      id:
+        type: string
+      keywords:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+    type: object
+  models.Graph:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /agent/featured/{agent_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Unset an agent as featured in a specific category
+      parameters:
+      - description: Agent ID
+        in: path
+        name: agent_id
+        required: true
+        type: string
+      - description: Category
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Unset Agent Featured
+      tags:
+      - Admin
+    get:
+      consumes:
+      - application/json
+      description: Get the featured agent for a specific category
+      parameters:
+      - description: Agent ID
+        in: path
+        name: agent_id
+        required: true
+        type: string
+      - description: Category
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Get Agent Featured
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      description: Set an agent as featured in a specific category
+      parameters:
+      - description: Agent ID
+        in: path
+        name: agent_id
+        required: true
+        type: string
+      - description: Category
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Set Agent Featured
+      tags:
+      - Admin
+  /agent/not-featured:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of agents that are not featured
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Get Not Featured Agents
+      tags:
+      - Admin
+  /agent/submissions:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of agent submissions
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Get Agent Submissions
+      tags:
+      - Admin
+  /agent/submissions/{agent_id}:
+    post:
+      consumes:
+      - application/json
+      description: Review an agent submission
+      parameters:
+      - description: Agent ID
+        in: path
+        name: agent_id
+        required: true
+        type: string
+      - description: Status
+        in: query
+        name: status
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Review Submission
+      tags:
+      - Admin
+  /agents:
+    get:
+      consumes:
+      - application/json
+      description: Get Agents
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Agent'
+            type: array
+      summary: Get Agents
+      tags:
+      - Agents
+    post:
+      consumes:
+      - application/json
+      description: Submit an agent for review
+      parameters:
+      - description: Agent details
+        in: body
+        name: agent
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Submit Agent
+      tags:
+      - Agents
+  /agents/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Get details of a specific agent by ID
+      parameters:
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Get Agent Details
+      tags:
+      - Agents
+  /agents/{id}/download:
+    get:
+      consumes:
+      - application/json
+      description: Download an agent file by ID
+      parameters:
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Agent'
+      summary: Download Agent File
+      tags:
+      - Agents
+  /agents/featured:
+    get:
+      consumes:
+      - application/json
+      description: Get featured agents based on category
+      parameters:
+      - description: Category
+        in: query
+        name: category
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Agent'
+            type: array
+      summary: Get Featured Agents
+      tags:
+      - Agents
+  /agents/search:
+    get:
+      consumes:
+      - application/json
+      description: Search for agents based on query and categories
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - collectionFormat: csv
+        description: Categories
+        in: query
+        items:
+          type: string
+        name: categories
+        type: array
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: pageSize
+        type: integer
+      - description: Sort by
+        in: query
+        name: sortBy
+        type: string
+      - description: Sort order
+        in: query
+        name: sortOrder
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Agent'
+            type: array
+      summary: Search Agents
+      tags:
+      - Agents
+  /categories:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of categories
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Get Categories
+      tags:
+      - Admin
+swagger: "2.0"

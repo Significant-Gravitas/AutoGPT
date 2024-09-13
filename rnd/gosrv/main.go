@@ -9,8 +9,11 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/swiftyos/market/config"
 	"github.com/swiftyos/market/database"
+	docs "github.com/swiftyos/market/docs"
 	"github.com/swiftyos/market/handlers"
 	"github.com/swiftyos/market/middleware"
 	"github.com/swiftyos/market/utils"
@@ -67,7 +70,7 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		c.String(http.StatusOK, "Welcome to the Marketplace API")
 	})
-
+	docs.SwaggerInfo.BasePath = "/api/v1/market/"
 
 	// Setup routes
 	// [Error] Request header field Authorization is not allowed by Access-Control-Allow-Headers.
@@ -98,12 +101,13 @@ func main() {
 			admin.GET("/agent/not-featured", middleware.Auth(cfg), handlers.GetNotFeaturedAgents(db))
 			admin.GET("/agent/submissions", middleware.Auth(cfg), handlers.GetAgentSubmissions(db))
 			admin.POST("/agent/submissions", middleware.Auth(cfg), handlers.ReviewSubmission(db))
-			admin.GET("/categories", handlers.GetCategories(db))
 		}
 
+		admin.GET("/categories", handlers.GetCategories(db))
 		// Analytics routes
 		api.POST("/agent-installed", handlers.AgentInstalled(db))
 	}
+	r.GET("/docs/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 
 	// Start server
 	if err := r.Run(cfg.ServerAddress); err != nil {

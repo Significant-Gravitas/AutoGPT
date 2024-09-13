@@ -7,6 +7,7 @@ This project is a Go-based API for a marketplace application. It provides endpoi
 The project is organized into several packages:
 
 - `config`: Handles configuration loading and management
+- `docs`: Contains the Swagger documentation
 - `database`: Contains database migrations and interaction logic
 - `handlers`: Implements HTTP request handlers
 - `middleware`: Contains middleware functions for the API

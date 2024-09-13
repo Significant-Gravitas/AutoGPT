@@ -14,6 +14,17 @@ import (
 	"github.com/swiftyos/market/utils"
 )
 
+// @BasePath /api/v1/marketplace
+
+// GetAgents godoc
+// @Summary Get Agents
+// @Schemes
+// @Description Get Agents
+// @Tags Agents
+// @Accept json
+// @Produce json
+// @Success 200 {array} models.Agent
+// @Router /agents [get]
 func GetAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "ListAgents"))
@@ -44,6 +55,14 @@ func GetAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// @Summary Submit Agent
+// @Description Submit an agent for review
+// @Tags Agents
+// @Accept json
+// @Produce json
+// @Param agent body models.AddAgentRequest true "Agent details"
+// @Success 200 {object} models.Agent
+// @Router /agents [post]
 func SubmitAgent(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "SubmitAgent"))
@@ -71,6 +90,14 @@ func SubmitAgent(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get Agent Details
+// @Description Get details of a specific agent by ID
+// @Tags Agents
+// @Accept json
+// @Produce json
+// @Param id path string true "Agent ID"
+// @Success 200 {object} models.Agent
+// @Router /agents/{id} [get]
 func GetAgentDetails(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "GetAgentDetails"))
@@ -100,6 +127,14 @@ func GetAgentDetails(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// @Summary Download Agent
+// @Description Download an agent by ID
+// @Tags Agents
+// @Accept json
+// @Produce json
+// @Param id path string true "Agent ID"
+// @Success 200 {object} models.Agent
+// @Router /agents/{id}/download [get]
 func DownloadAgent(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "DownloadAgent"))
@@ -133,6 +168,14 @@ func DownloadAgent(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// @Summary Download Agent File
+// @Description Download an agent file by ID
+// @Tags Agents
+// @Accept json
+// @Produce json
+// @Param id path string true "Agent ID"
+// @Success 200 {object} models.Agent
+// @Router /agents/{id}/download [get]
 func DownloadAgentFile(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "DownloadAgentFile"))
@@ -204,6 +247,16 @@ func TopAgentsByDownloads(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get Featured Agents
+// @Description Get featured agents based on category
+// @Tags Agents
+// @Accept json
+// @Produce json
+// @Param category query string false "Category"
+// @Param page query int false "Page number"
+// @Param pageSize query int false "Page size"
+// @Success 200 {array} models.Agent
+// @Router /agents/featured [get]
 func GetFeaturedAgents(db *pgxpool.Pool, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := logger.With(zap.String("function", "GetFeaturedAgents"))
@@ -247,6 +300,19 @@ func GetFeaturedAgents(db *pgxpool.Pool, logger *zap.Logger) gin.HandlerFunc {
 	}
 }
 
+// @Summary Search Agents
+// @Description Search for agents based on query and categories
+// @Tags Agents
+// @Accept json
+// @Produce json
+// @Param q query string true "Search query"
+// @Param categories query []string false "Categories"
+// @Param page query int false "Page number"
+// @Param pageSize query int false "Page size"
+// @Param sortBy query string false "Sort by"
+// @Param sortOrder query string false "Sort order"
+// @Success 200 {array} models.Agent
+// @Router /agents/search [get]
 func SearchAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger := zap.L().With(zap.String("function", "Search"))

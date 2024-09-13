@@ -10,6 +10,8 @@ import (
 	"github.com/swiftyos/market/models"
 )
 
+
+
 func requireAdminUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
@@ -33,6 +35,17 @@ func requireAdminUser() gin.HandlerFunc {
 	}
 }
 
+// @BasePath /api/v1/marketplace/admin
+
+// CreateAgentEntry godoc
+// @Summary Create Agent Entry
+// @Description Create a new agent entry
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param request body models.AddAgentRequest true "Agent details"
+// @Success 200 {object} models.Agent
+// @Router /agents [post]
 func CreateAgentEntry(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
@@ -64,6 +77,16 @@ func CreateAgentEntry(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// SetAgentFeatured godoc
+// @Summary Set Agent Featured
+// @Description Set an agent as featured in a specific category
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param agent_id path string true "Agent ID"
+// @Param category query string false "Category"
+// @Success 200 {object} models.Agent
+// @Router /agent/featured/{agent_id} [post]
 func SetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
@@ -87,6 +110,16 @@ func SetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// GetAgentFeatured godoc
+// @Summary Get Agent Featured
+// @Description Get the featured agent for a specific category
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param agent_id path string true "Agent ID"
+// @Param category query string false "Category"
+// @Success 200 {object} models.Agent
+// @Router /agent/featured/{agent_id} [get]
 func GetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
@@ -111,6 +144,16 @@ func GetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// UnsetAgentFeatured godoc
+// @Summary Unset Agent Featured
+// @Description Unset an agent as featured in a specific category
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param agent_id path string true "Agent ID"
+// @Param category query string false "Category"
+// @Success 200 {object} models.Agent
+// @Router /agent/featured/{agent_id} [delete]
 func UnsetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
@@ -136,6 +179,16 @@ func UnsetAgentFeatured(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// GetNotFeaturedAgents godoc
+// @Summary Get Not Featured Agents
+// @Description Get a list of agents that are not featured
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param page query int false "Page number"
+// @Param page_size query int false "Page size"
+// @Success 200 {object} models.Agent
+// @Router /agent/not-featured [get]
 func GetNotFeaturedAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
@@ -161,6 +214,16 @@ func GetNotFeaturedAgents(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// GetAgentSubmissions godoc
+// @Summary Get Agent Submissions
+// @Description Get a list of agent submissions
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param page query int false "Page number"
+// @Param page_size query int false "Page size"
+// @Success 200 {object} models.Agent
+// @Router /agent/submissions [get]
 func GetAgentSubmissions(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
@@ -173,6 +236,16 @@ func GetAgentSubmissions(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// ReviewSubmission godoc
+// @Summary Review Submission
+// @Description Review an agent submission
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param agent_id path string true "Agent ID"
+// @Param status query string true "Status"
+// @Success 200 {object} models.Agent
+// @Router /agent/submissions/{agent_id} [post]
 func ReviewSubmission(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requireAdminUser()(c)
@@ -185,9 +258,16 @@ func ReviewSubmission(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// GetCategories godoc
+// @Summary Get Categories
+// @Description Get a list of categories
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Success 200 {array} string
+// @Router /categories [get]
 func GetCategories(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requireAdminUser()(c)
 		if c.IsAborted() {
 			return
 		}
