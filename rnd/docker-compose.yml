@@ -161,9 +161,9 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
+      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60&schema=market
     ports:
-      - "8015:8000"
+      - "8015:8015"
     networks:
       - app-network
       
