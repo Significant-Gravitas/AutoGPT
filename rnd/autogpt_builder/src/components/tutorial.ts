@@ -496,7 +496,7 @@ export const startTutorial = (
 
   for (const step of tour.steps) {
     step.on("complete", () => {
-      console.log("sendTutorialStep");
+      console.debug("sendTutorialStep");
 
       sendTutorialStep({
         step: step.id,
