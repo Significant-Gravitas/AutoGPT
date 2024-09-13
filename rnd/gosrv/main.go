@@ -103,7 +103,7 @@ func main() {
 			admin.POST("/agent/submissions", middleware.Auth(cfg), handlers.ReviewSubmission(db))
 		}
 
-		admin.GET("/categories", handlers.GetCategories(db))
+		api.GET("/categories", handlers.GetCategories(db))
 		// Analytics routes
 		api.POST("/agent-installed", handlers.AgentInstalled(db))
 	}
