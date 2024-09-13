@@ -16,6 +16,7 @@ import {
 import { Connection, MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -24,6 +25,11 @@ export default function useAgentGraph(
   template?: boolean,
   passDataToBeads?: boolean,
 ) {
+  const [router, searchParams, pathname] = [
+    useRouter(),
+    useSearchParams(),
+    usePathname(),
+  ];
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
@@ -637,8 +643,15 @@ export default function useAgentGraph(
         nodes: formattedNodes,
         links: links,
       };
+      const existingPayload = {
+        id: savedAgent?.id,
+        name: savedAgent?.name,
+        description: savedAgent?.description,
+        nodes: savedAgent?.nodes,
+        links: savedAgent?.links,
+      };
 
-      if (savedAgent && deepEquals(payload, savedAgent)) {
+      if (savedAgent && deepEquals(payload, existingPayload)) {
         console.debug(
           "No need to save: Graph is the same as version on server",
         );
@@ -648,7 +661,7 @@ export default function useAgentGraph(
       } else {
         console.debug(
           "Saving new Graph version; old vs new:",
-          savedAgent,
+          existingPayload,
           payload,
         );
       }
@@ -663,6 +676,13 @@ export default function useAgentGraph(
             ? api.createTemplate(payload)
             : api.createGraph(payload));
       console.debug("Response from the API:", newSavedAgent);
+
+      // Route the URL to the new flow ID if it's a new agent.
+      if (!savedAgent) {
+        const path = new URLSearchParams(searchParams);
+        path.set("flowID", newSavedAgent.id);
+        router.replace(`${pathname}?${path.toString()}`);
+      }
 
       // Update the node IDs on the frontend
       setSavedAgent(newSavedAgent);
