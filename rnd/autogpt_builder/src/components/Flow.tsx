@@ -47,6 +47,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerInputUI from "./ui/RunnerUI/RunnerInputUI";
 import RunnerOutputUI from "./ui/RunnerUI/RunnerOutputUI";
+import { LogOut } from "lucide-react";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -614,7 +615,7 @@ const FlowEditor: React.FC<{
     },
     {
       label: "Runner Output",
-      icon: <IconOutput />,
+      icon: <LogOut size={18} strokeWidth={1.8} />,
       onClick: () => setIsRunnerOutputOpen(true),
     },
   ];
