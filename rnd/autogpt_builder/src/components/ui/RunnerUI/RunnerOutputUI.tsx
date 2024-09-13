@@ -27,7 +27,11 @@ interface OutputModalProps {
 
 const formatOutput = (output: any): string => {
   if (typeof output === "object") {
-    return JSON.stringify(output, null, 2);
+    try {
+      return JSON.stringify(output, null, 2);
+    } catch (error) {
+      return `Error formatting output: ${(error as Error).message}`;
+    }
   }
   return String(output);
 };

@@ -35,7 +35,7 @@ interface RunSettingsUiProps {
   isOpen: boolean;
   onClose: () => void;
   blockInputs: BlockInput[];
-  onInputChange: (nodeId: string, field: string, value: any) => void;
+  onInputChange: (nodeId: string, field: string, value: string) => void;
   onRun: () => void;
   isRunning: boolean;
 }
