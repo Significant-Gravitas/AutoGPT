@@ -56,6 +56,6 @@ WORKDIR /app/rnd/market
 FROM server_dependencies AS server
 
 ENV DATABASE_URL=""
-ENV PORT=8000
+ENV PORT=8015
 
-CMD ["uvicorn", "market.app:app", "--reload"]
+CMD ["poetry", "run", "app"]
