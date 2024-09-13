@@ -313,7 +313,7 @@ export default function useAgentGraph(
 
     (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
       (graph) => {
-        console.log("Loading graph");
+        console.debug("Loading graph");
         loadGraph(graph);
       },
     );
