@@ -9,7 +9,7 @@ CREATE TABLE "Agents" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "version" INTEGER NOT NULL DEFAULT 1,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "submissionDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "submissionReviewDate" TIMESTAMP(3),
     "submissionStatus" "SubmissionStatus" NOT NULL DEFAULT 'PENDING',
@@ -53,7 +53,7 @@ CREATE TABLE "FeaturedAgent" (
     "isActive" BOOLEAN NOT NULL DEFAULT false,
     "featuredCategories" TEXT[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "FeaturedAgent_pkey" PRIMARY KEY ("id")
 );
