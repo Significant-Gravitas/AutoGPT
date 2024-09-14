@@ -197,7 +197,7 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
 
 export function filterBlocksByType<T>(
   blocks: T[],
-  predicate: (block: T) => boolean
+  predicate: (block: T) => boolean,
 ): T[] {
   return blocks.filter(predicate);
 }
