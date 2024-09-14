@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface BlockOutput {
   id: string;
@@ -59,20 +61,22 @@ export function RunnerOutputUI({
               {blockOutputs && blockOutputs.length > 0 ? (
                 blockOutputs.map((block) => (
                   <div key={block.id} className="space-y-1">
-                    <h3 className="text-base font-semibold">
+                    <Label className="text-base font-semibold">
                       {block.hardcodedValues.name || "Unnamed Output"}
-                    </h3>
+                    </Label>
 
                     {block.hardcodedValues.description && (
-                      <p className="text-sm text-gray-600">
+                      <Label className="block text-sm text-gray-600">
                         {block.hardcodedValues.description}
-                      </p>
+                      </Label>
                     )}
 
                     <div className="rounded-md bg-gray-100 p-2">
-                      <pre className="whitespace-pre-wrap break-words text-sm">
-                        {formatOutput(block.result ?? "No output yet")}
-                      </pre>
+                      <Textarea
+                        readOnly
+                        value={formatOutput(block.result ?? "No output yet")}
+                        className="resize-none whitespace-pre-wrap break-words border-none bg-transparent text-sm"
+                      />
                     </div>
                   </div>
                 ))

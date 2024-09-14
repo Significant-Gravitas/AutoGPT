@@ -27,7 +27,7 @@ import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
 import { Link } from "@/lib/autogpt-server-api";
-import { getTypeColor } from "@/lib/utils";
+import { getTypeColor, filterBlocksByType } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -45,9 +45,10 @@ import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import RunnerInputUI from "./ui/RunnerUI/RunnerInputUI";
-import RunnerOutputUI from "./ui/RunnerUI/RunnerOutputUI";
 import { LogOut } from "lucide-react";
+import RunnerUIWrapper, {
+  RunnerUIWrapperRef,
+} from "@/components/RunnerUIWrapper";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -105,8 +106,7 @@ const FlowEditor: React.FC<{
   // State to control if blocks menu should be pinned open
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
 
-  const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
-  const [isRunnerOutputOpen, setIsRunnerOutputOpen] = useState(false);
+  const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -545,57 +545,6 @@ const FlowEditor: React.FC<{
     clearNodesStatusAndOutput();
   }, [clearNodesStatusAndOutput]);
 
-  // This is to check for the Input and Output block, if they are used they are passed to Runner ui's input and output screen
-  const getBlockInputsAndOutputs = useCallback(() => {
-    const inputBlocks = nodes.filter(
-      (node) => node.data.block_id === "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
-    );
-
-    const outputBlocks = nodes.filter(
-      (node) => node.data.block_id === "363ae599-353e-4804-937e-b2ee3cef3da4",
-    );
-
-    const inputs = inputBlocks.map((node) => ({
-      id: node.id,
-      type: "input" as const,
-      inputSchema: node.data.inputSchema,
-      hardcodedValues: {
-        name: node.data.hardcodedValues.name || "",
-        description: node.data.hardcodedValues.description || "",
-        value: node.data.hardcodedValues.value,
-        placeholder_values: node.data.hardcodedValues.placeholder_values || [],
-        limit_to_placeholder_values:
-          node.data.hardcodedValues.limit_to_placeholder_values || false,
-      },
-    }));
-
-    const outputs = outputBlocks.map((node) => {
-      return {
-        id: node.id,
-        type: "output" as const,
-        outputSchema: node.data.outputSchema,
-        hardcodedValues: {
-          name: node.data.hardcodedValues.name || "Output",
-          description:
-            node.data.hardcodedValues.description || "Output from the agent",
-          value: node.data.hardcodedValues.value,
-        },
-        result: node.data.executionResults?.at(-1)?.data?.output,
-      };
-    });
-
-    return { inputs, outputs };
-  }, [nodes]);
-
-  const handleRunClick = useCallback(() => {
-    const { inputs } = getBlockInputsAndOutputs();
-    if (inputs.length > 0) {
-      setIsRunnerInputOpen(true);
-    } else {
-      requestSaveAndRun();
-    }
-  }, [getBlockInputsAndOutputs, setIsRunnerInputOpen, requestSaveAndRun]);
-
   const editorControls: Control[] = [
     {
       label: "Undo",
@@ -610,38 +559,16 @@ const FlowEditor: React.FC<{
     {
       label: !isRunning ? "Run" : "Stop",
       icon: !isRunning ? <IconPlay /> : <IconSquare />,
-      onClick: !isRunning ? handleRunClick : requestStopRun,
+      onClick: !isRunning
+        ? () => runnerUIRef.current?.runOrOpenInput()
+        : requestStopRun,
     },
     {
       label: "Runner Output",
       icon: <LogOut size={18} strokeWidth={1.8} />,
-      onClick: () => setIsRunnerOutputOpen(true),
+      onClick: () => runnerUIRef.current?.openRunnerOutput(),
     },
   ];
-
-  // This is to update the blocks when changes are made via the input Runner UI.
-  const handleInputChange = useCallback(
-    (nodeId: string, field: string, value: string) => {
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                hardcodedValues: {
-                  ...node.data.hardcodedValues,
-                  [field]: value,
-                },
-              },
-            };
-          }
-          return node;
-        }),
-      );
-    },
-    [setNodes],
-  );
 
   return (
     <FlowContext.Provider
@@ -681,21 +608,12 @@ const FlowEditor: React.FC<{
           </ControlPanel>
         </ReactFlow>
       </div>
-      <RunnerInputUI
-        isOpen={isRunnerInputOpen}
-        onClose={() => setIsRunnerInputOpen(false)}
-        blockInputs={getBlockInputsAndOutputs().inputs}
-        onInputChange={handleInputChange}
-        onRun={() => {
-          setIsRunnerInputOpen(false);
-          requestSaveAndRun();
-        }}
+      <RunnerUIWrapper
+        ref={runnerUIRef}
+        nodes={nodes}
+        setNodes={setNodes}
         isRunning={isRunning}
-      />
-      <RunnerOutputUI
-        isOpen={isRunnerOutputOpen}
-        onClose={() => setIsRunnerOutputOpen(false)}
-        blockOutputs={getBlockInputsAndOutputs().outputs}
+        requestSaveAndRun={requestSaveAndRun}
       />
     </FlowContext.Provider>
   );
