@@ -71,7 +71,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
 
 
 class UserCreditBase(ABC):
-
     def __init__(self, num_user_credits_refill: int):
         self.num_user_credits_refill = num_user_credits_refill
 
@@ -125,13 +124,18 @@ class UserCreditBase(ABC):
 
 class UserCredit(UserCreditBase):
     async def get_or_refill_credit(self, user_id: str) -> int:
-        cur_time = datetime.now(timezone.utc)
+        cur_time = self.time_now()
         cur_month = cur_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        nxt_month = cur_month.replace(month=cur_month.month + 1)
 
         user_credit = await UserBlockCredit.prisma().group_by(
             by=["userId"],
             sum={"amount": True},
-            where={"userId": user_id, "createdAt": {"gte": cur_month}},
+            where={
+                "userId": user_id,
+                "createdAt": {"gte": cur_month, "lt": nxt_month},
+                "isActive": True,
+            },
         )
 
         if user_credit:
@@ -147,12 +151,17 @@ class UserCredit(UserCreditBase):
                     "type": UserBlockCreditType.TOP_UP,
                     "userId": user_id,
                     "transactionKey": key,
+                    "createdAt": self.time_now(),
                 }
             )
         except prisma.errors.UniqueViolationError:
             pass  # Already refilled this month
 
         return self.num_user_credits_refill
+
+    @staticmethod
+    def time_now():
+        return datetime.now(timezone.utc)
 
     @staticmethod
     def _block_usage_cost(
@@ -215,6 +224,7 @@ class UserCredit(UserCreditBase):
                         "input": matching_filter,
                     }
                 ),
+                "createdAt": self.time_now(),
             }
         )
         return cost
@@ -225,6 +235,7 @@ class UserCredit(UserCreditBase):
                 "userId": user_id,
                 "amount": amount,
                 "type": UserBlockCreditType.TOP_UP,
+                "createdAt": self.time_now(),
             }
         )
 

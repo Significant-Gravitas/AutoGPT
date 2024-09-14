@@ -26,6 +26,7 @@ CREATE TABLE "UserBlockCredit" (
     "blockId" TEXT,
     "amount" INTEGER NOT NULL,
     "type" "UserBlockCreditType" NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "metadata" JSONB,
 
     CONSTRAINT "UserBlockCredit_pkey" PRIMARY KEY ("transactionKey","userId")

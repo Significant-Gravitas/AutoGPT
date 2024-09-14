@@ -230,6 +230,7 @@ model UserBlockCredit {
   amount Int
   type   UserBlockCreditType
 
+  isActive Boolean @default(true)
   metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])

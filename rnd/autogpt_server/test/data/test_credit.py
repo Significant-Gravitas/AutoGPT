@@ -1,11 +1,15 @@
+from datetime import datetime
+
 import pytest
+from prisma.models import UserBlockCredit
 
 from autogpt_server.blocks.llm import AITextGeneratorBlock
 from autogpt_server.data.credit import UserCredit
 from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.util.test import SpinTestServer
 
-user_credit = UserCredit(0)
+REFILL_VALUE = 1000
+user_credit = UserCredit(REFILL_VALUE)
 
 
 @pytest.mark.asyncio(scope="session")
@@ -46,3 +50,41 @@ async def test_block_credit_top_up(server: SpinTestServer):
 
     new_credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
     assert new_credit == current_credit + 100
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_block_credit_reset(server: SpinTestServer):
+    month1 = datetime(2022, 1, 15)
+    month2 = datetime(2022, 2, 15)
+
+    user_credit.time_now = lambda: month2
+    month2credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+
+    # Month 1 result should only affect month 1
+    user_credit.time_now = lambda: month1
+    month1credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
+    assert await user_credit.get_or_refill_credit(DEFAULT_USER_ID) == month1credit + 100
+
+    # Month 2 balance is unaffected
+    user_credit.time_now = lambda: month2
+    assert await user_credit.get_or_refill_credit(DEFAULT_USER_ID) == month2credit
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_credit_refill(server: SpinTestServer):
+    # Clear all transactions within the month
+    await UserBlockCredit.prisma().update_many(
+        where={
+            "userId": DEFAULT_USER_ID,
+            "createdAt": {
+                "gte": datetime(2022, 2, 1),
+                "lt": datetime(2022, 3, 1),
+            },
+        },
+        data={"isActive": False},
+    )
+    user_credit.time_now = lambda: datetime(2022, 2, 15)
+
+    balance = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    assert balance == REFILL_VALUE
