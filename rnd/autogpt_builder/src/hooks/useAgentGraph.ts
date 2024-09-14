@@ -16,6 +16,7 @@ import {
 import { Connection, MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -24,6 +25,11 @@ export default function useAgentGraph(
   template?: boolean,
   passDataToBeads?: boolean,
 ) {
+  const [router, searchParams, pathname] = [
+    useRouter(),
+    useSearchParams(),
+    usePathname(),
+  ];
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
@@ -307,7 +313,7 @@ export default function useAgentGraph(
 
     (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
       (graph) => {
-        console.log("Loading graph");
+        console.debug("Loading graph");
         loadGraph(graph);
       },
     );
@@ -608,7 +614,7 @@ export default function useAgentGraph(
           }));
 
         return {
-          id: node.id,
+          id: node.data.backend_id,
           block_id: node.data.block_id,
           input_default: inputDefault,
           input_nodes: inputNodes,
@@ -637,11 +643,8 @@ export default function useAgentGraph(
         nodes: formattedNodes,
         links: links,
       };
-
-      if (savedAgent && deepEquals(payload, savedAgent)) {
-        console.debug(
-          "No need to save: Graph is the same as version on server",
-        );
+      if (savedAgent && deepEquals(payload, savedAgent, true)) {
+        console.warn("No need to save: Graph is the same as version on server");
         // Trigger state change
         setSavedAgent(savedAgent);
         return;
@@ -663,6 +666,13 @@ export default function useAgentGraph(
             ? api.createTemplate(payload)
             : api.createGraph(payload));
       console.debug("Response from the API:", newSavedAgent);
+
+      // Route the URL to the new flow ID if it's a new agent.
+      if (!savedAgent) {
+        const path = new URLSearchParams(searchParams);
+        path.set("flowID", newSavedAgent.id);
+        router.replace(`${pathname}?${path.toString()}`);
+      }
 
       // Update the node IDs on the frontend
       setSavedAgent(newSavedAgent);
