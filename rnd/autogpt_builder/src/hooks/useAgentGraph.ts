@@ -139,8 +139,8 @@ export default function useAgentGraph(
             id: node.id,
             type: "custom",
             position: {
-              x: node.metadata.position.x,
-              y: node.metadata.position.y,
+              x: node?.metadata?.position?.x || 0,
+              y: node?.metadata?.position?.y || 0,
             },
             data: {
               block_id: block.id,
@@ -614,7 +614,7 @@ export default function useAgentGraph(
           }));
 
         return {
-          id: node.data.backend_id,
+          id: node.id,
           block_id: node.data.block_id,
           input_default: inputDefault,
           input_nodes: inputNodes,
@@ -643,7 +643,15 @@ export default function useAgentGraph(
         nodes: formattedNodes,
         links: links,
       };
-      if (savedAgent && deepEquals(payload, savedAgent, true)) {
+
+      // To avoid saving the same graph, we compare the payload with the saved agent.
+      // Differences in IDs are ignored.
+      const comparedPayload = {
+        ...((({ id, ...rest }) => rest)(payload)),
+        nodes: payload.nodes.map(({ id, ...nodeRest }) => nodeRest),
+        links: payload.links.map(({ source_id, sink_id, ...linkRest }) => linkRest),
+      };      
+      if (savedAgent && deepEquals(comparedPayload, savedAgent, true)) {
         console.warn("No need to save: Graph is the same as version on server");
         // Trigger state change
         setSavedAgent(savedAgent);
@@ -651,7 +659,7 @@ export default function useAgentGraph(
       } else {
         console.debug(
           "Saving new Graph version; old vs new:",
-          savedAgent,
+          comparedPayload,
           payload,
         );
       }
