@@ -59,7 +59,7 @@ def format():
 
 def app():
     port = os.getenv("PORT", "8015")
-    run("uvicorn", "market.app:app", "--reload", "--port", port)
+    run("uvicorn", "market.app:app", "--reload", "--port", port, "--host", "0.0.0.0")
 
 
 def setup():
