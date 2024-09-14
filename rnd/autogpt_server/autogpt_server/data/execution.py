@@ -1,9 +1,9 @@
 from collections import defaultdict
 from datetime import datetime, timezone
-from enum import Enum
 from multiprocessing import Manager
 from typing import Any, Generic, TypeVar
 
+from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
@@ -21,12 +21,14 @@ from autogpt_server.util import json, mock
 
 
 class GraphExecution(BaseModel):
+    user_id: str
     graph_exec_id: str
-    start_node_execs: list["NodeExecution"]
     graph_id: str
+    start_node_execs: list["NodeExecution"]
 
 
 class NodeExecution(BaseModel):
+    user_id: str
     graph_exec_id: str
     graph_id: str
     node_exec_id: str
@@ -34,13 +36,7 @@ class NodeExecution(BaseModel):
     data: BlockInput
 
 
-class ExecutionStatus(str, Enum):
-    INCOMPLETE = "INCOMPLETE"
-    QUEUED = "QUEUED"
-    RUNNING = "RUNNING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-
+ExecutionStatus = AgentExecutionStatus
 
 T = TypeVar("T")
 
@@ -148,6 +144,7 @@ async def create_graph_execution(
         data={
             "agentGraphId": graph_id,
             "agentGraphVersion": graph_version,
+            "executionStatus": ExecutionStatus.QUEUED,
             "AgentNodeExecutions": {
                 "create": [  # type: ignore
                     {
@@ -259,10 +256,20 @@ async def upsert_execution_output(
     )
 
 
+async def update_graph_execution_start_time(graph_exec_id: str):
+    await AgentGraphExecution.prisma().update(
+        where={"id": graph_exec_id},
+        data={
+            "executionStatus": ExecutionStatus.RUNNING,
+            "startedAt": datetime.now(tz=timezone.utc),
+        },
+    )
+
+
 async def update_graph_execution_stats(graph_exec_id: str, stats: dict[str, Any]):
     await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
-        data={"stats": json.dumps(stats)},
+        data={"executionStatus": ExecutionStatus.COMPLETED, "stats": json.dumps(stats)},
     )
 
 
