@@ -648,42 +648,39 @@ export default function useAgentGraph(
       // Differences in IDs are ignored.
       const comparedPayload = {
         ...(({ id, ...rest }) => rest)(payload),
-        nodes: payload.nodes.map(
-          ({ id, ...rest }) => rest
-        ),
-        links: payload.links.map(
-          ({ source_id, sink_id, ...rest }) => rest
-        ),
+        nodes: payload.nodes.map(({ id, ...rest }) => rest),
+        links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
       };
+
+      let newSavedAgent = null;
       if (savedAgent && deepEquals(comparedPayload, savedAgent, true)) {
         console.warn("No need to save: Graph is the same as version on server");
-        // Trigger state change
-        setSavedAgent(savedAgent);
-        return;
+        newSavedAgent = savedAgent;
       } else {
         console.debug(
           "Saving new Graph version; old vs new:",
           comparedPayload,
           payload,
         );
+        setNodesSyncedWithSavedAgent(false);
+
+        newSavedAgent = savedAgent
+          ? await (savedAgent.is_template
+              ? api.updateTemplate(savedAgent.id, payload)
+              : api.updateGraph(savedAgent.id, payload))
+          : await (asTemplate
+              ? api.createTemplate(payload)
+              : api.createGraph(payload));
+
+        console.debug("Response from the API:", newSavedAgent);
       }
-
-      setNodesSyncedWithSavedAgent(false);
-
-      const newSavedAgent = savedAgent
-        ? await (savedAgent.is_template
-            ? api.updateTemplate(savedAgent.id, payload)
-            : api.updateGraph(savedAgent.id, payload))
-        : await (asTemplate
-            ? api.createTemplate(payload)
-            : api.createGraph(payload));
-      console.debug("Response from the API:", newSavedAgent);
 
       // Route the URL to the new flow ID if it's a new agent.
       if (!savedAgent) {
         const path = new URLSearchParams(searchParams);
         path.set("flowID", newSavedAgent.id);
         router.replace(`${pathname}?${path.toString()}`);
+        return;
       }
 
       // Update the node IDs on the frontend

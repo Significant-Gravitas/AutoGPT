@@ -550,9 +550,14 @@ const FlowEditor: React.FC<{
       onClick: handleRedo,
     },
     {
-      label: !isRunning ? "Run" : "Stop",
+      label: !savedAgent
+        ? "Please save the agent to run"
+        : !isRunning
+          ? "Run"
+          : "Stop",
       icon: !isRunning ? <IconPlay /> : <IconSquare />,
       onClick: !isRunning ? requestSaveAndRun : requestStopRun,
+      disabled: !savedAgent,
     },
   ];
 
