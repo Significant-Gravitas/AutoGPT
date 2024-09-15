@@ -2,6 +2,8 @@
 
  ENV_PATH=$(poetry env info --path)
  if [ -d "$ENV_PATH" ]; then
+     echo "Press ENTER to rm -rf $ENV_PATH"
+     read
      rm -rf $ENV_PATH
      echo "Removed the poetry environment at $ENV_PATH."
  else
