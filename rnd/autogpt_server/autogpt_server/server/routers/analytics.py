@@ -1,4 +1,4 @@
-# Analytics API
+"""Analytics API"""
 
 from typing import Annotated, Optional
 
