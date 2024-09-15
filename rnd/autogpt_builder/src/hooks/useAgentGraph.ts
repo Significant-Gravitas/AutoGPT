@@ -679,7 +679,7 @@ export default function useAgentGraph(
       if (!savedAgent) {
         const path = new URLSearchParams(searchParams);
         path.set("flowID", newSavedAgent.id);
-        router.replace(`${pathname}?${path.toString()}`);
+        router.push(`${pathname}?${path.toString()}`);
         return;
       }
 
