@@ -42,15 +42,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     """Config for the server."""
 
     num_graph_workers: int = Field(
-        default=1,
+        default=10,
         ge=1,
-        le=100,
+        le=1000,
         description="Maximum number of workers to use for graph execution.",
     )
     num_node_workers: int = Field(
-        default=1,
+        default=5,
         ge=1,
-        le=100,
+        le=1000,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
     pyro_host: str = Field(
@@ -60,6 +60,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_auth: str = Field(
         default="false",
         description="If authentication is enabled or not",
+    )
+    enable_credit: str = Field(
+        default="false",
+        description="If user credit system is enabled or not",
+    )
+    num_user_credits_refill: int = Field(
+        default=1500,
+        description="Number of credits to refill for each user",
     )
     # Add more configuration fields as needed
 

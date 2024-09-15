@@ -4,7 +4,7 @@ import pytest
 
 from autogpt_server.blocks.basic import AgentInputBlock, StoreValueBlock
 from autogpt_server.data.graph import Graph, Link, Node
-from autogpt_server.data.user import DEFAULT_USER_ID, create_default_user
+from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.server.model import CreateGraph
 from autogpt_server.util.test import SpinTestServer
 
@@ -22,8 +22,6 @@ async def test_graph_creation(server: SpinTestServer):
     Args:
         server (SpinTestServer): The test server instance.
     """
-    await create_default_user("false")
-
     value_block = StoreValueBlock().id
     input_block = AgentInputBlock().id
 
