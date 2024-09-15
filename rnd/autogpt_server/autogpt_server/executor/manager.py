@@ -17,8 +17,10 @@ if TYPE_CHECKING:
 from autogpt_server.blocks.basic import AgentInputBlock
 from autogpt_server.data import db
 from autogpt_server.data.block import Block, BlockData, BlockInput, get_block
+from autogpt_server.data.credit import get_user_credit_model
 from autogpt_server.data.execution import (
     ExecutionQueue,
+    ExecutionResult,
     ExecutionStatus,
     GraphExecution,
     NodeExecution,
@@ -45,25 +47,41 @@ from autogpt_server.util.type import convert
 logger = logging.getLogger(__name__)
 
 
-def get_log_metadata(
-    graph_eid: str,
-    graph_id: str,
-    node_eid: str,
-    node_id: str,
-    block_name: str,
-) -> dict:
-    return {
-        "component": "ExecutionManager",
-        "graph_eid": graph_eid,
-        "graph_id": graph_id,
-        "node_eid": node_eid,
-        "node_id": node_id,
-        "block_name": block_name,
-    }
+class LogMetadata:
+    def __init__(
+        self,
+        user_id: str,
+        graph_eid: str,
+        graph_id: str,
+        node_eid: str,
+        node_id: str,
+        block_name: str,
+    ):
+        self.metadata = {
+            "component": "ExecutionManager",
+            "user_id": user_id,
+            "graph_eid": graph_eid,
+            "graph_id": graph_id,
+            "node_eid": node_eid,
+            "node_id": node_id,
+            "block_name": block_name,
+        }
+        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|nid:{node_eid}|{block_name}]"
 
+    def info(self, msg: str, **extra):
+        logger.info(msg, extra={"json_fields": {**self.metadata, **extra}})
 
-def get_log_prefix(graph_eid: str, node_eid: str, block_name: str = "-"):
-    return f"[ExecutionManager][graph-eid-{graph_eid}|node-eid-{node_eid}|{block_name}]"
+    def warning(self, msg: str, **extra):
+        logger.warning(msg, extra={"json_fields": {**self.metadata, **extra}})
+
+    def error(self, msg: str, **extra):
+        logger.error(msg, extra={"json_fields": {**self.metadata, **extra}})
+
+    def debug(self, msg: str, **extra):
+        logger.debug(msg, extra={"json_fields": {**self.metadata, **extra}})
+
+    def exception(self, msg: str, **extra):
+        logger.exception(msg, extra={"json_fields": {**self.metadata, **extra}})
 
 
 T = TypeVar("T")
@@ -89,6 +107,7 @@ def execute_node(
     Returns:
         The subsequent node to be enqueued, or None if there is no subsequent node.
     """
+    user_id = data.user_id
     graph_exec_id = data.graph_exec_id
     graph_id = data.graph_id
     node_exec_id = data.node_exec_id
@@ -99,9 +118,10 @@ def execute_node(
     def wait(f: Coroutine[Any, Any, T]) -> T:
         return loop.run_until_complete(f)
 
-    def update_execution(status: ExecutionStatus):
+    def update_execution(status: ExecutionStatus) -> ExecutionResult:
         exec_update = wait(update_execution_status(node_exec_id, status))
         api_client.send_execution_update(exec_update.model_dump())
+        return exec_update
 
     node = wait(get_node(node_id))
 
@@ -111,43 +131,35 @@ def execute_node(
         return
 
     # Sanity check: validate the execution input.
-    log_metadata = get_log_metadata(
+    log_metadata = LogMetadata(
+        user_id=user_id,
         graph_eid=graph_exec_id,
         graph_id=graph_id,
         node_eid=node_exec_id,
         node_id=node_id,
         block_name=node_block.name,
     )
-    prefix = get_log_prefix(
-        graph_eid=graph_exec_id,
-        node_eid=node_exec_id,
-        block_name=node_block.name,
-    )
     input_data, error = validate_exec(node, data.data, resolve_input=False)
     if input_data is None:
-        logger.error(
-            "{prefix} Skip execution, input validation error",
-            extra={"json_fields": {**log_metadata, "error": error}},
-        )
+        log_metadata.error(f"Skip execution, input validation error: {error}")
         return
 
     # Execute the node
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
-    logger.info(
-        f"{prefix} Executed node with input",
-        extra={"json_fields": {**log_metadata, "input": input_data_str}},
-    )
+    log_metadata.info("Executed node with input", input=input_data_str)
     update_execution(ExecutionStatus.RUNNING)
+    user_credit = get_user_credit_model()
 
     output_size = 0
     try:
+        credit = wait(user_credit.get_or_refill_credit(user_id))
+        if credit < 0:
+            raise ValueError("Insufficient credit: {credit}")
+
         for output_name, output_data in node_block.execute(input_data):
             output_size += len(json.dumps(output_data))
-            logger.info(
-                f"{prefix} Node produced output",
-                extra={"json_fields": {**log_metadata, output_name: output_data}},
-            )
+            log_metadata.info("Node produced output", output_name=output_data)
             wait(upsert_execution_output(node_exec_id, output_name, output_data))
 
             for execution in _enqueue_next_nodes(
@@ -155,20 +167,25 @@ def execute_node(
                 loop=loop,
                 node=node,
                 output=(output_name, output_data),
+                user_id=user_id,
                 graph_exec_id=graph_exec_id,
                 graph_id=graph_id,
                 log_metadata=log_metadata,
             ):
                 yield execution
 
-        update_execution(ExecutionStatus.COMPLETED)
+        r = update_execution(ExecutionStatus.COMPLETED)
+        s = input_size + output_size
+        t = (
+            (r.end_time - r.start_time).total_seconds()
+            if r.end_time and r.start_time
+            else 0
+        )
+        wait(user_credit.spend_credits(user_id, credit, node_block, input_data, s, t))
 
     except Exception as e:
-        error_msg = f"{e.__class__.__name__}: {e}"
-        logger.exception(
-            f"{prefix} Node execution failed with error",
-            extra={"json_fields": {**log_metadata, error: error_msg}},
-        )
+        error_msg = str(e)
+        log_metadata.exception(f"Node execution failed with error {error_msg}")
         wait(upsert_execution_output(node_exec_id, "error", error_msg))
         update_execution(ExecutionStatus.FAILED)
 
@@ -194,9 +211,10 @@ def _enqueue_next_nodes(
     loop: asyncio.AbstractEventLoop,
     node: Node,
     output: BlockData,
+    user_id: str,
     graph_exec_id: str,
     graph_id: str,
-    log_metadata: dict,
+    log_metadata: LogMetadata,
 ) -> list[NodeExecution]:
     def wait(f: Coroutine[Any, Any, T]) -> T:
         return loop.run_until_complete(f)
@@ -209,6 +227,7 @@ def _enqueue_next_nodes(
         )
         api_client.send_execution_update(exec_update.model_dump())
         return NodeExecution(
+            user_id=user_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             node_exec_id=node_exec_id,
@@ -262,17 +281,11 @@ def _enqueue_next_nodes(
 
             # Incomplete input data, skip queueing the execution.
             if not next_node_input:
-                logger.warning(
-                    f"Skipped queueing {suffix}",
-                    extra={"json_fields": {**log_metadata}},
-                )
+                log_metadata.warning(f"Skipped queueing {suffix}")
                 return enqueued_executions
 
             # Input is complete, enqueue the execution.
-            logger.info(
-                f"Enqueued {suffix}",
-                extra={"json_fields": {**log_metadata}},
-            )
+            log_metadata.info(f"Enqueued {suffix}")
             enqueued_executions.append(
                 add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
             )
@@ -298,11 +311,9 @@ def _enqueue_next_nodes(
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
-                    logger.info(
-                        f"{log_metadata} Enqueueing static-link skipped: {suffix}"
-                    )
+                    log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
                     continue
-                logger.info(f"{log_metadata} Enqueueing static-link execution {suffix}")
+                log_metadata.info(f"Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
                     add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
                 )
@@ -443,22 +454,18 @@ class Executor:
     def on_node_execution(
         cls, q: ExecutionQueue[NodeExecution], node_exec: NodeExecution
     ):
-        log_metadata = get_log_metadata(
+        log_metadata = LogMetadata(
+            user_id=node_exec.user_id,
             graph_eid=node_exec.graph_exec_id,
             graph_id=node_exec.graph_id,
             node_eid=node_exec.node_exec_id,
             node_id=node_exec.node_id,
             block_name="-",
         )
-        prefix = get_log_prefix(
-            graph_eid=node_exec.graph_exec_id,
-            node_eid=node_exec.node_exec_id,
-            block_name="-",
-        )
 
         execution_stats = {}
         timing_info, _ = cls._on_node_execution(
-            q, node_exec, log_metadata, prefix, execution_stats
+            q, node_exec, log_metadata, execution_stats
         )
         execution_stats["walltime"] = timing_info.wall_time
         execution_stats["cputime"] = timing_info.cpu_time
@@ -473,29 +480,19 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecution],
         node_exec: NodeExecution,
-        log_metadata: dict,
-        prefix: str,
+        log_metadata: LogMetadata,
         stats: dict[str, Any] | None = None,
     ):
         try:
-            logger.info(
-                f"{prefix} Start node execution {node_exec.node_exec_id}",
-                extra={"json_fields": {**log_metadata}},
-            )
+            log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
             for execution in execute_node(
                 cls.loop, cls.agent_server_client, node_exec, stats
             ):
                 q.add(execution)
-            logger.info(
-                f"{prefix} Finished node execution {node_exec.node_exec_id}",
-                extra={"json_fields": {**log_metadata}},
-            )
+            log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
         except Exception as e:
-            logger.exception(
-                f"Failed node execution {node_exec.node_exec_id}: {e}",
-                extra={
-                    **log_metadata,
-                },
+            log_metadata.exception(
+                f"Failed node execution {node_exec.node_exec_id}: {e}"
             )
 
     @classmethod
@@ -517,10 +514,12 @@ class Executor:
 
     @classmethod
     def on_graph_executor_stop(cls):
-        logger.info(
-            f"[on_graph_executor_stop {cls.pid}] ⏳ Terminating node executor pool..."
-        )
+        prefix = f"[on_graph_executor_stop {cls.pid}]"
+        logger.info(f"{prefix} ⏳ Disconnecting DB...")
+        cls.loop.run_until_complete(db.disconnect())
+        logger.info(f"{prefix} ⏳ Terminating node executor pool...")
         cls.executor.terminate()
+        logger.info(f"{prefix} ✅ Finished cleanup")
 
     @classmethod
     def _init_node_executor_pool(cls):
@@ -532,20 +531,16 @@ class Executor:
     @classmethod
     @error_logged
     def on_graph_execution(cls, graph_exec: GraphExecution, cancel: threading.Event):
-        log_metadata = get_log_metadata(
+        log_metadata = LogMetadata(
+            user_id=graph_exec.user_id,
             graph_eid=graph_exec.graph_exec_id,
             graph_id=graph_exec.graph_id,
             node_id="*",
             node_eid="*",
             block_name="-",
         )
-        prefix = get_log_prefix(
-            graph_eid=graph_exec.graph_exec_id,
-            node_eid="*",
-            block_name="-",
-        )
         timing_info, node_count = cls._on_graph_execution(
-            graph_exec, cancel, log_metadata, prefix
+            graph_exec, cancel, log_metadata
         )
 
         cls.loop.run_until_complete(
@@ -565,13 +560,9 @@ class Executor:
         cls,
         graph_exec: GraphExecution,
         cancel: threading.Event,
-        log_metadata: dict,
-        prefix: str,
+        log_metadata: LogMetadata,
     ) -> int:
-        logger.info(
-            f"{prefix} Start graph execution {graph_exec.graph_exec_id}",
-            extra={"json_fields": {**log_metadata}},
-        )
+        log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         n_node_executions = 0
         finished = False
 
@@ -581,10 +572,7 @@ class Executor:
             if finished:
                 return
             cls.executor.terminate()
-            logger.info(
-                f"{prefix} Terminated graph execution {graph_exec.graph_exec_id}",
-                extra={"json_fields": {**log_metadata}},
-            )
+            log_metadata.info(f"Terminated graph execution {graph_exec.graph_exec_id}")
             cls._init_node_executor_pool()
 
         cancel_thread = threading.Thread(target=cancel_handler)
@@ -622,10 +610,9 @@ class Executor:
                     #   Re-enqueueing the data back to the queue will disrupt the order.
                     execution.wait()
 
-                logger.debug(
-                    f"{prefix} Dispatching node execution {exec_data.node_exec_id} "
+                log_metadata.debug(
+                    f"Dispatching node execution {exec_data.node_exec_id} "
                     f"for node {exec_data.node_id}",
-                    extra={**log_metadata},
                 )
                 running_executions[exec_data.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
@@ -635,10 +622,8 @@ class Executor:
 
                 # Avoid terminating graph execution when some nodes are still running.
                 while queue.empty() and running_executions:
-                    logger.debug(
-                        "Queue empty; running nodes: "
-                        f"{list(running_executions.keys())}",
-                        extra={"json_fields": {**log_metadata}},
+                    log_metadata.debug(
+                        f"Queue empty; running nodes: {list(running_executions.keys())}"
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
@@ -647,20 +632,13 @@ class Executor:
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
 
-                        logger.debug(
-                            f"Waiting on execution of node {node_id}",
-                            extra={"json_fields": {**log_metadata}},
-                        )
+                        log_metadata.debug(f"Waiting on execution of node {node_id}")
                         execution.wait(3)
 
-            logger.info(
-                f"{prefix} Finished graph execution {graph_exec.graph_exec_id}",
-                extra={"json_fields": {**log_metadata}},
-            )
+            log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
         except Exception as e:
-            logger.exception(
-                f"{prefix} Failed graph execution {graph_exec.graph_exec_id}: {e}",
-                extra={"json_fields": {**log_metadata}},
+            log_metadata.exception(
+                f"Failed graph execution {graph_exec.graph_exec_id}: {e}"
             )
         finally:
             if not cancel.is_set():
@@ -747,6 +725,7 @@ class ExecutionManager(AppService):
         for node_exec in node_execs:
             starting_node_execs.append(
                 NodeExecution(
+                    user_id=user_id,
                     graph_exec_id=node_exec.graph_exec_id,
                     graph_id=node_exec.graph_id,
                     node_exec_id=node_exec.node_exec_id,
@@ -762,6 +741,7 @@ class ExecutionManager(AppService):
             self.agent_server_client.send_execution_update(exec_update.model_dump())
 
         graph_exec = GraphExecution(
+            user_id=user_id,
             graph_id=graph_id,
             graph_exec_id=graph_exec_id,
             start_node_execs=starting_node_execs,

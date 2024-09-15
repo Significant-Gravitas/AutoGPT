@@ -75,7 +75,6 @@ def create_test_graph() -> graph.Graph:
 
 async def sample_agent():
     async with SpinTestServer() as server:
-        exec_man = server.exec_manager
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), test_user.id)
         input_data = {"input_1": "Hello", "input_2": "World"}
@@ -83,9 +82,7 @@ async def sample_agent():
             test_graph.id, input_data, test_user.id
         )
         print(response)
-        result = await wait_execution(
-            exec_man, test_user.id, test_graph.id, response["id"], 4, 10
-        )
+        result = await wait_execution(test_user.id, test_graph.id, response["id"], 10)
         print(result)
 
 
