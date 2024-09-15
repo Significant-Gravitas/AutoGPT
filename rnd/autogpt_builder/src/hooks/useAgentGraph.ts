@@ -648,12 +648,27 @@ export default function useAgentGraph(
       // Differences in IDs are ignored.
       const comparedPayload = {
         ...(({ id, ...rest }) => rest)(payload),
-        nodes: payload.nodes.map(({ id, ...rest }) => rest),
+        nodes: payload.nodes.map(
+          ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
+        ),
         links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
+      };
+      const comparedSavedAgent = {
+        name: savedAgent?.name,
+        description: savedAgent?.description,
+        nodes: savedAgent?.nodes.map((v) => ({
+          block_id: v.block_id,
+          input_default: v.input_default,
+          metadata: v.metadata,
+        })),
+        links: savedAgent?.links.map((v) => ({
+          sink_name: v.sink_name,
+          source_name: v.source_name,
+        })),
       };
 
       let newSavedAgent = null;
-      if (savedAgent && deepEquals(comparedPayload, savedAgent, true)) {
+      if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
         console.warn("No need to save: Graph is the same as version on server");
         newSavedAgent = savedAgent;
       } else {
