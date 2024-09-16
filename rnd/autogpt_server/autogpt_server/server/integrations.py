@@ -1,7 +1,6 @@
 import logging
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
-from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
@@ -94,10 +93,10 @@ async def callback(
 @integrations_api_router.get("/{provider}/credentials")
 async def list_credentials(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
-    auth: Annotated[dict[str, Any], Depends(auth_middleware)],
+    user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
 ) -> list[CredentialsMetaResponse]:
-    credentials = store.get_creds_by_provider(auth["sub"], provider)
+    credentials = store.get_creds_by_provider(user_id, provider)
     return [
         CredentialsMetaResponse(
             id=cred.id,
