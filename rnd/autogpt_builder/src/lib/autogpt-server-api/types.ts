@@ -29,6 +29,7 @@ export type BlockIOSubSchema =
 
 type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
+  | BlockIOCredentialsSubSchema
   | BlockIOKVSubSchema
   | BlockIOArraySubSchema
   | BlockIOStringSubSchema
@@ -77,6 +78,13 @@ export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   type: "boolean";
   default?: boolean;
+};
+
+export type CredentialsType = "api_key" | "oauth2";
+
+export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
+  credentials_provider: "github" | "google" | "notion";
+  credentials_types: Array<CredentialsType>;
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
@@ -177,6 +185,14 @@ export type NodeExecutionResult = {
   queue_time?: Date;
   start_time?: Date;
   end_time?: Date;
+};
+
+/* Mirror of autogpt_server/server/integrations.py:CredentialsResponse */
+export type CredentialsResponse = {
+  credentials_id: string;
+  credentials_type: CredentialsType;
+  user_email: string;
+  scopes: Array<string>;
 };
 
 export type User = {

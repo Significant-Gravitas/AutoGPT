@@ -1,4 +1,9 @@
-import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+import {
+  Cross2Icon,
+  NotionLogoIcon,
+  Pencil2Icon,
+  PlusIcon,
+} from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
 import {
   BlockIORootSchema,
@@ -9,6 +14,8 @@ import {
   BlockIOStringSubSchema,
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
+  BlockIOCredentialsSubSchema,
+  CredentialsResponse,
 } from "@/lib/autogpt-server-api/types";
 import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
@@ -23,6 +30,8 @@ import {
 import { Input } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
+import { FaGithub, FaGoogle } from "react-icons/fa";
+import useCredentials from "@/hooks/useCredentials";
 
 type NodeObjectInputTreeProps = {
   selfKey?: string;
@@ -112,6 +121,21 @@ export const NodeGenericInputField: FC<{
     // AFAIK this should NEVER happen though, as $refs are resolved server-side.
     propSchema = propSchema.allOf[0];
     console.warn(`Unsupported 'allOf' in schema for '${propKey}'!`, propSchema);
+  }
+
+  if ("credentials_provider" in propSchema) {
+    return (
+      <NodeCredentialsInput
+        selfKey={propKey}
+        schema={propSchema}
+        value={currentValue}
+        errors={errors}
+        className={cn("border-l border-gray-500 pl-2", className)} // visual indent
+        displayName={displayName}
+        handleInputClick={handleInputClick}
+        handleInputChange={handleInputChange}
+      />
+    );
   }
 
   if ("properties" in propSchema) {
@@ -275,6 +299,84 @@ export const NodeGenericInputField: FC<{
         />
       );
   }
+};
+
+const NodeCredentialsInput: FC<{
+  selfKey: string;
+  schema: BlockIOCredentialsSubSchema;
+  value: any;
+  errors: { [key: string]: string | undefined };
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value,
+  errors,
+  handleInputChange,
+  handleInputClick,
+  className,
+  displayName,
+}) => {
+  const credentials = useCredentials();
+
+  if (credentials?.isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!credentials) {
+    return null;
+  }
+
+  const {
+    provider,
+    providerName,
+    isApiKey,
+    isOAuth2,
+    savedApiKeys,
+    savedOAuthCredentials,
+  } = credentials;
+
+  const providerIcon = {
+    github: <FaGithub className="mr-2 h-4 w-4" />,
+    google: <FaGoogle className="mr-2 h-4 w-4" />,
+    notion: <NotionLogoIcon className="mr-2 h-4 w-4" />,
+  };
+
+  // No saved credentials yet
+  if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
+    return (
+      <div className="mb-2 flex flex-row space-x-2">
+        {isApiKey && (
+          <Button>
+            {providerIcon[provider]}
+            Enter API key
+          </Button>
+        )}
+        {isOAuth2 && (
+          <Button>
+            {providerIcon[provider]}
+            {"Sign in with " + providerName}
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // Saved credentials
+  return (
+    <div>
+      {value && (
+        <div>
+          {value.credentials_id} - {value.user_email}
+        </div>
+      )}
+    </div>
+  );
+
+  return <>Nothing</>;
 };
 
 const NodeKeyValueInput: FC<{

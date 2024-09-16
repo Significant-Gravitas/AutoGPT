@@ -8,6 +8,7 @@ import {
   GraphExecuteResponse,
   NodeExecutionResult,
   User,
+  CredentialsResponse,
 } from "./types";
 
 export default class AutoGPTServerAPI {
@@ -139,6 +140,37 @@ export default class AutoGPTServerAPI {
     return (
       await this._request("POST", `/graphs/${graphID}/executions/${runID}/stop`)
     ).map(parseNodeExecutionResultTimestamps);
+  }
+
+  async oAuthLogin(
+    provider: string,
+    scopes: string,
+  ): Promise<{ login_url: string; state_token: string }> {
+    return await this._request("GET", `/integrations/${provider}/login`, {
+      scopes,
+    });
+  }
+
+  async oAuthCallback(
+    provider: string,
+    code: string,
+    state_token: string,
+  ): Promise<{ credentials_id: string; credentials_type: string }> {
+    return this._request("POST", `/integrations/${provider}/callback`, {
+      code,
+      state_token,
+    });
+  }
+
+  async listOAuthCredentials(provider: string): Promise<CredentialsResponse[]> {
+    return this._get(`/integrations/${provider}/credentials`);
+  }
+
+  async getOAuthCredentials(
+    provider: string,
+    id: string,
+  ): Promise<CredentialsResponse> {
+    return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
   private async _get(path: string) {
