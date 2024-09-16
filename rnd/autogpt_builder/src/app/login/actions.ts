@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
@@ -10,45 +11,53 @@ const loginFormSchema = z.object({
 });
 
 export async function login(values: z.infer<typeof loginFormSchema>) {
-  const supabase = createServerClient();
+  return await Sentry.withServerActionInstrumentation("login", {}, async () => {
+    const supabase = createServerClient();
 
-  if (!supabase) {
-    redirect("/error");
-  }
+    if (!supabase) {
+      redirect("/error");
+    }
 
-  // We are sure that the values are of the correct type because zod validates the form
-  const { data, error } = await supabase.auth.signInWithPassword(values);
+    // We are sure that the values are of the correct type because zod validates the form
+    const { data, error } = await supabase.auth.signInWithPassword(values);
 
-  if (error) {
-    return error.message;
-  }
+    if (error) {
+      return error.message;
+    }
 
-  if (data.session) {
-    await supabase.auth.setSession(data.session);
-  }
+    if (data.session) {
+      await supabase.auth.setSession(data.session);
+    }
 
-  revalidatePath("/", "layout");
-  redirect("/profile");
+    revalidatePath("/", "layout");
+    redirect("/profile");
+  });
 }
 
 export async function signup(values: z.infer<typeof loginFormSchema>) {
-  const supabase = createServerClient();
+  return await Sentry.withServerActionInstrumentation(
+    "signup",
+    {},
+    async () => {
+      const supabase = createServerClient();
 
-  if (!supabase) {
-    redirect("/error");
-  }
+      if (!supabase) {
+        redirect("/error");
+      }
 
-  // We are sure that the values are of the correct type because zod validates the form
-  const { data, error } = await supabase.auth.signUp(values);
+      // We are sure that the values are of the correct type because zod validates the form
+      const { data, error } = await supabase.auth.signUp(values);
 
-  if (error) {
-    return error.message;
-  }
+      if (error) {
+        return error.message;
+      }
 
-  if (data.session) {
-    await supabase.auth.setSession(data.session);
-  }
+      if (data.session) {
+        await supabase.auth.setSession(data.session);
+      }
 
-  revalidatePath("/", "layout");
-  redirect("/profile");
+      revalidatePath("/", "layout");
+      redirect("/profile");
+    },
+  );
 }
