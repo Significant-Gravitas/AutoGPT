@@ -185,7 +185,7 @@ export const categoryColorMap: Record<string, string> = {
   SEARCH: "bg-blue-300/[.7]",
   BASIC: "bg-purple-300/[.7]",
   INPUT: "bg-cyan-300/[.7]",
-  OUTPUT: "bg-brown-300/[.7]",
+  OUTPUT: "bg-red-300/[.7]",
   LOGIC: "bg-teal-300/[.7]",
 };
 
