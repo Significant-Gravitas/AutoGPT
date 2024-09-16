@@ -1,6 +1,6 @@
 from prisma.models import User
 
-from autogpt_server.blocks.basic import InputBlock, PrintToConsoleBlock
+from autogpt_server.blocks.basic import AgentInputBlock, PrintToConsoleBlock
 from autogpt_server.blocks.text import FillTextTemplateBlock
 from autogpt_server.data import graph
 from autogpt_server.data.graph import create_graph
@@ -28,22 +28,12 @@ def create_test_graph() -> graph.Graph:
     """
     nodes = [
         graph.Node(
-            block_id=InputBlock().id,
-            input_default={
-                "name": "input_1",
-                "description": "First input value",
-                "placeholder_values": [],
-                "limit_to_placeholder_values": False,
-            },
+            block_id=AgentInputBlock().id,
+            input_default={"name": "input_1"},
         ),
         graph.Node(
-            block_id=InputBlock().id,
-            input_default={
-                "name": "input_2",
-                "description": "Second input value",
-                "placeholder_values": [],
-                "limit_to_placeholder_values": False,
-            },
+            block_id=AgentInputBlock().id,
+            input_default={"name": "input_2"},
         ),
         graph.Node(
             block_id=FillTextTemplateBlock().id,
@@ -85,7 +75,6 @@ def create_test_graph() -> graph.Graph:
 
 async def sample_agent():
     async with SpinTestServer() as server:
-        exec_man = server.exec_manager
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), test_user.id)
         input_data = {"input_1": "Hello", "input_2": "World"}
@@ -93,9 +82,7 @@ async def sample_agent():
             test_graph.id, input_data, test_user.id
         )
         print(response)
-        result = await wait_execution(
-            exec_man, test_user.id, test_graph.id, response["id"], 4, 10
-        )
+        result = await wait_execution(test_user.id, test_graph.id, response["id"], 10)
         print(result)
 
 

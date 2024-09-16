@@ -11,7 +11,10 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AgentDetailResponse } from "@/lib/marketplace-api";
+import {
+  AgentDetailResponse,
+  InstallationLocation,
+} from "@/lib/marketplace-api";
 import dynamic from "next/dynamic";
 import { Node, Edge } from "@xyflow/react";
 import MarketplaceAPI from "@/lib/marketplace-api";
@@ -32,6 +35,7 @@ const Background = dynamic(
 
 import "@xyflow/react/dist/style.css";
 import { beautifyString } from "@/lib/utils";
+import { makeAnalyticsEvent } from "./actions";
 
 function convertGraphToReactFlow(graph: any): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = graph.nodes.map((node: any) => {
@@ -96,8 +100,16 @@ async function installGraph(id: string): Promise<void> {
       nodes: agent.graph.nodes,
       links: agent.graph.links,
     };
-    await serverAPI.createTemplate(data);
-    console.log(`Agent installed successfully`);
+    const result = await serverAPI.createTemplate(data);
+    makeAnalyticsEvent({
+      event_name: "agent_installed_from_marketplace",
+      event_data: {
+        marketplace_agent_id: id,
+        installed_agent_id: result.id,
+        installation_location: InstallationLocation.CLOUD,
+      },
+    });
+    console.log(`Agent installed successfully`, result);
   } catch (error) {
     console.error(`Error installing agent:`, error);
     throw error;

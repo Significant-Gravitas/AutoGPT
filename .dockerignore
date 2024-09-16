@@ -37,3 +37,4 @@ rnd/autogpt_builder/.env.local
 rnd/autogpt_server/.env
 rnd/autogpt_server/.venv/
 
+rnd/market/.env

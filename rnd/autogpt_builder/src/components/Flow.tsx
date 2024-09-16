@@ -27,7 +27,7 @@ import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
 import { Link } from "@/lib/autogpt-server-api";
-import { getTypeColor } from "@/lib/utils";
+import { getTypeColor, filterBlocksByType } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -36,14 +36,19 @@ import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import {
   IconPlay,
+  IconUndo2,
   IconRedo2,
   IconSquare,
-  IconUndo2,
+  IconOutput,
 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { LogOut } from "lucide-react";
+import RunnerUIWrapper, {
+  RunnerUIWrapperRef,
+} from "@/components/RunnerUIWrapper";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -101,6 +106,8 @@ const FlowEditor: React.FC<{
   // State to control if blocks menu should be pinned open
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
 
+  const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
 
@@ -121,7 +128,7 @@ const FlowEditor: React.FC<{
         localStorage.setItem("shepherd-tour", "yes");
       }
     }
-  }, [availableNodes, tutorialStarted]);
+  }, [availableNodes, tutorialStarted, router, pathname]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -256,7 +263,7 @@ const FlowEditor: React.FC<{
       }
 
       const edgeColor = getTypeColor(
-        getOutputType(connection.source!, connection.sourceHandle!),
+        getOutputType(nodes, connection.source!, connection.sourceHandle!),
       );
       const sourceNode = getNode(connection.source!);
       const newEdge: CustomEdge = {
@@ -295,6 +302,7 @@ const FlowEditor: React.FC<{
       addEdges,
       deleteElements,
       clearNodesStatusAndOutput,
+      nodes,
       edges,
       formatEdgeID,
       getOutputType,
@@ -377,7 +385,7 @@ const FlowEditor: React.FC<{
         clearNodesStatusAndOutput();
       }
     },
-    [setNodes, clearNodesStatusAndOutput],
+    [setNodes, clearNodesStatusAndOutput, setEdges],
   );
 
   const getNextNodeId = useCallback(() => {
@@ -416,6 +424,7 @@ const FlowEditor: React.FC<{
           isOutputOpen: false,
           block_id: blockId,
           isOutputStatic: nodeSchema.staticOutput,
+          uiType: nodeSchema.uiType,
         },
       };
 
@@ -434,7 +443,6 @@ const FlowEditor: React.FC<{
       nodeId,
       availableNodes,
       addNodes,
-      setNodes,
       deleteElements,
       clearNodesStatusAndOutput,
       x,
@@ -551,7 +559,14 @@ const FlowEditor: React.FC<{
     {
       label: !isRunning ? "Run" : "Stop",
       icon: !isRunning ? <IconPlay /> : <IconSquare />,
-      onClick: !isRunning ? requestSaveAndRun : requestStopRun,
+      onClick: !isRunning
+        ? () => runnerUIRef.current?.runOrOpenInput()
+        : requestStopRun,
+    },
+    {
+      label: "Runner Output",
+      icon: <LogOut size={18} strokeWidth={1.8} />,
+      onClick: () => runnerUIRef.current?.openRunnerOutput(),
     },
   ];
 
@@ -587,12 +602,21 @@ const FlowEditor: React.FC<{
             <SaveControl
               agentMeta={savedAgent}
               onSave={(isTemplate) => requestSave(isTemplate ?? false)}
+              agentDescription={agentDescription}
               onDescriptionChange={setAgentDescription}
+              agentName={agentName}
               onNameChange={setAgentName}
             />
           </ControlPanel>
         </ReactFlow>
       </div>
+      <RunnerUIWrapper
+        ref={runnerUIRef}
+        nodes={nodes}
+        setNodes={setNodes}
+        isRunning={isRunning}
+        requestSaveAndRun={requestSaveAndRun}
+      />
     </FlowContext.Provider>
   );
 };

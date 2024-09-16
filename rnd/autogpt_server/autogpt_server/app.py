@@ -26,10 +26,8 @@ def main(**kwargs):
 
     from autogpt_server.executor import ExecutionManager, ExecutionScheduler
     from autogpt_server.server import AgentServer, WebsocketServer
-    from autogpt_server.util.service import PyroNameServer
 
     run_processes(
-        PyroNameServer(),
         ExecutionManager(),
         ExecutionScheduler(),
         WebsocketServer(),

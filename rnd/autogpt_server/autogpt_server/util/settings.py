@@ -42,15 +42,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     """Config for the server."""
 
     num_graph_workers: int = Field(
-        default=1,
+        default=10,
         ge=1,
-        le=100,
+        le=1000,
         description="Maximum number of workers to use for graph execution.",
     )
     num_node_workers: int = Field(
-        default=1,
+        default=5,
         ge=1,
-        le=100,
+        le=1000,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
     pyro_host: str = Field(
@@ -61,6 +61,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="false",
         description="If authentication is enabled or not",
     )
+    enable_credit: str = Field(
+        default="false",
+        description="If user credit system is enabled or not",
+    )
+    num_user_credits_refill: int = Field(
+        default=1500,
+        description="Number of credits to refill for each user",
+    )
     # Add more configuration fields as needed
 
     model_config = SettingsConfigDict(
@@ -70,6 +78,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ],
         env_file=".env",
         extra="allow",
+    )
+
+    execution_manager_port: int = Field(
+        default=8002,
+        description="The port for execution manager daemon to run on",
+    )
+
+    execution_scheduler_port: int = Field(
+        default=8003,
+        description="The port for execution scheduler daemon to run on",
+    )
+
+    agent_server_port: int = Field(
+        default=8004,
+        description="The port for agent server daemon to run on",
     )
 
     @classmethod
@@ -92,6 +115,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
+
+    supabase_url: str = Field(default="", description="Supabase URL")
+    supabase_key: str = Field(default="", description="Supabase key")
+
+    # OAuth server credentials for integrations
+    github_client_id: str = Field(default="", description="GitHub OAuth client ID")
+    github_client_secret: str = Field(
+        default="", description="GitHub OAuth client secret"
+    )
+    google_client_id: str = Field(default="", description="Google OAuth client ID")
+    google_client_secret: str = Field(
+        default="", description="Google OAuth client secret"
+    )
+    notion_client_id: str = Field(default="", description="Notion OAuth client ID")
+    notion_client_secret: str = Field(
+        default="", description="Notion OAuth client secret"
+    )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
