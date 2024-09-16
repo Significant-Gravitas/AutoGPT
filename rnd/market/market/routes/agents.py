@@ -5,6 +5,7 @@ import typing
 import fastapi
 import fastapi.responses
 import prisma
+import prisma.enums
 
 import market.db
 import market.model
@@ -38,6 +39,10 @@ async def list_agents(
     sort_order: typing.Literal["asc", "desc"] = fastapi.Query(
         "desc", description="Sort order (asc or desc)"
     ),
+    submission_status: prisma.enums.SubmissionStatus = fastapi.Query(
+        default=prisma.enums.SubmissionStatus.APPROVED,
+        description="Filter by submission status",
+    ),
 ):
     """
     Retrieve a list of agents based on the provided filters.
@@ -52,6 +57,7 @@ async def list_agents(
         description_threshold (int): Fuzzy search threshold (default: 60, min: 0, max: 100).
         sort_by (str): Field to sort by (default: "createdAt").
         sort_order (str): Sort order (asc or desc) (default: "desc").
+        submission_status (str): Filter by submission status (default: "APPROVED").
 
     Returns:
         market.model.AgentListResponse: A response containing the list of agents and pagination information.
@@ -70,6 +76,7 @@ async def list_agents(
             description_threshold=description_threshold,
             sort_by=sort_by,
             sort_order=sort_order,
+            submission_status=submission_status,
         )
 
         agents = [
@@ -210,6 +217,10 @@ async def top_agents_by_downloads(
     page_size: int = fastapi.Query(
         10, ge=1, le=100, description="Number of items per page"
     ),
+    submission_status: prisma.enums.SubmissionStatus = fastapi.Query(
+        default=prisma.enums.SubmissionStatus.APPROVED,
+        description="Filter by submission status",
+    ),
 ):
     """
     Retrieve a list of top agents based on the number of downloads.
@@ -217,6 +228,7 @@ async def top_agents_by_downloads(
     Args:
         page (int): Page number (default: 1).
         page_size (int): Number of items per page (default: 10, min: 1, max: 100).
+        submission_status (str): Filter by submission status (default: "APPROVED").
 
     Returns:
         market.model.AgentListResponse: A response containing the list of top agents and pagination information.
@@ -228,6 +240,7 @@ async def top_agents_by_downloads(
         result = await market.db.get_top_agents_by_downloads(
             page=page,
             page_size=page_size,
+            submission_status=submission_status,
         )
 
         ret = market.model.AgentListResponse(
@@ -274,6 +287,10 @@ async def get_featured_agents(
     page_size: int = fastapi.Query(
         10, ge=1, le=100, description="Number of items per page"
     ),
+    submission_status: prisma.enums.SubmissionStatus = fastapi.Query(
+        default=prisma.enums.SubmissionStatus.APPROVED,
+        description="Filter by submission status",
+    ),
 ):
     """
     Retrieve a list of featured agents based on the provided category.
@@ -282,6 +299,7 @@ async def get_featured_agents(
         category (str): Category of featured agents (default: "featured").
         page (int): Page number (default: 1).
         page_size (int): Number of items per page (default: 10, min: 1, max: 100).
+        submission_status (str): Filter by submission status (default: "APPROVED").
 
     Returns:
         market.model.AgentListResponse: A response containing the list of featured agents and pagination information.
@@ -294,6 +312,7 @@ async def get_featured_agents(
             category=category,
             page=page,
             page_size=page_size,
+            submission_status=submission_status,
         )
 
         ret = market.model.AgentListResponse(

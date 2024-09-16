@@ -353,7 +353,9 @@ async def search_db(
 
 
 async def get_top_agents_by_downloads(
-    page: int = 1, page_size: int = 10
+    page: int = 1,
+    page_size: int = 10,
+    submission_status: prisma.enums.SubmissionStatus = prisma.enums.SubmissionStatus.APPROVED,
 ) -> TopAgentsDBResponse:
     """Retrieve the top agents by download count.
 
@@ -374,6 +376,7 @@ async def get_top_agents_by_downloads(
             analytics = await prisma.models.AnalyticsTracker.prisma().find_many(
                 include={"agent": True},
                 order={"downloads": "desc"},
+                where={"agent": {"is": {"submissionStatus": submission_status}}},
                 skip=skip,
                 take=page_size,
             )
@@ -441,7 +444,10 @@ async def set_agent_featured(
 
 
 async def get_featured_agents(
-    category: str = "featured", page: int = 1, page_size: int = 10
+    category: str = "featured",
+    page: int = 1,
+    page_size: int = 10,
+    submission_status: prisma.enums.SubmissionStatus = prisma.enums.SubmissionStatus.APPROVED,
 ) -> FeaturedAgentResponse:
     """Retrieve a list of featured agents from the database based on the provided category.
 
@@ -463,6 +469,7 @@ async def get_featured_agents(
                 where={
                     "featuredCategories": {"has": category},
                     "isActive": True,
+                    "agent": {"is": {"submissionStatus": submission_status}},
                 },
                 include={"agent": {"include": {"AnalyticsTracker": True}}},
                 skip=skip,
