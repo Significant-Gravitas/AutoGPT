@@ -153,7 +153,6 @@ async def create_test_user() -> User:
 
 async def reddit_marketing_agent():
     async with SpinTestServer() as server:
-        exec_man = server.exec_manager
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"subreddit": "AutoGPT"}
@@ -161,9 +160,7 @@ async def reddit_marketing_agent():
             test_graph.id, input_data, test_user.id
         )
         print(response)
-        result = await wait_execution(
-            exec_man, test_user.id, test_graph.id, response["id"], 13, 120
-        )
+        result = await wait_execution(test_user.id, test_graph.id, response["id"], 120)
         print(result)
 
 
