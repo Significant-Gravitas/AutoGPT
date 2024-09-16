@@ -20,19 +20,23 @@ export function hashString(str: string): number {
 }
 
 /** Derived from https://stackoverflow.com/a/32922084 */
-export function deepEquals(x: any, y: any): boolean {
+export function deepEquals(x: any, y: any, allowMissingKeys = false): boolean {
   const ok = Object.keys,
     tx = typeof x,
     ty = typeof y;
-  return (
+
+  const sk = (a: object, b: object) => ok(a).filter((k) => k in b);
+  const skipLengthCheck = allowMissingKeys && !Array.isArray(x);
+
+  const res =
     x &&
     y &&
     tx === ty &&
     (tx === "object"
-      ? ok(x).length === ok(y).length &&
-        ok(x).every((key) => deepEquals(x[key], y[key]))
-      : x === y)
-  );
+      ? (skipLengthCheck || ok(x).length === ok(y).length) &&
+        sk(x, y).every((key) => deepEquals(x[key], y[key], allowMissingKeys))
+      : x === y);
+  return res;
 }
 
 /** Get tailwind text color class from type name */
@@ -193,4 +197,11 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
     return "bg-gray-300/[.7]";
   }
   return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
+}
+
+export function filterBlocksByType<T>(
+  blocks: T[],
+  predicate: (block: T) => boolean,
+): T[] {
+  return blocks.filter(predicate);
 }
