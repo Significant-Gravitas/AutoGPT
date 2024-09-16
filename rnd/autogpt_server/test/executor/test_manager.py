@@ -22,9 +22,7 @@ async def execute_graph(
     graph_exec_id = response["id"]
 
     # Execution queue should be empty
-    result = await wait_execution(
-        test_user.id, test_graph.id, graph_exec_id, timeout
-    )
+    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id, timeout)
     assert result and len(result) == num_execs
     return graph_exec_id
 
