@@ -41,7 +41,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         flow.fetch_token(code=code)
 
         google_creds = flow.credentials
-        email = self._request_email(google_creds)
+        username = self._request_email(google_creds)
 
         # Google's OAuth library is poorly typed so we need some of these:
         assert google_creds.client_id
@@ -50,8 +50,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         assert google_creds.expiry
         assert google_creds.scopes
         return OAuth2Credentials(
-            email=email,
             provider=self.PROVIDER_NAME,
+            username=username,
             title="Google",
             access_token=SecretStr(google_creds.token),
             refresh_token=SecretStr(google_creds.refresh_token),
@@ -89,10 +89,10 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         assert google_creds.expiry
 
         return OAuth2Credentials(
-            id=credentials.id,
-            email=credentials.email,
             provider=self.PROVIDER_NAME,
+            id=credentials.id,
             title=credentials.title,
+            username=credentials.username,
             access_token=SecretStr(google_creds.token),
             refresh_token=SecretStr(google_creds.refresh_token),
             access_token_expires_at=int(google_creds.expiry.timestamp()),

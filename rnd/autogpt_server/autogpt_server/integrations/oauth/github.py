@@ -55,25 +55,6 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             }
         )
 
-    def _request_email(self, access_token: str) -> str | None:
-        url = "https://api.github.com/user/emails"
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {access_token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
-
-        response = requests.get(url, headers=headers)
-
-        if not response.ok:
-            return None
-
-        # Find the primary email
-        for email in response.json():
-            if email["primary"]:
-                return email["email"]
-        return None
-
     def _request_tokens(
         self,
         params: dict[str, str],
@@ -89,12 +70,12 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         response.raise_for_status()
         token_data: dict = response.json()
 
-        email = self._request_email(token_data["access_token"])
+        username = self._request_username(token_data["access_token"])
 
         now = int(time.time())
         new_credentials = OAuth2Credentials(
-            email=email,
             provider=self.PROVIDER_NAME,
+            username=username,
             title=current_credentials.title if current_credentials else "GitHub",
             access_token=token_data["access_token"],
             # Token refresh responses have an empty `scope` property (see docs),
@@ -120,3 +101,19 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         if current_credentials:
             new_credentials.id = current_credentials.id
         return new_credentials
+
+    def _request_username(self, access_token: str) -> str | None:
+        url = "https://api.github.com/user"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {access_token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        response = requests.get(url, headers=headers)
+
+        if not response.ok:
+            return None
+
+        # Get the login (username)
+        return response.json().get("login")

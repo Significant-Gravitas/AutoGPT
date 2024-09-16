@@ -53,8 +53,10 @@ async def login(
 
 
 class CredentialsMetaResponse(BaseModel):
-    credentials_id: str
-    credentials_type: Literal["oauth2", "api_key"]
+    id: str
+    type: Literal["oauth2", "api_key"]
+    scopes: list[str] | None
+    username: str | None
 
 
 @integrations_api_router.post("/{provider}/callback")
@@ -80,14 +82,11 @@ async def callback(
 
     store.add_creds(user_id, credentials)
     return CredentialsMetaResponse(
-        credentials_id=credentials.id,
-        credentials_type=credentials.type,
+        id=credentials.id,
+        type=credentials.type,
+        scopes=credentials.scopes,
+        username=credentials.username,
     )
-
-
-class CredentialsResponse(CredentialsMetaResponse):
-    user_email: str | None
-    scopes: list[str] | None
 
 
 @integrations_api_router.get("/{provider}/credentials")
@@ -98,11 +97,11 @@ async def list_credentials(
 ) -> list[CredentialsMetaResponse]:
     credentials = store.get_creds_by_provider(auth["sub"], provider)
     return [
-        CredentialsResponse(
-            credentials_id=cred.id,
-            credentials_type=cred.type,
-            user_email=cred.email if isinstance(cred, OAuth2Credentials) else None,
+        CredentialsMetaResponse(
+            id=cred.id,
+            type=cred.type,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
+            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         )
         for cred in credentials
     ]

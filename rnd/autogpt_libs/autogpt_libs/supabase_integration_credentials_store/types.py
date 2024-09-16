@@ -18,7 +18,8 @@ class _BaseCredentials(BaseModel):
 
 class OAuth2Credentials(_BaseCredentials):
     type: Literal["oauth2"] = "oauth2"
-    email: Optional[str]
+    username: Optional[str]
+    """Username of the third-party service user that these credentials belong to"""
     access_token: SecretStr
     access_token_expires_at: Optional[int]
     """Unix timestamp (seconds) indicating when the access token expires (if at all)"""

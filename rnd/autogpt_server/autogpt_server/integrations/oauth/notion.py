@@ -58,9 +58,9 @@ class NotionOAuthHandler(BaseOAuthHandler):
         )
 
         return OAuth2Credentials(
-            email=email,
             provider=self.PROVIDER_NAME,
             title=token_data.get("workspace_name", "Notion"),
+            username=email,
             access_token=token_data["access_token"],
             refresh_token=None,
             access_token_expires_at=None,  # Notion tokens don't expire
