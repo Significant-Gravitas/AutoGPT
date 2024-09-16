@@ -198,3 +198,10 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
   }
   return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
 }
+
+export function filterBlocksByType<T>(
+  blocks: T[],
+  predicate: (block: T) => boolean,
+): T[] {
+  return blocks.filter(predicate);
+}
