@@ -20,21 +20,18 @@ export function hashString(str: string): number {
 }
 
 /** Derived from https://stackoverflow.com/a/32922084 */
-export function deepEquals(x: any, y: any, allowMissingKeys = false): boolean {
+export function deepEquals(x: any, y: any): boolean {
   const ok = Object.keys,
     tx = typeof x,
     ty = typeof y;
-
-  const sk = (a: object, b: object) => ok(a).filter((k) => k in b);
-  const skipLengthCheck = allowMissingKeys && !Array.isArray(x);
 
   const res =
     x &&
     y &&
     tx === ty &&
     (tx === "object"
-      ? (skipLengthCheck || ok(x).length === ok(y).length) &&
-        sk(x, y).every((key) => deepEquals(x[key], y[key], allowMissingKeys))
+      ? ok(x).length === ok(y).length &&
+        ok(x).every((key) => deepEquals(x[key], y[key]))
       : x === y);
   return res;
 }
@@ -188,7 +185,7 @@ export const categoryColorMap: Record<string, string> = {
   SEARCH: "bg-blue-300/[.7]",
   BASIC: "bg-purple-300/[.7]",
   INPUT: "bg-cyan-300/[.7]",
-  OUTPUT: "bg-brown-300/[.7]",
+  OUTPUT: "bg-red-300/[.7]",
   LOGIC: "bg-teal-300/[.7]",
 };
 
@@ -197,4 +194,11 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
     return "bg-gray-300/[.7]";
   }
   return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
+}
+
+export function filterBlocksByType<T>(
+  blocks: T[],
+  predicate: (block: T) => boolean,
+): T[] {
+  return blocks.filter(predicate);
 }
