@@ -15,7 +15,7 @@ CREATE TABLE "AnalyticsDetails" (
     "userId" TEXT NOT NULL,
     "type" "AnalyticsType" NOT NULL,
     "data" JSONB,
-    "dataIndex" INTEGER,
+    "dataIndex" TEXT,
 
     CONSTRAINT "AnalyticsDetails_pkey" PRIMARY KEY ("id")
 );
@@ -29,6 +29,7 @@ CREATE TABLE "AnalyticsMetrics" (
     "value" DOUBLE PRECISION NOT NULL,
     "dataString" TEXT,
     "aggregationType" "AggregationType" NOT NULL DEFAULT 'NO_AGGREGATION',
+    "aggregationCounter" INTEGER NOT NULL DEFAULT 1,
     "userId" TEXT NOT NULL,
 
     CONSTRAINT "AnalyticsMetrics_pkey" PRIMARY KEY ("id")
