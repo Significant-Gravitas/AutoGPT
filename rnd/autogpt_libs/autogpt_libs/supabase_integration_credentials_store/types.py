@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, SecretStr, field_serializer
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
-    title: str
+    title: Optional[str]
 
     @field_serializer("*")
     def dump_secret_strings(value: Any, _info):

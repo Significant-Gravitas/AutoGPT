@@ -59,7 +59,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
 
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
-            title=token_data.get("workspace_name", "Notion"),
+            title=token_data.get("workspace_name"),
             username=email,
             access_token=token_data["access_token"],
             refresh_token=None,

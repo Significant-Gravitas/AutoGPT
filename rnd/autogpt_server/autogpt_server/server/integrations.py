@@ -55,6 +55,7 @@ async def login(
 class CredentialsMetaResponse(BaseModel):
     id: str
     type: Literal["oauth2", "api_key"]
+    title: str | None
     scopes: list[str] | None
     username: str | None
 
@@ -84,6 +85,7 @@ async def callback(
     return CredentialsMetaResponse(
         id=credentials.id,
         type=credentials.type,
+        title=credentials.title,
         scopes=credentials.scopes,
         username=credentials.username,
     )
@@ -100,6 +102,7 @@ async def list_credentials(
         CredentialsMetaResponse(
             id=cred.id,
             type=cred.type,
+            title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         )

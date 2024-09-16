@@ -75,8 +75,8 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         now = int(time.time())
         new_credentials = OAuth2Credentials(
             provider=self.PROVIDER_NAME,
+            title=current_credentials.title if current_credentials else None,
             username=username,
-            title=current_credentials.title if current_credentials else "GitHub",
             access_token=token_data["access_token"],
             # Token refresh responses have an empty `scope` property (see docs),
             # so we have to get the scope from the existing credentials object.

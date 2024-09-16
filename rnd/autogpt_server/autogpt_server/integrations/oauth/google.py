@@ -35,7 +35,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
         return authorization_url
 
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
+    def exchange_code_for_tokens(self, code: str, title: str = "") -> OAuth2Credentials:
         flow = self._setup_oauth_flow(None)
         flow.redirect_uri = self.redirect_uri
         flow.fetch_token(code=code)
@@ -51,8 +51,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         assert google_creds.scopes
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
+            title=title or None,
             username=username,
-            title="Google",
             access_token=SecretStr(google_creds.token),
             refresh_token=SecretStr(google_creds.refresh_token),
             access_token_expires_at=int(google_creds.expiry.timestamp()),
