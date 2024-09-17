@@ -1,6 +1,5 @@
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
-import { sendTutorialStep } from "./build/actions";
 
 export const startTutorial = (
   setPinBlocksPopover: (value: boolean) => void,
@@ -498,10 +497,13 @@ export const startTutorial = (
     step.on("show", () => {
       console.debug("sendTutorialStep");
 
-      sendTutorialStep({
-        step: step.id,
-        data: {},
-      });
+      // Log Google Analytics event
+      if (typeof window !== "undefined" && window.gtag) {
+        window.gtag("event", "tutorial_step_shown", {
+          event_category: "Tutorial",
+          event_label: step.id,
+        });
+      }
     });
   }
 

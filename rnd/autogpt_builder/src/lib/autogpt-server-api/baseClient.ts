@@ -37,21 +37,6 @@ export default class BaseAutoGPTServerAPI {
     return this._request("POST", "/auth/user", {});
   }
 
-  // Analytics
-  async logCreateUser(userData: UserData): Promise<string> {
-    return this._request("POST", "/analytics/log_new_user", userData);
-  }
-
-  async logTutorialStep(data: TutorialStepData): Promise<string> {
-    return this._request("POST", "/analytics/log_tutorial_step", data);
-  }
-
-  async logPageView(pageViewData: PageViewData): Promise<string> {
-    return this._request("POST", "/analytics/log_page_view", {
-      page_view_data: pageViewData,
-    });
-  }
-
   async getBlocks(): Promise<Block[]> {
     return await this._get("/blocks");
   }
