@@ -187,12 +187,13 @@ export type NodeExecutionResult = {
   end_time?: Date;
 };
 
-/* Mirror of autogpt_server/server/integrations.py:CredentialsResponse */
-export type CredentialsResponse = {
-  credentials_id: string;
-  credentials_type: CredentialsType;
-  user_email: string;
-  scopes: Array<string>;
+/* Mirror of autogpt_server/server/integrations.py:CredentialsMetaResponse */
+export type CredentialsMetaResponse = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  scopes?: Array<string>;
+  username?: string;
 };
 
 export type User = {

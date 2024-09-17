@@ -1,7 +1,7 @@
 import { CustomNodeData } from "@/components/CustomNode";
 import AutoGPTServerAPI, {
   BlockIOCredentialsSubSchema,
-  CredentialsResponse,
+  CredentialsMetaResponse,
 } from "@/lib/autogpt-server-api";
 import { useNodeId, useNodesData } from "@xyflow/react";
 import { useRouter } from "next/navigation";
@@ -15,9 +15,9 @@ export default function useCredentials() {
   }
 
   const router = useRouter();
-  const [savedApiKeys, setSavedApiKeys] = useState<CredentialsResponse[]>([]);
+  const [savedApiKeys, setSavedApiKeys] = useState<CredentialsMetaResponse[]>([]);
   const [savedOAuthCredentials, setSavedOAuthCredentials] = useState<
-    CredentialsResponse[]
+    CredentialsMetaResponse[]
   >([]);
 
   const data = useNodesData(nodeId)!.data as CustomNodeData;
@@ -34,14 +34,14 @@ export default function useCredentials() {
       .listOAuthCredentials(credentials.credentials_provider)
       .then((response) => {
         const { oauthCreds, apiKeys } = response.reduce<{
-          oauthCreds: CredentialsResponse[];
-          apiKeys: CredentialsResponse[];
+          oauthCreds: CredentialsMetaResponse[];
+          apiKeys: CredentialsMetaResponse[];
         }>(
           (acc, cred) => {
-            if (cred.credentials_type === "oauth2") {
-              acc.oauthCreds.push(cred as CredentialsResponse);
-            } else if (cred.credentials_type === "api_key") {
-              acc.apiKeys.push(cred as CredentialsResponse);
+            if (cred.type === "oauth2") {
+              acc.oauthCreds.push(cred as CredentialsMetaResponse);
+            } else if (cred.type === "api_key") {
+              acc.apiKeys.push(cred as CredentialsMetaResponse);
             }
             return acc;
           },

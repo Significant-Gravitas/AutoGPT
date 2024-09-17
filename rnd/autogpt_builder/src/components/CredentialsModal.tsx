@@ -32,8 +32,8 @@ const CredentialsModal: FC<ModalProps> = ({
         </SelectTrigger>
         <SelectContent className="nodrag">
           {credentials.savedApiKeys.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.credentials_id}>
-              {credentials.credentials_id} - {credentials.user_email}
+            <SelectItem key={index} value={credentials.id}>
+              {credentials.id} - {credentials.username}
             </SelectItem>
           ))}
           <SelectItem value="new">Add new API key...</SelectItem>

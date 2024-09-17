@@ -8,7 +8,7 @@ import {
   GraphExecuteResponse,
   NodeExecutionResult,
   User,
-  CredentialsResponse,
+  CredentialsMetaResponse,
 } from "./types";
 
 export default class AutoGPTServerAPI {
@@ -162,14 +162,14 @@ export default class AutoGPTServerAPI {
     });
   }
 
-  async listOAuthCredentials(provider: string): Promise<CredentialsResponse[]> {
+  async listOAuthCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
     return this._get(`/integrations/${provider}/credentials`);
   }
 
   async getOAuthCredentials(
     provider: string,
     id: string,
-  ): Promise<CredentialsResponse> {
+  ): Promise<CredentialsMetaResponse> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 

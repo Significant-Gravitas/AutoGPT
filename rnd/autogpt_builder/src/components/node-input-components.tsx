@@ -15,7 +15,6 @@ import {
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
   BlockIOCredentialsSubSchema,
-  CredentialsResponse,
 } from "@/lib/autogpt-server-api/types";
 import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
