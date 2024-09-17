@@ -24,6 +24,7 @@ model User {
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
+  UserBlockCredit              UserBlockCredit[]
 
   @@index([id])
   @@index([email])
@@ -113,6 +114,16 @@ model AgentBlock {
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
+  UserBlockCredit       UserBlockCredit[]
+}
+
+// This model describes the status of an AgentGraphExecution or AgentNodeExecution.
+enum AgentExecutionStatus {
+  INCOMPLETE
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
 }
 
 // This model describes the execution of an AgentGraph.
@@ -120,6 +131,9 @@ model AgentGraphExecution {
   id        String    @id @default(uuid())
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
+  startedAt DateTime?
+
+  executionStatus AgentExecutionStatus @default(COMPLETED)
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
@@ -147,12 +161,10 @@ model AgentNodeExecution {
   Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
   Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
 
-  // sqlite does not support enum
-  // enum Status { INCOMPLETE, QUEUED, RUNNING, SUCCESS, FAILED }
-  executionStatus String
+  executionStatus AgentExecutionStatus @default(COMPLETED)
   // Final JSON serialized input data for the node execution.
   executionData   String?
-  addedTime       DateTime  @default(now())
+  addedTime       DateTime             @default(now())
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
@@ -245,4 +257,27 @@ model AnalyticsMetrics {
   user   User   @relation(fields: [userId], references: [id])
 
   @@index(fields: [analyticMetric, userId, dataString], name: "analytics_metric_index")
+}
+enum UserBlockCreditType {
+  TOP_UP
+  USAGE
+}
+
+model UserBlockCredit {
+  transactionKey String   @default(uuid())
+  createdAt      DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  blockId String?
+  block   AgentBlock? @relation(fields: [blockId], references: [id])
+
+  amount Int
+  type   UserBlockCreditType
+
+  isActive Boolean @default(true)
+  metadata Json?
+
+  @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
 }

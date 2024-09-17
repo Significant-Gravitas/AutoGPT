@@ -24,15 +24,16 @@ export function deepEquals(x: any, y: any): boolean {
   const ok = Object.keys,
     tx = typeof x,
     ty = typeof y;
-  return (
+
+  const res =
     x &&
     y &&
     tx === ty &&
     (tx === "object"
       ? ok(x).length === ok(y).length &&
         ok(x).every((key) => deepEquals(x[key], y[key]))
-      : x === y)
-  );
+      : x === y);
+  return res;
 }
 
 /** Get tailwind text color class from type name */
@@ -184,7 +185,7 @@ export const categoryColorMap: Record<string, string> = {
   SEARCH: "bg-blue-300/[.7]",
   BASIC: "bg-purple-300/[.7]",
   INPUT: "bg-cyan-300/[.7]",
-  OUTPUT: "bg-brown-300/[.7]",
+  OUTPUT: "bg-red-300/[.7]",
   LOGIC: "bg-teal-300/[.7]",
 };
 
@@ -193,4 +194,11 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
     return "bg-gray-300/[.7]";
   }
   return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
+}
+
+export function filterBlocksByType<T>(
+  blocks: T[],
+  predicate: (block: T) => boolean,
+): T[] {
+  return blocks.filter(predicate);
 }
