@@ -29,12 +29,6 @@ services:
       file: ./docker-compose.yml
       service: postgres
 
-  server_base:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.yml
-      service: server_base
-
   migrate:
     <<: *agpt-services
     extends:
