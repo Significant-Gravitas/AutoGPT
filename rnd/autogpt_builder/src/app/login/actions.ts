@@ -3,8 +3,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { z } from "zod";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
