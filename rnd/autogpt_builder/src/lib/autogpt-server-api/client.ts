@@ -8,6 +8,7 @@ import {
   GraphExecuteResponse,
   NodeExecutionResult,
   User,
+  BlockCost,
 } from "./types";
 
 export default class AutoGPTServerAPI {
@@ -30,6 +31,10 @@ export default class AutoGPTServerAPI {
 
   async createUser(): Promise<User> {
     return this._request("POST", "/auth/user", {});
+  }
+
+  async getUserCredit(): Promise<{ credits: number }> {
+    return this._get(`/credits`);
   }
 
   async getBlocks(): Promise<Block[]> {

@@ -16,6 +16,7 @@ import {
   Category,
   NodeExecutionResult,
   BlockUIType,
+  BlockCost,
 } from "@/lib/autogpt-server-api/types";
 import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ export type ConnectionData = Array<{
 
 export type CustomNodeData = {
   blockType: string;
+  blockCosts: BlockCost[];
   title: string;
   description: string;
   categories: Category[];
@@ -521,6 +523,18 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       );
     });
 
+  const inputValues = data.hardcodedValues;
+  const blockCost =
+    data.blockCosts &&
+    data.blockCosts.find((cost) =>
+      Object.entries(cost.cost_filter).every(
+        // Undefined, null, or empty values are considered equal
+        ([key, value]) =>
+          value === inputValues[key] || (!value && !inputValues[key]),
+      ),
+    );
+  console.debug(`Block cost ${inputValues}|${data.blockCosts}=${blockCost}`);
+
   return (
     <div
       className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
@@ -562,6 +576,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           )}
         </div>
       </div>
+      {blockCost && (
+        <div className="p-3 text-right font-semibold">
+          Cost: {blockCost.cost_amount} / {blockCost.cost_type}
+        </div>
+      )}
       {data.uiType !== BlockUIType.NOTE ? (
         <div className="flex items-start justify-between p-3">
           <div>

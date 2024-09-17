@@ -145,6 +145,7 @@ export default function useAgentGraph(
             data: {
               block_id: block.id,
               blockType: block.name,
+              blockCosts: block.costs,
               categories: block.categories,
               description: block.description,
               title: `${block.name} ${node.id}`,

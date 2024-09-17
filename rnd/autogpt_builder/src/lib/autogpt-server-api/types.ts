@@ -5,6 +5,18 @@ export type Category = {
   description: string;
 };
 
+export enum BlockCostType {
+  RUN = "run",
+  BYTE = "byte",
+  SECOND = "second",
+}
+
+export type BlockCost = {
+  cost_amount: number;
+  cost_type: BlockCostType;
+  cost_filter: { [key: string]: any };
+};
+
 export type Block = {
   id: string;
   name: string;
@@ -14,6 +26,7 @@ export type Block = {
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
   uiType: BlockUIType;
+  costs: BlockCost[];
 };
 
 export type BlockIORootSchema = {
