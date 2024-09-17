@@ -497,10 +497,9 @@ export const startTutorial = (
   for (const step of tour.steps) {
     step.on("show", () => {
       "use client";
-      console.log("sendTutorialStep");
+      console.debug("sendTutorialStep");
 
       sendGAEvent("event", "tutorial_step_shown", { value: step.id });
-      // sendGAEvent({ event: "tutorial_step_shown", value: step.id });
     });
   }
 
