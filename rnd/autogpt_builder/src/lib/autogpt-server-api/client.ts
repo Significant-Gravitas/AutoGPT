@@ -146,9 +146,7 @@ export default class AutoGPTServerAPI {
     provider: string,
     scopes: string,
   ): Promise<{ login_url: string }> {
-    return await this._request("GET", `/integrations/${provider}/login`, {
-      scopes,
-    });
+    return await this._get(`/integrations/${provider}/login`, { scopes });
   }
 
   async oAuthCallback(
@@ -173,14 +171,14 @@ export default class AutoGPTServerAPI {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
-  private async _get(path: string) {
-    return this._request("GET", path);
+  private async _get(path: string, query?: Record<string, any>) {
+    return this._request("GET", path, query);
   }
 
   private async _request(
     method: "GET" | "POST" | "PUT" | "PATCH",
     path: string,
-    payload?: { [key: string]: any },
+    payload?: Record<string, any>,
   ) {
     if (method != "GET") {
       console.debug(`${method} ${path} payload:`, payload);
@@ -190,10 +188,17 @@ export default class AutoGPTServerAPI {
       (await this.supabaseClient?.auth.getSession())?.data.session
         ?.access_token || "";
 
-    const response = await fetch(this.baseUrl + path, {
+    let url = this.baseUrl + path;
+    if (method === "GET" && payload) {
+      // For GET requests, use payload as query
+      const queryParams = new URLSearchParams(payload);
+      url += `?${queryParams.toString()}`;
+    }
+
+    const response = await fetch(url, {
       method,
       headers:
-        method != "GET"
+        method !== "GET"
           ? {
               "Content-Type": "application/json",
               Authorization: token ? `Bearer ${token}` : "",
@@ -201,7 +206,7 @@ export default class AutoGPTServerAPI {
           : {
               Authorization: token ? `Bearer ${token}` : "",
             },
-      body: JSON.stringify(payload),
+      body: method !== "GET" ? JSON.stringify(payload) : undefined,
     });
     const response_data = await response.json();
 
