@@ -44,7 +44,6 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         username = self._request_email(google_creds)
 
         # Google's OAuth library is poorly typed so we need some of these:
-        assert google_creds.client_id
         assert google_creds.token
         assert google_creds.refresh_token
         assert google_creds.expiry
