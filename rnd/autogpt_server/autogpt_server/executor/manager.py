@@ -164,7 +164,7 @@ def execute_node(
     try:
         credit = wait(user_credit.get_or_refill_credit(user_id))
         if credit < 0:
-            raise ValueError("Insufficient credit: {credit}")
+            raise ValueError(f"Insufficient credit: {credit}")
 
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs

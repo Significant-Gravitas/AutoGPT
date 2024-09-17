@@ -139,8 +139,8 @@ export default function useAgentGraph(
             id: node.id,
             type: "custom",
             position: {
-              x: node.metadata.position.x,
-              y: node.metadata.position.y,
+              x: node?.metadata?.position?.x || 0,
+              y: node?.metadata?.position?.y || 0,
             },
             data: {
               block_id: block.id,
@@ -614,7 +614,7 @@ export default function useAgentGraph(
           }));
 
         return {
-          id: node.data.backend_id,
+          id: node.id,
           block_id: node.data.block_id,
           input_default: inputDefault,
           input_nodes: inputNodes,
@@ -643,35 +643,59 @@ export default function useAgentGraph(
         nodes: formattedNodes,
         links: links,
       };
-      if (savedAgent && deepEquals(payload, savedAgent, true)) {
+
+      // To avoid saving the same graph, we compare the payload with the saved agent.
+      // Differences in IDs are ignored.
+      const comparedPayload = {
+        ...(({ id, ...rest }) => rest)(payload),
+        nodes: payload.nodes.map(
+          ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
+        ),
+        links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
+      };
+      const comparedSavedAgent = {
+        name: savedAgent?.name,
+        description: savedAgent?.description,
+        nodes: savedAgent?.nodes.map((v) => ({
+          block_id: v.block_id,
+          input_default: v.input_default,
+          metadata: v.metadata,
+        })),
+        links: savedAgent?.links.map((v) => ({
+          sink_name: v.sink_name,
+          source_name: v.source_name,
+        })),
+      };
+
+      let newSavedAgent = null;
+      if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
         console.warn("No need to save: Graph is the same as version on server");
-        // Trigger state change
-        setSavedAgent(savedAgent);
-        return;
+        newSavedAgent = savedAgent;
       } else {
         console.debug(
           "Saving new Graph version; old vs new:",
-          savedAgent,
+          comparedPayload,
           payload,
         );
+        setNodesSyncedWithSavedAgent(false);
+
+        newSavedAgent = savedAgent
+          ? await (savedAgent.is_template
+              ? api.updateTemplate(savedAgent.id, payload)
+              : api.updateGraph(savedAgent.id, payload))
+          : await (asTemplate
+              ? api.createTemplate(payload)
+              : api.createGraph(payload));
+
+        console.debug("Response from the API:", newSavedAgent);
       }
-
-      setNodesSyncedWithSavedAgent(false);
-
-      const newSavedAgent = savedAgent
-        ? await (savedAgent.is_template
-            ? api.updateTemplate(savedAgent.id, payload)
-            : api.updateGraph(savedAgent.id, payload))
-        : await (asTemplate
-            ? api.createTemplate(payload)
-            : api.createGraph(payload));
-      console.debug("Response from the API:", newSavedAgent);
 
       // Route the URL to the new flow ID if it's a new agent.
       if (!savedAgent) {
         const path = new URLSearchParams(searchParams);
         path.set("flowID", newSavedAgent.id);
-        router.replace(`${pathname}?${path.toString()}`);
+        router.push(`${pathname}?${path.toString()}`);
+        return;
       }
 
       // Update the node IDs on the frontend

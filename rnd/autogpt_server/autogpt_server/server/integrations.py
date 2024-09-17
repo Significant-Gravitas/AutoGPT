@@ -4,7 +4,11 @@ from typing import Annotated
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
-from autogpt_libs.supabase_integration_credentials_store.types import CredentialsType
+from autogpt_libs.supabase_integration_credentials_store.types import (
+    Credentials,
+    CredentialsType,
+    OAuth2Credentials,
+)
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 from supabase import Client
@@ -49,8 +53,11 @@ async def login(
 
 
 class CredentialsMetaResponse(BaseModel):
-    credentials_id: str
-    credentials_type: CredentialsType
+    id: str
+    type: CredentialsType
+    title: str | None
+    scopes: list[str] | None
+    username: str | None
 
 
 @integrations_api_router.post("/{provider}/callback")
@@ -74,11 +81,51 @@ async def callback(
         logger.warning(f"Code->Token exchange failed for provider {provider}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+    # TODO: Allow specifying `title` to set on `credentials`
     store.add_creds(user_id, credentials)
     return CredentialsMetaResponse(
-        credentials_id=credentials.id,
-        credentials_type=credentials.type,
+        id=credentials.id,
+        type=credentials.type,
+        title=credentials.title,
+        scopes=credentials.scopes,
+        username=credentials.username,
     )
+
+
+@integrations_api_router.get("/{provider}/credentials")
+async def list_credentials(
+    provider: Annotated[str, Path(title="The provider to list credentials for")],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+) -> list[CredentialsMetaResponse]:
+    credentials = store.get_creds_by_provider(user_id, provider)
+    return [
+        CredentialsMetaResponse(
+            id=cred.id,
+            type=cred.type,
+            title=cred.title,
+            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
+            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
+        )
+        for cred in credentials
+    ]
+
+
+@integrations_api_router.get("/{provider}/credentials/{cred_id}")
+async def get_credential(
+    provider: Annotated[str, Path(title="The provider to retrieve credentials for")],
+    cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+) -> Credentials:
+    credential = store.get_creds_by_id(user_id, cred_id)
+    if not credential:
+        raise HTTPException(status_code=404, detail="Credentials not found")
+    if credential.provider != provider:
+        raise HTTPException(
+            status_code=404, detail="Credentials do not match the specified provider"
+        )
+    return credential
 
 
 # -------- UTILITIES --------- #
