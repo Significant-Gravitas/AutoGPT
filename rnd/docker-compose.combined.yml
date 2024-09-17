@@ -71,11 +71,11 @@ services:
       file: ./docker-compose.yml
       service: market
 
-  frontend:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.yml
-      service: frontend
+#  frontend:
+#    <<: *agpt-services
+#    extends:
+#      file: ./docker-compose.yml
+#      service: frontend
 
   # Supabase services
   studio:
