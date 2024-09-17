@@ -77,12 +77,6 @@ services:
       file: ./docker-compose.yml
       service: frontend
 
-  mail:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.yml
-      service: mail
-
   # Supabase services
   studio:
     <<: *supabase-services
