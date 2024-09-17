@@ -80,6 +80,7 @@ async def callback(
         logger.warning(f"Code->Token exchange failed for provider {provider}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+    # TODO: Allow specifying `title` to set on `credentials`
     store.add_creds(user_id, credentials)
     return CredentialsMetaResponse(
         id=credentials.id,
