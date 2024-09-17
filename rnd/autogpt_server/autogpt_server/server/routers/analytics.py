@@ -4,7 +4,6 @@ from typing import Annotated
 
 import fastapi
 
-
 import autogpt_server.data.analytics
 from autogpt_server.server.utils import get_user_id
 
