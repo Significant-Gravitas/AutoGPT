@@ -51,18 +51,6 @@ export async function signup(values: z.infer<typeof loginFormSchema>) {
   if (data.session) {
     await supabase.auth.setSession(data.session);
   }
-  if (data.user) {
-    // This will throw an error until the user is created in the database, this should be resolved
-    // when we merge supabase and the postgres database. Follow up on 14Oct2024.
-    const api = new AutoGPTServerAPIServerSide();
-
-    api.logCreateUser({
-      email: values.email,
-      user_id: data.user.id,
-      name: values.email,
-      username: values.email,
-    });
-  }
 
   revalidatePath("/", "layout");
   redirect("/profile");
