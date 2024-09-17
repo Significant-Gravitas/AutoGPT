@@ -91,7 +91,7 @@ async def callback(
     )
 
 
-@integrations_api_router.get("/{provider}/credentials")
+@router.get("/{provider}/credentials")
 async def list_credentials(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -110,7 +110,7 @@ async def list_credentials(
     ]
 
 
-@integrations_api_router.get("/{provider}/credentials/{cred_id}")
+@router.get("/{provider}/credentials/{cred_id}")
 async def get_credential(
     provider: Annotated[str, Path(title="The provider to retrieve credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
