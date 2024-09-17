@@ -145,7 +145,7 @@ export default class AutoGPTServerAPI {
   async oAuthLogin(
     provider: string,
     scopes: string,
-  ): Promise<{ login_url: string; state_token: string }> {
+  ): Promise<{ login_url: string }> {
     return await this._request("GET", `/integrations/${provider}/login`, {
       scopes,
     });
@@ -155,7 +155,7 @@ export default class AutoGPTServerAPI {
     provider: string,
     code: string,
     state_token: string,
-  ): Promise<{ credentials_id: string; credentials_type: string }> {
+  ): Promise<CredentialsMetaResponse> {
     return this._request("POST", `/integrations/${provider}/callback`, {
       code,
       state_token,
