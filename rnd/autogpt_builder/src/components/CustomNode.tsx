@@ -84,7 +84,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     CustomNode,
     Edge
   >();
-  const credentials = useCredentials();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
 
@@ -654,7 +653,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         onClose={() => setIsOutputModalOpen(false)}
         executionResults={data.executionResults?.toReversed() || []}
       />
-      {isCredentialsModalOpen && <CredentialsModal/>}
+      {isCredentialsModalOpen && <CredentialsModal />}
     </div>
   );
 }

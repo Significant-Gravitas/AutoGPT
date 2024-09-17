@@ -16,7 +16,7 @@ import {
   BlockIOBooleanSubSchema,
   BlockIOCredentialsSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import React, { FC, useCallback, useContext, useEffect, useState } from "react";
+import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -332,8 +332,8 @@ const NodeCredentialsInput: FC<{
   const {
     provider,
     providerName,
-    isApiKey,
-    isOAuth2,
+    supportsApiKey,
+    supportsOAuth2,
     savedApiKeys,
     savedOAuthCredentials,
   } = credentials;
@@ -348,13 +348,13 @@ const NodeCredentialsInput: FC<{
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
     return (
       <div className="mb-2 flex flex-row space-x-2">
-        {isApiKey && (
+        {supportsApiKey && (
           <Button onClick={() => handleInputClick(selfKey + ".api_key")}>
             {providerIcon[provider]}
             Enter API key
           </Button>
         )}
-        {isOAuth2 && (
+        {supportsOAuth2 && (
           <Button onClick={() => handleInputClick(selfKey + ".oauth")}>
             {providerIcon[provider]}
             {"Sign in with " + providerName}
@@ -374,8 +374,6 @@ const NodeCredentialsInput: FC<{
       )}
     </div>
   );
-
-  return <>Nothing</>;
 };
 
 const NodeKeyValueInput: FC<{

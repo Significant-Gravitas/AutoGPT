@@ -16,7 +16,7 @@ export default function CredentialsModal({ }: ModalProps) {
     return null;
   }
 
-  const { isApiKey, isOAuth2, schema, savedOAuthCredentials, oAuthLogin } = credentials;
+  const { supportsApiKey, supportsOAuth2, schema, savedOAuthCredentials, oAuthLogin } = credentials;
 
   const handleValueChange = (newValue: string) => {
     if (newValue === "new") {
@@ -31,7 +31,7 @@ export default function CredentialsModal({ }: ModalProps) {
   return (
     <div className="nodrag nowheel fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
       <div className="w-[500px] max-w-[90%] rounded-lg border-[1.5px] bg-white p-5">
-        {isOAuth2 &&
+        {supportsOAuth2 &&
           <Select
             defaultValue={schema.placeholder}
             onValueChange={(newValue) => { }}

@@ -9,14 +9,14 @@ import {
 
 export type CredentialsData = {
   provider: string;
-  isApiKey: boolean;
-  isOAuth2: boolean;
   schema: BlockIOCredentialsSubSchema;
+  supportsApiKey: boolean;
+  supportsOAuth2: boolean;
   isLoading: true;
 } | (CredentialsProviderData & {
-  isApiKey: boolean;
-  isOAuth2: boolean;
   schema: BlockIOCredentialsSubSchema;
+  supportsApiKey: boolean;
+  supportsOAuth2: boolean;
   isLoading: false;
 })
 
@@ -40,25 +40,25 @@ export default function useCredentials(): CredentialsData | null {
     ? allProviders[credentialsSchema?.credentials_provider]
     : null;
 
-  const isApiKey = credentialsSchema.credentials_types.includes("api_key");
-  const isOAuth2 = credentialsSchema.credentials_types.includes("oauth2");
+  const supportsApiKey = credentialsSchema.credentials_types.includes("api_key");
+  const supportsOAuth2 = credentialsSchema.credentials_types.includes("oauth2");
 
   // No provider means maybe it's still loading
   if (!provider) {
     return {
       provider: credentialsSchema.credentials_provider,
-      isApiKey,
-      isOAuth2,
       schema: credentialsSchema,
+      supportsApiKey,
+      supportsOAuth2,
       isLoading: true,
     };
   }
 
   return {
     ...provider,
-    isApiKey,
-    isOAuth2,
     schema: credentialsSchema,
+    supportsApiKey,
+    supportsOAuth2,
     isLoading: false,
   };
 }
