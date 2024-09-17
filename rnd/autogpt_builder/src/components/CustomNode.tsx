@@ -32,6 +32,8 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
+import useCredentials from "@/hooks/useCredentials";
+import CredentialsModal from "./CredentialsModal";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -82,6 +84,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     CustomNode,
     Edge
   >();
+  const credentials = useCredentials();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
 
@@ -167,7 +170,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 <span className="text-m green -mb-1 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
-                <div key={propKey} onMouseOver={() => {}}>
+                <div key={propKey} onMouseOver={() => { }}>
                   {!isConnected && (
                     <NodeGenericInputField
                       className="mb-2 mt-1"
@@ -213,7 +216,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey} onMouseOver={() => { }}>
                 {propKey !== "value" ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
@@ -252,7 +255,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey} onMouseOver={() => { }}>
                 {"credentials_provider" in propSchema ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     Credentials
@@ -390,6 +393,14 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   };
 
   const handleInputClick = (key: string) => {
+    // Special handling for credentials
+    const match = key.match(/credentials(\.api_key|\.oauth)?$/);
+    if (match) {
+      setIsCredentialsModalOpen(true);
+      // return match[0];  // This will be the full matched ending
+      return;
+    }
+
     console.log(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
@@ -643,6 +654,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         onClose={() => setIsOutputModalOpen(false)}
         executionResults={data.executionResults?.toReversed() || []}
       />
+      {isCredentialsModalOpen && <CredentialsModal/>}
     </div>
   );
 }
