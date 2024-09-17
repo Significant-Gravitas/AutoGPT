@@ -21,7 +21,7 @@ export default function CredentialsModal({ }: ModalProps) {
   const handleValueChange = (newValue: string) => {
     if (newValue === "new") {
       // Trigger the action to add a new API key
-      oAuthLogin("");//TODO kcze need scopes
+      oAuthLogin(schema.credentials_scopes);
     } else {
       // Handle normal selection
       //TODO kcze

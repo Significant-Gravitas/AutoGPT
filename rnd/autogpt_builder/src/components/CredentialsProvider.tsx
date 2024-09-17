@@ -11,7 +11,7 @@ export type CredentialsProviderData = {
   providerName: string;
   savedApiKeys: CredentialsMetaResponse[];
   savedOAuthCredentials: CredentialsMetaResponse[];
-  oAuthLogin: (scopes: string) => Promise<void>;
+  oAuthLogin: (scopes?: string[]) => Promise<void>;
 }
 
 export type CredentialsProvidersContextType = {
@@ -59,7 +59,7 @@ export default function CredentialsProvider({ children }: { children: React.Reac
               providerName: providerName[provider],
               savedApiKeys: apiKeys,
               savedOAuthCredentials: oauthCreds,
-              oAuthLogin: (scopes: string) => oAuthLogin(provider, scopes),
+              oAuthLogin: (scopes?: string[]) => oAuthLogin(provider, scopes),
             },
           }));
         });
@@ -67,11 +67,8 @@ export default function CredentialsProvider({ children }: { children: React.Reac
   }, [api]);
 
   const oAuthLogin = useCallback(
-    async (provider: CredentialsProviderType, scopes: string) => {
-      const { login_url } = await api.oAuthLogin(
-        provider,
-        scopes,
-      );
+    async (provider: CredentialsProviderType, scopes?: string[]) => {
+      const { login_url } = await api.oAuthLogin(provider, scopes);
       router.push(login_url);
     },
     [api],

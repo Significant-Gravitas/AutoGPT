@@ -144,9 +144,10 @@ export default class AutoGPTServerAPI {
 
   async oAuthLogin(
     provider: string,
-    scopes: string,
+    scopes?: string[],
   ): Promise<{ login_url: string }> {
-    return await this._get(`/integrations/${provider}/login`, { scopes });
+    const query = scopes ? { scopes: scopes.join(",") } : undefined;
+    return await this._get(`/integrations/${provider}/login`, query);
   }
 
   async oAuthCallback(
