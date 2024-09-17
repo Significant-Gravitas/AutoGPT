@@ -8,9 +8,8 @@ import {
   GraphExecuteResponse,
   NodeExecutionResult,
   User,
-  UserData,
-  TutorialStepData,
-  PageViewData,
+  AnalyticsMetrics,
+  AnalyticsDetails,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -144,6 +143,14 @@ export default class BaseAutoGPTServerAPI {
     return (
       await this._request("POST", `/graphs/${graphID}/executions/${runID}/stop`)
     ).map(parseNodeExecutionResultTimestamps);
+  }
+
+  async logMetric(metric: AnalyticsMetrics) {
+    return this._request("POST", "/analytics/log_raw_metric", metric);
+  }
+
+  async logAnalytic(analytic: AnalyticsDetails) {
+    return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
   private async _get(path: string) {
