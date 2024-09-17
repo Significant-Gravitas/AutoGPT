@@ -11,7 +11,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       - app-network
 
@@ -25,7 +25,7 @@ services:
 
   migrate:
     image: autogpt_server:latest
-    command: ["sh", "-c", "until pg_isready -h postgres -U agpt_user -d agpt_local; do echo 'Waiting for postgres...'; sleep 2; done; poetry run prisma migrate deploy"]
+    command: ["sh", "-c", "poetry run prisma migrate deploy"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,11 +62,11 @@ services:
       postgres:
         condition: service_healthy
       migrate:
-        condition: service_started
+        condition: service_completed_successfully
     environment:
-      - SUPABASE_URL=http://supabase-kong:8000
+      - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -75,7 +75,7 @@ services:
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
     ports:
-      - "8000:8000"
+      - "8006:8000"
       - "8003:8003" # execution scheduler
     networks:
       - app-network
@@ -127,9 +127,9 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      - SUPABASE_URL=http://localhost:54321
+      - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -151,9 +151,9 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      - SUPABASE_URL=http://localhost:54321
+      - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
     ports:
       - "8015:8015"
@@ -175,10 +175,10 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      - NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
-      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
       - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
       - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
     ports:
@@ -186,6 +186,11 @@ services:
     networks:
       - app-network
 
+  mail:
+    container_name: inbucket
+    image: inbucket/inbucket:latest
+    ports:
+      - "9000:9000"
 networks:
   app-network:
     driver: bridge
