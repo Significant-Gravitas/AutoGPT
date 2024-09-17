@@ -17,6 +17,10 @@ ENV POETRY_VERSION=1.8.3 \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false \
     PATH="$POETRY_HOME/bin:$PATH"
+
+# Upgrade pip and setuptools to fix security vulnerabilities
+RUN pip3 install --upgrade pip setuptools
+
 RUN pip3 install poetry
 
 # Copy and install dependencies
@@ -40,6 +44,10 @@ ENV POETRY_VERSION=1.8.3 \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false \
     PATH="$POETRY_HOME/bin:$PATH"
+
+
+# Upgrade pip and setuptools to fix security vulnerabilities
+RUN pip3 install --upgrade pip setuptools
 
 # Copy only necessary files from builder
 COPY --from=builder /app /app

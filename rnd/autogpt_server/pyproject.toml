@@ -13,7 +13,7 @@ python = "^3.10"
 aio-pika = "^9.4.3"
 anthropic = "^0.25.1"
 apscheduler = "^3.10.4"
-autogpt-libs = { path = "../autogpt_libs" }
+autogpt-libs = { path = "../autogpt_libs", develop = true }
 click = "^8.1.7"
 croniter = "^2.0.5"
 discord-py = "^2.4.0"

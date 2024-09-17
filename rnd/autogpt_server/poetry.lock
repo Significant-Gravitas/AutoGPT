@@ -289,7 +289,7 @@ description = "Shared libraries across NextGen AutoGPT"
 optional = false
 python-versions = ">=3.10,<4.0"
 files = []
-develop = false
+develop = true
 
 [package.dependencies]
 colorama = "^0.4.6"
@@ -2022,6 +2022,7 @@ description = "Pure-Python implementation of ASN.1 types and DER/BER/CER codecs 
 optional = false
 python-versions = ">=3.8"
 files = [
+    {file = "pyasn1-0.6.1-py3-none-any.whl", hash = "sha256:0d632f46f2ba09143da3a8afe9e33fb6f92fa2320ab7e886e2d0f7672af84629"},
     {file = "pyasn1-0.6.1.tar.gz", hash = "sha256:6f580d2bdd84365380830acf45550f2511469f673cb4a5ae3857a3170128b034"},
 ]
 
@@ -2032,6 +2033,7 @@ description = "A collection of ASN.1-based protocols modules"
 optional = false
 python-versions = ">=3.8"
 files = [
+    {file = "pyasn1_modules-0.4.1-py3-none-any.whl", hash = "sha256:49bfa96b45a292b711e986f222502c1c9a5e1f4e568fc30e2574a6c7d07838fd"},
     {file = "pyasn1_modules-0.4.1.tar.gz", hash = "sha256:c28e2dbf9c06ad61c71a075c7e0f9fd0f1b0bb2d2ad4377f240d33ac2ab60a7c"},
 ]
 
@@ -3621,4 +3623,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "fbc928c40dc95041f7750ab34677fa3eebacd06a84944de900dedd639f847a9c"
+content-hash = "311c527a1d1947af049dac27c7a2b2f49d7fa4cdede52ef436422a528b0ad866"
