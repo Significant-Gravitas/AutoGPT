@@ -23,6 +23,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
     """  # noqa
 
     PROVIDER_NAME = "github"
+    EMAIL_ENDPOINT = "https://api.github.com/user/emails"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -69,10 +70,13 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         response.raise_for_status()
         token_data: dict = response.json()
 
+        username = self._request_username(token_data["access_token"])
+
         now = int(time.time())
         new_credentials = OAuth2Credentials(
             provider=self.PROVIDER_NAME,
-            title=current_credentials.title if current_credentials else "GitHub",
+            title=current_credentials.title if current_credentials else None,
+            username=username,
             access_token=token_data["access_token"],
             # Token refresh responses have an empty `scope` property (see docs),
             # so we have to get the scope from the existing credentials object.
@@ -97,3 +101,19 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         if current_credentials:
             new_credentials.id = current_credentials.id
         return new_credentials
+
+    def _request_username(self, access_token: str) -> str | None:
+        url = "https://api.github.com/user"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {access_token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        response = requests.get(url, headers=headers)
+
+        if not response.ok:
+            return None
+
+        # Get the login (username)
+        return response.json().get("login")
