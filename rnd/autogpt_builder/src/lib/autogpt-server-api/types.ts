@@ -190,20 +190,3 @@ export enum BlockUIType {
   OUTPUT = "Output",
   NOTE = "Note",
 }
-
-export type UserData = {
-  user_id: string;
-  email: string;
-  name: string;
-  username: string;
-};
-
-export type TutorialStepData = {
-  step: string;
-  data: { [key: string]: any };
-};
-
-export type PageViewData = {
-  page: string;
-  data: { [key: string]: any };
-};

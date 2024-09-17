@@ -1,23 +1,15 @@
 """Analytics API"""
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import fastapi
 import prisma
 import prisma.enums
-import pydantic
 
 import autogpt_server.data.analytics
 from autogpt_server.server.utils import get_user_id
 
 router = fastapi.APIRouter()
-
-
-class UserData(pydantic.BaseModel):
-    user_id: str
-    email: str
-    name: str
-    username: str
 
 
 @router.post(path="/log_raw_metric")
