@@ -64,7 +64,7 @@ services:
       migrate:
         condition: service_started
     environment:
-      - SUPABASE_URL=http://localhost:54321
+      - SUPABASE_URL=http://supabase-kong:8000
       - SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
       - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
       - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
