@@ -103,9 +103,6 @@ class AppService(AppProcess):
         if self.use_redis:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
             self.run_and_wait(self.event_queue.close())
-        if self.use_supabase:
-            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Supabase...")
-            self.supabase.realtime.remove_all_channels()
 
     @conn_retry
     def __start_pyro(self):
