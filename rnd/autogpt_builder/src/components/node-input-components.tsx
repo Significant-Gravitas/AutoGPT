@@ -16,7 +16,7 @@ import {
   BlockIOBooleanSubSchema,
   BlockIOCredentialsSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import React, { FC, useCallback, useEffect, useState } from "react";
+import React, { FC, useCallback, useContext, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -321,12 +321,12 @@ const NodeCredentialsInput: FC<{
 }) => {
   const credentials = useCredentials();
 
-  if (credentials?.isLoading) {
-    return <div>Loading...</div>;
-  }
-
   if (!credentials) {
     return null;
+  }
+  
+  if (credentials?.isLoading) {
+    return <div>Loading...</div>;
   }
 
   const {
@@ -338,7 +338,7 @@ const NodeCredentialsInput: FC<{
     savedOAuthCredentials,
   } = credentials;
 
-  const providerIcon = {
+  const providerIcon: Record<string, React.JSX.Element> = {
     github: <FaGithub className="mr-2 h-4 w-4" />,
     google: <FaGoogle className="mr-2 h-4 w-4" />,
     notion: <NotionLogoIcon className="mr-2 h-4 w-4" />,
@@ -349,13 +349,13 @@ const NodeCredentialsInput: FC<{
     return (
       <div className="mb-2 flex flex-row space-x-2">
         {isApiKey && (
-          <Button>
+          <Button onClick={() => handleInputClick(selfKey + ".api_key")}>
             {providerIcon[provider]}
             Enter API key
           </Button>
         )}
         {isOAuth2 && (
-          <Button>
+          <Button onClick={() => handleInputClick(selfKey + ".oauth")}>
             {providerIcon[provider]}
             {"Sign in with " + providerName}
           </Button>
