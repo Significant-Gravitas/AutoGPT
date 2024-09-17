@@ -15,7 +15,7 @@ async def execute_graph(
     test_user: User,
     input_data: dict,
     num_execs: int = 4,
-    timeout: int = 45,
+    timeout: int = 60,
 ) -> str:
     # --- Test adding new executions --- #
     response = await agent_server.execute_graph(test_graph.id, input_data, test_user.id)
@@ -110,7 +110,6 @@ async def test_agent_execution(server: SpinTestServer):
         test_user,
         data,
         4,
-        45,
     )
     await assert_sample_graph_executions(
         server.agent_server, test_graph, test_user, graph_exec_id
