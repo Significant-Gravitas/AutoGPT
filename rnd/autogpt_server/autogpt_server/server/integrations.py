@@ -1,11 +1,12 @@
 import logging
-from typing import Annotated, Literal
+from typing import Annotated
 
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
 from autogpt_libs.supabase_integration_credentials_store.types import (
     Credentials,
+    CredentialsType,
     OAuth2Credentials,
 )
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
@@ -53,7 +54,7 @@ async def login(
 
 class CredentialsMetaResponse(BaseModel):
     id: str
-    type: Literal["oauth2", "api_key"]
+    type: CredentialsType
     title: str | None
     scopes: list[str] | None
     username: str | None
