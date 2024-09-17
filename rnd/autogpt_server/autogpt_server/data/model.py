@@ -154,6 +154,7 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 def CredentialsField(
     provider: CP,
     supported_credential_types: set[CT],
+    required_scopes: set[str] = set(),
     *,
     title: Optional[str] = None,
     description: Optional[str] = None,
@@ -167,6 +168,7 @@ def CredentialsField(
         k: v
         for k, v in {
             "credentials_provider": provider,
+            "credentials_scopes": list(required_scopes) or None,  # omit if empty
             "credentials_types": list(supported_credential_types),
         }.items()
         if v is not None

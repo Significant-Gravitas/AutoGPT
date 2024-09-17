@@ -19,16 +19,25 @@ GithubCredentialsInput = CredentialsMetaInput[
     Literal["github"], Literal["api_key", "oauth2"]
 ]
 
-GITHUB_CREDS_FIELD: GithubCredentialsInput = CredentialsField(
-    provider="github",
-    supported_credential_types={"api_key", "oauth2"},
-    description="GitHub OAuth credentials",
-)
+
+def GithubCredentialsField(scope: str) -> GithubCredentialsInput:
+    """
+    Creates a GitHub credentials input on a block.
+
+    Params:
+        scope: The authorization scope needed for the block to work. ([list of available scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes))
+    """  # noqa
+    return CredentialsField(
+        provider="github",
+        supported_credential_types={"api_key", "oauth2"},
+        required_scopes={scope},
+        description="GitHub OAuth credentials",
+    )
 
 
 class GithubCommentBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         issue_url: str = SchemaField(
             description="URL of the GitHub issue or pull request",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -115,7 +124,7 @@ class GithubCommentBlock(Block):
 
 class GithubMakeIssueBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -194,7 +203,7 @@ class GithubMakeIssueBlock(Block):
 
 class GithubMakePRBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -301,7 +310,7 @@ class GithubMakePRBlock(Block):
 
 class GithubReadIssueBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         issue_url: str = SchemaField(
             description="URL of the GitHub issue",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -387,7 +396,7 @@ class GithubReadIssueBlock(Block):
 
 class GithubReadPRBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
@@ -523,7 +532,7 @@ class GithubReadPRBlock(Block):
 
 class GithubListIssuesBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -611,7 +620,7 @@ class GithubListIssuesBlock(Block):
 
 class GithubReadTagsBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -704,7 +713,7 @@ class GithubReadTagsBlock(Block):
 
 class GithubReadBranchesBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -795,7 +804,7 @@ class GithubReadBranchesBlock(Block):
 
 class GithubReadDiscussionsBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -907,7 +916,7 @@ class GithubReadDiscussionsBlock(Block):
 
 class GithubReadReleasesBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -997,7 +1006,7 @@ class GithubReadReleasesBlock(Block):
 
 class GithubAddLabelBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         issue_url: str = SchemaField(
             description="URL of the GitHub issue or pull request",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -1085,7 +1094,7 @@ class GithubAddLabelBlock(Block):
 
 class GithubRemoveLabelBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         issue_url: str = SchemaField(
             description="URL of the GitHub issue or pull request",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -1175,7 +1184,7 @@ class GithubRemoveLabelBlock(Block):
 
 class GithubAssignReviewerBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
@@ -1270,7 +1279,7 @@ class GithubAssignReviewerBlock(Block):
 
 class GithubUnassignReviewerBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
@@ -1352,7 +1361,7 @@ class GithubUnassignReviewerBlock(Block):
 
 class GithubListReviewersBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
@@ -1448,7 +1457,7 @@ class GithubListReviewersBlock(Block):
 
 class GithubAssignIssueBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         issue_url: str = SchemaField(
             description="URL of the GitHub issue",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -1534,7 +1543,7 @@ class GithubAssignIssueBlock(Block):
 
 class GithubUnassignIssueBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         issue_url: str = SchemaField(
             description="URL of the GitHub issue",
             placeholder="https://github.com/owner/repo/issues/1",
@@ -1620,7 +1629,7 @@ class GithubUnassignIssueBlock(Block):
 
 class GithubReadCodeownersFileBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1690,7 +1699,7 @@ class GithubReadCodeownersFileBlock(Block):
 
 class GithubReadFileFromMasterBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1764,7 +1773,7 @@ class GithubReadFileFromMasterBlock(Block):
 
 class GithubReadFileFolderRepoBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1854,7 +1863,7 @@ class GithubReadFileFolderRepoBlock(Block):
 
 class GithubMakeBranchBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -1948,7 +1957,7 @@ class GithubMakeBranchBlock(Block):
 
 class GithubDeleteBranchBlock(Block):
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GITHUB_CREDS_FIELD
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
