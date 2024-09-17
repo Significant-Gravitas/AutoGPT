@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, SecretStr, field_serializer
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
-    title: str
+    title: Optional[str]
 
     @field_serializer("*")
     def dump_secret_strings(value: Any, _info):
@@ -18,6 +18,8 @@ class _BaseCredentials(BaseModel):
 
 class OAuth2Credentials(_BaseCredentials):
     type: Literal["oauth2"] = "oauth2"
+    username: Optional[str]
+    """Username of the third-party service user that these credentials belong to"""
     access_token: SecretStr
     access_token_expires_at: Optional[int]
     """Unix timestamp (seconds) indicating when the access token expires (if at all)"""

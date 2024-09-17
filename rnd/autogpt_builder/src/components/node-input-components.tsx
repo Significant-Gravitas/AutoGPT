@@ -482,7 +482,7 @@ const NodeKeyValueInput: FC<{
                 <Input
                   type="text"
                   placeholder="Value"
-                  value={value ?? ""}
+                  defaultValue={value ?? ""}
                   onBlur={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
@@ -665,7 +665,7 @@ const NodeStringInput: FC<{
           <Input
             type="text"
             id={selfKey}
-            value={schema.secret && value ? "********" : value}
+            defaultValue={schema.secret && value ? "********" : value}
             readOnly={schema.secret}
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
@@ -760,7 +760,7 @@ const NodeNumberInput: FC<{
         <Input
           type="number"
           id={selfKey}
-          value={value}
+          defaultValue={value}
           onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
