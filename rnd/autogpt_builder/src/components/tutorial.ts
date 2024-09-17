@@ -1,3 +1,4 @@
+import { sendGAEvent } from "@next/third-parties/google";
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 
@@ -495,15 +496,11 @@ export const startTutorial = (
 
   for (const step of tour.steps) {
     step.on("show", () => {
-      console.debug("sendTutorialStep");
+      "use client";
+      console.log("sendTutorialStep");
 
-      // Log Google Analytics event
-      if (typeof window !== "undefined" && window.gtag) {
-        window.gtag("event", "tutorial_step_shown", {
-          event_category: "Tutorial",
-          event_label: step.id,
-        });
-      }
+      sendGAEvent("event", "tutorial_step_shown", { value: step.id });
+      // sendGAEvent({ event: "tutorial_step_shown", value: step.id });
     });
   }
 
