@@ -15,7 +15,7 @@ services:
     networks:
       - app-network
 
-  server_base:
+  migrate:
     build:
       context: ../
       dockerfile: rnd/autogpt_server/Dockerfile
@@ -26,6 +26,12 @@ services:
   migrate:
     image: autogpt_server:latest
     command: ["sh", "-c", "poetry run prisma migrate deploy"]
+    develop:
+      watch:
+        - path: ./
+          target: rnd/autogpt_server/migrate
+          action: rebuild
+    command: ["poetry", "run", "prisma", "migrate", "deploy"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,10 +53,18 @@ services:
       - "6379:6379"
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   rest_server:
-    image: autogpt_server:latest
-    command: ["poetry", "run", "rest"]
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
+    command: ["python", "-m", "autogpt_server.rest"]
     develop:
       watch:
         - path: ./
@@ -58,7 +72,7 @@ services:
           action: rebuild
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       migrate:
@@ -81,8 +95,11 @@ services:
       - app-network
 
   executor:
-    image: autogpt_server:latest
-    command: ["poetry", "run", "executor"]
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
+    command: ["python", "-m", "autogpt_server.exec"]
     develop:
       watch:
         - path: ./
@@ -90,11 +107,11 @@ services:
           action: rebuild
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       migrate:
-        condition: service_started
+        condition: service_completed_successfully
     environment:
       - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
@@ -112,8 +129,11 @@ services:
       - app-network
 
   websocket_server:
-    image: autogpt_server:latest
-    command: ["poetry", "run", "ws"]
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
+    command: ["python", "-m", "autogpt_server.ws"]
     develop:
       watch:
         - path: ./
@@ -123,7 +143,7 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     environment:
@@ -137,7 +157,7 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
     ports:
-      - "8001:8000"
+      - "8001:8001"
     networks:
       - app-network
 
@@ -145,6 +165,11 @@ services:
     build:
       context: ../
       dockerfile: rnd/market/Dockerfile
+    develop:
+      watch:
+        - path: ./
+          target: rnd/market/
+          action: rebuild
     depends_on:
       postgres:
         condition: service_healthy
