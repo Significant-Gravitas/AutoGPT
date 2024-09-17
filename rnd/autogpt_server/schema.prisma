@@ -202,15 +202,6 @@ model AgentGraphExecutionSchedule {
   @@index([isEnabled])
 }
 
-enum AnalyticsType {
-  CREATE_USER
-  TUTORIAL_STEP
-  WEB_PAGE
-
-  AGENT_GRAPH_EXECUTION
-  AGENT_NODE_EXECUTION
-}
-
 model AnalyticsDetails {
   // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
   // typical uuid() inserts are handled by prisma
@@ -224,7 +215,7 @@ model AnalyticsDetails {
   user   User   @relation(fields: [userId], references: [id])
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
-  type AnalyticsType
+  type String
 
   // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
   data Json?
@@ -236,44 +227,22 @@ model AnalyticsDetails {
   @@index([type])
 }
 
-enum AnalyticsMetric {
-  PAGE_VIEW
-  TUTORIAL_STEP_COMPLETION
-  AGENT_GRAPH_EXECUTION
-  AGENT_NODE_EXECUTION
-}
-
-enum AggregationType {
-  COUNT
-  SUM
-  AVG
-  MAX
-  MIN
-  NO_AGGREGATION
-}
-
 model AnalyticsMetrics {
   id        String   @id @default(dbgenerated("gen_random_uuid()"))
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
-  analyticMetric     AnalyticsMetric
+  analyticMetric String
   // Any numeric data that should be counted upon, summed, or otherwise aggregated.
-  value              Float
+  value          Float
   // Any string data that should be used to identify the metric as distinct.
   // ex: '/build' vs '/market'
-  dataString         String?
-  // Data Aggregation Type
-  aggregationType    AggregationType @default(NO_AGGREGATION)
-  // Aggregation Counter used for aggregation style events that beenefit from it. (AVG) (not self incrementing)
-  aggregationCounter Int             @default(1)
+  dataString     String?
 
   // Link to User model
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  // Allows us to have unique but useful user level metrics.
-  @@unique([analyticMetric, userId, dataString, aggregationType])
-  @@index(fields: [analyticMetric, userId, dataString, aggregationType], name: "analytics_metric_index")
+  @@index(fields: [analyticMetric, userId, dataString], name: "analytics_metric_index")
 }
