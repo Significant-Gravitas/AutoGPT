@@ -1,5 +1,4 @@
 "use server";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";

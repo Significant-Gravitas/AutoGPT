@@ -190,3 +190,15 @@ export enum BlockUIType {
   OUTPUT = "Output",
   NOTE = "Note",
 }
+
+export type AnalyticsMetrics = {
+  metric_name: string;
+  metric_value: number;
+  data_string: string;
+};
+
+export type AnalyticsDetails = {
+  type: string;
+  data: { [key: string]: any };
+  index: string;
+};
