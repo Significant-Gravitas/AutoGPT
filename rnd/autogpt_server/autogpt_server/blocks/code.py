@@ -3,7 +3,6 @@ import io
 import json
 import multiprocessing
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -215,6 +214,7 @@ class FlexiblePythonExecutionBlock(Block):
             os.unlink(temp_file.name)
 
     def __del__(self):
+        import shutil  # noqa: E402
         shutil.rmtree(self.venv_path, ignore_errors=True)
 
 
