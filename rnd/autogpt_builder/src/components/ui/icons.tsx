@@ -613,9 +613,9 @@ export const IconKeyPlus = createIcon((props) => (
     {...props}
   >
     <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
-    <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
-    <line x1="19" x2="19" y1="8" y2="14" />
-    <line x1="22" x2="16" y1="11" y2="11" />
+    {/* <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" /> */}
+    <line x1="15.6" x2="15.6" y1="5.4" y2="11.4" />
+    <line x1="12.6" x2="18.6" y1="8.4" y2="8.4" />
   </svg>
 ));
 
