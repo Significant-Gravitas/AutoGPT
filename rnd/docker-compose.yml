@@ -83,7 +83,7 @@ services:
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
     ports:
-      - "8006:8000"
+      - "8006:8006"
       - "8003:8003" # execution scheduler
     networks:
       - app-network
