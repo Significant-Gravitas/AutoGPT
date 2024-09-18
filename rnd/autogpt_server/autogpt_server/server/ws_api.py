@@ -11,7 +11,7 @@ from autogpt_server.data.user import DEFAULT_USER_ID
 from autogpt_server.server.conn_manager import ConnectionManager
 from autogpt_server.server.model import ExecutionSubscription, Methods, WsMessage
 from autogpt_server.util.service import AppProcess
-from autogpt_server.util.settings import Settings
+from autogpt_server.util.settings import Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -174,4 +174,4 @@ async def websocket_router(
 
 class WebsocketServer(AppProcess):
     def run(self):
-        uvicorn.run(app, host="0.0.0.0", port=8001)
+        uvicorn.run(app, host="0.0.0.0", port=Config().websocket_server_port)

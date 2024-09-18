@@ -18,7 +18,7 @@ export default function CreditButton() {
   }, [api]);
 
   return (
-    credit && (
+    credit !== null && (
       <Button
         onClick={fetchCredit}
         variant="outline"

@@ -99,7 +99,7 @@ export async function NavBar() {
         </a>
       </div>
       <div className="flex flex-1 items-center justify-end gap-4">
-        <CreditButton />
+        {isAvailable && user && <CreditButton />}
 
         {isAvailable && !user && (
           <Link
