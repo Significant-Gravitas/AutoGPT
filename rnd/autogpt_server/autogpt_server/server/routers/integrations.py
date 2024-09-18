@@ -139,7 +139,7 @@ async def get_credential(
     return credential
 
 
-@integrations_api_router.post("/{provider}/credentials", status_code=201)
+@router.post("/{provider}/credentials", status_code=201)
 async def create_api_key_credentials(
     provider: Annotated[str, Path(title="The provider to create credentials for")],
     api_key: Annotated[str, Body(title="The API key to store")],
@@ -166,7 +166,7 @@ async def create_api_key_credentials(
     return {"id": new_credentials.id}
 
 
-@integrations_api_router.delete("/{provider}/credentials/{cred_id}", status_code=204)
+@router.delete("/{provider}/credentials/{cred_id}", status_code=204)
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider to delete credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
