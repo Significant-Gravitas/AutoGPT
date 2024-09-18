@@ -1,12 +1,15 @@
 import { createClient } from "../supabase/client";
 import {
+  APIKeyCredentials,
   Block,
+  CredentialsMetaResponse,
   Graph,
   GraphCreatable,
   GraphUpdateable,
   GraphMeta,
   GraphExecuteResponse,
   NodeExecutionResult,
+  OAuth2Credentials,
   User,
 } from "./types";
 
@@ -141,14 +144,42 @@ export default class AutoGPTServerAPI {
     ).map(parseNodeExecutionResultTimestamps);
   }
 
+  async createAPIKeyCredentials(
+    credentials: Omit<APIKeyCredentials, "id" | "type">,
+  ): Promise<APIKeyCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      credentials,
+    );
+  }
+
+  async listCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
+    return this._get(`/integrations/${provider}/credentials`);
+  }
+
+  async getCredentials(
+    provider: string,
+    id: string,
+  ): Promise<APIKeyCredentials | OAuth2Credentials> {
+    return this._get(`/integrations/${provider}/credentials/${id}`);
+  }
+
+  async deleteCredentials(provider: string, id: string): Promise<void> {
+    return this._request(
+      "DELETE",
+      `/integrations/${provider}/credentials/${id}`,
+    );
+  }
+
   private async _get(path: string) {
     return this._request("GET", path);
   }
 
   private async _request(
-    method: "GET" | "POST" | "PUT" | "PATCH",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
-    payload?: { [key: string]: any },
+    payload?: Record<string, any>,
   ) {
     if (method != "GET") {
       console.debug(`${method} ${path} payload:`, payload);
@@ -158,10 +189,11 @@ export default class AutoGPTServerAPI {
       (await this.supabaseClient?.auth.getSession())?.data.session
         ?.access_token || "";
 
+    const hasRequestBody = method !== "GET" && payload !== undefined;
     const response = await fetch(this.baseUrl + path, {
       method,
       headers:
-        method != "GET"
+        hasRequestBody
           ? {
               "Content-Type": "application/json",
               Authorization: token ? `Bearer ${token}` : "",
@@ -169,7 +201,7 @@ export default class AutoGPTServerAPI {
           : {
               Authorization: token ? `Bearer ${token}` : "",
             },
-      body: JSON.stringify(payload),
+      body: hasRequestBody ? JSON.stringify(payload) : undefined,
     });
     const response_data = await response.json();
 
