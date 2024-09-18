@@ -1,8 +1,4 @@
-import {
-  Cross2Icon,
-  Pencil2Icon,
-  PlusIcon,
-} from "@radix-ui/react-icons";
+import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
 import {
   BlockIORootSchema,
@@ -301,24 +297,20 @@ const NodeCredentialsInput: FC<{
   errors: { [key: string]: string | undefined };
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
-}> = ({
-  selfKey,
-  value,
-  errors,
-  handleInputChange,
-  className,
-}) => {
+}> = ({ selfKey, value, errors, handleInputChange, className }) => {
   return (
     <div className={cn("flex flex-col", className)}>
       <CredentialsInput
-        onSelectCredentials={(credsMeta) => handleInputChange(selfKey, credsMeta)}
+        onSelectCredentials={(credsMeta) =>
+          handleInputChange(selfKey, credsMeta)
+        }
         selectedCredentials={value}
       />
       {errors[selfKey] && (
         <span className="error-message">{errors[selfKey]}</span>
       )}
     </div>
-  )
+  );
 };
 
 const NodeKeyValueInput: FC<{

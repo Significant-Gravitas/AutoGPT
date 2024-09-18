@@ -224,7 +224,7 @@ type BaseCredentials = {
   type: CredentialsType;
   title?: string;
   provider: string;
-}
+};
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
 export type OAuth2Credentials = BaseCredentials & {
@@ -236,7 +236,7 @@ export type OAuth2Credentials = BaseCredentials & {
   refresh_token?: string;
   refresh_token_expires_at?: number;
   metadata: Record<string, any>;
-}
+};
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
 export type APIKeyCredentials = BaseCredentials & {
@@ -244,7 +244,7 @@ export type APIKeyCredentials = BaseCredentials & {
   title: string;
   api_key: string;
   expires_at?: number;
-}
+};
 
 export type User = {
   id: string;

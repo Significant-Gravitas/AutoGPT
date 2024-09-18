@@ -7,18 +7,20 @@ import {
   CredentialsProvidersContext,
 } from "@/components/integrations/credentials-provider";
 
-export type CredentialsData = {
-  provider: string;
-  schema: BlockIOCredentialsSubSchema;
-  supportsApiKey: boolean;
-  supportsOAuth2: boolean;
-  isLoading: true;
-} | (CredentialsProviderData & {
-  schema: BlockIOCredentialsSubSchema;
-  supportsApiKey: boolean;
-  supportsOAuth2: boolean;
-  isLoading: false;
-})
+export type CredentialsData =
+  | {
+      provider: string;
+      schema: BlockIOCredentialsSubSchema;
+      supportsApiKey: boolean;
+      supportsOAuth2: boolean;
+      isLoading: true;
+    }
+  | (CredentialsProviderData & {
+      schema: BlockIOCredentialsSubSchema;
+      supportsApiKey: boolean;
+      supportsOAuth2: boolean;
+      isLoading: false;
+    });
 
 export default function useCredentials(): CredentialsData | null {
   const nodeId = useNodeId();
@@ -29,7 +31,8 @@ export default function useCredentials(): CredentialsData | null {
   }
 
   const data = useNodesData<Node<CustomNodeData>>(nodeId)!.data;
-  const credentialsSchema = data.inputSchema.properties.credentials as BlockIOCredentialsSubSchema
+  const credentialsSchema = data.inputSchema.properties
+    .credentials as BlockIOCredentialsSubSchema;
 
   // If block input schema doesn't have credentials, return null
   if (!credentialsSchema) {
@@ -40,7 +43,8 @@ export default function useCredentials(): CredentialsData | null {
     ? allProviders[credentialsSchema?.credentials_provider]
     : null;
 
-  const supportsApiKey = credentialsSchema.credentials_types.includes("api_key");
+  const supportsApiKey =
+    credentialsSchema.credentials_types.includes("api_key");
   const supportsOAuth2 = credentialsSchema.credentials_types.includes("oauth2");
 
   // No provider means maybe it's still loading

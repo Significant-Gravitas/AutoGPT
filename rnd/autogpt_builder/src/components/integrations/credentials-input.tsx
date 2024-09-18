@@ -9,8 +9,16 @@ import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import { FaGithub, FaGoogle } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
-import { APIKeyCredentials, CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { IconKey, IconKeyPlus, IconUser, IconUserPlus } from "@/components/ui/icons";
+import {
+  APIKeyCredentials,
+  CredentialsMetaInput,
+} from "@/lib/autogpt-server-api/types";
+import {
+  IconKey,
+  IconKeyPlus,
+  IconUser,
+  IconUserPlus,
+} from "@/components/ui/icons";
 import {
   Dialog,
   DialogContent,
@@ -42,29 +50,30 @@ const providerIcons: Record<string, React.FC<{ className?: string }>> = {
   notion: NotionLogoIcon,
 };
 
-export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & ({
-  success: true;
-  code: string;
-  state: string;
-} | {
-  success: false;
-  message: string;
-})
+export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
+  | {
+      success: true;
+      code: string;
+      state: string;
+    }
+  | {
+      success: false;
+      message: string;
+    }
+);
 
 export const CredentialsInput: FC<{
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue: CredentialsMetaInput) => void;
-}> = ({
-  className,
-  selectedCredentials,
-  onSelectCredentials,
-}) => {
+}> = ({ className, selectedCredentials, onSelectCredentials }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const credentials = useCredentials();
-  const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] = useState(false);
+  const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
+    useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
-  const [oAuthPopupController, setOAuthPopupController] = useState<AbortController | null>(null);
+  const [oAuthPopupController, setOAuthPopupController] =
+    useState<AbortController | null>(null);
 
   if (!credentials) {
     return null;
@@ -85,7 +94,10 @@ export const CredentialsInput: FC<{
   } = credentials;
 
   async function handleOAuthLogin() {
-    const { login_url, state_token } = await api.oAuthLogin(provider, schema.credentials_scopes);
+    const { login_url, state_token } = await api.oAuthLogin(
+      provider,
+      schema.credentials_scopes,
+    );
     setOAuth2FlowInProgress(true);
     const popup = window.open(login_url, "_blank", "popup=true");
 
@@ -95,75 +107,98 @@ export const CredentialsInput: FC<{
       setOAuth2FlowInProgress(false);
       popup?.close();
     };
-    popup?.addEventListener("message", async (e: MessageEvent<OAuthPopupResultMessage>) => {
-      if (
-        typeof e.data != "object"
-        || !("message_type" in e.data && e.data.message_type == "oauth_popup_result")
-      ) return;
+    popup?.addEventListener(
+      "message",
+      async (e: MessageEvent<OAuthPopupResultMessage>) => {
+        if (
+          typeof e.data != "object" ||
+          !(
+            "message_type" in e.data &&
+            e.data.message_type == "oauth_popup_result"
+          )
+        )
+          return;
 
-      if (!e.data.success) {
-        console.error("OAuth flow failed:", e.data.message)
-        return;
-      }
+        if (!e.data.success) {
+          console.error("OAuth flow failed:", e.data.message);
+          return;
+        }
 
-      if (e.data.state !== state_token) return;
+        if (e.data.state !== state_token) return;
 
-      const credentials = await api.oAuthCallback(provider, e.data.code, e.data.state);
-      onSelectCredentials({
-        id: credentials.id,
-        type: "oauth2",
-        title: credentials.title,
-        provider,
-      });
-      controller.abort("success");
-    }, { signal: controller.signal });
+        const credentials = await api.oAuthCallback(
+          provider,
+          e.data.code,
+          e.data.state,
+        );
+        onSelectCredentials({
+          id: credentials.id,
+          type: "oauth2",
+          title: credentials.title,
+          provider,
+        });
+        controller.abort("success");
+      },
+      { signal: controller.signal },
+    );
 
-    setTimeout(() => {
-      controller.abort("timeout");
-    }, 5*60*1000);
+    setTimeout(
+      () => {
+        controller.abort("timeout");
+      },
+      5 * 60 * 1000,
+    );
   }
 
   const ProviderIcon = providerIcons[provider];
-  const modals = <>
-    {supportsApiKey && <APIKeyCredentialsModal
-      open={isAPICredentialsModalOpen}
-      onClose={() => setAPICredentialsModalOpen(false)}
-      onCredentialsCreate={(creds) => {
-        onSelectCredentials({
-          id: creds.id,
-          type: "api_key",
-          provider: creds.provider,
-          title: creds.title,
-        });
-        setAPICredentialsModalOpen(false);
-      }}
-    />}
-    {supportsOAuth2 && <OAuth2FlowWaitingModal
-      open={isOAuth2FlowInProgress}
-      onClose={() => oAuthPopupController?.abort("canceled")}
-      providerName={providerName}
-    />}
-  </>;
+  const modals = (
+    <>
+      {supportsApiKey && (
+        <APIKeyCredentialsModal
+          open={isAPICredentialsModalOpen}
+          onClose={() => setAPICredentialsModalOpen(false)}
+          onCredentialsCreate={(creds) => {
+            onSelectCredentials({
+              id: creds.id,
+              type: "api_key",
+              provider: creds.provider,
+              title: creds.title,
+            });
+            setAPICredentialsModalOpen(false);
+          }}
+        />
+      )}
+      {supportsOAuth2 && (
+        <OAuth2FlowWaitingModal
+          open={isOAuth2FlowInProgress}
+          onClose={() => oAuthPopupController?.abort("canceled")}
+          providerName={providerName}
+        />
+      )}
+    </>
+  );
 
   // No saved credentials yet
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
-    return <>
-      <div className={cn("flex flex-row space-x-2", className)}>
-        {supportsOAuth2 && (
-          <Button onClick={handleOAuthLogin}>
-            <ProviderIcon className="mr-2 h-4 w-4" />
-            {"Sign in with " + providerName}
-          </Button>
-        )}
-        {supportsApiKey && (
-          <Button onClick={() => setAPICredentialsModalOpen(true)}>
-            <ProviderIcon className="mr-2 h-4 w-4" />
-            Enter API key
-          </Button>
-        )}
-      </div>
-      {modals}
-    </>;
+    return (
+      <>
+        <div className={cn("flex flex-row space-x-2", className)}>
+          {supportsOAuth2 && (
+            <Button onClick={handleOAuthLogin}>
+              <ProviderIcon className="mr-2 h-4 w-4" />
+              {"Sign in with " + providerName}
+            </Button>
+          )}
+          {supportsApiKey && (
+            <Button onClick={() => setAPICredentialsModalOpen(true)}>
+              <ProviderIcon className="mr-2 h-4 w-4" />
+              Enter API key
+            </Button>
+          )}
+        </div>
+        {modals}
+      </>
+    );
   }
 
   function handleValueChange(newValue: string) {
@@ -174,7 +209,9 @@ export const CredentialsInput: FC<{
       // Open API key dialog
       setAPICredentialsModalOpen(true);
     } else {
-      const selectedCreds = savedApiKeys.concat(savedOAuthCredentials).find(c => c.id == newValue)!;
+      const selectedCreds = savedApiKeys
+        .concat(savedOAuthCredentials)
+        .find((c) => c.id == newValue)!;
 
       onSelectCredentials({
         id: selectedCreds.id,
@@ -183,44 +220,50 @@ export const CredentialsInput: FC<{
         // title: customTitle, // TODO: add input for title
       });
     }
-  };
+  }
 
   // Saved credentials exist
-  return <>
-    <Select
-      defaultValue={selectedCredentials?.id}
-      onValueChange={handleValueChange}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder={schema.placeholder} />
-      </SelectTrigger>
-      <SelectContent className="nodrag">
-        {savedOAuthCredentials.map((credentials, index) => (
-          <SelectItem key={index} value={credentials.id}>
-            <ProviderIcon className="h-4 w-4 inline mr-2" />
-            {credentials.username}
-          </SelectItem>
-        ))}
-        {savedApiKeys.map((credentials, index) => (
-          <SelectItem key={index} value={credentials.id}>
-            <ProviderIcon className="h-4 w-4 inline mr-2" />
-            <IconKey className="inline mr-1.5" />
-            {credentials.username}
-          </SelectItem>
-        ))}
-        <SelectSeparator />
-        {supportsOAuth2 && <SelectItem value="sign-in">
-          <IconUserPlus className="inline mr-1.5" />
-          Sign in with {providerName}
-        </SelectItem>}
-        {supportsApiKey && <SelectItem value="add-api-key">
-          <IconKeyPlus className="inline mr-1.5" />
-          Add new API key
-        </SelectItem>}
-      </SelectContent>
-    </Select>
-    {modals}
-  </>;
+  return (
+    <>
+      <Select
+        defaultValue={selectedCredentials?.id}
+        onValueChange={handleValueChange}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder={schema.placeholder} />
+        </SelectTrigger>
+        <SelectContent className="nodrag">
+          {savedOAuthCredentials.map((credentials, index) => (
+            <SelectItem key={index} value={credentials.id}>
+              <ProviderIcon className="mr-2 inline h-4 w-4" />
+              {credentials.username}
+            </SelectItem>
+          ))}
+          {savedApiKeys.map((credentials, index) => (
+            <SelectItem key={index} value={credentials.id}>
+              <ProviderIcon className="mr-2 inline h-4 w-4" />
+              <IconKey className="mr-1.5 inline" />
+              {credentials.username}
+            </SelectItem>
+          ))}
+          <SelectSeparator />
+          {supportsOAuth2 && (
+            <SelectItem value="sign-in">
+              <IconUserPlus className="mr-1.5 inline" />
+              Sign in with {providerName}
+            </SelectItem>
+          )}
+          {supportsApiKey && (
+            <SelectItem value="add-api-key">
+              <IconKeyPlus className="mr-1.5 inline" />
+              Add new API key
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+      {modals}
+    </>
+  );
 };
 
 export const APIKeyCredentialsModal: FC<{
@@ -250,14 +293,12 @@ export const APIKeyCredentialsModal: FC<{
     return null;
   }
 
-  const {
-    schema,
-    provider,
-    providerName,
-  } = credentials;
+  const { schema, provider, providerName } = credentials;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    const expiresAt = values.expiresAt ? new Date(values.expiresAt).getTime() / 1000 : undefined;
+    const expiresAt = values.expiresAt
+      ? new Date(values.expiresAt).getTime() / 1000
+      : undefined;
     const newCredentials = await api.createAPIKeyCredentials({
       provider,
       api_key: values.apiKey,
@@ -268,13 +309,18 @@ export const APIKeyCredentialsModal: FC<{
   }
 
   return (
-    <Dialog open={open} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add new API key for {providerName}</DialogTitle>
-          {schema.description && <DialogDescription>
-            {schema.description}
-          </DialogDescription>}
+          {schema.description && (
+            <DialogDescription>{schema.description}</DialogDescription>
+          )}
         </DialogHeader>
 
         <Form {...form}>
@@ -285,15 +331,17 @@ export const APIKeyCredentialsModal: FC<{
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>API Key</FormLabel>
-                  {schema.credentials_scopes && <FormDescription>
-                    Required scope(s) for this block: {
-                      schema.credentials_scopes?.map(
-                        (s, i, a) => <span key={i}>
-                          <code>{s}</code>{i < a.length - 1 && ", "}
+                  {schema.credentials_scopes && (
+                    <FormDescription>
+                      Required scope(s) for this block:{" "}
+                      {schema.credentials_scopes?.map((s, i, a) => (
+                        <span key={i}>
+                          <code>{s}</code>
+                          {i < a.length - 1 && ", "}
                         </span>
-                      )
-                    }
-                  </FormDescription>}
+                      ))}
+                    </FormDescription>
+                  )}
                   <FormControl>
                     <Input
                       type="password"
@@ -347,7 +395,7 @@ export const APIKeyCredentialsModal: FC<{
       </DialogContent>
     </Dialog>
   );
-}
+};
 
 export const OAuth2FlowWaitingModal: FC<{
   open: boolean;
@@ -355,17 +403,24 @@ export const OAuth2FlowWaitingModal: FC<{
   providerName: string;
 }> = ({ open, onClose, providerName }) => {
   return (
-    <Dialog open={open} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Waiting on {providerName} sign-in process...</DialogTitle>
+          <DialogTitle>
+            Waiting on {providerName} sign-in process...
+          </DialogTitle>
           <DialogDescription>
             Complete the sign-in process in the pop-up window.
-            <br/>
+            <br />
             Closing this dialog will cancel the sign-in process.
           </DialogDescription>
         </DialogHeader>
       </DialogContent>
     </Dialog>
   );
-}
+};

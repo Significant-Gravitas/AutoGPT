@@ -10,13 +10,14 @@ export async function GET(request: Request) {
   const state = searchParams.get("state");
 
   // Send message from popup window to host window
-  const message: OAuthPopupResultMessage = code && state
-    ? { message_type: "oauth_popup_result", success: true, code, state }
-    : {
-      message_type: "oauth_popup_result",
-      success: false,
-      message: `Incomplete query: ${searchParams.toString()}`,
-    };
+  const message: OAuthPopupResultMessage =
+    code && state
+      ? { message_type: "oauth_popup_result", success: true, code, state }
+      : {
+          message_type: "oauth_popup_result",
+          success: false,
+          message: `Incomplete query: ${searchParams.toString()}`,
+        };
 
   // Return a response with the message as JSON and a script to close the window
   return new NextResponse(
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     </html>
     `,
     {
-      headers: { 'Content-Type': 'text/html' },
-    }
+      headers: { "Content-Type": "text/html" },
+    },
   );
 }

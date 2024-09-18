@@ -168,7 +168,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 <span className="text-m green -mb-1 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
-                <div key={propKey} onMouseOver={() => { }}>
+                <div key={propKey} onMouseOver={() => {}}>
                   {!isConnected && (
                     <NodeGenericInputField
                       className="mb-2 mt-1"
@@ -214,7 +214,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => { }}>
+              <div key={propKey} onMouseOver={() => {}}>
                 {propKey !== "value" ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
@@ -253,7 +253,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => { }}>
+              <div key={propKey} onMouseOver={() => {}}>
                 {"credentials_provider" in propSchema ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     Credentials

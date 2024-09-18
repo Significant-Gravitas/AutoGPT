@@ -1,10 +1,18 @@
-import AutoGPTServerAPI, { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
+import AutoGPTServerAPI, {
+  CredentialsMetaResponse,
+} from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
 
-type CredentialsProviderName = typeof CREDENTIALS_PROVIDER_NAMES[number];
+type CredentialsProviderName = (typeof CREDENTIALS_PROVIDER_NAMES)[number];
 
 export type CredentialsProviderData = {
   provider: string;
@@ -12,17 +20,23 @@ export type CredentialsProviderData = {
   savedApiKeys: CredentialsMetaResponse[];
   savedOAuthCredentials: CredentialsMetaResponse[];
   oAuthLogin: (scopes?: string[]) => Promise<void>;
-}
+};
 
 export type CredentialsProvidersContextType = {
   [key in CredentialsProviderName]?: CredentialsProviderData;
-}
+};
 
-export const CredentialsProvidersContext = createContext<CredentialsProvidersContextType | null>(null);
+export const CredentialsProvidersContext =
+  createContext<CredentialsProvidersContextType | null>(null);
 
-export default function CredentialsProvider({ children }: { children: React.ReactNode }) {
+export default function CredentialsProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const router = useRouter();
-  const [providers, setProviders] = useState<CredentialsProvidersContextType | null>(null);
+  const [providers, setProviders] =
+    useState<CredentialsProvidersContextType | null>(null);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const providerName: Record<CredentialsProviderName, string> = {
@@ -33,35 +47,33 @@ export default function CredentialsProvider({ children }: { children: React.Reac
 
   useEffect(() => {
     CREDENTIALS_PROVIDER_NAMES.forEach((provider) => {
-      api
-        .listCredentials(provider)
-        .then((response) => {
-          const { oauthCreds, apiKeys } = response.reduce<{
-            oauthCreds: CredentialsMetaResponse[];
-            apiKeys: CredentialsMetaResponse[];
-          }>(
-            (acc, cred) => {
-              if (cred.type === "oauth2") {
-                acc.oauthCreds.push(cred);
-              } else if (cred.type === "api_key") {
-                acc.apiKeys.push(cred);
-              }
-              return acc;
-            },
-            { oauthCreds: [], apiKeys: [] },
-          );
+      api.listCredentials(provider).then((response) => {
+        const { oauthCreds, apiKeys } = response.reduce<{
+          oauthCreds: CredentialsMetaResponse[];
+          apiKeys: CredentialsMetaResponse[];
+        }>(
+          (acc, cred) => {
+            if (cred.type === "oauth2") {
+              acc.oauthCreds.push(cred);
+            } else if (cred.type === "api_key") {
+              acc.apiKeys.push(cred);
+            }
+            return acc;
+          },
+          { oauthCreds: [], apiKeys: [] },
+        );
 
-          setProviders((prev) => ({
-            ...prev,
-            [provider]: {
-              provider,
-              providerName: providerName[provider],
-              savedApiKeys: apiKeys,
-              savedOAuthCredentials: oauthCreds,
-              oAuthLogin: (scopes?: string[]) => oAuthLogin(provider, scopes),
-            },
-          }));
-        });
+        setProviders((prev) => ({
+          ...prev,
+          [provider]: {
+            provider,
+            providerName: providerName[provider],
+            savedApiKeys: apiKeys,
+            savedOAuthCredentials: oauthCreds,
+            oAuthLogin: (scopes?: string[]) => oAuthLogin(provider, scopes),
+          },
+        }));
+      });
     });
   }, [api]);
 

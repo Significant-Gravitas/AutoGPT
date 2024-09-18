@@ -691,5 +691,4 @@ export const IconUserPlus = createIcon((props) => (
   </svg>
 ));
 
-
 export { iconVariants };

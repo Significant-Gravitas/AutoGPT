@@ -234,15 +234,14 @@ export default class BaseAutoGPTServerAPI {
     const hasRequestBody = method !== "GET" && payload !== undefined;
     const response = await fetch(url, {
       method,
-      headers:
-        hasRequestBody
-          ? {
-              "Content-Type": "application/json",
-              Authorization: token ? `Bearer ${token}` : "",
-            }
-          : {
-              Authorization: token ? `Bearer ${token}` : "",
-            },
+      headers: hasRequestBody
+        ? {
+            "Content-Type": "application/json",
+            Authorization: token ? `Bearer ${token}` : "",
+          }
+        : {
+            Authorization: token ? `Bearer ${token}` : "",
+          },
       body: hasRequestBody ? JSON.stringify(payload) : undefined,
     });
     const response_data = await response.json();
