@@ -1,0 +1,147 @@
+version: '3.8'
+
+networks:
+  app-network:
+    name: app-network
+  shared-network:
+    name: shared-network
+
+volumes:
+  db-config:
+
+x-agpt-services:
+  &agpt-services
+  networks:
+    - app-network
+    - shared-network
+
+x-supabase-services:
+  &supabase-services
+  networks:
+    - app-network
+    - shared-network
+
+services:
+  # AGPT services
+  postgres:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.yml
+      service: postgres
+
+  migrate:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.yml
+      service: migrate
+
+  redis:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.yml
+      service: redis
+
+  rest_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.yml
+      service: rest_server
+
+  executor:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.yml
+      service: executor
+
+  websocket_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.yml
+      service: websocket_server
+
+  market:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.yml
+      service: market
+
+#  frontend:
+#    <<: *agpt-services
+#    extends:
+#      file: ./docker-compose.yml
+#      service: frontend
+
+  # Supabase services
+  studio:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: studio
+
+  kong:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: kong
+
+  auth:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: auth
+    environment:
+      GOTRUE_MAILER_AUTOCONFIRM: true
+
+  rest:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: rest
+
+  realtime:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: realtime
+
+  storage:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: storage
+
+  imgproxy:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: imgproxy
+
+  meta:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: meta
+
+  functions:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: functions
+
+  analytics:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: analytics
+
+  db:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: db
+
+  vector:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: vector
