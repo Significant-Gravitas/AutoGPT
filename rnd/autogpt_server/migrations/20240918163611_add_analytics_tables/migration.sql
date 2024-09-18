@@ -30,9 +30,6 @@ CREATE INDEX "analyticsDetails" ON "AnalyticsDetails"("userId", "type");
 -- CreateIndex
 CREATE INDEX "AnalyticsDetails_type_idx" ON "AnalyticsDetails"("type");
 
--- CreateIndex
-CREATE INDEX "analytics_metric_index" ON "AnalyticsMetrics"("analyticMetric", "userId", "dataString");
-
 -- AddForeignKey
 ALTER TABLE "AnalyticsDetails" ADD CONSTRAINT "AnalyticsDetails_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

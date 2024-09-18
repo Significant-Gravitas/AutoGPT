@@ -255,9 +255,8 @@ model AnalyticsMetrics {
   // Link to User model
   userId String
   user   User   @relation(fields: [userId], references: [id])
-
-  @@index(fields: [analyticMetric, userId, dataString], name: "analytics_metric_index")
 }
+
 enum UserBlockCreditType {
   TOP_UP
   USAGE
