@@ -15,14 +15,13 @@ async def execute_graph(
     test_user: User,
     input_data: dict,
     num_execs: int = 4,
-    timeout: int = 60,
 ) -> str:
     # --- Test adding new executions --- #
     response = await agent_server.execute_graph(test_graph.id, input_data, test_user.id)
     graph_exec_id = response["id"]
 
     # Execution queue should be empty
-    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id, timeout)
+    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
     assert result and len(result) == num_execs
     return graph_exec_id
 
