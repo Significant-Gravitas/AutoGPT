@@ -142,7 +142,7 @@ async def get_credential(
 async def create_api_key_credentials(
     provider: Annotated[str, Path(title="The provider to create credentials for")],
     api_key: Annotated[str, Body(title="The API key to store")],
-    title: Annotated[str | None, Body(title="Optional title for the credentials")],
+    title: Annotated[str, Body(title="Optional title for the credentials")],
     expires_at: Annotated[
         int | None, Body(title="Unix timestamp when the key expires")
     ],
