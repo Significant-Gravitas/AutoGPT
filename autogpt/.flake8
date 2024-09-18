@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 88
+# Ignore rules that conflict with Black code style
+extend-ignore = E203, W503
+exclude =
+    .git,
+    __pycache__/,
+    *.pyc,
+    .pytest_cache/,
+    venv*/,
+    .venv/,
+    data/,
+    logs/,
+    tests/unit/data/,

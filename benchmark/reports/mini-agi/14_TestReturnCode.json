@@ -1,0 +1,99 @@
+{
+    "command": "agbenchmark start --suite TestReturnCode",
+    "completion_time": "2023-07-22-23:49",
+    "metrics": {
+        "run_time": "16.31 seconds",
+        "highest_difficulty": "No successful tests"
+    },
+    "tests": {
+        "TestReturnCode": {
+            "data_path": "agbenchmark/challenges/code/c1_writing_suite_1",
+            "metrics": {
+                "percentage": 0.0,
+                "highest_difficulty": "No successful tests",
+                "run_time": "15.972 seconds"
+            },
+            "tests": {
+                "TestReturnCode_Simple": {
+                    "data_path": "agbenchmark/challenges/code/c1_writing_suite_1/1_return/data.json",
+                    "is_regression": false,
+                    "category": [
+                        "code",
+                        "iterate"
+                    ],
+                    "task": "Return the multiplied number in the function multiply_int in code.py. You can make sure you have correctly done this by running test.py",
+                    "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
+                    "description": "Simple test if a simple code instruction can be executed",
+                    "metrics": {
+                        "difficulty": "basic",
+                        "success": false,
+                        "fail_reason": "assert 1 in [0.0]",
+                        "success_%": 0.0,
+                        "run_time": "15.96 seconds"
+                    },
+                    "reached_cutoff": false
+                },
+                "TestReturnCode_Write": {
+                    "data_path": "agbenchmark/challenges/code/c1_writing_suite_1/2_write/data.json",
+                    "is_regression": false,
+                    "category": [
+                        "code",
+                        "iterate"
+                    ],
+                    "task": "Add a function called multiply_int in code.py that multiplies numbers by 2. You can make sure you have correctly done this by running test.py",
+                    "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
+                    "description": "Small step up, just writing the function with a name as well as the return statement.",
+                    "metrics": {
+                        "difficulty": "novice",
+                        "success": false,
+                        "fail_reason": "agbenchmark/challenges/test_all.py::TestReturnCode_Write::test_method[challenge_data0] depends on agbenchmark/challenges/test_all.py::TestReturnCode_Simple::test_method[challenge_data0]",
+                        "success_%": 0.0,
+                        "run_time": "0.004 seconds"
+                    },
+                    "reached_cutoff": false
+                },
+                "TestReturnCode_Modify": {
+                    "data_path": "agbenchmark/challenges/code/c1_writing_suite_1/3_modify/data.json",
+                    "is_regression": false,
+                    "category": [
+                        "code",
+                        "iterate"
+                    ],
+                    "task": "Modify the multiply_int function in code.py to be able to pass in a 'multiplier' argument to multiply the 'num' by 'multiplier'. Both arguments are integers. You can make sure you have correctly done this by running test.py",
+                    "answer": "def multiply_int(num, multiplier):\n    return num * multiplier\n",
+                    "description": "Builds on the previous function also take a multiplier .",
+                    "metrics": {
+                        "difficulty": "intermediate",
+                        "success": false,
+                        "fail_reason": "agbenchmark/challenges/test_all.py::TestReturnCode_Modify::test_method[challenge_data0] depends on agbenchmark/challenges/test_all.py::TestReturnCode_Write::test_method[challenge_data0]",
+                        "success_%": 0.0,
+                        "run_time": "0.004 seconds"
+                    },
+                    "reached_cutoff": false
+                },
+                "TestReturnCode_Tests": {
+                    "data_path": "agbenchmark/challenges/code/c1_writing_suite_1/4_tests/data.json",
+                    "is_regression": false,
+                    "category": [
+                        "code",
+                        "iterate"
+                    ],
+                    "task": "First, modify test.py to fill in the test case to be able to test the code in code.py. Next, modify the multiply_int function in code.py to be able to pass in a 'multiplier' argument to multiply the 'num' by 'multiplier'. Both arguments are integers. You can make sure you have correctly done this by running test.py that you previously modified.",
+                    "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
+                    "description": "Small step up, just writing the function with a name as well as the return statement.",
+                    "metrics": {
+                        "difficulty": "advanced",
+                        "success": false,
+                        "fail_reason": "agbenchmark/challenges/test_all.py::TestReturnCode_Tests::test_method[challenge_data0] depends on agbenchmark/challenges/test_all.py::TestReturnCode_Modify::test_method[challenge_data0]",
+                        "success_%": 0.0,
+                        "run_time": "0.004 seconds"
+                    },
+                    "reached_cutoff": false
+                }
+            }
+        }
+    },
+    "config": {
+        "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+    }
+}

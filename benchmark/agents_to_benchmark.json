@@ -1,0 +1,47 @@
+{
+    "Auto-GPT": {
+        "url": "https://github.com/Significant-Gravitas/AutoGPT",
+        "branch": "master",
+        "commit": "3a2d08fb415071cc94dd6fcee24cfbdd1fb487dd"
+    },
+    "gpt-engineer": {
+        "url": "https://github.com/merwanehamadi/gpt-engineer.git",
+        "branch": "benchmark-integration",
+        "commit": "9bb81041ace9f09e8ea0e34e29f2e46bb9d46a36"
+    },
+    "mini-agi": {
+        "url": "https://github.com/SilenNaihin/mini-agi.git",
+        "branch": "benchmark-integration",
+        "commit": "2fc70aa0032eec986dfb1020854a1b3b8aaf6780"
+    },
+    "smol-developer": {
+        "url": "https://github.com/e2b-dev/smol-developer.git",
+        "branch": "benchmarks",
+        "commit": "a23d01369cea976e80b7889fdbf1096619471301"
+    },
+    "SuperAGI": {
+        "url": "https://github.com/SilenNaihin/SuperAGI.git",
+        "branch": "benchmark-integration",
+        "commit": "48b2101374264b97dbdfc2c0bb0ae45e769e157d"
+    },
+    "babyagi": {
+        "url": "https://github.com/SilenNaihin/babyagi.git",
+        "branch": "benchmark-integration",
+        "commit": "16f1b9519fea5543695203be0262a1b41c77cbba"
+    },
+    "beebot": {
+        "url": "https://github.com/AutoPackAI/beebot.git",
+        "branch": "main",
+        "commit": "59d4e93c133612a0319d135bb0eb08bbcead9fa2"
+    },
+    "PolyGPT": {
+        "url": "https://github.com/polywrap/PolyGPT.git",
+        "branch": "nerfzael-use-local-wrap-library",
+        "commit": "d621adf5f54cc0f9a6d191139fb67ac3d1436d7b"
+    },
+    "Auto-GPT-Turbo": {
+        "url": "https://github.com/lc0rp/Auto-GPT-Turbo.git",
+        "branch": "main",
+        "commit": "8469e09ae204f2d5f41d489b217551544597ee14"
+    }
+}

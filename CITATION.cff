@@ -1,0 +1,21 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: AutoGPT
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - name: Significant Gravitas
+    website: 'https://agpt.co'
+repository-code: 'https://github.com/Significant-Gravitas/AutoGPT'
+url: 'https://agpt.co'
+abstract: >-
+  A collection of tools and experimental open-source attempts to make GPT-4 fully
+  autonomous.
+keywords:
+  - AI
+  - Agent
+license: MIT

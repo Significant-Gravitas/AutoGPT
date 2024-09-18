@@ -1,0 +1,9 @@
+{% extends "techniques/expert.j2" %}
+{% block expert %}Human Resources{% endblock %}
+{% block prompt %}
+Generate a profile for an expert who can help with the task '{{ task }}'. Please provide the following details:
+Name: Enter the expert's name
+Expertise: Specify the area in which the expert specializes
+Goals: List 4 goals that the expert aims to achieve in order to help with the task
+Assessment: Describe how the expert will assess whether they have successfully completed the task
+{% endblock %}

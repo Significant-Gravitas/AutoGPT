@@ -1,0 +1,27 @@
+{
+  "command": "agbenchmark start --test TestReadFile",
+  "completion_time": "2023-07-15-22:13",
+  "metrics": {
+    "run_time": "31.2 seconds",
+    "highest_difficulty": "interface: 1"
+  },
+  "tests": {
+    "TestReadFile": {
+      "data_path": "agbenchmark/challenges/interface/read_file",
+      "is_regression": true,
+      "reached_cutoff": false,
+      "metrics": {
+        "difficulty": "interface",
+        "success": true,
+        "success_%": 100.0,
+        "run_time": "30.903 seconds"
+      }
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-4"
+  }
+}

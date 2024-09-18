@@ -1,0 +1,897 @@
+{
+    "edges": [
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
+        }
+    ],
+    "nodes": [
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "f219f3d3-a41b-45a9-a3d0-389832086ee8",
+                "ground": {
+                    "answer": "The content of output.txt should be 'Hello World!'",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Hello World!"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can read a file.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestReadFile",
+                "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
+            },
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "label": "ReadFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [],
+                "eval_id": "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
+                "ground": {
+                    "answer": "The word 'Washington', printed to a .txt file named anything",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Washington"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can write a file",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestWriteFile",
+                "task": "Write the word 'Washington' to a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "label": "WriteFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "coding",
+                    "general"
+                ],
+                "cutoff": 150,
+                "dependencies": [
+                    "TestUrlShortener"
+                ],
+                "eval_id": "504b1648-e14a-4982-8b27-074598eb4fd0",
+                "ground": {
+                    "answer": "The correct python file for a TicTacToe game is written",
+                    "eval": {
+                        "type": "python"
+                    },
+                    "files": [
+                        "test.py"
+                    ],
+                    "should_contain": [],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can create Tic-Tac-Toe game",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestTicTacToe",
+                "task": "Build a Tic-Tac-Toe game using a python CLI. Here are the specifications.\n\nThe Grid: The game board is a 3x3 grid, consisting of 3 rows and 3 columns, creating a total of 9 squares.\n\nPlayers: There are two players. One player uses the number \"1\", and the other player uses the number \"2\".\n\nTaking Turns: Players take turns to put their respective numbers (\"1\" or \"2\") in an empty square of the grid. Once a player has placed their number in a square, it cannot be changed or removed.\n\nObjective: The goal is to get three of your numbers in a row, either horizontally, vertically, or diagonally.\n\nEnd of the Game: The game concludes in one of two ways: One player gets three of their numbers in a row (horizontally, vertically, or diagonally) and is declared the winner.\nAll squares on the grid are filled, and no player has three in a row. This situation is a \"draw\" or a \"tie\".\n\nTechnical specifications:\nBuild a file called tic_tac_toe.py. This file will be called through command lines. You will have to prompt users for their move. Player 1 will always start.\nPlayers will input their move in the following format: \"x,y\" where x and y represent the location in the grid (0,0 is top left, 2,2 is bottom right).\n\nYour primary requirement is to halt the game when appropriate and to print only one of these three exact sentences:\n\n\"Player 1 won!\"\n\"Player 2 won!\"\n\"Draw\"\n\nEdge cases: A player can send an incorrect location. Either the location is incorrect or the square is already filled. In this case, this counts as doing nothing, and the player gets prompted for new locations again.\n\n\nYou will be expected to create a python file called tic_tac_toe.py that will run through command lines by using ```python tic_tac_toe.py```.\n\nHere is an example of how your tic_tac_toe.py game will be tested.\n```\nprocess = subprocess.Popen(\n    ['python', 'tic_tac_toe.py'],\n    stdout=subprocess.PIPE,\n    text=True\n)\n\noutput, _ = process.communicate('\\n'.join([\"0,0\", \"1,0\", \"0,1\", \"1,1\", \"0,2\"]))\n\nassert \"Player 1 won!\" in output\n```"
+            },
+            "id": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
+            "label": "TicTacToe",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "coding"
+                ],
+                "cutoff": 150,
+                "dependencies": [
+                    "TestFileOrganizer"
+                ],
+                "eval_id": "8106fd7f-83fd-496e-9513-280f4a3f012c",
+                "ground": {
+                    "answer": "The correct python file for a basic url shortener CLI",
+                    "eval": {
+                        "type": "python"
+                    },
+                    "files": [
+                        "test.py"
+                    ],
+                    "should_contain": [],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can create a URL shortener.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestUrlShortener",
+                "task": "Build a basic URL shortener using a python CLI. Here are the specifications.\n\nFunctionality: The program should have two primary functionalities.\n\nShorten a given URL.\nRetrieve the original URL from a shortened URL.\n\nCLI: The command-line interface should accept a URL as its first input. It should be able to determine if the url is a shortened url or not. If the url is not shortened, it will display ONLY the shortened url, otherwise, it will display ONLY the original unshortened URL. Afterwards, it should prompt the user for another URL to process.\n\nTechnical specifications:\nBuild a file called url_shortener.py. This file will be called through command lines.\n\nEdge cases:\nFor the sake of simplicity, there will be no edge cases, you can assume the input is always correct and the user immediately passes the shortened version of the url he just shortened.\n\nYou will be expected to create a python file called url_shortener.py that will run through command lines by using python url_shortener.py.\n\nThe url_shortener.py will be tested this way:\n```\nimport unittest\nfrom url_shortener import shorten_url, retrieve_url\n\nclass TestURLShortener(unittest.TestCase):\n    def test_url_retrieval(self):\n        # Shorten the URL to get its shortened form\n        shortened_url = shorten_url('https://www.example.com')\n\n        # Retrieve the original URL using the shortened URL directly\n        retrieved_url = retrieve_url(shortened_url)\n\n        self.assertEqual(retrieved_url, 'https://www.example.com', \"Retrieved URL does not match the original!\")\n\nif __name__ == \"__main__\":\n    unittest.main()\n```"
+            },
+            "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
+            "label": "UrlShortener",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "coding",
+                    "general"
+                ],
+                "cutoff": 90,
+                "dependencies": [
+                    "TestPasswordGenerator"
+                ],
+                "eval_id": "029c1e6f-2b36-451e-bca6-60063b827d2e",
+                "ground": {
+                    "answer": "The correct python file is written and organizes the files accordingly",
+                    "eval": {
+                        "type": "python"
+                    },
+                    "files": [
+                        "test.py"
+                    ],
+                    "should_contain": [],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can create a file organizer.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestFileOrganizer",
+                "task": "Create a file organizer CLI tool in Python that sorts files in a directory based on their file types (e.g., images, documents, audio) and moves them into these corresponding folders: 'images', 'documents', 'audio'. The entry point will be a python file that can be run this way: python organize_files.py --directory_path=YOUR_DIRECTORY_PATH"
+            },
+            "id": "agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]",
+            "label": "FileOrganizer",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "coding"
+                ],
+                "cutoff": 90,
+                "dependencies": [
+                    "TestThreeSum"
+                ],
+                "eval_id": "ac75c471-e0ce-400c-ba9a-fb72aaab444f",
+                "ground": {
+                    "answer": "password_generator.py is created and satisfies the requirements.",
+                    "eval": {
+                        "type": "python"
+                    },
+                    "files": [
+                        "test.py"
+                    ],
+                    "should_contain": [],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can create a random password generator.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestPasswordGenerator",
+                "task": "Create a random password generator. The password should have between 8 and 16 characters and should contain letters, numbers and symbols. The password should be printed to the console. The entry point will be a python file that can be run this way: python password_generator.py [--len x] where x is the length of the password. If no length is specified, the password should be 8 characters long. The password_generator can also be imported as a module and called as password = password_generator.generate_password(len=x). Any invalid input should raise a ValueError."
+            },
+            "id": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
+            "label": "PasswordGenerator",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "coding",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "a1ff38a4-1032-4bf2-960a-3b927f9936f4",
+                "ground": {
+                    "answer": "The three_sum function coded properly.",
+                    "eval": {
+                        "type": "python"
+                    },
+                    "files": [
+                        "test.py"
+                    ],
+                    "should_contain": [
+                        "[0, 1, 2]",
+                        "[0, 2, 5]",
+                        "[0, 2, 3]"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can create the three_sum function.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestThreeSum",
+                "task": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            },
+            "id": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
+            "label": "ThreeSum",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "coding",
+                    "general"
+                ],
+                "cutoff": 90,
+                "dependencies": [
+                    "TestTicTacToe",
+                    "TestReadFile"
+                ],
+                "eval_id": "4d613d05-475f-4f72-bf12-f6d3714340c1",
+                "ground": {
+                    "answer": "The implementation of battleship that passes all the tests.",
+                    "eval": {
+                        "type": "pytest"
+                    },
+                    "files": [],
+                    "should_contain": [],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can create a Battleship.",
+                    "difficulty": "expert",
+                    "side_effects": []
+                },
+                "name": "TestBattleship",
+                "task": "Build a battleship game\n\nSpecifications:\n\nOverview: Battleship is a two-player strategy game where each player places their fleet of ships on a grid and tries to sink the opponent's fleet by guessing their locations.\nPlayers take turns calling out a row and column, attempting to name a square containing one of the opponent's ships.\n\nThe Grid: Each player's grid is a 10x10 grid, identified by rows (using numbers 1-10) and columns (using letters A-J).\n\nShips:\n\nCarrier - 5 squares\nBattleship - 4 squares\nCruiser - 3 squares\nSubmarine - 3 squares\nDestroyer - 2 squares\nEach ship occupies contiguous squares on the grid, arranged either horizontally or vertically.\n\nSetup:\n\nAt the start of the game, each player places their fleet on their grid. This setup is hidden from the opponent.\nThe game begins with Player 1, followed by Player 2, and so on.\nTaking Turns:\n\nOn a player's turn, they announce a grid square (e.g., \"D5\").\nThe opponent announces whether that square is a \"hit\" (if there's a part of a ship on that square) or \"miss\" (if the square is empty).\nIf a player hits a square occupied by a ship, they get another turn to guess. This continues until they make a miss, at which point their turn ends.\nIf a player hits all the squares occupied by a ship, the opponent must announce the sinking of that specific ship, e.g., \"You sank my Battleship!\"\n\nObjective: The goal is to sink all of your opponent's ships before they sink yours.\n\nEnd of the Game: The game ends when one player has sunk all of the opponent's ships. The winner is the player who sinks all the opposing fleet first.\n\nTechnical details:\nIn your root folder you will find an abstract class that defines the public interface of the Battleship class you will have to build:\n```\nfrom abc import ABC, abstractmethod\nfrom typing import Optional\n\nfrom pydantic import BaseModel, validator\n\n\n# Models for the request and response payloads\nclass ShipPlacement(BaseModel):\n    ship_type: str\n    start: dict  # {\"row\": int, \"column\": str}\n    direction: str\n\n    @validator(\"start\")\n    def validate_start(cls, start):\n        row, column = start.get(\"row\"), start.get(\"column\")\n\n        if not (1 <= row <= 10):\n            raise ValueError(\"Row must be between 1 and 10 inclusive.\")\n\n        if column not in list(\"ABCDEFGHIJ\"):\n            raise ValueError(\"Column must be one of A, B, C, D, E, F, G, H, I, J.\")\n\n        return start\n\n\nclass Turn(BaseModel):\n    target: dict  # {\"row\": int, \"column\": str}\n\n\nclass TurnResponse(BaseModel):\n    result: str\n    ship_type: Optional[str]  # This would be None if the result is a miss\n\n\nclass GameStatus(BaseModel):\n    is_game_over: bool\n    winner: Optional[str]\n\n\nfrom typing import List\n\n\nclass Game(BaseModel):\n    game_id: str\n    players: List[str]\n    board: dict  # This could represent the state of the game board, you might need to flesh this out further\n    ships: List[ShipPlacement]  # List of ship placements for this game\n    turns: List[Turn]  # List of turns that have been taken\n\n\nclass AbstractBattleship(ABC):\n    SHIP_LENGTHS = {\n        \"carrier\": 5,\n        \"battleship\": 4,\n        \"cruiser\": 3,\n        \"submarine\": 3,\n        \"destroyer\": 2,\n    }\n\n    @abstractmethod\n    def create_ship_placement(self, game_id: str, placement: ShipPlacement) -> None:\n        \"\"\"\n        Place a ship on the grid.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def create_turn(self, game_id: str, turn: Turn) -> TurnResponse:\n        \"\"\"\n        Players take turns to target a grid cell.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def get_game_status(self, game_id: str) -> GameStatus:\n        \"\"\"\n        Check if the game is over and get the winner if there's one.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def get_winner(self, game_id: str) -> str:\n        \"\"\"\n        Get the winner of the game.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def get_game(self) -> Game:\n        \"\"\"\n        Retrieve the state of the game.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def delete_game(self, game_id: str) -> None:\n        \"\"\"\n        Delete a game given its ID.\n        \"\"\"\n        pass\n\n    @abstractmethod\n    def create_game(self) -> None:\n        \"\"\"\n        Create a new game.\n        \"\"\"\n        pass\n\n```\nAt any moment you can run ```pytest``` to execute the tests.\nYou have two types of test: \n- positive tests => test the battleship game being used in ideal conditions\n- negative tests => tests the battleship game behaviour when used incorrectly\n\nSuccess criteria:\n- you will need to write a file called battleship.py that implements the abstract Battleship class.\n- this class will have to pass all the tests.\n- you're not allowed to modify any other file than the battleship.py. You can add other files as long as the main entrypoint is the battleship class."
+            },
+            "id": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
+            "label": "Battleship",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestSearch"
+                ],
+                "eval_id": "cd96e6b2-779d-4a4a-8367-d520023e27ae",
+                "ground": {
+                    "answer": "\u00a325.89",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "25.89"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve a specific information from a website.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestBasicRetrieval",
+                "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "label": "BasicRetrieval",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "scrape_synthesize"
+                ],
+                "cutoff": 120,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "0bb23182-b434-402b-a73e-9c226469b959",
+                "ground": {
+                    "answer": "This is a Heading\nThis is a paragraph.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Heading",
+                        "paragraph"
+                    ],
+                    "should_not_contain": [
+                        "The",
+                        "the"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can search.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestSearch",
+                "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "label": "Search",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestRevenueRetrieval2"
+                ],
+                "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
+                "ground": {
+                    "answer": "The twitter handles of the two hosts of Latent Space.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "swyx",
+                        "FanaHOVA"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve twitter handles given a vague description.",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestTestGetInformation",
+                "task": "Write the twitter handle of the two hosts of Latent Space to a file called output.txt"
+            },
+            "id": "agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
+            "label": "TestGetInformation",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestRevenueRetrieval"
+                ],
+                "eval_id": "552bdf23-db40-4bd1-b123-4ed820886cc1",
+                "ground": {
+                    "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "15",
+                        "112",
+                        "117",
+                        "204",
+                        "413",
+                        "2,014",
+                        "3,198",
+                        "4,046",
+                        "7,000",
+                        "11,759",
+                        "21,461",
+                        "24,578",
+                        "31,536",
+                        "53,823",
+                        "81,462"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve all the revenues of Tesla since its creation.",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        "tests if there is in fact an LLM attached"
+                    ]
+                },
+                "name": "TestRevenueRetrieval2",
+                "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+            },
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "label": "RevenueRetrieval2",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestBasicRetrieval"
+                ],
+                "eval_id": "dc2114d7-1597-4c9b-bed0-a97937ad977f",
+                "ground": {
+                    "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "81,462"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve Tesla's revenue in 2022.",
+                    "difficulty": "intermediate",
+                    "side_effects": []
+                },
+                "name": "TestRevenueRetrieval",
+                "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+            },
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "label": "RevenueRetrieval",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 120,
+                "dependencies": [
+                    "TestAnswerQuestionCsv",
+                    "TestCombineCsv"
+                ],
+                "eval_id": "b1bb61cd-3d09-4a69-bb2a-9dbb3c477589",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "1861"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionCombineCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionCombineCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data"
+                ],
+                "cutoff": 90,
+                "dependencies": [
+                    "TestAnswerQuestionSmallCsv"
+                ],
+                "eval_id": "bb6e0a4b-7faf-4aa6-a524-548cddbc2732",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "1861"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "9df3f07a-5047-488f-b788-1e1f57eba970",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "84"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a small csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionSmallCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionSmallCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestLabelCsv"
+                ],
+                "eval_id": "52467beb-b951-4356-9776-9a0ae46bb33b",
+                "ground": {
+                    "answer": "The csv data is combined",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "Age,ID,Name,Occupation,Salary\n28,101,John,Engineer,80000\n34,102,Alice,Doctor,120000\n45,103,Bob,Lawyer,95000"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can combine data from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestCombineCsv",
+                "task": "The csvs 'file1.csv' and 'file2.csv' both have a column 'ID'. Combine these 2 csvs using the 'ID' column. Sort the rows by ID in ascending order and the columns alphabetically. Write the output in output.csv"
+            },
+            "id": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "label": "CombineCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestSortCsv"
+                ],
+                "eval_id": "6e2bf1f0-6842-4704-8ed1-b17c2065bbac",
+                "ground": {
+                    "answer": "The csv labelled",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "Item,Color\nBanana,yellow\nLeaf,green\nSky,blue\nSunflower,yellow\nGrass,green\nJeans,blue\nLemon,yellow\nTree,green\nOcean,blue\nDaisy,yellow\nFern,green"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can label data in a csv",
+                    "difficulty": "basic",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestLabelCsv",
+                "task": "The csv 'input.csv' has many items. create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
+            },
+            "id": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]",
+            "label": "LabelCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "d59ec964-6f67-4b3d-a4de-c4436fc76f95",
+                "ground": {
+                    "answer": "The csv sorted by date",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "id,name,timestamp\n1,Bob,2023-09-24 12:05:00\n2,Charlie,2023-09-24 12:10:00\n3,Alice,2023-09-25 14:10:00\n4,David,2023-09-26 16:20:00"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can sort a csv",
+                    "difficulty": "basic",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestSortCsv",
+                "task": "Sort the input.csv by the 'timestamp' column and write the new csv in the output.csv file. The order of the columns should be preserved."
+            },
+            "id": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "label": "SortCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 240,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "895ae28a-4513-44ea-a872-0164771d1597",
+                "ground": {
+                    "answer": "A report highlighting elements from the 2 files.",
+                    "eval": {
+                        "scoring": "binary",
+                        "template": "question",
+                        "type": "llm"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Is the company mentioned in the output actively addressing or capitalizing on the challenges or trends listed?"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can generate content based on the content of 2 files.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestSynthesizeInfo",
+                "task": "Create a brief report or summary highlighting how one or more companies from companies.txt are addressing or capitalizing on challenges or trends from challenges.txt. Write a file called output.txt."
+            },
+            "id": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "label": "SynthesizeInfo",
+            "shape": "dot"
+        }
+    ]
+}

@@ -1,0 +1,31 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general"
+    ],
+    "cutoff": 240,
+    "dependencies": [
+        "TestReadFile"
+    ],
+    "eval_id": "895ae28a-4513-44ea-a872-0164771d1597",
+    "ground": {
+        "answer": "Is the company mentioned in the output actively addressing or capitalizing on the challenges or trends listed?",
+        "eval": {
+            "scoring": "binary",
+            "template": "question",
+            "type": "llm"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can generate content based on the content of 2 files.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "SynthesizeInfo",
+    "task": "Create a brief report or summary highlighting how one or more companies from companies.txt are addressing or capitalizing on challenges or trends from challenges.txt. Write a file called output.txt."
+}

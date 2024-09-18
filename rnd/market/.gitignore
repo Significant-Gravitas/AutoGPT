@@ -1,0 +1,6 @@
+database.db
+database.db-journal
+build/
+config.json
+secrets/*
+!secrets/.gitkeep

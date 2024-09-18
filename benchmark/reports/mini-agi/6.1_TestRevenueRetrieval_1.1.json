@@ -1,0 +1,30 @@
+{
+  "command": "agbenchmark start --test TestRetrieval2.1",
+  "completion_time": "2023-07-17-17:27",
+  "metrics": {
+    "run_time": "64.44 seconds",
+    "highest_difficulty": "No successful tests"
+  },
+  "tests": {
+    "TestRetrieval2.1": {
+      "data_path": "agbenchmark/challenges/retrieval/r2.1_specific",
+      "is_regression": false,
+      "reached_cutoff:": true,
+      "answer": "It was $81.462 billion in 2022.",
+      "description": "This one checks the accuracy of the information over r2",
+      "metrics": {
+        "difficulty": "novice",
+        "success": false,
+        "fail_reason": "assert 1 in [0.0, 0.0]",
+        "success_%": 0.0,
+        "run_time": "64.216 seconds"
+      }
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-3.5-turbo"
+  }
+}
