@@ -16,7 +16,10 @@ services:
       - app-network
 
   migrate:
-    image: autogpt_server:latest
+    build:
+      context: ../
+      dockerfile: rnd/autogpt_server/Dockerfile
+      target: server
     command: ["sh", "-c", "poetry run prisma migrate deploy"]
     develop:
       watch:
