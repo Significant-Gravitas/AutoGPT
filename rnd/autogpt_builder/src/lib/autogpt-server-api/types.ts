@@ -228,6 +228,7 @@ export type OAuth2Credentials = BaseCredentials & {
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
 export type APIKeyCredentials = BaseCredentials & {
   type: "api_key";
+  title: string;
   api_key: string;
   expires_at?: number;
 }

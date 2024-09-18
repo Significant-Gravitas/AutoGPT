@@ -164,20 +164,31 @@ export default class AutoGPTServerAPI {
   }
 
   async createAPIKeyCredentials(
-    credentials: Omit<APIKeyCredentials, "id" | "type">
+    credentials: Omit<APIKeyCredentials, "id" | "type">,
   ): Promise<APIKeyCredentials> {
-    return this._request("POST", `/integrations/${credentials.provider}/credentials`, credentials);
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      credentials,
+    );
   }
 
   async listCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
     return this._get(`/integrations/${provider}/credentials`);
   }
 
-  async getOAuthCredentials(
+  async getCredentials(
     provider: string,
     id: string,
   ): Promise<APIKeyCredentials | OAuth2Credentials> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
+  }
+
+  async deleteCredentials(provider: string, id: string): Promise<void> {
+    return this._request(
+      "DELETE",
+      `/integrations/${provider}/credentials/${id}`,
+    );
   }
 
   private async _get(path: string, query?: Record<string, any>) {
@@ -185,7 +196,7 @@ export default class AutoGPTServerAPI {
   }
 
   private async _request(
-    method: "GET" | "POST" | "PUT" | "PATCH",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     payload?: Record<string, any>,
   ) {
@@ -204,10 +215,11 @@ export default class AutoGPTServerAPI {
       url += `?${queryParams.toString()}`;
     }
 
+    const hasRequestBody = method !== "GET" && payload !== undefined;
     const response = await fetch(url, {
       method,
       headers:
-        method !== "GET"
+        hasRequestBody
           ? {
               "Content-Type": "application/json",
               Authorization: token ? `Bearer ${token}` : "",
@@ -215,7 +227,7 @@ export default class AutoGPTServerAPI {
           : {
               Authorization: token ? `Bearer ${token}` : "",
             },
-      body: method !== "GET" ? JSON.stringify(payload) : undefined,
+      body: hasRequestBody ? JSON.stringify(payload) : undefined,
     });
     const response_data = await response.json();
 
