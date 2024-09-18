@@ -35,7 +35,7 @@ export default function CredentialsProvider({ children }: { children: React.Reac
 
     CredentialsProvidersNames.forEach((provider) => {
       api
-        .listOAuthCredentials(provider)
+        .listCredentials(provider)
         .then((response) => {
           const { oauthCreds, apiKeys } = response.reduce<{
             oauthCreds: CredentialsMetaResponse[];

@@ -5,7 +5,7 @@ import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { ThemeProviderProps } from "next-themes/dist/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SupabaseProvider from "@/components/SupabaseProvider";
-import CredentialsProvider from "@/components/CredentialsProvider";
+import CredentialsProvider from "@/components/integrations/credentials-provider";
 
 export function Providers({ children, ...props }: ThemeProviderProps) {
   return (

@@ -1,6 +1,5 @@
 import {
   Cross2Icon,
-  NotionLogoIcon,
   Pencil2Icon,
   PlusIcon,
 } from "@radix-ui/react-icons";
@@ -29,8 +28,7 @@ import {
 import { Input } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
-import { FaGithub, FaGoogle } from "react-icons/fa";
-import useCredentials from "@/hooks/useCredentials";
+import { CredentialsInput } from "./integrations/credentials-input";
 
 type NodeObjectInputTreeProps = {
   selfKey?: string;
@@ -126,11 +124,9 @@ export const NodeGenericInputField: FC<{
     return (
       <NodeCredentialsInput
         selfKey={propKey}
-        schema={propSchema}
         value={currentValue}
         errors={errors}
-        className={cn("border-l border-gray-500 pl-2", className)} // visual indent
-        displayName={displayName}
+        className={className}
         handleInputClick={handleInputClick}
         handleInputChange={handleInputChange}
       />
@@ -302,78 +298,32 @@ export const NodeGenericInputField: FC<{
 
 const NodeCredentialsInput: FC<{
   selfKey: string;
-  schema: BlockIOCredentialsSubSchema;
   value: any;
   errors: { [key: string]: string | undefined };
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
-  displayName: string;
 }> = ({
   selfKey,
-  schema,
   value,
   errors,
   handleInputChange,
   handleInputClick,
   className,
-  displayName,
 }) => {
-  const credentials = useCredentials();
-
-  if (!credentials) {
-    return null;
-  }
-  
-  if (credentials?.isLoading) {
-    return <div>Loading...</div>;
-  }
-
-  const {
-    provider,
-    providerName,
-    supportsApiKey,
-    supportsOAuth2,
-    savedApiKeys,
-    savedOAuthCredentials,
-  } = credentials;
-
-  const providerIcon: Record<string, React.JSX.Element> = {
-    github: <FaGithub className="mr-2 h-4 w-4" />,
-    google: <FaGoogle className="mr-2 h-4 w-4" />,
-    notion: <NotionLogoIcon className="mr-2 h-4 w-4" />,
-  };
-
-  // No saved credentials yet
-  if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
-    return (
-      <div className="mb-2 flex flex-row space-x-2">
-        {supportsApiKey && (
-          <Button onClick={() => handleInputClick(selfKey + ".api_key")}>
-            {providerIcon[provider]}
-            Enter API key
-          </Button>
-        )}
-        {supportsOAuth2 && (
-          <Button onClick={() => handleInputClick(selfKey + ".oauth")}>
-            {providerIcon[provider]}
-            {"Sign in with " + providerName}
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  // Saved credentials
   return (
-    <div>
-      {value && (
-        <div>
-          {value.credentials_id} - {value.user_email}
-        </div>
+    <div className={cn("flex flex-col", className)}>
+      <CredentialsInput
+        handleAddApiKey={() => handleInputClick(`${selfKey}.api_key`)}
+        handleOAuthLogin={() => handleInputClick(`${selfKey}.oauth`)}
+        onSelectCredentials={(id) => handleInputChange(selfKey, id)}
+        selectedCredentials={value}
+      />
+      {errors[selfKey] && (
+        <span className="error-message">{errors[selfKey]}</span>
       )}
     </div>
-  );
+  )
 };
 
 const NodeKeyValueInput: FC<{

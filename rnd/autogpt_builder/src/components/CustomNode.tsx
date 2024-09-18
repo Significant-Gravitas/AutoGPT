@@ -32,8 +32,6 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
-import useCredentials from "@/hooks/useCredentials";
-import CredentialsModal from "./CredentialsModal";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -78,7 +76,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [inputModalValue, setInputModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
-  const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
     CustomNode,
@@ -392,14 +389,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   };
 
   const handleInputClick = (key: string) => {
-    // Special handling for credentials
-    const match = key.match(/credentials(\.api_key|\.oauth)?$/);
-    if (match) {
-      setIsCredentialsModalOpen(true);
-      // return match[0];  // This will be the full matched ending
-      return;
-    }
-
     console.log(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
@@ -653,7 +642,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         onClose={() => setIsOutputModalOpen(false)}
         executionResults={data.executionResults?.toReversed() || []}
       />
-      {isCredentialsModalOpen && <CredentialsModal />}
     </div>
   );
 }

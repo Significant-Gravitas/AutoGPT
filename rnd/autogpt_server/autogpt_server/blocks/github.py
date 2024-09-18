@@ -31,7 +31,8 @@ def GithubCredentialsField(scope: str) -> GithubCredentialsInput:
         provider="github",
         supported_credential_types={"api_key", "oauth2"},
         required_scopes={scope},
-        description="GitHub OAuth credentials",
+        description="The GitHub integration can be used with OAuth, "
+        "or any API key with sufficient permissions for the blocks it is used on.",
     )
 
 

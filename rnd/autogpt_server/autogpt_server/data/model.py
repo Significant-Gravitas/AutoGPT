@@ -146,7 +146,7 @@ CREDENTIALS_FIELD_NAME = "credentials"
 
 class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     id: str
-    title: str
+    title: Optional[str] = None
     provider: CP
     type: CT
 

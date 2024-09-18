@@ -197,6 +197,41 @@ export type CredentialsMetaResponse = {
   username?: string;
 };
 
+/* Mirror of autogpt_server/data/model.py:CredentialsMetaInput */
+export type CredentialsMetaInput = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  provider: string;
+};
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
+type BaseCredentials = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  provider: string;
+}
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
+export type OAuth2Credentials = BaseCredentials & {
+  type: "oauth2";
+  scopes: string[];
+  username?: string;
+  access_token: string;
+  access_token_expires_at?: number;
+  refresh_token?: string;
+  refresh_token_expires_at?: number;
+  metadata: Record<string, any>;
+}
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
+export type APIKeyCredentials = BaseCredentials & {
+  type: "api_key";
+  api_key: string;
+  expires_at?: number;
+}
+
 export type User = {
   id: string;
   email: string;

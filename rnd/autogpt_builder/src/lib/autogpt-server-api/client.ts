@@ -1,14 +1,16 @@
 import { createClient } from "../supabase/client";
 import {
+  APIKeyCredentials,
   Block,
+  CredentialsMetaResponse,
   Graph,
   GraphCreatable,
   GraphUpdateable,
   GraphMeta,
   GraphExecuteResponse,
   NodeExecutionResult,
+  OAuth2Credentials,
   User,
-  CredentialsMetaResponse,
 } from "./types";
 
 export default class AutoGPTServerAPI {
@@ -145,7 +147,7 @@ export default class AutoGPTServerAPI {
   async oAuthLogin(
     provider: string,
     scopes?: string[],
-  ): Promise<{ login_url: string }> {
+  ): Promise<{ login_url: string; state_token: string }> {
     const query = scopes ? { scopes: scopes.join(",") } : undefined;
     return await this._get(`/integrations/${provider}/login`, query);
   }
@@ -161,14 +163,20 @@ export default class AutoGPTServerAPI {
     });
   }
 
-  async listOAuthCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
+  async createAPIKeyCredentials(
+    credentials: Omit<APIKeyCredentials, "id" | "type">
+  ): Promise<APIKeyCredentials> {
+    return this._request("POST", `/integrations/${credentials.provider}/credentials`, credentials);
+  }
+
+  async listCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
     return this._get(`/integrations/${provider}/credentials`);
   }
 
   async getOAuthCredentials(
     provider: string,
     id: string,
-  ): Promise<CredentialsMetaResponse> {
+  ): Promise<APIKeyCredentials | OAuth2Credentials> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 

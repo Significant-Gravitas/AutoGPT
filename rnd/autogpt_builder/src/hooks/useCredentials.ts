@@ -5,7 +5,7 @@ import { Node, useNodeId, useNodesData } from "@xyflow/react";
 import {
   CredentialsProviderData,
   CredentialsProvidersContext,
-} from "@/components/CredentialsProvider";
+} from "@/components/integrations/credentials-provider";
 
 export type CredentialsData = {
   provider: string;

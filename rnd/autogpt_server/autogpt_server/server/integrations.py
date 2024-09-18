@@ -29,6 +29,7 @@ def get_store(supabase: Client = Depends(get_supabase)):
 
 class LoginResponse(BaseModel):
     login_url: str
+    state_token: str
 
 
 @integrations_api_router.get("/{provider}/login")
@@ -44,12 +45,12 @@ async def login(
     handler = _get_provider_oauth_handler(request, provider)
 
     # Generate and store a secure random state token
-    state = await store.store_state_token(user_id, provider)
+    state_token = await store.store_state_token(user_id, provider)
 
     requested_scopes = scopes.split(",") if scopes else []
-    login_url = handler.get_login_url(requested_scopes, state)
+    login_url = handler.get_login_url(requested_scopes, state_token)
 
-    return LoginResponse(login_url=login_url)
+    return LoginResponse(login_url=login_url, state_token=state_token)
 
 
 class CredentialsMetaResponse(BaseModel):
@@ -149,5 +150,5 @@ def _get_provider_oauth_handler(req: Request, provider_name: str) -> BaseOAuthHa
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,
-        redirect_uri=str(req.url_for("callback", provider=provider_name)),
+        redirect_uri=str(req.base_url) + "/auth/integrations/oauth_callback",
     )
