@@ -139,7 +139,7 @@ async def create_api_key_credentials(
     ],
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
-) -> CredentialsMetaResponse:
+):
     new_credentials = APIKeyCredentials(
         provider=provider,
         api_key=SecretStr(api_key),
@@ -154,13 +154,27 @@ async def create_api_key_credentials(
             status_code=400, detail=f"Failed to store credentials: {str(e)}"
         )
 
-    return CredentialsMetaResponse(
-        id=new_credentials.id,
-        type=new_credentials.type,
-        title=new_credentials.title,
-        scopes=None,
-        username=None,
-    )
+    return {"message": "Credentials created"}
+
+
+@integrations_api_router.delete("/{provider}/credentials/{cred_id}")
+async def delete_credential(
+    provider: Annotated[str, Path(title="The provider to delete credentials for")],
+    cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+):
+    creds = store.get_creds_by_id(user_id, cred_id)
+    if not creds:
+        raise HTTPException(status_code=400, detail="Credentials not found")
+    if creds.provider != provider:
+        raise HTTPException(
+            status_code=400, detail="Credentials do not match the specified provider"
+        )
+
+    store.delete_creds_by_id(user_id, cred_id)
+
+    return {"message": "Credentials deleted"}
 
 
 # -------- UTILITIES --------- #
