@@ -160,7 +160,7 @@ async def create_api_key_credentials(
         store.add_creds(user_id, new_credentials)
     except Exception as e:
         raise HTTPException(
-            status_code=400, detail=f"Failed to store credentials: {str(e)}"
+            status_code=500, detail=f"Failed to store credentials: {str(e)}"
         )
     return {"id": new_credentials.id}
 
@@ -174,10 +174,10 @@ async def delete_credential(
 ):
     creds = store.get_creds_by_id(user_id, cred_id)
     if not creds:
-        raise HTTPException(status_code=400, detail="Credentials not found")
+        raise HTTPException(status_code=404, detail="Credentials not found")
     if creds.provider != provider:
         raise HTTPException(
-            status_code=400, detail="Credentials do not match the specified provider"
+            status_code=404, detail="Credentials do not match the specified provider"
         )
 
     store.delete_creds_by_id(user_id, cred_id)
