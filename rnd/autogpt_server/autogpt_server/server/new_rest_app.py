@@ -17,8 +17,6 @@ from autogpt_server.data import user as user_db
 
 settings = autogpt_server.util.settings.Settings()
 
-use_redis = True
-
 
 @contextlib.asynccontextmanager
 async def app_lifespan(app: fastapi.FastAPI):
@@ -47,16 +45,18 @@ api_router = fastapi.APIRouter(prefix="/api/v1")
 api_router.dependencies.append(
     fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)
 )
-app.include_router(api_router)
 
 api_router.include_router(autogpt_server.server.routes.root_router)
-api_router.include_router(autogpt_server.server.routes.agents_router)
-api_router.include_router(autogpt_server.server.routes.blocks_router)
+api_router.include_router(autogpt_server.server.routes.agents_router, tags=["agents"])
+api_router.include_router(autogpt_server.server.routes.blocks_router, tags=["blocks"])
 api_router.include_router(
     autogpt_server.server.routes.integrations_router, prefix="/integrations"
 )
 
+app.include_router(api_router)
 
+
+@app.exception_handler(500)
 def handle_internal_http_error(request: fastapi.Request, exc: Exception):
     return fastapi.responses.JSONResponse(
         status_code=500,
@@ -64,8 +64,24 @@ def handle_internal_http_error(request: fastapi.Request, exc: Exception):
     )
 
 
-app.add_exception_handler(500, handle_internal_http_error)
-
+@app.exception_handler(fastapi.exceptions.RequestValidationError)
+async def validation_exception_handler(request: fastapi.Request, exc: fastapi.exceptions.RequestValidationError):
+    errors = []
+    for err in exc.errors():
+        error = {
+            "field": ".".join(err["loc"][1:]),  # Skipping 'body' or 'query' etc.
+            "message": err["msg"],
+            "type": err["type"]
+        }
+        errors.append(error)
+    
+    return fastapi.responses.JSONResponse(
+        status_code=422,
+        content={
+            "status": "fail",
+            "errors": errors
+        },
+    )
 
 app.add_middleware(
     fastapi.middleware.cors.CORSMiddleware,

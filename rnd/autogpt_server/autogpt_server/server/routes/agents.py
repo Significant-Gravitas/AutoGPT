@@ -3,11 +3,29 @@ import typing
 import fastapi
 
 import autogpt_server.data.graph
+import autogpt_server.data.queue
 import autogpt_server.data.execution
+import autogpt_server.executor
 import autogpt_server.server.model
 import autogpt_server.server.utils
+import autogpt_server.util.service
+import autogpt_server.util.settings
 
 router = fastapi.APIRouter()
+
+
+def execution_manager_client() -> autogpt_server.executor.ExecutionManager:
+    return autogpt_server.util.service.get_service_client(
+        autogpt_server.executor.ExecutionManager,
+        autogpt_server.util.settings.Config().execution_manager_port,
+    )
+
+
+def execution_scheduler_client() -> autogpt_server.executor.ExecutionScheduler:
+    return autogpt_server.util.service.get_service_client(
+        autogpt_server.executor.ExecutionScheduler,
+        autogpt_server.util.settings.Config().execution_scheduler_port,
+    )
 
 
 @router.get("/graphs")
@@ -68,6 +86,8 @@ async def get_graph(
     graph = await autogpt_server.data.graph.get_graph(
         graph_id, version, user_id=user_id
     )
+    if graph and graph.id != graph_id:
+        raise fastapi.HTTPException(400, detail="Graph ID does not match ID in URI")
     if not graph:
         raise fastapi.HTTPException(
             status_code=404, detail=f"Graph #{graph_id} not found."
@@ -183,9 +203,13 @@ async def execute_graph(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_server.server.utils.get_user_id)
     ],
+    execution_manager: typing.Annotated[
+        autogpt_server.executor.ExecutionManager,
+        fastapi.Depends(execution_manager_client),
+    ],
 ) -> dict[str, typing.Any]:  # FIXME: add proper return type
     try:
-        graph_exec = self.execution_manager_client.add_execution(
+        graph_exec = execution_manager.add_execution(
             graph_id, node_input, user_id=user_id
         )
         return {"id": graph_exec["graph_exec_id"]}
@@ -237,6 +261,10 @@ async def stop_graph_run(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_server.server.utils.get_user_id)
     ],
+    execution_manager: typing.Annotated[
+        autogpt_server.executor.ExecutionManager,
+        fastapi.Depends(execution_manager_client),
+    ],
 ) -> list[autogpt_server.data.execution.ExecutionResult]:
     if not await autogpt_server.data.execution.get_graph_execution(
         graph_exec_id, user_id
@@ -245,7 +273,7 @@ async def stop_graph_run(
             404, detail=f"Agent execution #{graph_exec_id} not found"
         )
 
-    self.execution_manager_client.cancel_execution(graph_exec_id)
+    execution_manager.cancel_execution(graph_exec_id)
 
     # Retrieve & return canceled graph execution in its final state
     return await autogpt_server.data.execution.get_execution_results(graph_exec_id)
@@ -259,13 +287,16 @@ async def create_schedule(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_server.server.utils.get_user_id)
     ],
+    execution_scheduler: typing.Annotated[
+        autogpt_server.executor.ExecutionScheduler,
+        fastapi.Depends(execution_scheduler_client),
+    ],
 ) -> dict[typing.Any, typing.Any]:
     graph = await autogpt_server.data.graph.get_graph(graph_id, user_id=user_id)
     if not graph:
         raise fastapi.HTTPException(
             status_code=404, detail=f"Graph #{graph_id} not found."
         )
-    execution_scheduler = self.execution_scheduler_client
     return {
         "id": execution_scheduler.add_execution_schedule(
             graph_id, graph.version, cron, input_data, user_id=user_id
@@ -279,8 +310,11 @@ async def get_execution_schedules(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_server.server.utils.get_user_id)
     ],
+    execution_scheduler: typing.Annotated[
+        autogpt_server.executor.ExecutionScheduler,
+        fastapi.Depends(execution_scheduler_client),
+    ],
 ) -> dict[str, str]:
-    execution_scheduler = self.execution_scheduler_client
     return execution_scheduler.get_execution_schedules(graph_id, user_id)
 
 
@@ -291,8 +325,11 @@ async def update_schedule(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_server.server.utils.get_user_id)
     ],
+    execution_scheduler: typing.Annotated[
+        autogpt_server.executor.ExecutionScheduler,
+        fastapi.Depends(execution_scheduler_client),
+    ],
 ) -> dict[typing.Any, typing.Any]:
-    execution_scheduler = self.execution_scheduler_client
     is_enabled = input_data.get("is_enabled", False)
     execution_scheduler.update_schedule(schedule_id, is_enabled, user_id=user_id)
     return {"id": schedule_id}
