@@ -2,9 +2,9 @@ import AutoGPTServerAPI, { CredentialsMetaResponse } from "@/lib/autogpt-server-
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 
-const CredentialsProvidersNames = ["github", "google", "notion"] as const;
+const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
 
-type CredentialsProviderType = typeof CredentialsProvidersNames[number];
+type CredentialsProviderName = typeof CREDENTIALS_PROVIDER_NAMES[number];
 
 export type CredentialsProviderData = {
   provider: string;
@@ -15,7 +15,7 @@ export type CredentialsProviderData = {
 }
 
 export type CredentialsProvidersContextType = {
-  [key in CredentialsProviderType]?: CredentialsProviderData;
+  [key in CredentialsProviderName]?: CredentialsProviderData;
 }
 
 export const CredentialsProvidersContext = createContext<CredentialsProvidersContextType | null>(null);
@@ -25,15 +25,14 @@ export default function CredentialsProvider({ children }: { children: React.Reac
   const [providers, setProviders] = useState<CredentialsProvidersContextType | null>(null);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
-  const providerName: Record<CredentialsProviderType, string> = {
+  const providerName: Record<CredentialsProviderName, string> = {
     github: "GitHub",
     google: "Google",
     notion: "Notion",
   };
 
   useEffect(() => {
-
-    CredentialsProvidersNames.forEach((provider) => {
+    CREDENTIALS_PROVIDER_NAMES.forEach((provider) => {
       api
         .listOAuthCredentials(provider)
         .then((response) => {
@@ -67,7 +66,7 @@ export default function CredentialsProvider({ children }: { children: React.Reac
   }, [api]);
 
   const oAuthLogin = useCallback(
-    async (provider: CredentialsProviderType, scopes: string) => {
+    async (provider: CredentialsProviderName, scopes: string) => {
       const { login_url } = await api.oAuthLogin(
         provider,
         scopes,

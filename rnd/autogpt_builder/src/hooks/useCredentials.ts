@@ -1,12 +1,10 @@
 import { CredentialsProviderData, CredentialsProvidersContext } from "@/components/CredentialsProvider";
 import { CustomNodeData } from "@/components/CustomNode";
-import AutoGPTServerAPI, {
+import {
   BlockIOCredentialsSubSchema,
-  CredentialsMetaResponse,
 } from "@/lib/autogpt-server-api";
 import { useNodeId, useNodesData } from "@xyflow/react";
-import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useContext } from "react";
 
 export type CredentialsData = 
 {
