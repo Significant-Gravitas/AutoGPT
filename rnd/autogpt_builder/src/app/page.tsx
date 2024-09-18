@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import AutoGPTServerAPI, {
   GraphMeta,
@@ -22,54 +22,57 @@ const Monitor = () => {
   const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
-  const api = new AutoGPTServerAPI();
+  const api = useMemo(() => new AutoGPTServerAPI(), []);
 
-  useEffect(() => fetchFlowsAndRuns(), []);
+  const refreshFlowRuns = useCallback(
+    (flowID: string) => {
+      // Fetch flow run IDs
+      api.listGraphRunIDs(flowID).then((runIDs) =>
+        runIDs.map((runID) => {
+          let run;
+          if (
+            (run = flowRuns.find((fr) => fr.id == runID)) &&
+            !["waiting", "running"].includes(run.status)
+          ) {
+            return;
+          }
+
+          // Fetch flow run
+          api.getGraphExecutionInfo(flowID, runID).then((execInfo) =>
+            setFlowRuns((flowRuns) => {
+              if (execInfo.length == 0) return flowRuns;
+
+              const flowRunIndex = flowRuns.findIndex((fr) => fr.id == runID);
+              const flowRun = flowRunFromNodeExecutionResults(execInfo);
+              if (flowRunIndex > -1) {
+                flowRuns.splice(flowRunIndex, 1, flowRun);
+              } else {
+                flowRuns.push(flowRun);
+              }
+              return [...flowRuns];
+            }),
+          );
+        }),
+      );
+    },
+    [api, flowRuns],
+  );
+
+  const fetchFlowsAndRuns = useCallback(() => {
+    api.listGraphs().then((flows) => {
+      setFlows(flows);
+      flows.map((flow) => refreshFlowRuns(flow.id));
+    });
+  }, [api, refreshFlowRuns]);
+
+  useEffect(() => fetchFlowsAndRuns(), [fetchFlowsAndRuns]);
   useEffect(() => {
     const intervalId = setInterval(
       () => flows.map((f) => refreshFlowRuns(f.id)),
       5000,
     );
     return () => clearInterval(intervalId);
-  }, []);
-
-  function fetchFlowsAndRuns() {
-    api.listGraphs().then((flows) => {
-      setFlows(flows);
-      flows.map((flow) => refreshFlowRuns(flow.id));
-    });
-  }
-
-  function refreshFlowRuns(flowID: string) {
-    // Fetch flow run IDs
-    api.listGraphRunIDs(flowID).then((runIDs) =>
-      runIDs.map((runID) => {
-        let run;
-        if (
-          (run = flowRuns.find((fr) => fr.id == runID)) &&
-          !["waiting", "running"].includes(run.status)
-        ) {
-          return;
-        }
-
-        // Fetch flow run
-        api.getGraphExecutionInfo(flowID, runID).then((execInfo) =>
-          setFlowRuns((flowRuns) => {
-            if (execInfo.length == 0) return flowRuns;
-
-            const flowRunIndex = flowRuns.findIndex((fr) => fr.id == runID);
-            const flowRun = flowRunFromNodeExecutionResults(execInfo);
-            if (flowRunIndex > -1) {
-              flowRuns.splice(flowRunIndex, 1, flowRun);
-            } else {
-              flowRuns.push(flowRun);
-            }
-            return [...flowRuns];
-          }),
-        );
-      }),
-    );
-  }
+  }, [flows, refreshFlowRuns]);
 
   const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
   const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";

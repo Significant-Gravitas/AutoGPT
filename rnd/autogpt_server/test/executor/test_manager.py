@@ -4,7 +4,6 @@ from prisma.models import User
 from autogpt_server.blocks.basic import FindInDictionaryBlock, StoreValueBlock
 from autogpt_server.blocks.maths import CalculatorBlock, Operation
 from autogpt_server.data import execution, graph
-from autogpt_server.executor import ExecutionManager
 from autogpt_server.server import AgentServer
 from autogpt_server.usecases.sample import create_test_graph, create_test_user
 from autogpt_server.util.test import SpinTestServer, wait_execution
@@ -12,7 +11,6 @@ from autogpt_server.util.test import SpinTestServer, wait_execution
 
 async def execute_graph(
     agent_server: AgentServer,
-    test_manager: ExecutionManager,
     test_graph: graph.Graph,
     test_user: User,
     input_data: dict,
@@ -23,9 +21,8 @@ async def execute_graph(
     graph_exec_id = response["id"]
 
     # Execution queue should be empty
-    assert await wait_execution(
-        test_manager, test_user.id, test_graph.id, graph_exec_id, num_execs
-    )
+    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
+    assert result and len(result) == num_execs
     return graph_exec_id
 
 
@@ -36,23 +33,19 @@ async def assert_sample_graph_executions(
     graph_exec_id: str,
 ):
     executions = await agent_server.get_graph_run_node_execution_results(
-        test_graph.id, graph_exec_id, test_user.id
+        test_graph.id,
+        graph_exec_id,
+        test_user.id,
     )
 
     output_list = [{"result": ["Hello"]}, {"result": ["World"]}]
     input_list = [
         {
             "name": "input_1",
-            "description": "First input value",
-            "placeholder_values": [],
-            "limit_to_placeholder_values": False,
             "value": "Hello",
         },
         {
             "name": "input_2",
-            "description": "Second input value",
-            "placeholder_values": [],
-            "limit_to_placeholder_values": False,
             "value": "World",
         },
     ]
@@ -61,16 +54,24 @@ async def assert_sample_graph_executions(
     exec = executions[0]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list
-    assert exec.input_data in input_list
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing StoreValueBlock
     exec = executions[1]
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data in output_list
-    assert exec.input_data in input_list
+    assert (
+        exec.output_data in output_list
+    ), f"Output data: {exec.output_data} and {output_list}"
+    assert (
+        exec.input_data in input_list
+    ), f"Input data: {exec.input_data} and {input_list}"
     assert exec.node_id in [test_graph.nodes[0].id, test_graph.nodes[1].id]
 
     # Executing FillTextTemplateBlock
@@ -104,7 +105,6 @@ async def test_agent_execution(server: SpinTestServer):
     data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server,
-        server.exec_manager,
         test_graph,
         test_user,
         data,
@@ -165,7 +165,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     test_user = await create_test_user()
     test_graph = await graph.create_graph(test_graph, user_id=test_user.id)
     graph_exec_id = await execute_graph(
-        server.agent_server, server.exec_manager, test_graph, test_user, {}, 3
+        server.agent_server, test_graph, test_user, {}, 3
     )
 
     executions = await server.agent_server.get_graph_run_node_execution_results(
@@ -246,7 +246,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     test_user = await create_test_user()
     test_graph = await graph.create_graph(test_graph, user_id=test_user.id)
     graph_exec_id = await execute_graph(
-        server.agent_server, server.exec_manager, test_graph, test_user, {}, 8
+        server.agent_server, test_graph, test_user, {}, 8
     )
     executions = await server.agent_server.get_graph_run_node_execution_results(
         test_graph.id, graph_exec_id, test_user.id

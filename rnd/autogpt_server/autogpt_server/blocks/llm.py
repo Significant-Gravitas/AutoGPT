@@ -1,6 +1,7 @@
 import logging
 from enum import Enum
-from typing import List, NamedTuple
+from json import JSONDecodeError
+from typing import Any, List, NamedTuple
 
 import anthropic
 import ollama
@@ -24,6 +25,7 @@ LlmApiKeys = {
 class ModelMetadata(NamedTuple):
     provider: str
     context_window: int
+    cost_factor: int
 
 
 class LlmModel(str, Enum):
@@ -55,25 +57,28 @@ class LlmModel(str, Enum):
 
 
 MODEL_METADATA = {
-    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000),
-    LlmModel.GPT4O: ModelMetadata("openai", 128000),
-    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000),
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385),
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000),
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000),
-    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192),
-    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192),
-    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768),
-    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192),
-    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192),
-    LlmModel.LLAMA3_1_405B: ModelMetadata(
-        "groq", 8192
-    ),  # Limited to 16k during preview
-    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072),
-    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
+    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=10),
+    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=12),
+    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=11),
+    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=8),
+    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=14),
+    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=13),
+    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=6),
+    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=9),
+    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=7),
+    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=6),
+    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=7),
+    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=10),
+    # Limited to 16k during preview
+    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=15),
+    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=13),
+    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
+    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
 }
+
+for model in LlmModel:
+    if model not in MODEL_METADATA:
+        raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
 
 class AIStructuredResponseGeneratorBlock(Block):
@@ -89,7 +94,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         )
 
     class Output(BlockSchema):
-        response: dict[str, str]
+        response: dict[str, Any]
         error: str
 
     def __init__(self):
@@ -135,16 +140,33 @@ class AIStructuredResponseGeneratorBlock(Block):
             )
             return response.choices[0].message.content or ""
         elif provider == "anthropic":
-            sysprompt = "".join([p["content"] for p in prompt if p["role"] == "system"])
-            usrprompt = [p for p in prompt if p["role"] == "user"]
+            system_messages = [p["content"] for p in prompt if p["role"] == "system"]
+            sysprompt = " ".join(system_messages)
+
+            messages = []
+            last_role = None
+            for p in prompt:
+                if p["role"] in ["user", "assistant"]:
+                    if p["role"] != last_role:
+                        messages.append({"role": p["role"], "content": p["content"]})
+                        last_role = p["role"]
+                    else:
+                        # If the role is the same as the last one, combine the content
+                        messages[-1]["content"] += "\n" + p["content"]
+
             client = anthropic.Anthropic(api_key=api_key)
-            response = client.messages.create(
-                model=model.value,
-                max_tokens=4096,
-                system=sysprompt,
-                messages=usrprompt,  # type: ignore
-            )
-            return response.content[0].text if response.content else ""
+            try:
+                response = client.messages.create(
+                    model=model.value,
+                    max_tokens=4096,
+                    system=sysprompt,
+                    messages=messages,
+                )
+                return response.content[0].text if response.content else ""
+            except anthropic.APIError as e:
+                error_message = f"Anthropic API error: {str(e)}"
+                logger.error(error_message)
+                raise ValueError(error_message)
         elif provider == "groq":
             client = Groq(api_key=api_key)
             response_format = {"type": "json_object"} if json_format else None
@@ -195,14 +217,16 @@ class AIStructuredResponseGeneratorBlock(Block):
 
         prompt.append({"role": "user", "content": input_data.prompt})
 
-        def parse_response(resp: str) -> tuple[dict[str, str], str | None]:
+        def parse_response(resp: str) -> tuple[dict[str, Any], str | None]:
             try:
                 parsed = json.loads(resp)
+                if not isinstance(parsed, dict):
+                    return {}, f"Expected a dictionary, but got {type(parsed)}"
                 miss_keys = set(input_data.expected_format.keys()) - set(parsed.keys())
                 if miss_keys:
                     return parsed, f"Missing keys: {miss_keys}"
                 return parsed, None
-            except Exception as e:
+            except JSONDecodeError as e:
                 return {}, f"JSON decode error: {e}"
 
         logger.info(f"LLM request: {prompt}")
@@ -226,7 +250,16 @@ class AIStructuredResponseGeneratorBlock(Block):
                 if input_data.expected_format:
                     parsed_dict, parsed_error = parse_response(response_text)
                     if not parsed_error:
-                        yield "response", {k: str(v) for k, v in parsed_dict.items()}
+                        yield "response", {
+                            k: (
+                                json.loads(v)
+                                if isinstance(v, str)
+                                and v.startswith("[")
+                                and v.endswith("]")
+                                else (", ".join(v) if isinstance(v, list) else v)
+                            )
+                            for k, v in parsed_dict.items()
+                        }
                         return
                 else:
                     yield "response", {"response": response_text}
@@ -301,7 +334,7 @@ class AITextGeneratorBlock(Block):
             yield "error", str(e)
 
 
-class TextSummarizerBlock(Block):
+class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
         model: LlmModel = LlmModel.GPT4_TURBO
@@ -319,8 +352,8 @@ class TextSummarizerBlock(Block):
             id="c3d4e5f6-7g8h-9i0j-1k2l-m3n4o5p6q7r8",
             description="Utilize a Large Language Model (LLM) to summarize a long text.",
             categories={BlockCategory.AI, BlockCategory.TEXT},
-            input_schema=TextSummarizerBlock.Input,
-            output_schema=TextSummarizerBlock.Output,
+            input_schema=AITextSummarizerBlock.Input,
+            output_schema=AITextSummarizerBlock.Output,
             test_input={"text": "Lorem ipsum..." * 100},
             test_output=("summary", "Final summary of a long text"),
             test_mock={
@@ -412,7 +445,7 @@ class TextSummarizerBlock(Block):
         else:
             # If combined summaries are still too long, recursively summarize
             return self._run(
-                TextSummarizerBlock.Input(
+                AITextSummarizerBlock.Input(
                     text=combined_text,
                     api_key=input_data.api_key,
                     model=input_data.model,
@@ -438,7 +471,7 @@ class Message(BlockSchema):
 class AIConversationBlock(Block):
     class Input(BlockSchema):
         messages: List[Message] = SchemaField(
-            description="List of messages in the conversation.", min_items=1
+            description="List of messages in the conversation.", min_length=1
         )
         model: LlmModel = SchemaField(
             default=LlmModel.GPT4_TURBO,

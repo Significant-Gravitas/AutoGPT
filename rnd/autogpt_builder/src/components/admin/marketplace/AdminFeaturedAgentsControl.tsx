@@ -9,6 +9,7 @@ import {
 import FeaturedAgentsTable from "./FeaturedAgentsTable";
 import { AdminAddFeaturedAgentDialog } from "./AdminAddFeaturedAgentDialog";
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 
 export default async function AdminFeaturedAgentsControl({
   className,
@@ -55,9 +56,15 @@ export default async function AdminFeaturedAgentsControl({
             component: <Button>Remove</Button>,
             action: async (rows) => {
               "use server";
-              const all = rows.map((row) => removeFeaturedAgent(row.id));
-              await Promise.all(all);
-              revalidatePath("/marketplace");
+              return await Sentry.withServerActionInstrumentation(
+                "removeFeaturedAgent",
+                {},
+                async () => {
+                  const all = rows.map((row) => removeFeaturedAgent(row.id));
+                  await Promise.all(all);
+                  revalidatePath("/marketplace");
+                },
+              );
             },
           },
         ]}

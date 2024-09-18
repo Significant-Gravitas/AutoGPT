@@ -5,10 +5,10 @@ from autogpt_server.data import db
 from autogpt_server.data.block import Block, initialize_blocks
 from autogpt_server.data.execution import ExecutionResult, ExecutionStatus
 from autogpt_server.data.queue import AsyncEventQueue
+from autogpt_server.data.user import create_default_user
 from autogpt_server.executor import ExecutionManager, ExecutionScheduler
 from autogpt_server.server import AgentServer
 from autogpt_server.server.rest_api import get_user_id
-from autogpt_server.util.service import PyroNameServer
 
 log = print
 
@@ -48,7 +48,6 @@ class InMemoryAsyncEventQueue(AsyncEventQueue):
 
 class SpinTestServer:
     def __init__(self):
-        self.name_server = PyroNameServer()
         self.exec_manager = ExecutionManager()
         self.in_memory_queue = InMemoryAsyncEventQueue()
         self.agent_server = AgentServer(event_queue=self.in_memory_queue)
@@ -59,7 +58,6 @@ class SpinTestServer:
         return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
     async def __aenter__(self):
-        self.name_server.__enter__()
         self.setup_dependency_overrides()
         self.agent_server.__enter__()
         self.exec_manager.__enter__()
@@ -67,6 +65,7 @@ class SpinTestServer:
 
         await db.connect()
         await initialize_blocks()
+        await create_default_user("false")
 
         return self
 
@@ -76,7 +75,6 @@ class SpinTestServer:
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
         self.agent_server.__exit__(exc_type, exc_val, exc_tb)
-        self.name_server.__exit__(exc_type, exc_val, exc_tb)
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing
@@ -86,25 +84,18 @@ class SpinTestServer:
 
 
 async def wait_execution(
-    exec_manager: ExecutionManager,
     user_id: str,
     graph_id: str,
     graph_exec_id: str,
-    num_execs: int,
     timeout: int = 20,
 ) -> list:
     async def is_execution_completed():
-        execs = await AgentServer().get_graph_run_node_execution_results(
+        status = await AgentServer().get_graph_run_status(
             graph_id, graph_exec_id, user_id
         )
-        return (
-            exec_manager.queue.empty()
-            and len(execs) == num_execs
-            and all(
-                v.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
-                for v in execs
-            )
-        )
+        if status == ExecutionStatus.FAILED:
+            raise Exception("Execution failed")
+        return status == ExecutionStatus.COMPLETED
 
     # Wait for the executions to complete
     for i in range(timeout):

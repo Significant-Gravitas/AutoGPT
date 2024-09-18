@@ -45,7 +45,7 @@ def populate_database():
                 keywords=["test"],
             )
             response = requests.post(
-                "http://localhost:8001/api/v1/market/admin/agent", json=req.model_dump()
+                "http://localhost:8015/api/v1/market/admin/agent", json=req.model_dump()
             )
             print(response.text)
 
@@ -58,7 +58,8 @@ def format():
 
 
 def app():
-    run("uvicorn", "market.app:app", "--reload", "--port", "8001")
+    port = os.getenv("PORT", "8015")
+    run("uvicorn", "market.app:app", "--reload", "--port", port, "--host", "0.0.0.0")
 
 
 def setup():

@@ -19,6 +19,7 @@ import React from "react";
 export type Control = {
   icon: React.ReactNode;
   label: string;
+  disabled?: boolean;
   onClick: () => void;
 };
 
@@ -50,15 +51,18 @@ export const ControlPanel = ({
           {controls.map((control, index) => (
             <Tooltip key={index} delayDuration={500}>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => control.onClick()}
-                  data-id={`control-button-${index}`}
-                >
-                  {control.icon}
-                  <span className="sr-only">{control.label}</span>
-                </Button>
+                <div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => control.onClick()}
+                    data-id={`control-button-${index}`}
+                    disabled={control.disabled || false}
+                  >
+                    {control.icon}
+                    <span className="sr-only">{control.label}</span>
+                  </Button>
+                </div>
               </TooltipTrigger>
               <TooltipContent side="right">{control.label}</TooltipContent>
             </Tooltip>

@@ -252,7 +252,6 @@ Here are a couple of sample of the Block class implementation:
 
 async def block_autogen_agent():
     async with SpinTestServer() as server:
-        test_manager = server.exec_manager
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"input": "Write me a block that writes a string into a file."}
@@ -261,10 +260,8 @@ async def block_autogen_agent():
         )
         print(response)
         result = await wait_execution(
-            exec_manager=test_manager,
             graph_id=test_graph.id,
             graph_exec_id=response["id"],
-            num_execs=10,
             timeout=1200,
             user_id=test_user.id,
         )

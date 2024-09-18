@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 import requests
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
 
-from autogpt_server.integrations.oauth import BaseOAuthHandler
+from .base import BaseOAuthHandler
 
 
 class NotionOAuthHandler(BaseOAuthHandler):
@@ -49,10 +49,18 @@ class NotionOAuthHandler(BaseOAuthHandler):
         response = requests.post(self.token_url, json=request_body, headers=headers)
         response.raise_for_status()
         token_data = response.json()
+        # Email is only available for non-bot users
+        email = (
+            token_data["owner"]["person"]["email"]
+            if "person" in token_data["owner"]
+            and "email" in token_data["owner"]["person"]
+            else None
+        )
 
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
-            title=token_data.get("workspace_name", "Notion"),
+            title=token_data.get("workspace_name"),
+            username=email,
             access_token=token_data["access_token"],
             refresh_token=None,
             access_token_expires_at=None,  # Notion tokens don't expire

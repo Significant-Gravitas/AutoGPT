@@ -22,6 +22,9 @@ model User {
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+  AnalyticsDetails             AnalyticsDetails[]
+  AnalyticsMetrics             AnalyticsMetrics[]
+  UserBlockCredit              UserBlockCredit[]
 
   @@index([id])
   @@index([email])
@@ -29,9 +32,9 @@ model User {
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model AgentGraph {
-  id      String @default(uuid())
-  version Int    @default(1)
-  createdAt DateTime @default(now())
+  id        String    @default(uuid())
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   name        String?
@@ -111,13 +114,26 @@ model AgentBlock {
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
+  UserBlockCredit       UserBlockCredit[]
+}
+
+// This model describes the status of an AgentGraphExecution or AgentNodeExecution.
+enum AgentExecutionStatus {
+  INCOMPLETE
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
 }
 
 // This model describes the execution of an AgentGraph.
 model AgentGraphExecution {
-  id String @id @default(uuid())
-  createdAt DateTime @default(now())
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
+  startedAt DateTime?
+
+  executionStatus AgentExecutionStatus @default(COMPLETED)
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
@@ -145,12 +161,10 @@ model AgentNodeExecution {
   Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
   Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
 
-  // sqlite does not support enum
-  // enum Status { INCOMPLETE, QUEUED, RUNNING, SUCCESS, FAILED }
-  executionStatus String
+  executionStatus AgentExecutionStatus @default(COMPLETED)
   // Final JSON serialized input data for the node execution.
   executionData   String?
-  addedTime       DateTime  @default(now())
+  addedTime       DateTime             @default(now())
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
@@ -178,8 +192,8 @@ model AgentNodeExecutionInputOutput {
 
 // This model describes the recurring execution schedule of an Agent.
 model AgentGraphExecutionSchedule {
-  id String @id
-  createdAt DateTime @default(now())
+  id        String    @id
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   agentGraphId      String
@@ -198,4 +212,71 @@ model AgentGraphExecutionSchedule {
   user   User   @relation(fields: [userId], references: [id])
 
   @@index([isEnabled])
+}
+
+model AnalyticsDetails {
+  // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
+  // typical uuid() inserts are handled by prisma
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  type String
+
+  // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
+  data Json?
+
+  // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
+  dataIndex String?
+
+  @@index([userId, type], name: "analyticsDetails")
+  @@index([type])
+}
+
+model AnalyticsMetrics {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  analyticMetric String
+  // Any numeric data that should be counted upon, summed, or otherwise aggregated.
+  value          Float
+  // Any string data that should be used to identify the metric as distinct.
+  // ex: '/build' vs '/market'
+  dataString     String?
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+enum UserBlockCreditType {
+  TOP_UP
+  USAGE
+}
+
+model UserBlockCredit {
+  transactionKey String   @default(uuid())
+  createdAt      DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  blockId String?
+  block   AgentBlock? @relation(fields: [blockId], references: [id])
+
+  amount Int
+  type   UserBlockCreditType
+
+  isActive Boolean @default(true)
+  metadata Json?
+
+  @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
 }
