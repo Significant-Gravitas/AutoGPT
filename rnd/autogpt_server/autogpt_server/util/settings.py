@@ -80,6 +80,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         extra="allow",
     )
 
+    websocket_server_port: int = Field(
+        default=8001,
+        description="The port for the websocket server to run on",
+    )
+
     execution_manager_port: int = Field(
         default=8002,
         description="The port for execution manager daemon to run on",
@@ -93,6 +98,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     agent_server_port: int = Field(
         default=8004,
         description="The port for agent server daemon to run on",
+    )
+
+    agent_api_port: int = Field(
+        default=8006,
+        description="The port for agent server API to run on",
     )
 
     @classmethod

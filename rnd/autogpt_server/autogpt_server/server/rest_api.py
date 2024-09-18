@@ -109,11 +109,6 @@ class AgentServer(AppService):
             tags=["blocks"],
         )
         api_router.add_api_route(
-            path="/blocks/costs",
-            endpoint=self.get_graph_block_costs,
-            methods=["GET"],
-        )
-        api_router.add_api_route(
             path="/blocks/{block_id}/execute",
             endpoint=self.execute_graph_block,
             methods=["POST"],
@@ -256,7 +251,7 @@ class AgentServer(AppService):
 
         app.include_router(api_router)
 
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)
+        uvicorn.run(app, host="0.0.0.0", port=Config().agent_api_port, log_config=None)
 
     def set_test_dependency_overrides(self, overrides: dict):
         self._test_dependency_overrides = overrides
@@ -312,11 +307,9 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        return [v.to_dict() for v in block.get_blocks().values()]
-
-    @classmethod
-    def get_graph_block_costs(cls) -> dict[Any, Any]:
-        return get_block_costs()
+        blocks = block.get_blocks()
+        costs = get_block_costs()
+        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks.values()]
 
     @classmethod
     def execute_graph_block(
