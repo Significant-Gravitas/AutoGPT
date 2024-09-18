@@ -7,7 +7,7 @@ import AgentDetailContent from "@/components/marketplace/AgentDetailContent";
 async function getAgentDetails(id: string): Promise<AgentDetailResponse> {
   const apiUrl =
     process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
-    "http://localhost:8001/api/v1/market";
+    "http://localhost:8015/api/v1/market";
   const api = new MarketplaceAPI(apiUrl);
   try {
     console.log(`Fetching agent details for id: ${id}`);

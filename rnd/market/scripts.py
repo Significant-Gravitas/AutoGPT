@@ -45,7 +45,7 @@ def populate_database():
                 keywords=["test"],
             )
             response = requests.post(
-                "http://localhost:8001/api/v1/market/admin/agent", json=req.model_dump()
+                "http://localhost:8015/api/v1/market/admin/agent", json=req.model_dump()
             )
             print(response.text)
 
