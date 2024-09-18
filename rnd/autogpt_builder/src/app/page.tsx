@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import AutoGPTServerAPI, {
   GraphMeta,
+  ExecutionMeta,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 
@@ -17,62 +18,53 @@ import {
 } from "@/components/monitor";
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<GraphMeta[]>([]);
-  const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
+  const [agents, setAgents] = useState<GraphMeta[]>([]);
+  const [agentRuns, setAgentRuns] = useState<FlowRun[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
-  const refreshFlowRuns = useCallback(
-    (flowID: string) => {
-      // Fetch flow run IDs
-      api.listGraphRunIDs(flowID).then((runIDs) =>
-        runIDs.map((runID) => {
-          let run;
-          if (
-            (run = flowRuns.find((fr) => fr.id == runID)) &&
-            !["waiting", "running"].includes(run.status)
-          ) {
-            return;
-          }
-
-          // Fetch flow run
-          api.getGraphExecutionInfo(flowID, runID).then((execInfo) =>
-            setFlowRuns((flowRuns) => {
-              if (execInfo.length == 0) return flowRuns;
-
-              const flowRunIndex = flowRuns.findIndex((fr) => fr.id == runID);
-              const flowRun = flowRunFromNodeExecutionResults(execInfo);
-              if (flowRunIndex > -1) {
-                flowRuns.splice(flowRunIndex, 1, flowRun);
-              } else {
-                flowRuns.push(flowRun);
-              }
-              return [...flowRuns];
-            }),
-          );
-        }),
+  const fetchAgents = useCallback(() => {
+    api.listGraphs().then((agent) => {
+      setAgents(agent);
+      const flowRuns = agent.flatMap((graph) =>
+        graph.executions != null
+          ? graph.executions.map((execution) => ({
+              id: execution.execution_id,
+              graphID: graph.id,
+              graphVersion: graph.version,
+              status: execution.status.toLowerCase() as
+                | "running"
+                | "waiting"
+                | "success"
+                | "failed",
+              startTime: execution.started_at.getTime(),
+              endTime: execution.ended_at.getTime(),
+              duration:
+                (execution.ended_at.getTime() -
+                  execution.started_at.getTime()) /
+                1000,
+              totalRunTime:
+                (execution.ended_at.getTime() -
+                  execution.started_at.getTime()) /
+                1000,
+              nodeExecutionResults: [],
+            }))
+          : [],
       );
-    },
-    [api, flowRuns],
-  );
-
-  const fetchFlowsAndRuns = useCallback(() => {
-    api.listGraphs().then((flows) => {
-      setFlows(flows);
-      flows.map((flow) => refreshFlowRuns(flow.id));
+      setAgentRuns(flowRuns);
     });
-  }, [api, refreshFlowRuns]);
+  }, [api]);
 
-  useEffect(() => fetchFlowsAndRuns(), [fetchFlowsAndRuns]);
   useEffect(() => {
-    const intervalId = setInterval(
-      () => flows.map((f) => refreshFlowRuns(f.id)),
-      5000,
-    );
+    fetchAgents();
+  });
+
+  useEffect(() => {
+    const intervalId = setInterval(() => fetchAgents(), 5000);
     return () => clearInterval(intervalId);
-  }, [flows, refreshFlowRuns]);
+  }, [fetchAgents, agents]);
 
   const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
   const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
@@ -82,8 +74,8 @@ const Monitor = () => {
     <div className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10">
       <AgentFlowList
         className={column1}
-        flows={flows}
-        flowRuns={flowRuns}
+        flows={agents}
+        flowRuns={agentRuns}
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
@@ -92,18 +84,20 @@ const Monitor = () => {
       />
       <FlowRunsList
         className={column2}
-        flows={flows}
+        flows={agents}
         runs={[
           ...(selectedFlow
-            ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
-            : flowRuns),
+            ? agentRuns.filter((v) => v.graphID == selectedFlow.id)
+            : agentRuns),
         ].sort((a, b) => Number(a.startTime) - Number(b.startTime))}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
       {(selectedRun && (
         <FlowRunInfo
-          flow={selectedFlow || flows.find((f) => f.id == selectedRun.graphID)!}
+          flow={
+            selectedFlow || agents.find((f) => f.id == selectedRun.graphID)!
+          }
           flowRun={selectedRun}
           className={column3}
         />
@@ -111,12 +105,12 @@ const Monitor = () => {
         (selectedFlow && (
           <FlowInfo
             flow={selectedFlow}
-            flowRuns={flowRuns.filter((r) => r.graphID == selectedFlow.id)}
+            flowRuns={agentRuns.filter((r) => r.graphID == selectedFlow.id)}
             className={column3}
           />
         )) || (
           <Card className={`p-6 ${column3}`}>
-            <FlowRunsStats flows={flows} flowRuns={flowRuns} />
+            <FlowRunsStats flows={agents} flowRuns={agentRuns} />
           </Card>
         )}
     </div>

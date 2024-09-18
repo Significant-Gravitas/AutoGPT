@@ -1,14 +1,17 @@
 import asyncio
 import logging
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import prisma.types
-from prisma.models import AgentGraph, AgentNode, AgentNodeLink
+from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
+from prisma.types import AgentGraphInclude
 from pydantic import BaseModel, PrivateAttr
 from pydantic_core import PydanticUndefinedType
 
+import autogpt_server.data.execution
 from autogpt_server.blocks.basic import AgentInputBlock, AgentOutputBlock
 from autogpt_server.data.block import BlockInput, get_block, get_blocks
 from autogpt_server.data.db import BaseDbModel, transaction
@@ -77,6 +80,25 @@ class Node(BaseDbModel):
         return obj
 
 
+class ExecutionMeta(BaseDbModel):
+    execution_id: str
+    started_at: datetime
+    ended_at: datetime
+    status: autogpt_server.data.execution.ExecutionStatus
+
+    @staticmethod
+    def from_db(execution: AgentGraphExecution):
+        return ExecutionMeta(
+            id=execution.id,
+            execution_id=execution.id,
+            started_at=execution.createdAt,
+            ended_at=execution.updatedAt or execution.createdAt,
+            status=autogpt_server.data.execution.ExecutionStatus(
+                execution.executionStatus
+            ),
+        )
+
+
 class GraphMeta(BaseDbModel):
     version: int = 1
     is_active: bool = True
@@ -85,8 +107,18 @@ class GraphMeta(BaseDbModel):
     name: str
     description: str
 
+    executions: list[ExecutionMeta] = []
+
     @staticmethod
     def from_db(graph: AgentGraph):
+        if graph.AgentGraphExecution:
+            executions = [
+                ExecutionMeta.from_db(execution)
+                for execution in graph.AgentGraphExecution
+            ]
+        else:
+            executions = []
+
         return GraphMeta(
             id=graph.id,
             version=graph.version,
@@ -94,6 +126,7 @@ class GraphMeta(BaseDbModel):
             is_template=graph.isTemplate,
             name=graph.name or "",
             description=graph.description or "",
+            executions=executions,
         )
 
 
@@ -365,6 +398,7 @@ async def get_graphs_meta(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
+        include=AgentGraphInclude(AgentGraphExecution=True),
     )
 
     if not graphs:
