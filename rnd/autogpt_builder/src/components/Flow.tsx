@@ -414,6 +414,7 @@ const FlowEditor: React.FC<{
         position: viewportCenter, // Set the position to the calculated viewport center
         data: {
           blockType: nodeType,
+          blockCosts: nodeSchema.costs,
           title: `${nodeType} ${nodeId}`,
           description: nodeSchema.description,
           categories: nodeSchema.categories,

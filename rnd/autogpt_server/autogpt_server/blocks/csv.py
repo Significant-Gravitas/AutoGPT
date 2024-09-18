@@ -14,7 +14,8 @@ class ReadCsvBlock(Block):
         skip_columns: list[str] = []
 
     class Output(BlockSchema):
-        data: dict[str, str]
+        row: dict[str, str]
+        all_data: list[dict[str, str]]
 
     def __init__(self):
         super().__init__(
@@ -27,8 +28,15 @@ class ReadCsvBlock(Block):
                 "contents": "a, b, c\n1,2,3\n4,5,6",
             },
             test_output=[
-                ("data", {"a": "1", "b": "2", "c": "3"}),
-                ("data", {"a": "4", "b": "5", "c": "6"}),
+                ("row", {"a": "1", "b": "2", "c": "3"}),
+                ("row", {"a": "4", "b": "5", "c": "6"}),
+                (
+                    "all_data",
+                    [
+                        {"a": "1", "b": "2", "c": "3"},
+                        {"a": "4", "b": "5", "c": "6"},
+                    ],
+                ),
             ],
         )
 
@@ -53,8 +61,7 @@ class ReadCsvBlock(Block):
         for _ in range(input_data.skip_rows):
             next(reader)
 
-        # join the data with the header
-        for row in reader:
+        def process_row(row):
             data = {}
             for i, value in enumerate(row):
                 if i not in input_data.skip_columns:
@@ -62,4 +69,12 @@ class ReadCsvBlock(Block):
                         data[header[i]] = value.strip() if input_data.strip else value
                     else:
                         data[str(i)] = value.strip() if input_data.strip else value
-            yield "data", data
+            return data
+
+        all_data = []
+        for row in reader:
+            processed_row = process_row(row)
+            all_data.append(processed_row)
+            yield "row", processed_row
+
+        yield "all_data", all_data

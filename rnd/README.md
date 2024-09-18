@@ -14,21 +14,40 @@ Welcome to the AutoGPT Platform - a powerful system for creating and running AI 
 To run the AutoGPT Platform, follow these steps:
 
 1. Clone this repository to your local machine.
-2. Navigate to the project directory.
+2. Navigate to rnd/supabase
 3. Run the following command:
+   ```
+      git submodule update --init --recursive
+   ```
+4. Navigate back to rnd (cd ..)
+5. Run the following command:
+   ```
+      cp supabase/docker/.env.example .env
+   ```
+6. Run the following command:
 
    ```
-   docker compose up -d
+   docker compose -f docker-compose.combined.yml up -d
+
    ```
 
-   This command will start all the necessary services defined in the `docker-compose.yml` file in detached mode.
+   This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
+7. Navigate to rnd/autogpt_builder.
+8. Run the following command: 
+   ```
+      cp .env.example .env.local
+   ```
+9. Run the following command: 
+   ```
+      yarn dev
+   ```
 
 ### Docker Compose Commands
 
 Here are some useful Docker Compose commands for managing your AutoGPT Platform:
 
-- `docker compose up -d`: Start the services in detached mode.
-- `docker compose stop`: Stop the running services without removing them.
+- `docker compose -f docker-compose.combined.yml up -d`: Start the services in detached mode.
+- `docker compose -f docker-compose.combined.yml stop`: Stop the running services without removing them.
 - `docker compose rm`: Remove stopped service containers.
 - `docker compose build`: Build or rebuild services.
 - `docker compose down`: Stop and remove containers, networks, and volumes.

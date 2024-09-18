@@ -35,6 +35,7 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
 }
 
 export async function signup(values: z.infer<typeof loginFormSchema>) {
+  "use server";
   return await Sentry.withServerActionInstrumentation(
     "signup",
     {},
