@@ -5,12 +5,22 @@ from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
 from autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
     Credentials,
     CredentialsType,
     OAuth2Credentials,
 )
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+)
+from pydantic import BaseModel, SecretStr
 from supabase import Client
 
 from autogpt_server.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
@@ -126,6 +136,52 @@ async def get_credential(
             status_code=404, detail="Credentials do not match the specified provider"
         )
     return credential
+
+
+@integrations_api_router.post("/{provider}/credentials", status_code=201)
+async def create_api_key_credentials(
+    provider: Annotated[str, Path(title="The provider to create credentials for")],
+    api_key: Annotated[str, Body(title="The API key to store")],
+    title: Annotated[str, Body(title="Optional title for the credentials")],
+    expires_at: Annotated[
+        int | None, Body(title="Unix timestamp when the key expires")
+    ],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+):
+    new_credentials = APIKeyCredentials(
+        provider=provider,
+        api_key=SecretStr(api_key),
+        title=title,
+        expires_at=expires_at,
+    )
+
+    try:
+        store.add_creds(user_id, new_credentials)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to store credentials: {str(e)}"
+        )
+    return {"id": new_credentials.id}
+
+
+@integrations_api_router.delete("/{provider}/credentials/{cred_id}", status_code=204)
+async def delete_credential(
+    provider: Annotated[str, Path(title="The provider to delete credentials for")],
+    cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+):
+    creds = store.get_creds_by_id(user_id, cred_id)
+    if not creds:
+        raise HTTPException(status_code=404, detail="Credentials not found")
+    if creds.provider != provider:
+        raise HTTPException(
+            status_code=404, detail="Credentials do not match the specified provider"
+        )
+
+    store.delete_creds_by_id(user_id, cred_id)
+    return Response(status_code=204)
 
 
 # -------- UTILITIES --------- #

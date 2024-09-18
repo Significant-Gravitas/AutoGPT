@@ -79,6 +79,8 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   default?: boolean;
 };
 
+export type CredentialsType = "api_key" | "oauth2";
+
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
 };
@@ -178,6 +180,43 @@ export type NodeExecutionResult = {
   start_time?: Date;
   end_time?: Date;
 };
+
+/* Mirror of autogpt_server/server/integrations.py:CredentialsMetaResponse */
+export type CredentialsMetaResponse = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  scopes?: Array<string>;
+  username?: string;
+};
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
+type BaseCredentials = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  provider: string;
+}
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
+export type OAuth2Credentials = BaseCredentials & {
+  type: "oauth2";
+  scopes: string[];
+  username?: string;
+  access_token: string;
+  access_token_expires_at?: number;
+  refresh_token?: string;
+  refresh_token_expires_at?: number;
+  metadata: Record<string, any>;
+}
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
+export type APIKeyCredentials = BaseCredentials & {
+  type: "api_key";
+  title: string;
+  api_key: string;
+  expires_at?: number;
+}
 
 export type User = {
   id: string;
