@@ -15,11 +15,11 @@ from supabase import Client
 from autogpt_server.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from autogpt_server.util.settings import Settings
 
-from .utils import get_supabase, get_user_id
+from ..utils import get_supabase, get_user_id
 
 logger = logging.getLogger(__name__)
 settings = Settings()
-integrations_api_router = APIRouter()
+router = APIRouter()
 
 
 def get_store(supabase: Client = Depends(get_supabase)):
@@ -30,7 +30,7 @@ class LoginResponse(BaseModel):
     login_url: str
 
 
-@integrations_api_router.get("/{provider}/login")
+@router.get("/{provider}/login")
 async def login(
     provider: Annotated[str, Path(title="The provider to initiate an OAuth flow for")],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -59,7 +59,7 @@ class CredentialsMetaResponse(BaseModel):
     username: str | None
 
 
-@integrations_api_router.post("/{provider}/callback")
+@router.post("/{provider}/callback")
 async def callback(
     provider: Annotated[str, Path(title="The target provider for this OAuth exchange")],
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
@@ -91,7 +91,7 @@ async def callback(
     )
 
 
-@integrations_api_router.get("/{provider}/credentials")
+@router.get("/{provider}/credentials")
 async def list_credentials(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -110,7 +110,7 @@ async def list_credentials(
     ]
 
 
-@integrations_api_router.get("/{provider}/credentials/{cred_id}")
+@router.get("/{provider}/credentials/{cred_id}")
 async def get_credential(
     provider: Annotated[str, Path(title="The provider to retrieve credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],

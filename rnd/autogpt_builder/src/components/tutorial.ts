@@ -1,3 +1,4 @@
+import { sendGAEvent } from "@next/third-parties/google";
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 
@@ -492,6 +493,15 @@ export const startTutorial = (
     setPinBlocksPopover(false);
     localStorage.setItem("shepherd-tour", "completed"); // Optionally mark the tutorial as completed
   });
+
+  for (const step of tour.steps) {
+    step.on("show", () => {
+      "use client";
+      console.debug("sendTutorialStep");
+
+      sendGAEvent("event", "tutorial_step_shown", { value: step.id });
+    });
+  }
 
   tour.on("cancel", () => {
     setPinBlocksPopover(false);
