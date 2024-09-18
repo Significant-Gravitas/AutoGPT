@@ -22,6 +22,8 @@ model User {
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+  AnalyticsDetails             AnalyticsDetails[]
+  AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
 
   @@index([id])
@@ -210,6 +212,49 @@ model AgentGraphExecutionSchedule {
   user   User   @relation(fields: [userId], references: [id])
 
   @@index([isEnabled])
+}
+
+model AnalyticsDetails {
+  // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
+  // typical uuid() inserts are handled by prisma
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  type String
+
+  // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
+  data Json?
+
+  // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
+  dataIndex String?
+
+  @@index([userId, type], name: "analyticsDetails")
+  @@index([type])
+}
+
+model AnalyticsMetrics {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Analytics Categorical data used for filtering (indexable w and w/o userId)
+  analyticMetric String
+  // Any numeric data that should be counted upon, summed, or otherwise aggregated.
+  value          Float
+  // Any string data that should be used to identify the metric as distinct.
+  // ex: '/build' vs '/market'
+  dataString     String?
+
+  // Link to User model
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 enum UserBlockCreditType {
