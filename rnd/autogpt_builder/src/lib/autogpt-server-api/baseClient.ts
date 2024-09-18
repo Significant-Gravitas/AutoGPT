@@ -36,6 +36,10 @@ export default class BaseAutoGPTServerAPI {
     return this._request("POST", "/auth/user", {});
   }
 
+  async getUserCredit(): Promise<{ credits: number }> {
+    return this._get(`/credits`);
+  }
+
   async getBlocks(): Promise<Block[]> {
     return await this._get("/blocks");
   }
