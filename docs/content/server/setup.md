@@ -102,21 +102,14 @@ poetry run prisma generate
 
 Without running this command, the necessary Python modules (prisma.models) won't be available, leading to a `ModuleNotFoundError`.
 
-### Running the server without Docker
+### Running the server 
 
 To run the server, you can run the following commands in the same terminal you ran the `poetry install` command:
 
 ```bash
-poetry run app
-```
-
-### Running the server within Docker
-
-To run the server, you can run the following commands in the same terminal you ran the `poetry install` command:
-
-```bash
-docker compose build
-docker compose up
+cp supabase/docker/.env.example .env
+docker compose -f docker-compose.combined.yml build
+docker compose -f docker-compose.combined.yml up -d
 ```
 
 In the other terminal from autogpt_builder, you can run the following command to start the frontend:
