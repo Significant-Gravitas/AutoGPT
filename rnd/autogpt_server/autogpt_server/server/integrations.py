@@ -10,7 +10,16 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
     CredentialsType,
     OAuth2Credentials,
 )
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+)
 from pydantic import BaseModel, SecretStr
 from supabase import Client
 
@@ -129,7 +138,7 @@ async def get_credential(
     return credential
 
 
-@integrations_api_router.post("/{provider}/credentials")
+@integrations_api_router.post("/{provider}/credentials", status_code=201)
 async def create_api_key_credentials(
     provider: Annotated[str, Path(title="The provider to create credentials for")],
     api_key: Annotated[str, Body(title="The API key to store")],
@@ -153,11 +162,10 @@ async def create_api_key_credentials(
         raise HTTPException(
             status_code=400, detail=f"Failed to store credentials: {str(e)}"
         )
+    return {"id": new_credentials.id}
 
-    return {"message": "Credentials created"}
 
-
-@integrations_api_router.delete("/{provider}/credentials/{cred_id}")
+@integrations_api_router.delete("/{provider}/credentials/{cred_id}", status_code=204)
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider to delete credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
@@ -173,8 +181,7 @@ async def delete_credential(
         )
 
     store.delete_creds_by_id(user_id, cred_id)
-
-    return {"message": "Credentials deleted"}
+    return Response(status_code=204)
 
 
 # -------- UTILITIES --------- #
