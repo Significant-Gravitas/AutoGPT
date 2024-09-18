@@ -9,9 +9,12 @@ import {
   IconCircleUser,
   IconMenu,
   IconPackage2,
+  IconRefresh,
   IconSquareActivity,
   IconWorkFlow,
 } from "@/components/ui/icons";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import CreditButton from "@/components/CreditButton";
 
 export async function NavBar() {
   const isAvailable = Boolean(
@@ -96,6 +99,8 @@ export async function NavBar() {
         </a>
       </div>
       <div className="flex flex-1 items-center justify-end gap-4">
+        {isAvailable && user && <CreditButton />}
+
         {isAvailable && !user && (
           <Link
             href="/login"

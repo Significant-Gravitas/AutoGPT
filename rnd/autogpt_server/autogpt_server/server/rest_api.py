@@ -78,130 +78,161 @@ class AgentServer(AppService):
         api_router.dependencies.append(Depends(auth_middleware))
 
         # Import & Attach sub-routers
-        from .integrations import integrations_api_router
+        import autogpt_server.server.routers.analytics
+        import autogpt_server.server.routers.integrations
 
-        api_router.include_router(integrations_api_router, prefix="/integrations")
+        api_router.include_router(
+            autogpt_server.server.routers.integrations.router,
+            prefix="/integrations",
+            tags=["integrations"],
+            dependencies=[Depends(auth_middleware)],
+        )
+
+        api_router.include_router(
+            autogpt_server.server.routers.analytics.router,
+            prefix="/analytics",
+            tags=["analytics"],
+            dependencies=[Depends(auth_middleware)],
+        )
 
         api_router.add_api_route(
             path="/auth/user",
             endpoint=self.get_or_create_user_route,
             methods=["POST"],
+            tags=["auth"],
         )
 
         api_router.add_api_route(
             path="/blocks",
             endpoint=self.get_graph_blocks,
             methods=["GET"],
-        )
-        api_router.add_api_route(
-            path="/blocks/costs",
-            endpoint=self.get_graph_block_costs,
-            methods=["GET"],
+            tags=["blocks"],
         )
         api_router.add_api_route(
             path="/blocks/{block_id}/execute",
             endpoint=self.execute_graph_block,
             methods=["POST"],
+            tags=["blocks"],
         )
         api_router.add_api_route(
             path="/graphs",
             endpoint=self.get_graphs,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/templates",
             endpoint=self.get_templates,
             methods=["GET"],
+            tags=["templates", "graphs"],
         )
         api_router.add_api_route(
             path="/graphs",
             endpoint=self.create_new_graph,
             methods=["POST"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/templates",
             endpoint=self.create_new_template,
             methods=["POST"],
+            tags=["templates", "graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.get_graph,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.get_template,
             methods=["GET"],
+            tags=["templates", "graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
+            tags=["templates", "graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/templates/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
+            tags=["templates", "graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions/{version}",
             endpoint=self.get_graph,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions/active",
             endpoint=self.set_graph_active_version,
             methods=["PUT"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/input_schema",
             endpoint=self.get_graph_input_schema,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/execute",
             endpoint=self.execute_graph,
             methods=["POST"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/executions",
             endpoint=self.list_graph_runs,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/executions/{graph_exec_id}",
             endpoint=self.get_graph_run_node_execution_results,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
             endpoint=self.stop_graph_run,
             methods=["POST"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.create_schedule,
             methods=["POST"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.get_execution_schedules,
             methods=["GET"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
             endpoint=self.update_schedule,
             methods=["PUT"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/credits",
@@ -213,13 +244,14 @@ class AgentServer(AppService):
             path="/settings",
             endpoint=self.update_configuration,
             methods=["POST"],
+            tags=["settings"],
         )
 
         app.add_exception_handler(500, self.handle_internal_http_error)
 
         app.include_router(api_router)
 
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)
+        uvicorn.run(app, host="0.0.0.0", port=Config().agent_api_port, log_config=None)
 
     def set_test_dependency_overrides(self, overrides: dict):
         self._test_dependency_overrides = overrides
@@ -275,11 +307,9 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        return [v.to_dict() for v in block.get_blocks().values()]
-
-    @classmethod
-    def get_graph_block_costs(cls) -> dict[Any, Any]:
-        return get_block_costs()
+        blocks = block.get_blocks()
+        costs = get_block_costs()
+        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks.values()]
 
     @classmethod
     def execute_graph_block(
