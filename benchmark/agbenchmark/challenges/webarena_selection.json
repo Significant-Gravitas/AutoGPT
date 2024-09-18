@@ -1,0 +1,523 @@
+[
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 0,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "What is the top-{{n}} best-selling product in {{year}}",
+        "instantiation_dict": {
+            "n": 1,
+            "year": 2022
+        },
+        "intent": "What is the top-1 best-selling product in 2022",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "exact_match": "Quest Lumaflex™ Band"
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "Quest Lumaflex™ Band"
+        },
+        "intent_template_id": 279,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 4,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "What are the top-{{n}} best-selling product in {{period}}",
+        "instantiation_dict": {
+            "n": 3,
+            "period": "Jan 2023"
+        },
+        "intent": "What are the top-3 best-selling product in Jan 2023",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "Impulse Duffle",
+                    "Overnight Duffle",
+                    "Hawkeye Yoga Short-32-Blue"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "Impulse Duffle, Overnight Duffle, Hawkeye Yoga Short-32-Blue"
+        },
+        "intent_template_id": 279,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 6,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "What are the top-{{n}} best-selling product in {{year}}",
+        "instantiation_dict": {
+            "n": 5,
+            "year": 2023
+        },
+        "intent": "What are the top-5 best-selling product in 2023",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "Sprite Yoga Strap 6 foot",
+                    "Overnight Duffle",
+                    "Ida Workout Parachute Pant-29-Purple",
+                    "Hawkeye Yoga Short-32-Blue",
+                    "Sprite Stasis Ball 65 cm"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "Sprite Yoga Strap 6 foot, Overnight Duffle, Ida Workout Parachute Pant-29-Purple, Hawkeye Yoga Short-32-Blue, Sprite Stasis Ball 65 cm"
+        },
+        "intent_template_id": 279,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 11,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "Tell me the the number of reviews that our store received by far that mention term \"{{term}}\"",
+        "instantiation_dict": {
+            "term": "disappointed"
+        },
+        "intent": "Tell me the the number of reviews that our store received by far that mention term \"disappointed\"",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "6"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "6"
+        },
+        "intent_template_id": 288,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping"
+        ],
+        "task_id": 21,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_state.json",
+        "start_url": "http://shop.junglegym.ai/6s-wireless-headphones-over-ear-noise-canceling-hi-fi-bass-foldable-stereo-wireless-kid-headsets-earbuds-with-built-in-mic-micro-sd-tf-fm-for-iphone-samsung-ipad-pc-black-gold.html",
+        "geolocation": "NaN",
+        "intent_template": "List out reviewers, if exist, who mention about {{description}}",
+        "instantiation_dict": {
+            "description": "ear cups being small"
+        },
+        "intent": "List out reviewers, if exist, who mention about ear cups being small",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "Joseph Brzezinski",
+                    "Catso",
+                    "Dibbins",
+                    "Anglebert Dinkherhump",
+                    "Michelle Davis"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "Joseph Brzezinski, Catso, Dibbins, Anglebert Dinkherhump, Michelle Davis"
+        },
+        "intent_template_id": 222,
+        "string_note": null,
+        "start_url_junglegym": "http://shop.junglegym.ai"
+    },
+    {
+        "sites": [
+            "reddit"
+        ],
+        "task_id": 27,
+        "require_login": true,
+        "storage_state": "./.auth/reddit_state.json",
+        "start_url": "http://forum.junglegym.ai",
+        "geolocation": "NaN",
+        "intent_template": "Tell me the count of comments that have received more downvotes than upvotes for the user who made the latest post on the {{forum}} forum.",
+        "instantiation_dict": {
+            "forum": "Showerthoughts"
+        },
+        "intent": "Tell me the count of comments that have received more downvotes than upvotes for the user who made the latest post on the Showerthoughts forum.",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "0"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "0"
+        },
+        "intent_template_id": 33,
+        "string_note": null,
+        "start_url_junglegym": "http://forum.junglegym.ai"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 43,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "List the top {{n}} search terms in my store",
+        "instantiation_dict": {
+            "n": "3"
+        },
+        "intent": "List the top 3 search terms in my store",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "hollister",
+                    "Joust Bag",
+                    "Antonia Race Tank"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "hollister, Joust Bag, Antonia Race Tank"
+        },
+        "intent_template_id": 285,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 77,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "What is the total count of {{status}} reviews amongst all the reviews?",
+        "instantiation_dict": {
+            "status": "Pending"
+        },
+        "intent": "What is the total count of Pending reviews amongst all the reviews?",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "5"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "5"
+        },
+        "intent_template_id": 277,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 95,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "Telll me the grand total of invoice {{id}}.",
+        "instantiation_dict": {
+            "id": "000000002"
+        },
+        "intent": "Telll me the grand total of invoice 000000002.",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "39.64"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "$39.64"
+        },
+        "intent_template_id": 274,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 107,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "Presents the monthly count of successful orders {{period}} in MM:COUNT format",
+        "instantiation_dict": {
+            "period": "from May to December 2022"
+        },
+        "intent": "Presents the monthly count of successful orders from May to December 2022 in MM:COUNT format",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "fuzzy_match": [
+                    "May: 8 orders",
+                    "June: 13 orders",
+                    "July: 9 orders",
+                    "August: 8 orders",
+                    "September: 10 orders",
+                    "October: 4 orders",
+                    "November: 5 orders",
+                    "December: 10 orders"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "May: 8 orders; June: 13 orders; July: 9 orders; August: 8 orders; September: 10 orders; October: 4 orders; November: 5 orders; December: 10 orders"
+        },
+        "intent_template_id": 270,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping_admin"
+        ],
+        "task_id": 112,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_admin_state.json",
+        "start_url": "http://cms.junglegym.ai/admin",
+        "geolocation": "NaN",
+        "intent_template": "Show me the customers who have expressed dissatisfaction with {{product}}?",
+        "instantiation_dict": {
+            "product": "Circe fleece"
+        },
+        "intent": "Show me the customers who have expressed dissatisfaction with Circe fleece?",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "exact_match": "Hannah Lim"
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "Hannah Lim"
+        },
+        "intent_template_id": 245,
+        "string_note": null,
+        "start_url_junglegym": "http://cms.junglegym.ai/admin"
+    },
+    {
+        "sites": [
+            "shopping"
+        ],
+        "task_id": 124,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_state.json",
+        "start_url": "http://shop.junglegym.ai",
+        "geolocation": "NaN",
+        "intent_template": "What is the price range of {{product}} in the One Stop Market?",
+        "instantiation_dict": {
+            "product": "wireless earphone"
+        },
+        "intent": "What is the price range of wireless earphone in the One Stop Market?",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "0.14",
+                    "745.00"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "$0.14 - $745.00"
+        },
+        "intent_template_id": 159,
+        "string_note": null,
+        "start_url_junglegym": "http://shop.junglegym.ai"
+    },
+    {
+        "sites": [
+            "gitlab"
+        ],
+        "task_id": 134,
+        "require_login": true,
+        "storage_state": "./.auth/gitlab_state.json",
+        "start_url": "http://git.junglegym.ai",
+        "geolocation": "NaN",
+        "intent_template": "How many commits did {{user}} make to {{repo}} on {{date}}?",
+        "instantiation_dict": {
+            "user": "kilian",
+            "repo": "a11yproject",
+            "date": "3/1/2023"
+        },
+        "intent": "How many commits did kilian make to a11yproject on 3/1/2023?",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "0"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "0"
+        },
+        "intent_template_id": 322,
+        "string_note": null,
+        "start_url_junglegym": "http://git.junglegym.ai"
+    },
+    {
+        "sites": [
+            "gitlab"
+        ],
+        "task_id": 136,
+        "require_login": true,
+        "storage_state": "./.auth/gitlab_state.json",
+        "start_url": "http://git.junglegym.ai",
+        "geolocation": "NaN",
+        "intent_template": "How many commits did {{user}} make to {{repo}} on {{date}}?",
+        "instantiation_dict": {
+            "user": "Steven Woodson",
+            "repo": "a11y-webring.club",
+            "date": "2/6/2023"
+        },
+        "intent": "How many commits did Steven Woodson make to a11y-webring.club on 2/6/2023?",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "5"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "5"
+        },
+        "intent_template_id": 322,
+        "string_note": null,
+        "start_url_junglegym": "http://git.junglegym.ai"
+    },
+    {
+        "sites": [
+            "shopping"
+        ],
+        "task_id": 163,
+        "require_login": true,
+        "storage_state": "./.auth/shopping_state.json",
+        "start_url": "http://shop.junglegym.ai/ostent-16gb-memory-card-stick-storage-for-sony-ps-vita-psv1000-2000-pch-z081-z161-z321-z641.html",
+        "geolocation": "NaN",
+        "intent_template": "What are the main criticisms of this product? Please extract the relevant sentences.",
+        "instantiation_dict": {},
+        "intent": "What are the main criticisms of this product? Please extract the relevant sentences.",
+        "require_reset": false,
+        "eval": {
+            "eval_types": [
+                "string_match"
+            ],
+            "reference_answers": {
+                "must_include": [
+                    "I ordered the 16gb but I only got 14 gigs even though I formatted the card",
+                    "The memory card is kind of slow on games and downloads",
+                    "No original packaging It's used and the previous owners data has not been erased",
+                    "The product is a legit sony hardware that have been owned by someone else before",
+                    "The media could not be loaded",
+                    "I could not format the card so I wasn’t able to use it for my VITA"
+                ]
+            },
+            "reference_url": "",
+            "program_html": [],
+            "string_note": "",
+            "reference_answer_raw_annotation": "I ordered the 16gb but I only got 14 gigs even though I formatted the card. The memory card is kind of slow on games and downloads. No original packaging It's used and the previous owners data has not been erased. The product is a legit sony hardware that have been owned by someone else before The media could not be loaded.  I could not format the card so I wasn’t able to use it for my VITA"
+        },
+        "intent_template_id": 136,
+        "string_note": null,
+        "start_url_junglegym": "http://shop.junglegym.ai"
+    }
+]

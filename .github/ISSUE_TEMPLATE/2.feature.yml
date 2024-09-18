@@ -1,17 +1,16 @@
 name: Feature request 🚀
-description: Suggest a new idea for Auto-GPT.
+description: Suggest a new idea for AutoGPT!
 labels: ['status: needs triage']
 body:
   - type: markdown
     attributes:
       value: |
+        First, check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing)
         Please provide a searchable summary of the issue in the title above ⬆️.
-
-        Thanks for contributing by creating an issue! ❤️
   - type: checkboxes
     attributes:
       label: Duplicates
-      description: Please [search the history](https://github.com/Torantulino/Auto-GPT/issues) to see if an issue already exists for the same problem.
+      description: Please [search the history](https://github.com/Significant-Gravitas/AutoGPT/issues) to see if an issue already exists for the same problem.
       options:
         - label: I have searched the existing issues
           required: true

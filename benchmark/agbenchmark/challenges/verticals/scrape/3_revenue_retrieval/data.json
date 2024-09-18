@@ -1,0 +1,31 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestBasicRetrieval"
+    ],
+    "eval_id": "dc2114d7-1597-4c9b-bed0-a97937ad977f",
+    "ground": {
+        "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
+        "should_contain": [
+            "81,462"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can retrieve Tesla's revenue in 2022.",
+        "difficulty": "intermediate",
+        "side_effects": []
+    },
+    "name": "RevenueRetrieval",
+    "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+}

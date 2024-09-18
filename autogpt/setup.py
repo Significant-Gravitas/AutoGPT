@@ -1,77 +1,99 @@
-"""Set up the AI and its goals"""
-from colorama import Fore, Style
+import platform
+from pathlib import Path
+from pkgutil import iter_modules
+from typing import Union
 
-from autogpt import utils
-from autogpt.config.ai_config import AIConfig
-from autogpt.logs import logger
+from cx_Freeze import Executable, setup  # type: ignore
+
+packages = [
+    m.name
+    for m in iter_modules()
+    if m.ispkg
+    and m.module_finder
+    and ("poetry" in m.module_finder.path)  # type: ignore
+]
+
+# set the icon based on the platform
+icon = "../../assets/gpt_dark_RGB.ico"
+if platform.system() == "Darwin":
+    icon = "../../assets/gpt_dark_RGB.icns"
+elif platform.system() == "Linux":
+    icon = "../../assets/gpt_dark_RGB.png"
 
 
-def prompt_user() -> AIConfig:
-    """Prompt the user for input
+def txt_to_rtf(input_file: Union[str, Path], output_file: Union[str, Path]) -> None:
+    """
+    Convert a text file to RTF format.
+
+    Args:
+    input_file (Union[str, Path]): Path to the input text file.
+    output_file (Union[str, Path]): Path to the output RTF file.
 
     Returns:
-        AIConfig: The AIConfig object containing the user's input
+    None
     """
-    ai_name = ""
-    # Construct the prompt
-    logger.typewriter_log(
-        "Welcome to Auto-GPT! ",
-        Fore.GREEN,
-        "run with '--help' for more information.",
-        speak_text=True,
-    )
+    input_path = Path(input_file)
+    output_path = Path(output_file)
 
-    logger.typewriter_log(
-        "Create an AI-Assistant:",
-        Fore.GREEN,
-        "Enter the name of your AI and its role below. Entering nothing will load"
-        " defaults.",
-        speak_text=True,
-    )
+    with input_path.open("r", encoding="utf-8") as txt_file:
+        content = txt_file.read()
 
-    # Get AI Name from User
-    logger.typewriter_log(
-        "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
-    )
-    ai_name = utils.clean_input("AI Name: ")
-    if ai_name == "":
-        ai_name = "Entrepreneur-GPT"
+    # RTF header
+    rtf = r"{\rtf1\ansi\deff0 {\fonttbl {\f0 Times New Roman;}}\f0\fs24 "
 
-    logger.typewriter_log(
-        f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
-    )
+    # Replace newlines with RTF newline
+    rtf += content.replace("\n", "\\par ")
 
-    # Get AI Role from User
-    logger.typewriter_log(
-        "Describe your AI's role: ",
-        Fore.GREEN,
-        "For example, 'an AI designed to autonomously develop and run businesses with"
-        " the sole goal of increasing your net worth.'",
-    )
-    ai_role = utils.clean_input(f"{ai_name} is: ")
-    if ai_role == "":
-        ai_role = "an AI designed to autonomously develop and run businesses with the"
-        " sole goal of increasing your net worth."
+    # Close RTF document
+    rtf += "}"
 
-    # Enter up to 5 goals for the AI
-    logger.typewriter_log(
-        "Enter up to 5 goals for your AI: ",
-        Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
-        " multiple businesses autonomously'",
-    )
-    print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
-    ai_goals = []
-    for i in range(5):
-        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
-        if ai_goal == "":
-            break
-        ai_goals.append(ai_goal)
-    if not ai_goals:
-        ai_goals = [
-            "Increase net worth",
-            "Grow Twitter Account",
-            "Develop and manage multiple businesses autonomously",
-        ]
+    with output_path.open("w", encoding="utf-8") as rtf_file:
+        rtf_file.write(rtf)
 
-    return AIConfig(ai_name, ai_role, ai_goals)
+
+# Convert LICENSE to LICENSE.rtf
+license_file = "LICENSE.rtf"
+txt_to_rtf("../LICENSE", license_file)
+
+
+setup(
+    executables=[
+        Executable(
+            "autogpt/__main__.py", target_name="autogpt", base="console", icon=icon
+        ),
+    ],
+    options={
+        "build_exe": {
+            "packages": packages,
+            "includes": [
+                "autogpt",
+                "spacy",
+                "spacy.lang",
+                "spacy.vocab",
+                "spacy.lang.lex_attrs",
+                "uvicorn.loops.auto",
+                "srsly.msgpack.util",
+                "blis",
+                "uvicorn.protocols.http.auto",
+                "uvicorn.protocols.websockets.auto",
+                "uvicorn.lifespan.on",
+            ],
+            "excludes": ["readability.compat.two"],
+        },
+        "bdist_mac": {
+            "bundle_name": "AutoGPT",
+            "iconfile": "../assets/gpt_dark_RGB.icns",
+            "include_resources": [""],
+        },
+        "bdist_dmg": {
+            "applications_shortcut": True,
+            "volume_label": "AutoGPT",
+        },
+        "bdist_msi": {
+            "target_name": "AutoGPT",
+            "add_to_path": True,
+            "install_icon": "../assets/gpt_dark_RGB.ico",
+            "license_file": license_file,
+        },
+    },
+)
