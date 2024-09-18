@@ -36,10 +36,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const providerIcons: Record<string, React.JSX.Element> = {
-  github: <FaGithub className="mr-2 h-4 w-4" />,
-  google: <FaGoogle className="mr-2 h-4 w-4" />,
-  notion: <NotionLogoIcon className="mr-2 h-4 w-4" />,
+const providerIcons: Record<string, React.FC<{ className?: string }>> = {
+  github: FaGithub,
+  google: FaGoogle,
+  notion: NotionLogoIcon,
 };
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & ({
@@ -53,7 +53,7 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 
 export const CredentialsInput: FC<{
   className?: string;
-  selectedCredentials?: string;
+  selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue: CredentialsMetaInput) => void;
 }> = ({
   className,
@@ -64,6 +64,7 @@ export const CredentialsInput: FC<{
   const credentials = useCredentials();
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] = useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
+  const [oAuthPopupController, setOAuthPopupController] = useState<AbortController | null>(null);
 
   if (!credentials) {
     return null;
@@ -83,10 +84,6 @@ export const CredentialsInput: FC<{
     savedOAuthCredentials,
   } = credentials;
 
-  const providerIcon = providerIcons[provider];
-
-  const [oAuthPopupController, setOAuthPopupController] = useState<AbortController | null>(null);
-
   async function handleOAuthLogin() {
     const { login_url, state_token } = await api.oAuthLogin(provider, schema.credentials_scopes);
     setOAuth2FlowInProgress(true);
@@ -94,7 +91,10 @@ export const CredentialsInput: FC<{
 
     const controller = new AbortController();
     setOAuthPopupController(controller);
-    controller.signal.onabort = () => setOAuth2FlowInProgress(false);
+    controller.signal.onabort = () => {
+      setOAuth2FlowInProgress(false);
+      popup?.close();
+    };
     popup?.addEventListener("message", async (e: MessageEvent<OAuthPopupResultMessage>) => {
       if (
         typeof e.data != "object"
@@ -123,6 +123,7 @@ export const CredentialsInput: FC<{
     }, 5*60*1000);
   }
 
+  const ProviderIcon = providerIcons[provider];
   const modals = <>
     {supportsApiKey && <APIKeyCredentialsModal
       open={isAPICredentialsModalOpen}
@@ -150,13 +151,13 @@ export const CredentialsInput: FC<{
       <div className={cn("flex flex-row space-x-2", className)}>
         {supportsOAuth2 && (
           <Button onClick={handleOAuthLogin}>
-            {providerIcon}
+            <ProviderIcon className="mr-2 h-4 w-4" />
             {"Sign in with " + providerName}
           </Button>
         )}
         {supportsApiKey && (
           <Button onClick={() => setAPICredentialsModalOpen(true)}>
-            {providerIcon}
+            <ProviderIcon className="mr-2 h-4 w-4" />
             Enter API key
           </Button>
         )}
@@ -187,7 +188,7 @@ export const CredentialsInput: FC<{
   // Saved credentials exist
   return <>
     <Select
-      defaultValue={selectedCredentials}
+      defaultValue={selectedCredentials?.id}
       onValueChange={handleValueChange}
     >
       <SelectTrigger>
@@ -195,29 +196,26 @@ export const CredentialsInput: FC<{
       </SelectTrigger>
       <SelectContent className="nodrag">
         {savedOAuthCredentials.map((credentials, index) => (
-          <SelectItem key={index} value={credentials.id} className="flex flex-row">
-            <span className="flex items-center">
-              <IconUser className="mr-2" /> {credentials.username}
-            </span>
+          <SelectItem key={index} value={credentials.id}>
+            <ProviderIcon className="h-4 w-4 inline mr-2" />
+            {credentials.username}
           </SelectItem>
         ))}
         {savedApiKeys.map((credentials, index) => (
-          <SelectItem key={index} value={credentials.id} className="flex flex-row">
-            <span className="flex items-center">
-              <IconKey className="mr-2" /> {credentials.username}
-            </span>
+          <SelectItem key={index} value={credentials.id}>
+            <ProviderIcon className="h-4 w-4 inline mr-2" />
+            <IconKey className="inline mr-1.5" />
+            {credentials.username}
           </SelectItem>
         ))}
         <SelectSeparator />
-        {supportsOAuth2 && <SelectItem value="sign-in" className="flex flex-row">
-          <span className="flex items-center">
-            <IconUserPlus className="mr-2" /> Sign in with {providerName}
-          </span>
+        {supportsOAuth2 && <SelectItem value="sign-in">
+          <IconUserPlus className="inline mr-1.5" />
+          Sign in with {providerName}
         </SelectItem>}
-        {supportsApiKey && <SelectItem value="add-api-key" className="flex flex-row">
-          <span className="flex items-center">
-            <IconKeyPlus className="mr-2" /> Add new API key
-          </span>
+        {supportsApiKey && <SelectItem value="add-api-key">
+          <IconKeyPlus className="inline mr-1.5" />
+          Add new API key
         </SelectItem>}
       </SelectContent>
     </Select>
@@ -362,7 +360,9 @@ export const OAuth2FlowWaitingModal: FC<{
         <DialogHeader>
           <DialogTitle>Waiting on {providerName} sign-in process...</DialogTitle>
           <DialogDescription>
-            Complete the sign-in process in the pop-up window
+            Complete the sign-in process in the pop-up window.
+            <br/>
+            Closing this dialog will cancel the sign-in process.
           </DialogDescription>
         </DialogHeader>
       </DialogContent>

@@ -127,7 +127,6 @@ export const NodeGenericInputField: FC<{
         value={currentValue}
         errors={errors}
         className={className}
-        handleInputClick={handleInputClick}
         handleInputChange={handleInputChange}
       />
     );
@@ -301,22 +300,18 @@ const NodeCredentialsInput: FC<{
   value: any;
   errors: { [key: string]: string | undefined };
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
-  handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
 }> = ({
   selfKey,
   value,
   errors,
   handleInputChange,
-  handleInputClick,
   className,
 }) => {
   return (
     <div className={cn("flex flex-col", className)}>
       <CredentialsInput
-        handleAddApiKey={() => handleInputClick(`${selfKey}.api_key`)}
-        handleOAuthLogin={() => handleInputClick(`${selfKey}.oauth`)}
-        onSelectCredentials={(id) => handleInputChange(selfKey, id)}
+        onSelectCredentials={(credsMeta) => handleInputChange(selfKey, credsMeta)}
         selectedCredentials={value}
       />
       {errors[selfKey] && (
