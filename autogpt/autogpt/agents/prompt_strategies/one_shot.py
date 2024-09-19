@@ -28,15 +28,27 @@ _RESPONSE_INTERFACE_NAME = "AssistantResponse"
 
 class AssistantThoughts(ModelWithSummary):
     observations: str = Field(
-        description="Relevant observations from your last action (if any)"
+        ..., description="Relevant observations from your last action (if any)"
     )
-    text: str = Field(description="Thoughts")
-    reasoning: str = Field(description="Reasoning behind the thoughts")
-    self_criticism: str = Field(description="Constructive self-criticism")
-    plan: list[str] = Field(description="Short list that conveys the long-term plan")
-    speak: str = Field(description="Summary of thoughts, to say to user")
+    text: str = Field(..., description="Thoughts")
+    reasoning: str = Field(..., description="Reasoning behind the thoughts")
+    self_criticism: str = Field(..., description="Constructive self-criticism")
+    plan: list[str] = Field(
+        ..., description="Short list that conveys the long-term plan"
+    )
+    speak: str = Field(..., description="Summary of thoughts, to say to user")
 
     def summary(self) -> str:
+        return self.text
+
+    def summaryv2(self) -> str:
+        "## Your Task\n"
+        text = "The user will specify a task for you to execute, in triple quotes,"
+        " in the next message. Your job is to complete the task while following"
+        " your directives as given above, and terminate when your task is done."
+
+        text += self.text
+        self.text = text
         return self.text
 
 
@@ -89,30 +101,28 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     )
 
     def __init__(
-        self,
-        configuration: OneShotAgentPromptConfiguration,
-        logger: Logger,
+            self,
+            configuration: OneShotAgentPromptConfiguration,
+            logger: Logger,
     ):
         self.config = configuration
-        self.response_schema = JSONSchema.from_dict(
-            OneShotAgentActionProposal.model_json_schema()
-        )
+        self.response_schema = JSONSchema.from_dict(OneShotAgentActionProposal.schema())
         self.logger = logger
 
     @property
-    def llm_classification(self) -> LanguageModelClassification:
+    def model_classification(self) -> LanguageModelClassification:
         return LanguageModelClassification.FAST_MODEL  # FIXME: dynamic switching
 
     def build_prompt(
-        self,
-        *,
-        messages: list[ChatMessage],
-        task: str,
-        ai_profile: AIProfile,
-        ai_directives: AIDirectives,
-        commands: list[CompletionModelFunction],
-        include_os_info: bool,
-        **extras,
+            self,
+            *,
+            messages: list[ChatMessage],
+            task: str,
+            ai_profile: AIProfile,
+            ai_directives: AIDirectives,
+            commands: list[CompletionModelFunction],
+            include_os_info: bool,
+            **extras,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
@@ -139,40 +149,33 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
 
     def build_system_prompt(
-        self,
-        ai_profile: AIProfile,
-        ai_directives: AIDirectives,
-        commands: list[CompletionModelFunction],
-        include_os_info: bool,
+            self,
+            ai_profile: AIProfile,
+            ai_directives: AIDirectives,
+            commands: list[CompletionModelFunction],
+            include_os_info: bool,
     ) -> tuple[str, str]:
-        """
-        Builds the system prompt.
-
-        Returns:
-            str: The system prompt body
-            str: The desired start for the LLM's response; used to steer the output
-        """
         response_fmt_instruction, response_prefill = self.response_format_instruction(
             self.config.use_functions_api
         )
         system_prompt_parts = (
-            self._generate_intro_prompt(ai_profile)
-            + (self._generate_os_info() if include_os_info else [])
-            + [
-                self.config.body_template.format(
-                    constraints=format_numbered_list(ai_directives.constraints),
-                    resources=format_numbered_list(ai_directives.resources),
-                    commands=self._generate_commands_list(commands),
-                    best_practices=format_numbered_list(ai_directives.best_practices),
-                )
-            ]
-            + [
-                "## Your Task\n"
-                "The user will specify a task for you to execute, in triple quotes,"
-                " in the next message. Your job is to complete the task while following"
-                " your directives as given above, and terminate when your task is done."
-            ]
-            + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
+                self._generate_intro_prompt(ai_profile)
+                + (self._generate_os_info() if include_os_info else [])
+                + [
+                    self.config.body_template.format(
+                        constraints=format_numbered_list(ai_directives.constraints),
+                        resources=format_numbered_list(ai_directives.resources),
+                        commands=self._generate_commands_list(commands),
+                        best_practices=format_numbered_list(ai_directives.best_practices),
+                    )
+                ]
+                + [
+                    "## Your Task\n"
+                    "The user will specify a task for you to execute, in triple quotes,"
+                    " in the next message. Your job is to complete the task while following"
+                    " your directives as given above, and terminate when your task is done."
+                ]
+                + ["## RESPONSE FORMAT\n" + response_fmt_instruction]
         )
 
         # Join non-empty parts together into paragraph format
@@ -182,7 +185,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
 
     def response_format_instruction(self, use_functions_api: bool) -> tuple[str, str]:
-        response_schema = self.response_schema.model_copy(deep=True)
+        response_schema = self.response_schema.copy(deep=True)
         assert response_schema.properties
         if use_functions_api and "use_tool" in response_schema.properties:
             del response_schema.properties["use_tool"]
@@ -197,9 +200,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
         return (
             (
-                f"YOU MUST ALWAYS RESPOND WITH A JSON OBJECT OF THE FOLLOWING TYPE:\n"
-                f"{response_format}"
-                + ("\n\nYOU MUST ALSO INVOKE A TOOL!" if use_functions_api else "")
+                    f"YOU MUST ALWAYS RESPOND WITH A JSON OBJECT OF THE FOLLOWING TYPE:\n"
+                    f"{response_format}"
+                    + ("\n\nYOU MUST ALSO INVOKE A TOOL!" if use_functions_api else "")
             ),
             response_prefill,
         )
@@ -250,13 +253,13 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             raise
 
     def parse_response_content(
-        self,
-        response: AssistantChatMessage,
+            self,
+            response: AssistantChatMessage,
     ) -> OneShotAgentActionProposal:
         if not response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
-        self.logger.debug(
+        self.logger.info(
             "LLM response content:"
             + (
                 f"\n{response.content}"
@@ -274,8 +277,5 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 raise InvalidAgentResponseError("Assistant did not use a tool")
             assistant_reply_dict["use_tool"] = response.tool_calls[0].function
 
-        parsed_response = OneShotAgentActionProposal.model_validate(
-            assistant_reply_dict
-        )
-        parsed_response.raw_message = response.copy()
+        parsed_response = OneShotAgentActionProposal.parse_obj(assistant_reply_dict)
         return parsed_response
