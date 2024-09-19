@@ -1,10 +1,21 @@
 import inspect
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast, get_origin
+from typing import (
+    Any,
+    ClassVar,
+    Generator,
+    Generic,
+    Optional,
+    Type,
+    TypeVar,
+    cast,
+    get_origin,
+)
 
 import jsonref
 import jsonschema
+from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
@@ -186,6 +197,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockData | list[BlockData] | None = None,
         test_mock: dict[str, Any] | None = None,
+        test_credentials: Optional[Credentials] = None,
         disabled: bool = False,
         static_output: bool = False,
         ui_type: BlockUIType = BlockUIType.STANDARD,
@@ -213,6 +225,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.test_input = test_input
         self.test_output = test_output
         self.test_mock = test_mock
+        self.test_credentials = test_credentials
         self.description = description
         self.categories = categories or set()
         self.contributors = contributors or set()

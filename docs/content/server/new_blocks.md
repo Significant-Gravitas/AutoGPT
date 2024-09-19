@@ -124,6 +124,7 @@ from autogpt_server.data.block import Block, BlockOutput, BlockSchema
 from autogpt_server.data.model import CredentialsField
 
 
+# API Key auth:
 class BlockWithAPIKeyAuth(Block):
     class Input(BlockSchema):
         credentials = CredentialsField(
@@ -145,7 +146,7 @@ class BlockWithAPIKeyAuth(Block):
     ) -> BlockOutput:
         ...
 
-
+# OAuth:
 class BlockWithOAuth(Block):
     class Input(BlockSchema):
         credentials = CredentialsField(
@@ -166,7 +167,7 @@ class BlockWithOAuth(Block):
     ) -> BlockOutput:
         ...
 
-
+# API Key auth + OAuth:
 class BlockWithAPIKeyAndOAuth(Block):
     class Input(BlockSchema):
         credentials = CredentialsField(
@@ -255,7 +256,8 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 
 The testing of blocks is handled by `test_block.py`, which does the following:
 
-1. It calls the block with the provided `test_input`.
+1. It calls the block with the provided `test_input`.  
+   If the block has a `credentials` field, `test_credentials` is passed in as well.
 2. If a `test_mock` is provided, it temporarily replaces the specified methods with the mock functions.
 3. It then asserts that the output matches the `test_output`.
 

@@ -6,6 +6,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
     APIKeyCredentials,
     OAuth2Credentials,
 )
+from pydantic import SecretStr
 
 from autogpt_server.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from autogpt_server.data.model import (
@@ -36,6 +37,21 @@ def GithubCredentialsField(scope: str) -> GithubCredentialsInput:
     )
 
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="github",
+    api_key=SecretStr("mock-github-api-key"),
+    title="Mock GitHub API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
+
 class GithubCommentBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -64,10 +80,9 @@ class GithubCommentBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "comment": "This is a test comment.",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Comment posted successfully")],
             test_mock={
                 "post_comment": lambda *args, **kwargs: "Comment posted successfully"
@@ -154,10 +169,9 @@ class GithubMakeIssueBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "title": "Test Issue",
                 "body": "This is a test issue.",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Issue created successfully")],
             test_mock={
                 "create_issue": lambda *args, **kwargs: "Issue created successfully"
@@ -247,10 +261,9 @@ class GithubMakePRBlock(Block):
                 "body": "This is a test pull request.",
                 "head": "feature-branch",
                 "base": "main",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Pull request created successfully")],
             test_mock={
                 "create_pr": lambda *args, **kwargs: "Pull request created successfully"
@@ -334,10 +347,9 @@ class GithubReadIssueBlock(Block):
             output_schema=GithubReadIssueBlock.Output,
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("title", "Title of the issue"),
                 ("body", "This is the body of the issue."),
@@ -425,11 +437,10 @@ class GithubReadPRBlock(Block):
             output_schema=GithubReadPRBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
                 "include_pr_changes": True,
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("title", "Title of the pull request"),
                 ("body", "This is the body of the pull request."),
@@ -554,10 +565,9 @@ class GithubListIssuesBlock(Block):
             output_schema=GithubListIssuesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "issues",
@@ -642,10 +652,9 @@ class GithubReadTagsBlock(Block):
             output_schema=GithubReadTagsBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "tags",
@@ -735,10 +744,9 @@ class GithubReadBranchesBlock(Block):
             output_schema=GithubReadBranchesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "branches",
@@ -831,11 +839,10 @@ class GithubReadDiscussionsBlock(Block):
             output_schema=GithubReadDiscussionsBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
                 "num_discussions": 3,
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "discussions",
@@ -938,10 +945,9 @@ class GithubReadReleasesBlock(Block):
             output_schema=GithubReadReleasesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "releases",
@@ -1033,10 +1039,9 @@ class GithubAddLabelBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "label": "bug",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Label added successfully")],
             test_mock={"add_label": lambda *args, **kwargs: "Label added successfully"},
         )
@@ -1121,10 +1126,9 @@ class GithubRemoveLabelBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "label": "bug",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Label removed successfully")],
             test_mock={
                 "remove_label": lambda *args, **kwargs: "Label removed successfully"
@@ -1213,10 +1217,9 @@ class GithubAssignReviewerBlock(Block):
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "reviewer": "reviewer_username",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Reviewer assigned successfully")],
             test_mock={
                 "assign_reviewer": lambda *args, **kwargs: "Reviewer assigned successfully"
@@ -1308,10 +1311,9 @@ class GithubUnassignReviewerBlock(Block):
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "reviewer": "reviewer_username",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Reviewer unassigned successfully")],
             test_mock={
                 "unassign_reviewer": lambda *args, **kwargs: "Reviewer unassigned successfully"
@@ -1385,10 +1387,9 @@ class GithubListReviewersBlock(Block):
             output_schema=GithubListReviewersBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "reviewers",
@@ -1486,10 +1487,9 @@ class GithubAssignIssueBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "assignee": "username1",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Issue assigned successfully")],
             test_mock={
                 "assign_issue": lambda *args, **kwargs: "Issue assigned successfully"
@@ -1572,10 +1572,9 @@ class GithubUnassignIssueBlock(Block):
             test_input={
                 "issue_url": "https://github.com/owner/repo/issues/1",
                 "assignee": "username1",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Issue unassigned successfully")],
             test_mock={
                 "unassign_issue": lambda *args, **kwargs: "Issue unassigned successfully"
@@ -1651,10 +1650,9 @@ class GithubReadCodeownersFileBlock(Block):
             output_schema=GithubReadCodeownersFileBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("codeowners_content", "# CODEOWNERS content")],
             test_mock={
                 "read_codeowners": lambda *args, **kwargs: "# CODEOWNERS content"
@@ -1726,10 +1724,9 @@ class GithubReadFileFromMasterBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "file_path": "path/to/file",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("file_content", "File content")],
             test_mock={"read_file": lambda *args, **kwargs: "File content"},
         )
@@ -1805,10 +1802,9 @@ class GithubReadFileFolderRepoBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "path": "path/to/file_or_folder",
                 "branch": "branch_name",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("content", "File or folder content")],
             test_mock={
                 "read_content": lambda *args, **kwargs: "File or folder content"
@@ -1895,10 +1891,9 @@ class GithubMakeBranchBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "new_branch": "new_branch_name",
                 "source_branch": "source_branch_name",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Branch created successfully")],
             test_mock={
                 "create_branch": lambda *args, **kwargs: "Branch created successfully"
@@ -1984,10 +1979,9 @@ class GithubDeleteBranchBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "branch": "branch_name",
-                "credentials": {
-                    "github_oauth_token": "your-github-oauth-token",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Branch deleted successfully")],
             test_mock={
                 "delete_branch": lambda *args, **kwargs: "Branch deleted successfully"
