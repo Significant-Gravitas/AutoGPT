@@ -29,13 +29,13 @@ Sentry.init({
     /^https:\/\/dev\-builder\.agpt\.co\/api/,
   ],
 
-  beforeSend(event, hint) {
-    // Check if it is an exception, and if so, show the report dialog
-    if (event.exception && event.event_id) {
-      Sentry.showReportDialog({ eventId: event.event_id });
-    }
-    return event;
-  },
+  // beforeSend(event, hint) {
+  //   // Check if it is an exception, and if so, show the report dialog
+  //   if (event.exception && event.event_id) {
+  //     Sentry.showReportDialog({ eventId: event.event_id });
+  //   }
+  //   return event;
+  // },
 
   // Define how likely Replay events are sampled.
   // This sets the sample rate to be 10%. You may want this to be 100% while

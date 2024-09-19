@@ -2,14 +2,14 @@ name: AutoGPT Builder CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
     paths:
-      - '.github/workflows/autogpt-builder-ci.yml'
-      - 'rnd/autogpt_builder/**'
+      - ".github/workflows/autogpt-builder-ci.yml"
+      - "rnd/autogpt_builder/**"
   pull_request:
     paths:
-      - '.github/workflows/autogpt-builder-ci.yml'
-      - 'rnd/autogpt_builder/**'
+      - ".github/workflows/autogpt-builder-ci.yml"
+      - "rnd/autogpt_builder/**"
 
 defaults:
   run:
@@ -17,25 +17,38 @@ defaults:
     working-directory: rnd/autogpt_builder
 
 jobs:
-
   lint:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '21'
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
 
-    - name: Install dependencies
-      run: |
-        npm install
+      - name: Install dependencies
+        run: |
+          npm install
 
-    - name: Check formatting with Prettier
-      run: |
-        npx prettier --check .
+      - name: Check formatting with Prettier
+        run: |
+          npx prettier --check .
 
-    - name: Run lint
-      run: |
-        npm run lint
+      - name: Run lint
+        run: |
+          npm run lint
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run tests
+        run: |
+          npm run test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
