@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -84,15 +84,31 @@ class ExecutionMeta(BaseDbModel):
     execution_id: str
     started_at: datetime
     ended_at: datetime
+    duration: float
+    total_run_time: float
     status: autogpt_server.data.execution.ExecutionStatus
 
     @staticmethod
-    def from_db(execution: AgentGraphExecution):
+    def from_agent_graph_execution(execution: AgentGraphExecution):
+        now = datetime.now(timezone.utc)
+        start_time = execution.startedAt or execution.createdAt
+        end_time = execution.updatedAt or now
+        duration = (end_time - start_time).total_seconds()
+
+        total_run_time = 0
+        if execution.AgentNodeExecutions:
+            for node_execution in execution.AgentNodeExecutions:
+                node_start = node_execution.startedTime or now
+                node_end = node_execution.endedTime or now
+                total_run_time += (node_end - node_start).total_seconds()
+
         return ExecutionMeta(
             id=execution.id,
             execution_id=execution.id,
-            started_at=execution.createdAt,
-            ended_at=execution.updatedAt or execution.createdAt,
+            started_at=start_time,
+            ended_at=end_time,
+            duration=duration,
+            total_run_time=total_run_time,
             status=autogpt_server.data.execution.ExecutionStatus(
                 execution.executionStatus
             ),
@@ -103,17 +119,15 @@ class GraphMeta(BaseDbModel):
     version: int = 1
     is_active: bool = True
     is_template: bool = False
-
     name: str
     description: str
-
     executions: list[ExecutionMeta] = []
 
     @staticmethod
     def from_db(graph: AgentGraph):
         if graph.AgentGraphExecution:
             executions = [
-                ExecutionMeta.from_db(execution)
+                ExecutionMeta.from_agent_graph_execution(execution)
                 for execution in graph.AgentGraphExecution
             ]
         else:
@@ -371,6 +385,7 @@ async def get_node(node_id: str) -> Node:
 
 
 async def get_graphs_meta(
+    include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
     user_id: str | None = None,
 ) -> list[GraphMeta]:
@@ -379,6 +394,7 @@ async def get_graphs_meta(
     Default behaviour is to get all currently active graphs.
 
     Args:
+        include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
 
     Returns:
@@ -398,7 +414,13 @@ async def get_graphs_meta(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=AgentGraphInclude(AgentGraphExecution=True),
+        include=(
+            AgentGraphInclude(
+                AgentGraphExecution={"include": {"AgentNodeExecutions": True}}
+            )
+            if include_executions
+            else None
+        ),  # type: ignore
     )
 
     if not graphs:

@@ -44,8 +44,8 @@ export default class BaseAutoGPTServerAPI {
     return await this._get("/blocks");
   }
 
-  async listGraphs(): Promise<GraphMeta[]> {
-    return this._get("/graphs");
+  async listGraphs(with_runs: boolean = false): Promise<GraphMeta[]> {
+    return this._get(`/graphs?with_runs=${with_runs}`);
   }
 
   async listTemplates(): Promise<GraphMeta[]> {
