@@ -89,6 +89,8 @@ services:
     extends:
       file: ./supabase/docker/docker-compose.yml
       service: auth
+    environment:
+      GOTRUE_MAILER_AUTOCONFIRM: true
 
   rest:
     <<: *supabase-services
