@@ -14,12 +14,17 @@ Welcome to the AutoGPT Platform - a powerful system for creating and running AI 
 To run the AutoGPT Platform, follow these steps:
 
 1. Clone this repository to your local machine.
-2. Navigate to the project directory.
+2. Navigate to rnd/supabase
 3. Run the following command:
+   ```
+      git submodule update --init --recursive
+   ```
+4. Navigate back to rnd (cd ..)
+5. Run the following command:
    ```
       cp supabase/docker/.env.example .env
    ```
-4. Run the following command:
+6. Run the following command:
 
    ```
    docker compose -f docker-compose.combined.yml up -d
@@ -27,12 +32,12 @@ To run the AutoGPT Platform, follow these steps:
    ```
 
    This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
-5. Navigate to rnd/autogpt_builder.
-6. Run the following command: 
+7. Navigate to rnd/autogpt_builder.
+8. Run the following command: 
    ```
       cp .env.example .env.local
    ```
-7. Run the following command: 
+9. Run the following command: 
    ```
       yarn dev
    ```

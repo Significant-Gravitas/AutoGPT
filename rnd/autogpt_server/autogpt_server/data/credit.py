@@ -15,6 +15,7 @@ from autogpt_server.blocks.llm import (
     AIStructuredResponseGeneratorBlock,
     AITextGeneratorBlock,
     AITextSummarizerBlock,
+    LlmModel,
 )
 from autogpt_server.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from autogpt_server.data.block import Block, BlockInput
@@ -57,6 +58,12 @@ llm_cost = [
         cost_amount=metadata.cost_factor,
     )
     for model, metadata in MODEL_METADATA.items()
+] + [
+    BlockCost(
+        # Default cost is running LlmModel.GPT4O.
+        cost_amount=MODEL_METADATA[LlmModel.GPT4O].cost_factor,
+        cost_filter={"api_key": None},
+    ),
 ]
 
 BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
@@ -175,7 +182,11 @@ class UserCredit(UserCreditBase):
             return 0, {}
 
         for block_cost in block_costs:
-            if all(input_data.get(k) == b for k, b in block_cost.cost_filter.items()):
+            if all(
+                # None, [], {}, "", are considered the same value.
+                input_data.get(k) == b or (not input_data.get(k) and not b)
+                for k, b in block_cost.cost_filter.items()
+            ):
                 if block_cost.cost_type == BlockCostType.RUN:
                     return block_cost.cost_amount, block_cost.cost_filter
 
