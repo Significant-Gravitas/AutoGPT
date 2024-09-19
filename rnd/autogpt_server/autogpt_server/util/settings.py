@@ -133,7 +133,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
     supabase_url: str = Field(default="", description="Supabase URL")
-    supabase_key: str = Field(default="", description="Supabase key")
+    supabase_service_key: str = Field(
+        default="", description="Supabase service role key"
+    )
 
     # OAuth server credentials for integrations
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")

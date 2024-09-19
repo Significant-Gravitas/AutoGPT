@@ -81,7 +81,9 @@ class AppService(AppProcess):
             from supabase import create_client
 
             secrets = Secrets()
-            self.supabase = create_client(secrets.supabase_url, secrets.supabase_key)
+            self.supabase = create_client(
+                secrets.supabase_url, secrets.supabase_service_key
+            )
 
         # Initialize the async loop.
         async_thread = threading.Thread(target=self.__start_async_loop)
