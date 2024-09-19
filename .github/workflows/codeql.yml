@@ -43,7 +43,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - language: javascript-typescript
+        - language: typescript
           build-mode: none
         - language: python
           build-mode: none
