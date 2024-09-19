@@ -3,7 +3,7 @@ import logging
 from colorama import Fore, Style
 from google.cloud.logging_v2.handlers import CloudLoggingFilter, StructuredLogHandler
 
-from .utils import remove_color_codes
+from .utils import remove_color_codesv2
 
 
 class FancyConsoleFormatter(logging.Formatter):
@@ -64,7 +64,7 @@ class ForgeFormatter(FancyConsoleFormatter):
 
         # Strip color from the message to prevent color spoofing
         if record.msg and not getattr(record, "preserve_color", False):
-            record.msg = remove_color_codes(record.msg)
+            record.msg = remove_color_codesv2(record.msg)
 
         # Determine color for title
         title = getattr(record, "title", "")
@@ -77,7 +77,7 @@ class ForgeFormatter(FancyConsoleFormatter):
         record.title = f"{title} " if title else ""
 
         if self.no_color:
-            return remove_color_codes(super().format(record))
+            return remove_color_codesv2(super().format(record))
         else:
             return super().format(record)
 
