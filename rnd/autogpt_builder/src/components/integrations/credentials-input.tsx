@@ -354,7 +354,7 @@ export const APIKeyCredentialsModal: FC<{
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name (Optional)</FormLabel>
+                  <FormLabel>Name</FormLabel>
                   <FormControl>
                     <Input
                       type="text"
