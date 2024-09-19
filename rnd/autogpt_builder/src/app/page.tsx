@@ -114,8 +114,8 @@ function flowRunFromExecutionMeta(
     graphID: graphMeta.id,
     graphVersion: graphMeta.version,
     status,
-    startTime: executionMeta.started_at.getTime(),
-    endTime: executionMeta.ended_at.getTime(),
+    startTime: new Date(executionMeta.started_at).getTime(),
+    endTime: executionMeta.ended_at ? new Date(executionMeta.ended_at).getTime() : undefined,
     duration: executionMeta.duration,
     totalRunTime: executionMeta.total_run_time,
   } as FlowRun;
