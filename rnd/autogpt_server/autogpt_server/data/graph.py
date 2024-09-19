@@ -394,6 +394,7 @@ async def get_graphs_meta(
     Default behaviour is to get all currently active graphs.
 
     Args:
+        include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
 
     Returns:
@@ -409,19 +410,15 @@ async def get_graphs_meta(
     if user_id and filter_by != "template":
         where_clause["userId"] = user_id
 
-    if include_executions:
-        graphs = await AgentGraph.prisma().find_many(
-            where=where_clause,
-            distinct=["id"],
-            order={"version": "desc"},
-            include=AgentGraphInclude(AgentGraphExecution={"include": {"AgentNodeExecutions": True}}),  # type: ignore
-        )
-    else:
-        graphs = await AgentGraph.prisma().find_many(
-            where=where_clause,
-            distinct=["id"],
-            order={"version": "desc"},
-        )
+    graphs = await AgentGraph.prisma().find_many(
+        where=where_clause,
+        distinct=["id"],
+        order={"version": "desc"},
+        include=AgentGraphInclude(
+            AgentGraphExecution={"include": {"AgentNodeExecutions": True}}) 
+            if include_executions 
+            else None,  # type: ignore
+    )
 
     if not graphs:
         return []
