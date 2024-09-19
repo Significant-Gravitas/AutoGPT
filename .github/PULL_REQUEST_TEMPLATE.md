@@ -6,7 +6,10 @@
 
 <!-- Concisely describe all of the changes made in this pull request: -->
 
+
 ### Testing 🔍
+[!NOTE] 
+Only for the new autogpt platform, currently in rnd/
 
 <!--
 Please confirm you have tested our critical paths
