@@ -35,6 +35,14 @@ export default class BaseAutoGPTServerAPI {
     this.supabaseClient = supabaseClient;
   }
 
+  async isAuthenticated(): Promise<boolean> {
+    if (!this.supabaseClient) return false;
+    const {
+      data: { session },
+    } = await this.supabaseClient?.auth.getSession();
+    return session != null;
+  }
+
   async createUser(): Promise<User> {
     return this._request("POST", "/auth/user", {});
   }

@@ -117,34 +117,41 @@ export default function CredentialsProvider({
   );
 
   useEffect(() => {
-    CREDENTIALS_PROVIDER_NAMES.forEach((provider) => {
-      api.listCredentials(provider).then((response) => {
-        const { oauthCreds, apiKeys } = response.reduce<{
-          oauthCreds: CredentialsMetaResponse[];
-          apiKeys: CredentialsMetaResponse[];
-        }>(
-          (acc, cred) => {
-            if (cred.type === "oauth2") {
-              acc.oauthCreds.push(cred);
-            } else if (cred.type === "api_key") {
-              acc.apiKeys.push(cred);
-            }
-            return acc;
-          },
-          { oauthCreds: [], apiKeys: [] },
-        );
+    api.isAuthenticated().then((isAuthenticated) => {
+      if (!isAuthenticated) return;
 
-        setProviders((prev) => ({
-          ...prev,
-          [provider]: {
-            provider,
-            providerName: providerDisplayNames[provider],
-            savedApiKeys: apiKeys,
-            savedOAuthCredentials: oauthCreds,
-            oAuthCallback: (code: string, state_token: string) => oAuthCallback(provider, code, state_token),
-            createAPIKeyCredentials: (credentials: APIKeyCredentialsCreatable) => createAPIKeyCredentials(provider, credentials),
-          },
-        }));
+      CREDENTIALS_PROVIDER_NAMES.forEach((provider) => {
+        api.listCredentials(provider).then((response) => {
+          const { oauthCreds, apiKeys } = response.reduce<{
+            oauthCreds: CredentialsMetaResponse[];
+            apiKeys: CredentialsMetaResponse[];
+          }>(
+            (acc, cred) => {
+              if (cred.type === "oauth2") {
+                acc.oauthCreds.push(cred);
+              } else if (cred.type === "api_key") {
+                acc.apiKeys.push(cred);
+              }
+              return acc;
+            },
+            { oauthCreds: [], apiKeys: [] },
+          );
+
+          setProviders((prev) => ({
+            ...prev,
+            [provider]: {
+              provider,
+              providerName: providerDisplayNames[provider],
+              savedApiKeys: apiKeys,
+              savedOAuthCredentials: oauthCreds,
+              oAuthCallback: (code: string, state_token: string) =>
+                oAuthCallback(provider, code, state_token),
+              createAPIKeyCredentials: (
+                credentials: APIKeyCredentialsCreatable,
+              ) => createAPIKeyCredentials(provider, credentials),
+            },
+          }));
+        });
       });
     });
   }, [api, createAPIKeyCredentials, oAuthCallback]);
