@@ -414,10 +414,13 @@ async def get_graphs_meta(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=AgentGraphInclude(
-            AgentGraphExecution={"include": {"AgentNodeExecutions": True}}) 
-            if include_executions 
-            else None,  # type: ignore
+        include=(
+            AgentGraphInclude(
+                AgentGraphExecution={"include": {"AgentNodeExecutions": True}}
+            )
+            if include_executions
+            else None
+        ),  # type: ignore
     )
 
     if not graphs:
