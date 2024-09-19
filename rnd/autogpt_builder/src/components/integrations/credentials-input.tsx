@@ -91,6 +91,7 @@ export const CredentialsInput: FC<{
     supportsOAuth2,
     savedApiKeys,
     savedOAuthCredentials,
+    oAuthCallback,
   } = credentials;
 
   async function handleOAuthLogin() {
@@ -126,11 +127,7 @@ export const CredentialsInput: FC<{
 
         if (e.data.state !== state_token) return;
 
-        const credentials = await api.oAuthCallback(
-          provider,
-          e.data.code,
-          e.data.state,
-        );
+        const credentials = await oAuthCallback(e.data.code, e.data.state);
         onSelectCredentials({
           id: credentials.id,
           type: "oauth2",
@@ -157,13 +154,8 @@ export const CredentialsInput: FC<{
         <APIKeyCredentialsModal
           open={isAPICredentialsModalOpen}
           onClose={() => setAPICredentialsModalOpen(false)}
-          onCredentialsCreate={(creds) => {
-            onSelectCredentials({
-              id: creds.id,
-              type: "api_key",
-              provider: creds.provider,
-              title: creds.title,
-            });
+          onCredentialsCreate={(credsMeta) => {
+            onSelectCredentials(credsMeta);
             setAPICredentialsModalOpen(false);
           }}
         />
@@ -269,14 +261,13 @@ export const CredentialsInput: FC<{
 export const APIKeyCredentialsModal: FC<{
   open: boolean;
   onClose: () => void;
-  onCredentialsCreate: (creds: APIKeyCredentials) => void;
+  onCredentialsCreate: (creds: CredentialsMetaInput) => void;
 }> = ({ open, onClose, onCredentialsCreate }) => {
   const credentials = useCredentials();
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const formSchema = z.object({
     apiKey: z.string().min(1, "API Key is required"),
-    title: z.string().optional(),
+    title: z.string().min(1, "Name is required"),
     expiresAt: z.string().optional(),
   });
 
@@ -293,19 +284,24 @@ export const APIKeyCredentialsModal: FC<{
     return null;
   }
 
-  const { schema, provider, providerName } = credentials;
+  const { schema, provider, providerName, createAPIKeyCredentials } =
+    credentials;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const expiresAt = values.expiresAt
       ? new Date(values.expiresAt).getTime() / 1000
       : undefined;
-    const newCredentials = await api.createAPIKeyCredentials({
-      provider,
+    const newCredentials = await createAPIKeyCredentials({
       api_key: values.apiKey,
       title: values.title,
       expires_at: expiresAt,
     });
-    onCredentialsCreate(newCredentials);
+    onCredentialsCreate({
+      provider,
+      id: newCredentials.id,
+      type: "api_key",
+      title: newCredentials.title,
+    });
   }
 
   return (

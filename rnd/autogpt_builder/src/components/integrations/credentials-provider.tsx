@@ -1,7 +1,7 @@
 import AutoGPTServerAPI, {
+  APIKeyCredentials,
   CredentialsMetaResponse,
 } from "@/lib/autogpt-server-api";
-import { useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -14,12 +14,29 @@ const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
 
 type CredentialsProviderName = (typeof CREDENTIALS_PROVIDER_NAMES)[number];
 
+const providerDisplayNames: Record<CredentialsProviderName, string> = {
+  github: "GitHub",
+  google: "Google",
+  notion: "Notion",
+};
+
+type APIKeyCredentialsCreatable = Omit<
+  APIKeyCredentials,
+  "id" | "provider" | "type"
+>;
+
 export type CredentialsProviderData = {
   provider: string;
   providerName: string;
   savedApiKeys: CredentialsMetaResponse[];
   savedOAuthCredentials: CredentialsMetaResponse[];
-  oAuthLogin: (scopes?: string[]) => Promise<void>;
+  oAuthCallback: (
+    code: string,
+    state_token: string,
+  ) => Promise<CredentialsMetaResponse>;
+  createAPIKeyCredentials: (
+    credentials: APIKeyCredentialsCreatable,
+  ) => Promise<CredentialsMetaResponse>;
 };
 
 export type CredentialsProvidersContextType = {
@@ -34,16 +51,70 @@ export default function CredentialsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
-  const providerName: Record<CredentialsProviderName, string> = {
-    github: "GitHub",
-    google: "Google",
-    notion: "Notion",
-  };
+  const addCredentials = useCallback(
+    (
+      provider: CredentialsProviderName,
+      credentials: CredentialsMetaResponse,
+    ) => {
+      setProviders((prev) => {
+        if (!prev || !prev[provider]) return prev;
+
+        const updatedProvider = { ...prev[provider] };
+
+        if (credentials.type === "api_key") {
+          updatedProvider.savedApiKeys = [
+            ...updatedProvider.savedApiKeys,
+            credentials,
+          ];
+        } else if (credentials.type === "oauth2") {
+          updatedProvider.savedOAuthCredentials = [
+            ...updatedProvider.savedOAuthCredentials,
+            credentials,
+          ];
+        }
+
+        return {
+          ...prev,
+          [provider]: updatedProvider,
+        };
+      });
+    },
+    [setProviders],
+  );
+
+  /** Wraps `AutoGPTServerAPI.oAuthCallback`, and adds the result to the internal credentials store. */
+  const oAuthCallback = useCallback(
+    async (
+      provider: CredentialsProviderName,
+      code: string,
+      state_token: string,
+    ): Promise<CredentialsMetaResponse> => {
+      const credsMeta = await api.oAuthCallback(provider, code, state_token);
+      addCredentials(provider, credsMeta);
+      return credsMeta;
+    },
+    [api, addCredentials],
+  );
+
+  /** Wraps `AutoGPTServerAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
+  const createAPIKeyCredentials = useCallback(
+    async (
+      provider: CredentialsProviderName,
+      credentials: APIKeyCredentialsCreatable,
+    ): Promise<CredentialsMetaResponse> => {
+      const credsMeta = await api.createAPIKeyCredentials({
+        provider,
+        ...credentials,
+      });
+      addCredentials(provider, credsMeta);
+      return credsMeta;
+    },
+    [api, addCredentials],
+  );
 
   useEffect(() => {
     CREDENTIALS_PROVIDER_NAMES.forEach((provider) => {
@@ -67,23 +138,16 @@ export default function CredentialsProvider({
           ...prev,
           [provider]: {
             provider,
-            providerName: providerName[provider],
+            providerName: providerDisplayNames[provider],
             savedApiKeys: apiKeys,
             savedOAuthCredentials: oauthCreds,
-            oAuthLogin: (scopes?: string[]) => oAuthLogin(provider, scopes),
+            oAuthCallback: (code: string, state_token: string) => oAuthCallback(provider, code, state_token),
+            createAPIKeyCredentials: (credentials: APIKeyCredentialsCreatable) => createAPIKeyCredentials(provider, credentials),
           },
         }));
       });
     });
-  }, [api]);
-
-  const oAuthLogin = useCallback(
-    async (provider: CredentialsProviderName, scopes?: string[]) => {
-      const { login_url } = await api.oAuthLogin(provider, scopes);
-      router.push(login_url);
-    },
-    [api],
-  );
+  }, [api, createAPIKeyCredentials, oAuthCallback]);
 
   return (
     <CredentialsProvidersContext.Provider value={providers}>
