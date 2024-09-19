@@ -9,7 +9,8 @@
     "lint": "next lint",
     "format": "prettier --write .",
     "test": "playwright test",
-    "test-ui": "playwright test --ui"
+    "test-ui": "playwright test --ui",
+    "prepTests": "docker compose up -d && npm run build && npm run start"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
