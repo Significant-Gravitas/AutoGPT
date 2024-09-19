@@ -39,6 +39,35 @@ jobs:
         run: |
           npm run lint
 
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Copy default supabase .env
+        run: |
+          cp ../supabase/docker/.env.example ../.env
+
+      - name: Run docker compose
+        run: |
+          docker compose -f docker-compose.combined.yml up -d
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Setup Builder .env
+        run: |
+          cp .env.example .env
+
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
 
@@ -52,3 +81,4 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
