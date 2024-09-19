@@ -1,6 +1,6 @@
 import asyncio
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
@@ -17,6 +17,8 @@ from backend.util.settings import Config, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     await event_queue.connect()
     manager = get_connection_manager()
