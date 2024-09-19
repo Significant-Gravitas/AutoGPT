@@ -26,7 +26,7 @@ const Monitor = () => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const fetchAgents = useCallback(() => {
-    api.listGraphs().then((agent) => {
+    api.listGraphs(true).then((agent) => {
       setFlows(agent);
       const flowRuns = agent.flatMap((graph) =>
         graph.executions != null
