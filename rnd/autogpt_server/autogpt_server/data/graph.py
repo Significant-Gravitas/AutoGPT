@@ -119,10 +119,8 @@ class GraphMeta(BaseDbModel):
     version: int = 1
     is_active: bool = True
     is_template: bool = False
-
     name: str
     description: str
-
     executions: list[ExecutionMeta] = []
 
     @staticmethod
