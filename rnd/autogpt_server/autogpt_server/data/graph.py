@@ -414,7 +414,7 @@ async def get_graphs_meta(
             where=where_clause,
             distinct=["id"],
             order={"version": "desc"},
-            include=AgentGraphInclude(AgentGraphExecution={"include": {"AgentNodeExecution": True}}),  # type: ignore
+            include=AgentGraphInclude(AgentGraphExecution={"include": {"AgentNodeExecutions": True}}),  # type: ignore
         )
     else:
         graphs = await AgentGraph.prisma().find_many(
