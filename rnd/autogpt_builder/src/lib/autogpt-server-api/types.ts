@@ -145,6 +145,8 @@ export type ExecutionMeta = {
   execution_id: string;
   started_at: Date;
   ended_at: Date;
+  duration: number;
+  total_run_time: number;
   status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
 };
 

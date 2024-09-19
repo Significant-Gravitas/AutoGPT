@@ -18,8 +18,8 @@ import {
 } from "@/components/monitor";
 
 const Monitor = () => {
-  const [agents, setAgents] = useState<GraphMeta[]>([]);
-  const [agentRuns, setAgentRuns] = useState<FlowRun[]>([]);
+  const [flows, setFlows] = useState<GraphMeta[]>([]);
+  const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
@@ -27,44 +27,26 @@ const Monitor = () => {
 
   const fetchAgents = useCallback(() => {
     api.listGraphs().then((agent) => {
-      setAgents(agent);
+      setFlows(agent);
       const flowRuns = agent.flatMap((graph) =>
         graph.executions != null
-          ? graph.executions.map((execution) => ({
-              id: execution.execution_id,
-              graphID: graph.id,
-              graphVersion: graph.version,
-              status: execution.status.toLowerCase() as
-                | "running"
-                | "waiting"
-                | "success"
-                | "failed",
-              startTime: execution.started_at.getTime(),
-              endTime: execution.ended_at.getTime(),
-              duration:
-                (execution.ended_at.getTime() -
-                  execution.started_at.getTime()) /
-                1000,
-              totalRunTime:
-                (execution.ended_at.getTime() -
-                  execution.started_at.getTime()) /
-                1000,
-              nodeExecutionResults: [],
-            }))
+          ? graph.executions.map((execution) =>
+              flowRunFromExecutionMeta(graph, execution),
+            )
           : [],
       );
-      setAgentRuns(flowRuns);
+      setFlowRuns(flowRuns);
     });
   }, [api]);
 
   useEffect(() => {
     fetchAgents();
-  });
+  }, [api, fetchAgents]);
 
   useEffect(() => {
     const intervalId = setInterval(() => fetchAgents(), 5000);
     return () => clearInterval(intervalId);
-  }, [fetchAgents, agents]);
+  }, [fetchAgents, flows]);
 
   const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
   const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
@@ -74,8 +56,8 @@ const Monitor = () => {
     <div className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10">
       <AgentFlowList
         className={column1}
-        flows={agents}
-        flowRuns={agentRuns}
+        flows={flows}
+        flowRuns={flowRuns}
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
@@ -84,20 +66,18 @@ const Monitor = () => {
       />
       <FlowRunsList
         className={column2}
-        flows={agents}
+        flows={flows}
         runs={[
           ...(selectedFlow
-            ? agentRuns.filter((v) => v.graphID == selectedFlow.id)
-            : agentRuns),
+            ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
+            : flowRuns),
         ].sort((a, b) => Number(a.startTime) - Number(b.startTime))}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
       {(selectedRun && (
         <FlowRunInfo
-          flow={
-            selectedFlow || agents.find((f) => f.id == selectedRun.graphID)!
-          }
+          flow={selectedFlow || flows.find((f) => f.id == selectedRun.graphID)!}
           flowRun={selectedRun}
           className={column3}
         />
@@ -105,68 +85,40 @@ const Monitor = () => {
         (selectedFlow && (
           <FlowInfo
             flow={selectedFlow}
-            flowRuns={agentRuns.filter((r) => r.graphID == selectedFlow.id)}
+            flowRuns={flowRuns.filter((r) => r.graphID == selectedFlow.id)}
             className={column3}
           />
         )) || (
           <Card className={`p-6 ${column3}`}>
-            <FlowRunsStats flows={agents} flowRuns={agentRuns} />
+            <FlowRunsStats flows={flows} flowRuns={flowRuns} />
           </Card>
         )}
     </div>
   );
 };
 
-function flowRunFromNodeExecutionResults(
-  nodeExecutionResults: NodeExecutionResult[],
+function flowRunFromExecutionMeta(
+  graphMeta: GraphMeta,
+  executionMeta: ExecutionMeta,
 ): FlowRun {
-  // Determine overall status
   let status: "running" | "waiting" | "success" | "failed" = "success";
-  for (const execution of nodeExecutionResults) {
-    if (execution.status === "FAILED") {
-      status = "failed";
-      break;
-    } else if (["QUEUED", "RUNNING"].includes(execution.status)) {
-      status = "running";
-      break;
-    } else if (execution.status === "INCOMPLETE") {
-      status = "waiting";
-    }
+  if (executionMeta.status === "FAILED") {
+    status = "failed";
+  } else if (["QUEUED", "RUNNING"].includes(executionMeta.status)) {
+    status = "running";
+  } else if (executionMeta.status === "INCOMPLETE") {
+    status = "waiting";
   }
-
-  // Determine aggregate startTime, endTime, and totalRunTime
-  const now = Date.now();
-  const startTime = Math.min(
-    ...nodeExecutionResults.map((ner) => ner.add_time.getTime()),
-    now,
-  );
-  const endTime = ["success", "failed"].includes(status)
-    ? Math.max(
-        ...nodeExecutionResults.map((ner) => ner.end_time?.getTime() || 0),
-        startTime,
-      )
-    : now;
-  const duration = (endTime - startTime) / 1000; // Convert to seconds
-  const totalRunTime =
-    nodeExecutionResults.reduce(
-      (cum, node) =>
-        cum +
-        ((node.end_time?.getTime() ?? now) -
-          (node.start_time?.getTime() ?? now)),
-      0,
-    ) / 1000;
-
   return {
-    id: nodeExecutionResults[0].graph_exec_id,
-    graphID: nodeExecutionResults[0].graph_id,
-    graphVersion: nodeExecutionResults[0].graph_version,
+    id: executionMeta.execution_id,
+    graphID: graphMeta.id,
+    graphVersion: graphMeta.version,
     status,
-    startTime,
-    endTime,
-    duration,
-    totalRunTime,
-    nodeExecutionResults: nodeExecutionResults,
-  };
+    startTime: executionMeta.started_at.getTime(),
+    endTime: executionMeta.ended_at.getTime(),
+    duration: executionMeta.duration,
+    totalRunTime: executionMeta.total_run_time,
+  } as FlowRun;
 }
 
 export default Monitor;
