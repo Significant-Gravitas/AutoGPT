@@ -17,6 +17,13 @@ import {
   FlowRunsStats,
 } from "@/components/monitor";
 
+const getTime = (time: Date | null | undefined | string) => {
+  if (typeof time === "string") {
+    return Date.parse(time);
+  }
+  return time ? time.getTime() : 0;
+};
+
 const Monitor = () => {
   const [agents, setAgents] = useState<GraphMeta[]>([]);
   const [agentRuns, setAgentRuns] = useState<FlowRun[]>([]);
@@ -39,15 +46,13 @@ const Monitor = () => {
                 | "waiting"
                 | "success"
                 | "failed",
-              startTime: execution.started_at.getTime(),
-              endTime: execution.ended_at.getTime(),
+              startTime: getTime(execution.started_at),
+              endTime: getTime(execution.ended_at),
               duration:
-                (execution.ended_at.getTime() -
-                  execution.started_at.getTime()) /
+                (getTime(execution.ended_at) - getTime(execution.started_at)) /
                 1000,
               totalRunTime:
-                (execution.ended_at.getTime() -
-                  execution.started_at.getTime()) /
+                (getTime(execution.ended_at) - getTime(execution.started_at)) /
                 1000,
               nodeExecutionResults: [],
             }))
@@ -137,12 +142,12 @@ function flowRunFromNodeExecutionResults(
   // Determine aggregate startTime, endTime, and totalRunTime
   const now = Date.now();
   const startTime = Math.min(
-    ...nodeExecutionResults.map((ner) => ner.add_time.getTime()),
+    ...nodeExecutionResults.map((ner) => getTime(ner.add_time)),
     now,
   );
   const endTime = ["success", "failed"].includes(status)
     ? Math.max(
-        ...nodeExecutionResults.map((ner) => ner.end_time?.getTime() || 0),
+        ...nodeExecutionResults.map((ner) => getTime(ner.end_time) || 0),
         startTime,
       )
     : now;
@@ -151,8 +156,7 @@ function flowRunFromNodeExecutionResults(
     nodeExecutionResults.reduce(
       (cum, node) =>
         cum +
-        ((node.end_time?.getTime() ?? now) -
-          (node.start_time?.getTime() ?? now)),
+        ((getTime(node.end_time) ?? now) - (getTime(node.start_time) ?? now)),
       0,
     ) / 1000;
 
