@@ -42,6 +42,7 @@ export type BlockIOSubSchema =
 
 type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
+  | BlockIOCredentialsSubSchema
   | BlockIOKVSubSchema
   | BlockIOArraySubSchema
   | BlockIOStringSubSchema
@@ -93,6 +94,12 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
 };
 
 export type CredentialsType = "api_key" | "oauth2";
+
+export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
+  credentials_provider: "github" | "google" | "notion";
+  credentials_scopes?: string[];
+  credentials_types: Array<CredentialsType>;
+};
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
@@ -203,13 +210,21 @@ export type CredentialsMetaResponse = {
   username?: string;
 };
 
+/* Mirror of autogpt_server/data/model.py:CredentialsMetaInput */
+export type CredentialsMetaInput = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  provider: string;
+};
+
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
 type BaseCredentials = {
   id: string;
   type: CredentialsType;
   title?: string;
   provider: string;
-}
+};
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
 export type OAuth2Credentials = BaseCredentials & {
@@ -221,7 +236,7 @@ export type OAuth2Credentials = BaseCredentials & {
   refresh_token?: string;
   refresh_token_expires_at?: number;
   metadata: Record<string, any>;
-}
+};
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
 export type APIKeyCredentials = BaseCredentials & {
@@ -229,7 +244,7 @@ export type APIKeyCredentials = BaseCredentials & {
   title: string;
   api_key: string;
   expires_at?: number;
-}
+};
 
 export type User = {
   id: string;

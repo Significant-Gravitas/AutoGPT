@@ -105,6 +105,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    frontend_base_url: str = Field(
+        default="",
+        description="Can be used to explicitly set the base URL for the frontend. "
+        "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,
