@@ -5,7 +5,7 @@ from typing import Any
 from colorama import Fore
 
 
-def remove_color_codes(s: str) -> str:
+def remove_color_codesv2(s: str) -> str:
     return re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", s)
 
 
