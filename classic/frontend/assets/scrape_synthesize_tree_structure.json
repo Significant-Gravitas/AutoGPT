@@ -2,45 +2,45 @@
     "edges": [
         {
             "arrows": "to",
-            "from": "agclassic/benchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
-            "id": "agclassic/benchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agclassic/benchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
-            "to": "agclassic/benchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
-            "from": "agclassic/benchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
-            "id": "agclassic/benchmark/generate_test.py::TestSearch::test_method[challenge_data0]_to_agclassic/benchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
-            "to": "agclassic/benchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
-            "from": "agclassic/benchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
-            "id": "agclassic/benchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agclassic/benchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
-            "to": "agclassic/benchmark/generate_test.py::TestSearch::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
-            "from": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
-            "id": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]_to_agclassic/benchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
-            "to": "agclassic/benchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
-            "from": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
-            "id": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]_to_agclassic/benchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
-            "to": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
-            "from": "agclassic/benchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
-            "id": "agclassic/benchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]_to_agclassic/benchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
-            "to": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
-            "from": "agclassic/benchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
-            "id": "agclassic/benchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agclassic/benchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
-            "to": "agclassic/benchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
         }
     ],
     "nodes": [
@@ -80,7 +80,7 @@
                 "name": "TestReadFile",
                 "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
             },
-            "id": "agclassic/benchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
             "label": "ReadFile",
             "shape": "dot"
         },
@@ -119,7 +119,7 @@
                 "name": "TestWriteFile",
                 "task": "Write the word 'Washington' to a .txt file"
             },
-            "id": "agclassic/benchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
             "label": "WriteFile",
             "shape": "dot"
         },
@@ -156,7 +156,7 @@
                 "name": "TestBasicRetrieval",
                 "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file."
             },
-            "id": "agclassic/benchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
             "label": "BasicRetrieval",
             "shape": "dot"
         },
@@ -199,7 +199,7 @@
                 "name": "TestSearch",
                 "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file"
             },
-            "id": "agclassic/benchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
             "label": "Search",
             "shape": "dot"
         },
@@ -239,7 +239,7 @@
                 "name": "TestTestGetInformation",
                 "task": "Write the twitter handle of the two hosts of Latent Space to a file called output.txt"
             },
-            "id": "agclassic/benchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
             "label": "TestGetInformation",
             "shape": "dot"
         },
@@ -291,7 +291,7 @@
                 "name": "TestRevenueRetrieval2",
                 "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
             },
-            "id": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
             "label": "RevenueRetrieval2",
             "shape": "dot"
         },
@@ -328,7 +328,7 @@
                 "name": "TestRevenueRetrieval",
                 "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
             },
-            "id": "agclassic/benchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
             "label": "RevenueRetrieval",
             "shape": "dot"
         },
@@ -367,7 +367,7 @@
                 "name": "TestSynthesizeInfo",
                 "task": "Create a brief report or summary highlighting how one or more companies from companies.txt are addressing or capitalizing on challenges or trends from challenges.txt. Write a file called output.txt."
             },
-            "id": "agclassic/benchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
             "label": "SynthesizeInfo",
             "shape": "dot"
         }

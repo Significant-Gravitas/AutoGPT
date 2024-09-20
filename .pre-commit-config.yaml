@@ -97,7 +97,7 @@ repos:
         alias: pyright-benchmark
         entry: poetry -C classic/benchmark run pyright
         args: [-p, benchmark, benchmark]
-        files: ^classic/benchmark/(agclassic/benchmark/|tests/|poetry\.lock$)
+        files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
         types: [file]
         language: system
         pass_filenames: false
@@ -122,6 +122,6 @@ repos:
       - id: pytest-benchmark
         name: Run tests - Benchmark
         entry: bash -c 'cd classic/benchmark && poetry run pytest --cov=benchmark'
-        files: ^classic/benchmark/(agclassic/benchmark/|tests/|poetry\.lock$)
+        files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
         language: system
         pass_filenames: false

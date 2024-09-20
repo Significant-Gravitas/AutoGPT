@@ -71,7 +71,7 @@ This guide will walk you through the process of creating your own agent and usin
 
 <!-- TODO: insert visual demonstrating the benchmark -->
 
-📦 [`agbenchmark`](https://pypi.org/project/agclassic/benchmark/) on Pypi
+📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
 &ensp;|&ensp;
 📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark) about the Benchmark
 
