@@ -55,7 +55,7 @@ jobs:
           python-version: ${{ env.min-python-version }}
 
       - name: Install Poetry
-        working-directory: ./${{ matrix.agent-name }}/
+        working-directory: ./classic/${{ matrix.agent-name }}/
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
