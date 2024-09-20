@@ -1,0 +1,55 @@
+name: Classic - Publish to PyPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.8
+
+    - name: Install Poetry
+      working-directory: ./classic/benchmark/
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 -
+        echo "$HOME/.poetry/bin" >> $GITHUB_PATH
+
+    - name: Build project for distribution
+      working-directory: ./classic/benchmark/
+      run: poetry build
+
+    - name: Install dependencies
+      working-directory: ./classic/benchmark/
+      run: poetry install
+
+    - name: Check Version
+      working-directory: ./classic/benchmark/
+      id: check-version
+      run: |
+        echo version=$(poetry version --short) >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "classic/benchmark/dist/*"
+        token: ${{ secrets.GITHUB_TOKEN }}
+        draft: false
+        generateReleaseNotes: false
+        tag: agbenchmark-v${{ steps.check-version.outputs.version }}
+        commit: master
+
+    - name: Build and publish
+      working-directory: ./classic/benchmark/
+      run: poetry publish -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
