@@ -3,10 +3,10 @@ from datetime import datetime
 import pytest
 from prisma.models import UserBlockCredit
 
-from autogpt_server.blocks.llm import AITextGeneratorBlock
-from autogpt_server.data.credit import UserCredit
-from autogpt_server.data.user import DEFAULT_USER_ID
-from autogpt_server.util.test import SpinTestServer
+from backend.blocks.llm import AITextGeneratorBlock
+from backend.data.credit import UserCredit
+from backend.data.user import DEFAULT_USER_ID
+from backend.util.test import SpinTestServer
 
 REFILL_VALUE = 1000
 user_credit = UserCredit(REFILL_VALUE)

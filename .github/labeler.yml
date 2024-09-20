@@ -24,4 +24,4 @@ Builder:
 
 Server:
 - changed-files:
-  - any-glob-to-any-file: autogpt_platform/autogpt_server/**
+  - any-glob-to-any-file: autogpt_platform/backend/**

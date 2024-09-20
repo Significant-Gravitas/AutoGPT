@@ -48,7 +48,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    > ```
    >
    > Then run the generation again. The path *should* look something like this:  
-   > `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
+   > `<some path>/pypoetry/virtualenvs/backend-TQIRSwR6-py3.12/bin/prisma`
 
 6. Run the postgres database from the /rnd folder
 
@@ -57,10 +57,10 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    docker compose up -d
    ```
 
-7. Run the migrations (from the autogpt_server folder)
+7. Run the migrations (from the backend folder)
 
    ```sh
-   cd ../autogpt_server
+   cd ../backend
    prisma migrate dev --schema postgres/schema.prisma
    ```
 

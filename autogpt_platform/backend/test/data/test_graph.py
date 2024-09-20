@@ -2,11 +2,11 @@ from uuid import UUID
 
 import pytest
 
-from autogpt_server.blocks.basic import AgentInputBlock, StoreValueBlock
-from autogpt_server.data.graph import Graph, Link, Node
-from autogpt_server.data.user import DEFAULT_USER_ID
-from autogpt_server.server.model import CreateGraph
-from autogpt_server.util.test import SpinTestServer
+from backend.blocks.basic import AgentInputBlock, StoreValueBlock
+from backend.data.graph import Graph, Link, Node
+from backend.data.user import DEFAULT_USER_ID
+from backend.server.model import CreateGraph
+from backend.util.test import SpinTestServer
 
 
 @pytest.mark.asyncio(scope="session")

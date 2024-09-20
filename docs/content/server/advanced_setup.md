@@ -61,9 +61,9 @@ cd autogpt_platform/
 docker compose up -d
 ```
 
-You can then run the migrations from the `autogpt_server` directory.
+You can then run the migrations from the `backend` directory.
 
 ```bash
-cd ../autogpt_server
+cd ../backend
 prisma migrate dev --schema postgres/schema.prisma
 ```

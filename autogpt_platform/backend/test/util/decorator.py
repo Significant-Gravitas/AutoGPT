@@ -1,6 +1,6 @@
 import time
 
-from autogpt_server.util.decorator import error_logged, time_measured
+from backend.util.decorator import error_logged, time_measured
 
 
 @time_measured

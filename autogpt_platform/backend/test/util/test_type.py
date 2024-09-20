@@ -1,4 +1,4 @@
-from autogpt_server.util.type import convert
+from backend.util.type import convert
 
 
 def test_type_conversion():

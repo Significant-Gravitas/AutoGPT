@@ -53,7 +53,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
    > ```
    >
    > Then run the generation again. The path *should* look something like this:  
-   > `<some path>/pypoetry/virtualenvs/autogpt-server-TQIRSwR6-py3.12/bin/prisma`
+   > `<some path>/pypoetry/virtualenvs/backend-TQIRSwR6-py3.12/bin/prisma`
 
 6. Migrate the database. Be careful because this deletes current data in the database.
 
@@ -193,7 +193,7 @@ Rest Server Daemon: 8004
 ## Adding a New Agent Block
 
 To add a new agent block, you need to create a new class that inherits from `Block` and provides the following information:
-* All the block code should live in the `blocks` (`autogpt_server.blocks`) module.
+* All the block code should live in the `blocks` (`backend.blocks`) module.
 * `input_schema`: the schema of the input data, represented by a Pydantic object.
 * `output_schema`: the schema of the output data, represented by a Pydantic object.
 * `run` method: the main logic of the block.

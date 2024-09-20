@@ -1,12 +1,12 @@
 import pytest
 from prisma.models import User
 
-from autogpt_server.blocks.basic import FindInDictionaryBlock, StoreValueBlock
-from autogpt_server.blocks.maths import CalculatorBlock, Operation
-from autogpt_server.data import execution, graph
-from autogpt_server.server import AgentServer
-from autogpt_server.usecases.sample import create_test_graph, create_test_user
-from autogpt_server.util.test import SpinTestServer, wait_execution
+from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
+from backend.blocks.maths import CalculatorBlock, Operation
+from backend.data import execution, graph
+from backend.server import AgentServer
+from backend.usecases.sample import create_test_graph, create_test_user
+from backend.util.test import SpinTestServer, wait_execution
 
 
 async def execute_graph(

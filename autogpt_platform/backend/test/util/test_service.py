@@ -1,6 +1,6 @@
 import pytest
 
-from autogpt_server.util.service import AppService, expose, get_service_client
+from backend.util.service import AppService, expose, get_service_client
 
 
 class TestService(AppService):

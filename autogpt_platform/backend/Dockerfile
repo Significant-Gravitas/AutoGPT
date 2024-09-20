@@ -25,13 +25,13 @@ RUN pip3 install poetry
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
-COPY autogpt_platform/autogpt_server/poetry.lock autogpt_platform/autogpt_server/pyproject.toml /app/autogpt_platform/autogpt_server/
-WORKDIR /app/autogpt_platform/autogpt_server
+COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
+WORKDIR /app/autogpt_platform/backend
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi
 
 # Generate Prisma client
-COPY autogpt_platform/autogpt_server/schema.prisma ./
+COPY autogpt_platform/backend/schema.prisma ./
 RUN poetry config virtualenvs.create false \
     && poetry run prisma generate
 
@@ -60,20 +60,19 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 ENV PATH="/app/.venv/bin:$PATH"
 
 RUN mkdir -p /app/autogpt_platform/autogpt_libs
-RUN mkdir -p /app/autogpt_platform/autogpt_server
+RUN mkdir -p /app/autogpt_platform/backend
 
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 
-COPY autogpt_platform/autogpt_server/poetry.lock autogpt_platform/autogpt_server/pyproject.toml /app/autogpt_platform/autogpt_server/
+COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 
-WORKDIR /app/autogpt_platform/autogpt_server
+WORKDIR /app/autogpt_platform/backend
 
 FROM server_dependencies AS server
 
-COPY autogpt_platform/autogpt_server /app/autogpt_platform/autogpt_server
+COPY autogpt_platform/backend /app/autogpt_platform/backend
 
 ENV DATABASE_URL=""
 ENV PORT=8000
 
 CMD ["poetry", "run", "rest"]
-

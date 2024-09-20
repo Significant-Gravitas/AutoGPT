@@ -1,11 +1,8 @@
 [tool.poetry]
-name = "autogpt_server"
+name = "autogpt-platform-backend"
 version = "0.1.0"
-description = "An Agentic Experience"
-authors = [
-    "SwiftyOS <craig.swift@agpt.co>",
-    "Nicholas Tindle <nicholas.tindle@agpt.co>",
-]
+description = "A platform for building AI-powered agentic workflows"
+authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -61,11 +58,11 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-app = "autogpt_server.app:main"
-rest = "autogpt_server.rest:main"
-ws = "autogpt_server.ws:main"
-executor = "autogpt_server.exec:main"
-cli = "autogpt_server.cli:main"
+app = "backend.app:main"
+rest = "backend.rest:main"
+ws = "backend.ws:main"
+executor = "backend.exec:main"
+cli = "backend.cli:main"
 format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"

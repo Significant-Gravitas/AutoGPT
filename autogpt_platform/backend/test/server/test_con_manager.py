@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket
 
-from autogpt_server.data.execution import ExecutionResult, ExecutionStatus
-from autogpt_server.server.conn_manager import ConnectionManager
-from autogpt_server.server.model import Methods, WsMessage
+from backend.data.execution import ExecutionResult, ExecutionStatus
+from backend.server.conn_manager import ConnectionManager
+from backend.server.model import Methods, WsMessage
 
 
 @pytest.fixture

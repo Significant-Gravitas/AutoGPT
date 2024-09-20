@@ -18,13 +18,13 @@ services:
   migrate:
     build:
       context: ../
-      dockerfile: autogpt_platform/autogpt_server/Dockerfile
+      dockerfile: autogpt_platform/backend/Dockerfile
       target: server
     command: ["sh", "-c", "poetry run prisma migrate deploy"]
     develop:
       watch:
         - path: ./
-          target: autogpt_platform/autogpt_server/migrate
+          target: autogpt_platform/backend/migrate
           action: rebuild
     depends_on:
       postgres:
@@ -56,13 +56,13 @@ services:
   rest_server:
     build:
       context: ../
-      dockerfile: autogpt_platform/autogpt_server/Dockerfile
+      dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "autogpt_server.rest"]
+    command: ["python", "-m", "backend.rest"]
     develop:
       watch:
         - path: ./
-          target: autogpt_platform/autogpt_server/
+          target: autogpt_platform/backend/
           action: rebuild
     depends_on:
       redis:
@@ -91,13 +91,13 @@ services:
   executor:
     build:
       context: ../
-      dockerfile: autogpt_platform/autogpt_server/Dockerfile
+      dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "autogpt_server.exec"]
+    command: ["python", "-m", "backend.exec"]
     develop:
       watch:
         - path: ./
-          target: autogpt_platform/autogpt_server/
+          target: autogpt_platform/backend/
           action: rebuild
     depends_on:
       redis:
@@ -125,13 +125,13 @@ services:
   websocket_server:
     build:
       context: ../
-      dockerfile: autogpt_platform/autogpt_server/Dockerfile
+      dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "autogpt_server.ws"]
+    command: ["python", "-m", "backend.ws"]
     develop:
       watch:
         - path: ./
-          target: autogpt_platform/autogpt_server/
+          target: autogpt_platform/backend/
           action: rebuild
     depends_on:
       postgres:

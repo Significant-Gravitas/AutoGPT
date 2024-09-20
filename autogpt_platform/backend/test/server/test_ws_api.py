@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket, WebSocketDisconnect
 
-from autogpt_server.server.conn_manager import ConnectionManager
-from autogpt_server.server.ws_api import (
+from backend.server.conn_manager import ConnectionManager
+from backend.server.ws_api import (
     Methods,
     WsMessage,
     handle_subscribe,
