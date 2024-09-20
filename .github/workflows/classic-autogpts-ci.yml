@@ -7,25 +7,30 @@ on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
-      - '.github/workflows/autogpts-ci.yml'
+      - '.github/workflows/classic-autogpts-ci.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/benchmark/**'
-      - 'run'
-      - 'cli.py'
-      - 'setup.py'
+      - 'classic/run'
+      - 'classic/cli.py'
+      - 'classic/setup.py'
       - '!**/*.md'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
-      - '.github/workflows/autogpts-ci.yml'
+      - '.github/workflows/classic-autogpts-ci.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/benchmark/**'
-      - 'run'
-      - 'cli.py'
-      - 'setup.py'
+      - 'classic/run'
+      - 'classic/cli.py'
+      - 'classic/setup.py'
       - '!**/*.md'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: classic
 
 jobs:
   serve-agent-protocol:
