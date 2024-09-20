@@ -8,11 +8,11 @@ on:
       - 'ci-test*' # This will match any branch that starts with "ci-test"
     paths:
       - 'classic/frontend/**'
-      - '.github/workflows/frontend-ci.yml'
+      - '.github/workflows/classic-frontend-ci.yml'
   pull_request:
     paths:
       - 'classic/frontend/**'
-      - '.github/workflows/frontend-ci.yml'
+      - '.github/workflows/classic-frontend-ci.yml'
 
 jobs:
   build:
@@ -21,7 +21,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     env:
-      BUILD_BRANCH: ${{ format('frontend-build/{0}', github.ref_name) }}
+      BUILD_BRANCH: ${{ format('classic-frontend-build/{0}', github.ref_name) }}
 
     steps:
     - name: Checkout Repo

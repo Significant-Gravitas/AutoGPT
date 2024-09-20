@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
-      - '.github/workflows/lint-ci.yml'
+      - '.github/workflows/classic-python-checks-ci.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/benchmark/**'
@@ -13,7 +13,7 @@ on:
   pull_request:
     branches: [ master, development, release-* ]
     paths:
-      - '.github/workflows/lint-ci.yml'
+      - '.github/workflows/classic-python-checks-ci.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/benchmark/**'
@@ -21,7 +21,7 @@ on:
       - '!classic/forge/tests/vcr_cassettes'
 
 concurrency:
-  group: ${{ format('lint-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('classic-python-checks-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
 
 defaults:
