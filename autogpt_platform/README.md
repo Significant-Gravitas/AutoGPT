@@ -19,7 +19,7 @@ To run the AutoGPT Platform, follow these steps:
    ```
       git submodule update --init --recursive
    ```
-4. Navigate back to rnd (cd ..)
+4. Navigate back to autogpt_platform (cd ..)
 5. Run the following command:
    ```
       cp supabase/docker/.env.example .env
