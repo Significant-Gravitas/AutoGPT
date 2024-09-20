@@ -1,4 +1,4 @@
-name: Frontend CI/CD
+name: AGPT Classic Frontend CI/CD
 
 on:
   push:
