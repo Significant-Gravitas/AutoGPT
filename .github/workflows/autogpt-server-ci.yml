@@ -5,12 +5,12 @@ on:
     branches: [master, development, ci-test*]
     paths:
       - ".github/workflows/autogpt-server-ci.yml"
-      - "rnd/autogpt_server/**"
+      - "autogpt_platform/autogpt_server/**"
   pull_request:
     branches: [master, development, release-*]
     paths:
       - ".github/workflows/autogpt-server-ci.yml"
-      - "rnd/autogpt_server/**"
+      - "autogpt_platform/autogpt_server/**"
 
 concurrency:
   group: ${{ format('autogpt-server-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -19,7 +19,7 @@ concurrency:
 defaults:
   run:
     shell: bash
-    working-directory: rnd/autogpt_server
+    working-directory: autogpt_platform/autogpt_server
 
 jobs:
   test:
@@ -90,7 +90,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
-          key: poetry-${{ runner.os }}-${{ hashFiles('rnd/autogpt_server/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/autogpt_server/poetry.lock') }}
 
       - name: Install Poetry (Unix)
         if: runner.os != 'Windows'

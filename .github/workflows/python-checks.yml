@@ -5,20 +5,20 @@ on:
     branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/lint-ci.yml'
-      - 'autogpt/**'
-      - 'forge/**'
-      - 'benchmark/**'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
       - '**.py'
-      - '!forge/tests/vcr_cassettes'
+      - '!classic/forge/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/lint-ci.yml'
-      - 'autogpt/**'
-      - 'forge/**'
-      - 'benchmark/**'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
       - '**.py'
-      - '!forge/tests/vcr_cassettes'
+      - '!classic/forge/tests/vcr_cassettes'
 
 concurrency:
   group: ${{ format('lint-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -41,17 +41,17 @@ jobs:
         with:
           filters: |
             autogpt:
-              - autogpt/autogpt/**
-              - autogpt/tests/**
-              - autogpt/poetry.lock
+              - classic/original_autogpt/classic/original_autogpt/**
+              - classic/original_autogpt/tests/**
+              - classic/original_autogpt/poetry.lock
             forge:
-              - forge/forge/**
-              - forge/tests/**
-              - forge/poetry.lock
+              - classic/forge/classic/forge/**
+              - classic/forge/tests/**
+              - classic/forge/poetry.lock
             benchmark:
-              - benchmark/agbenchmark/**
-              - benchmark/tests/**
-              - benchmark/poetry.lock
+              - classic/benchmark/agclassic/benchmark/**
+              - classic/benchmark/tests/**
+              - classic/benchmark/poetry.lock
     outputs:
       changed-parts: ${{ steps.changes-in.outputs.changes }}
 

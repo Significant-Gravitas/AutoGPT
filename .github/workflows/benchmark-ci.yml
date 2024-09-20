@@ -4,14 +4,14 @@ on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
-      - 'benchmark/**'
+      - 'classic/benchmark/**'
       - .github/workflows/benchmark-ci.yml
-      - '!benchmark/reports/**'
+      - '!classic/benchmark/reports/**'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
-      - 'benchmark/**'
-      - '!benchmark/reports/**'
+      - 'classic/benchmark/**'
+      - '!classic/benchmark/reports/**'
       - .github/workflows/benchmark-ci.yml
 
 concurrency:
@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
-          key: poetry-${{ runner.os }}-${{ hashFiles('benchmark/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/benchmark/poetry.lock') }}
 
       - name: Install Poetry (Unix)
         if: runner.os != 'Windows'
@@ -155,7 +155,7 @@ jobs:
 
           poetry run agbenchmark --mock
 
-          CHANGED=$(git diff --name-only | grep -E '(agbenchmark/challenges)|(../frontend/assets)') || echo "No diffs"
+          CHANGED=$(git diff --name-only | grep -E '(agclassic/benchmark/challenges)|(../classic/frontend/assets)') || echo "No diffs"
           if [ ! -z "$CHANGED" ]; then
             echo "There are unstaged changes please run agbenchmark and commit those changes since they are needed."
             echo "$CHANGED"

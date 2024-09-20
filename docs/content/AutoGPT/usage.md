@@ -162,7 +162,7 @@ Here are some common arguments you can use when running AutoGPT:
     There are shorthands for some of these flags, for example `-P` for `--prompt-settings`.  
     Use `./autogpt.sh --help` for more information.
 
-[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/.env.template
 
 ## Agent State
 [agent state]: #agent-state
@@ -213,5 +213,5 @@ For example, to disable python coding features, set it to the value below:
 DISABLED_COMMANDS=execute_python_code,execute_python_file
 ```
 
-[components]: ../forge/components/components.md
-[commands]: ../forge/components/built-in-components.md
+[components]: ../classic/forge/components/components.md
+[commands]: ../classic/forge/components/built-in-components.md

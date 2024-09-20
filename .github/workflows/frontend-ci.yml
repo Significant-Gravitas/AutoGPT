@@ -7,11 +7,11 @@ on:
       - development
       - 'ci-test*' # This will match any branch that starts with "ci-test"
     paths:
-      - 'frontend/**'
+      - 'classic/frontend/**'
       - '.github/workflows/frontend-ci.yml'
   pull_request:
     paths:
-      - 'frontend/**'
+      - 'classic/frontend/**'
       - '.github/workflows/frontend-ci.yml'
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
     #   run: |
     #     git config --local user.email "action@github.com"
     #     git config --local user.name "GitHub Action"
-    #     git add frontend/build/web
+    #     git add classic/frontend/build/web
     #     git checkout -B ${{ env.BUILD_BRANCH }}
     #     git commit -m "Update frontend build to ${GITHUB_SHA:0:7}" -a
     #     git push -f origin ${{ env.BUILD_BRANCH }}
@@ -51,7 +51,7 @@ jobs:
       if: github.event_name == 'push'
       uses: peter-evans/create-pull-request@v6
       with:
-        add-paths: frontend/build/web
+        add-paths: classic/frontend/build/web
         base: ${{ github.ref_name }}
         branch: ${{ env.BUILD_BRANCH }}
         delete-branch: true

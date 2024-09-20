@@ -3,7 +3,7 @@
 !!! note
     This section is optional. Use the official Google API if search attempts return
     error 429. To use the `google` command, you need to set up your
-    Google API key in your environment variables or pass it with configuration to the [`WebSearchComponent`](../../forge/components/built-in-components.md).
+    Google API key in your environment variables or pass it with configuration to the [`WebSearchComponent`](../../classic/forge/components/built-in-components.md).
 
 Create your project:
 

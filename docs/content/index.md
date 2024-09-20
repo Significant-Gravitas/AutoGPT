@@ -48,13 +48,13 @@ We continue to develop this project with the goal of providing access to AI assi
 
 ## 🎯 Benchmark
 
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md)**
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md)**
 
 Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
 <!-- TODO: insert visual demonstrating the benchmark -->
 
-- 📦 [**`agbenchmark`**](https://pypi.org/project/agbenchmark/) on Pypi
+- 📦 [**`agbenchmark`**](https://pypi.org/project/agclassic/benchmark/) on Pypi
 
 - 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
 
@@ -62,7 +62,7 @@ Measure your agent's performance! The `agbenchmark` can be used with any agent t
 
 ## 🏗️ Forge
 
-**[📖 Introduction](forge/get-started.md)**
+**[📖 Introduction](classic/forge/get-started.md)**
 &ensp;|&ensp;
 **[🚀 Quickstart](https://github.com/Significant-Gravitas/AutoGPT/blob/master/QUICKSTART.md)**
 
@@ -76,7 +76,7 @@ Forge your own agent! The Forge is a ready-to-go template for your agent applica
 
 ## 💻 Frontend
 
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md)**
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md)**
 
 An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
 

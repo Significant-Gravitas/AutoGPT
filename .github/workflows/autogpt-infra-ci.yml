@@ -5,16 +5,16 @@ on:
     branches: [ master ]
     paths:
       - '.github/workflows/autogpt-infra-ci.yml'
-      - 'rnd/infra/**'
+      - 'autogpt_platform/infra/**'
   pull_request:
     paths:
       - '.github/workflows/autogpt-infra-ci.yml'
-      - 'rnd/infra/**'
+      - 'autogpt_platform/infra/**'
 
 defaults:
   run:
     shell: bash
-    working-directory: rnd/infra
+    working-directory: autogpt_platform/infra
 
 jobs:
   lint:

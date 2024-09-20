@@ -5,12 +5,12 @@ on:
     branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpt/**'
+      - 'classic/original_autogpt/**'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-ci.yml'
-      - 'autogpt/**'
+      - 'classic/original_autogpt/**'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
-          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt/poetry.lock') }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/original_autogpt/poetry.lock') }}
 
       - name: Install Poetry (Unix)
         if: runner.os != 'Windows'
@@ -135,4 +135,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs
-          path: autogpt/logs/
+          path: classic/original_autogpt/logs/

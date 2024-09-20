@@ -5,12 +5,12 @@ on:
     branches: [ master, development ]
     paths:
       - '.github/workflows/autogpt-docker-ci.yml'
-      - 'autogpt/**'
+      - 'classic/original_autogpt/**'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpt-docker-ci.yml'
-      - 'autogpt/**'
+      - 'classic/original_autogpt/**'
 
 concurrency:
   group: ${{ format('autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}

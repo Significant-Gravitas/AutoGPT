@@ -18,7 +18,7 @@ jobs:
     env:
       min-python-version: '3.10'
       REPORTS_BRANCH: data/benchmark-reports
-      REPORTS_FOLDER: ${{ format('benchmark/reports/{0}', matrix.agent-name) }}
+      REPORTS_FOLDER: ${{ format('classic/benchmark/reports/{0}', matrix.agent-name) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -83,7 +83,7 @@ jobs:
 
           # Convert JSON report to Markdown
           markdown_report_file="$report_subfolder/report.md"
-          poetry -C benchmark run benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
+          poetry -C benchmark run classic/benchmark/reports/format.py "$json_report_file" > "$markdown_report_file"
           cat "$markdown_report_file" >> $GITHUB_STEP_SUMMARY
 
           git config --global user.name 'GitHub Actions'

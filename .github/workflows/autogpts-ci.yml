@@ -8,9 +8,9 @@ on:
     branches: [ master, development, ci-test* ]
     paths:
       - '.github/workflows/autogpts-ci.yml'
-      - 'autogpt/**'
-      - 'forge/**'
-      - 'benchmark/**'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
       - 'run'
       - 'cli.py'
       - 'setup.py'
@@ -19,9 +19,9 @@ on:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/autogpts-ci.yml'
-      - 'autogpt/**'
-      - 'forge/**'
-      - 'benchmark/**'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
       - 'run'
       - 'cli.py'
       - 'setup.py'

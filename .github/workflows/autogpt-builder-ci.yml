@@ -5,16 +5,16 @@ on:
     branches: [ master ]
     paths:
       - '.github/workflows/autogpt-builder-ci.yml'
-      - 'rnd/autogpt_builder/**'
+      - 'autogpt_platform/autogpt_builder/**'
   pull_request:
     paths:
       - '.github/workflows/autogpt-builder-ci.yml'
-      - 'rnd/autogpt_builder/**'
+      - 'autogpt_platform/autogpt_builder/**'
 
 defaults:
   run:
     shell: bash
-    working-directory: rnd/autogpt_builder
+    working-directory: autogpt_platform/autogpt_builder
 
 jobs:
 
