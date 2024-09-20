@@ -57,13 +57,13 @@ poetry run prisma generate --schema postgres/schema.prisma
 This will generate the Prisma client for PostgreSQL. You will also need to run the PostgreSQL database in a separate container. You can use the `docker-compose.yml` file in the `rnd` directory to run the PostgreSQL database.
 
 ```bash
-cd rnd/
+cd autogpt_platform/
 docker compose up -d
 ```
 
-You can then run the migrations from the `autogpt_server` directory.
+You can then run the migrations from the `backend` directory.
 
 ```bash
-cd ../autogpt_server
+cd ../backend
 prisma migrate dev --schema postgres/schema.prisma
 ```

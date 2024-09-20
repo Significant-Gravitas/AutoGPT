@@ -10,21 +10,21 @@ Blocks are reusable components that can be connected to form a graph representin
 
 Follow these steps to create and test a new block:
 
-1. **Create a new Python file** in the `autogpt_server/blocks` directory. Name it descriptively and use snake_case. For example: `get_wikipedia_summary.py`.
+1. **Create a new Python file** in the `backend/blocks` directory. Name it descriptively and use snake_case. For example: `get_wikipedia_summary.py`.
 
 2. **Import necessary modules and create a class that inherits from `Block`**. Make sure to include all necessary imports for your block.
 
  Every block should contain the following:
 
    ```python
-   from autogpt_server.data.block import Block, BlockSchema, BlockOutput
+   from backend.data.block import Block, BlockSchema, BlockOutput
    ```
 
    Example for the Wikipedia summary block:
 
    ```python
-   from autogpt_server.data.block import Block, BlockSchema, BlockOutput
-   from autogpt_server.utils.get_request import GetRequest
+   from backend.data.block import Block, BlockSchema, BlockOutput
+   from backend.utils.get_request import GetRequest
    import requests
 
    class WikipediaSummaryBlock(Block, GetRequest):
@@ -120,8 +120,8 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
     Credentials,
 )
 
-from autogpt_server.data.block import Block, BlockOutput, BlockSchema
-from autogpt_server.data.model import CredentialsField
+from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.model import CredentialsField
 
 
 # API Key auth:
@@ -234,15 +234,15 @@ Every handler must implement the following parts of the [`BaseOAuthHandler`] int
 As you can see, this is modeled after the standard OAuth2 flow.
 
 Aside from implementing the `OAuthHandler` itself, adding a handler into the system requires two more things:
-- Adding the handler class to `HANDLERS_BY_NAME` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/rnd/autogpt_server/autogpt_server/integrations/oauth/__init__.py)
-- Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/e3f35d79c7e9fc6ee0cabefcb73e0fad15a0ce2d/rnd/autogpt_server/autogpt_server/util/settings.py#L132)
+- Adding the handler class to `HANDLERS_BY_NAME` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/__init__.py)
+- Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/e3f35d79c7e9fc6ee0cabefcb73e0fad15a0ce2d/autogpt_platform/backend/backend/util/settings.py#L132)
 
-[OAuth2 handlers]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/rnd/autogpt_server/autogpt_server/integrations/oauth
-[`BaseOAuthHandler`]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/rnd/autogpt_server/autogpt_server/integrations/oauth/base.py
+[OAuth2 handlers]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/integrations/oauth
+[`BaseOAuthHandler`]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/base.py
 
 #### Example: GitHub integration
-- GitHub blocks with API key + OAuth2 support: [`blocks/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/rnd/autogpt_server/autogpt_server/blocks/github.py)
-- GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/rnd/autogpt_server/autogpt_server/integrations/oauth/github.py)
+- GitHub blocks with API key + OAuth2 support: [`blocks/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/blocks/github.py)
+- GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
 
 ## Key Points to Remember
 
