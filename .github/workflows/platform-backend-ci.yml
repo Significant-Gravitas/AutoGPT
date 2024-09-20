@@ -33,15 +33,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup PostgreSQL
-        uses: ikalnytskyi/action-setup-postgres@v6
-        with:
-          username: ${{ secrets.DB_USER || 'postgres' }}
-          password: ${{ secrets.DB_PASS || 'postgres' }}
-          database: postgres
-          port: 5432
-        id: postgres
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -52,6 +43,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Setup Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
       - id: get_date
         name: Get date
@@ -78,10 +74,20 @@ jobs:
       - name: Generate Prisma Client
         run: poetry run prisma generate
 
+      - id: supabase
+        name: Start Supabase
+        run: |
+          supabase start
+          supabase status -o env >> $GITHUB_OUTPUT
+        # outputs:
+        # API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET,
+        # DB_URL, INBUCKET_URL, STUDIO_URL,
+        # S3_PROTOCOL_ACCESS_KEY_ID, S3_PROTOCOL_ACCESS_KEY_SECRET, STORAGE_S3_URL, STUDIO_URL
+
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --name updates
         env:
-          CONNECTION_STR: ${{ steps.postgres.outputs.connection-uri }}
+          CONNECTION_STR: ${{ steps.supabase.outputs.DB_URL }}
 
       - id: lint
         name: Run Linter
@@ -97,17 +103,16 @@ jobs:
         if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
+          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
+          SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
+          SUPABASE_SERVICE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
     env:
       CI: true
       PLAIN_OUTPUT: True
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DB_USER: ${{ secrets.DB_USER || 'postgres' }}
-      DB_PASS: ${{ secrets.DB_PASS || 'postgres' }}
-      DB_NAME: postgres
-      DB_PORT: 5432
       RUN_ENV: local
       PORT: 8080
-      DATABASE_URL: postgresql://${{ secrets.DB_USER || 'postgres' }}:${{ secrets.DB_PASS || 'postgres' }}@localhost:5432/${{ secrets.DB_NAME || 'postgres'}}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       # - name: Upload coverage reports to Codecov
       #   uses: codecov/codecov-action@v4
