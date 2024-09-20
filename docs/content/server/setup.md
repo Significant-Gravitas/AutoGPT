@@ -72,7 +72,7 @@ https://docs.docker.com/compose/install/
 Once you have installed Yarn and Poetry, you can run the following command to install the dependencies:
 
 ```bash
-cd rnd/autogpt_server
+cd autogpt_platform/backend
 cp .env.example .env
 poetry install
 ```
@@ -80,7 +80,7 @@ poetry install
 **In another terminal**, run the following command to install the dependencies for the frontend:
 
 ```bash
-cd rnd/autogpt_builder
+cd autogpt_platform/frontend
 yarn install
 ```
 
@@ -120,9 +120,10 @@ docker compose -f docker-compose.combined.yml build
 docker compose -f docker-compose.combined.yml up -d
 ```
 
-In the other terminal from autogpt_builder, you can run the following command to start the frontend:
+In the other terminal from frontend, you can run the following command to start the frontend:
 
 ```bash
+cp .env.example .env
 yarn dev
 ```
 

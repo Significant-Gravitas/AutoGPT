@@ -1,7 +1,7 @@
 ## Original ignores
 .github_access_token
-autogpt/keys.py
-autogpt/*.json
+classic/original_autogpt/keys.py
+classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
 .env
@@ -157,7 +157,7 @@ openai/
 CURRENT_BULLETIN.md
 
 # AgBenchmark
-agbenchmark/reports/
+classic/benchmark/agbenchmark/reports/
 
 # Nodejs
 package-lock.json
@@ -170,4 +170,4 @@ pri*
 ig*
 .github_access_token
 LICENSE.rtf
-rnd/autogpt_server/settings.py
+autogpt_platform/backend/settings.py
