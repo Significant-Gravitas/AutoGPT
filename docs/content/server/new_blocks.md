@@ -10,21 +10,21 @@ Blocks are reusable components that can be connected to form a graph representin
 
 Follow these steps to create and test a new block:
 
-1. **Create a new Python file** in the `autogpt_server/blocks` directory. Name it descriptively and use snake_case. For example: `get_wikipedia_summary.py`.
+1. **Create a new Python file** in the `backend/blocks` directory. Name it descriptively and use snake_case. For example: `get_wikipedia_summary.py`.
 
 2. **Import necessary modules and create a class that inherits from `Block`**. Make sure to include all necessary imports for your block.
 
  Every block should contain the following:
 
    ```python
-   from autogpt_server.data.block import Block, BlockSchema, BlockOutput
+   from backend.data.block import Block, BlockSchema, BlockOutput
    ```
 
    Example for the Wikipedia summary block:
 
    ```python
-   from autogpt_server.data.block import Block, BlockSchema, BlockOutput
-   from autogpt_server.utils.get_request import GetRequest
+   from backend.data.block import Block, BlockSchema, BlockOutput
+   from backend.utils.get_request import GetRequest
    import requests
 
    class WikipediaSummaryBlock(Block, GetRequest):
