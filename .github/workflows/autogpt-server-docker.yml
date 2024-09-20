@@ -4,7 +4,7 @@ on:
   push:
     branches: [ updated-docker-ci ]
     paths:
-      - 'rnd/autogpt_server/**'
+      - '*'
 
 defaults:
   run:
