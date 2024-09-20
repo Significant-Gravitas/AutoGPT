@@ -68,16 +68,16 @@ const keywords = [
   "Performance Tracking",
   "Predictive Analytics",
   "Resource Allocation",
-  "Chatbot", // Added
-  "Virtual Assistant", // Added
-  "Workflow Automation", // Added
-  "Social Media Manager", // Added
-  "Email Optimizer", // Added
-  "Content Generator", // Added
-  "Data Analyzer", // Added
-  "Task Scheduler", // Added
-  "Customer Service Bot", // Added
-  "Personalization Engine", // Added
+  "Chatbot",
+  "Virtual Assistant",
+  "Workflow Automation",
+  "Social Media Manager",
+  "Email Optimizer",
+  "Content Generator",
+  "Data Analyzer",
+  "Task Scheduler",
+  "Customer Service Bot",
+  "Personalization Engine",
 ];
 
 const SubmitPage: React.FC = () => {
