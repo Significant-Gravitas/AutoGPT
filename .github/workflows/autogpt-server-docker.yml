@@ -1,4 +1,4 @@
-name: AutoGPT Server Docker
+name: AutoGPT Server Docker Build & Push
 
 on:
   push:
