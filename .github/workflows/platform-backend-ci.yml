@@ -80,7 +80,7 @@ jobs:
         run: |
           supabase init
           supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
-          supabase status -o env >> $GITHUB_OUTPUT
+          supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
         # outputs:
         # API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET,
         # DB_URL, INBUCKET_URL, STUDIO_URL,
