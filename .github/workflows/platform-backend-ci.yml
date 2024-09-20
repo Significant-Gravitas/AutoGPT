@@ -30,8 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10"]
-        platform-os: [ubuntu, macos, macos-arm64, windows]
-    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Setup PostgreSQL
@@ -42,11 +41,6 @@ jobs:
           database: postgres
           port: 5432
         id: postgres
-
-      # Quite slow on macOS (2~4 minutes to set up Docker)
-      # - name: Set up Docker (macOS)
-      #   if: runner.os == 'macOS'
-      #   uses: crazy-max/ghaction-setup-docker@v3
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -64,15 +58,12 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
-        # On Windows, unpacking cached dependencies takes longer than just installing them
-        if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
 
       - name: Install Poetry (Unix)
-        if: runner.os != 'Windows'
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
 
@@ -80,15 +71,6 @@ jobs:
             PATH="$HOME/.local/bin:$PATH"
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
-
-      - name: Install Poetry (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
-
-          $env:PATH += ";$env:APPDATA\Python\Scripts"
-          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
 
       - name: Install Python dependencies
         run: poetry install
