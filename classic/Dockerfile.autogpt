@@ -31,7 +31,7 @@ RUN poetry config installer.max-workers 10
 WORKDIR /app/autogpt
 COPY classic/original_autogpt/pyproject.toml classic/original_autogpt/poetry.lock ./
 
-# Include forge so it can be used as a path dependency
+# Include forge so it can be used AS a path dependency
 COPY classic/forge/ ../forge
 
 # Include frontend
@@ -42,13 +42,13 @@ ENTRYPOINT ["poetry", "run", "autogpt"]
 CMD []
 
 # dev build -> include everything
-FROM autogpt-base as autogpt-dev
+FROM autogpt-base AS autogpt-dev
 RUN poetry install --no-cache --no-root \
     && rm -rf $(poetry env info --path)/src
 ONBUILD COPY classic/original_autogpt/ ./
 
 # release build -> include bare minimum
-FROM autogpt-base as autogpt-release
+FROM autogpt-base AS autogpt-release
 RUN poetry install --no-cache --no-root --without dev \
     && rm -rf $(poetry env info --path)/src
 ONBUILD COPY classic/original_autogpt/ ./autogpt
