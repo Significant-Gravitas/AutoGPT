@@ -4,21 +4,21 @@ on:
   push:
     branches: [ master, development ]
     paths:
-      - '.github/workflows/autogpt-docker-ci.yml'
+      - '.github/workflows/classic-autogpt-docker-ci.yml'
       - 'classic/original_autogpt/**'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
-      - '.github/workflows/autogpt-docker-ci.yml'
+      - '.github/workflows/classic-autogpt-docker-ci.yml'
       - 'classic/original_autogpt/**'
 
 concurrency:
-  group: ${{ format('autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('classic-autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
-    working-directory: autogpt
+    working-directory: classic/original_autogpt
 
 env:
   IMAGE_NAME: auto-gpt
@@ -47,6 +47,7 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v5
       with:
+        context: classic/
         file: Dockerfile.autogpt
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         tags: ${{ env.IMAGE_NAME }}

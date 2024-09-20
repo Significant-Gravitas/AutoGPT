@@ -4,22 +4,22 @@ on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
-      - '.github/workflows/autogpt-ci.yml'
+      - '.github/workflows/classic-autogpt-ci.yml'
       - 'classic/original_autogpt/**'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
-      - '.github/workflows/autogpt-ci.yml'
+      - '.github/workflows/classic-autogpt-ci.yml'
       - 'classic/original_autogpt/**'
 
 concurrency:
-  group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('classic-autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
 
 defaults:
   run:
     shell: bash
-    working-directory: autogpt
+    working-directory: classic/original_autogpt
 
 jobs:
   test:
