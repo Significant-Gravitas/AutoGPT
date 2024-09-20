@@ -23,7 +23,7 @@ repos:
 
       - id: isort-forge
         name: Lint (isort) - Forge
-        entry: poetry -C forge run isort
+        entry: poetry -C forge run isortIts 
         files: ^classic/forge/
         types: [file, python]
         language: system

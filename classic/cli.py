@@ -294,7 +294,8 @@ def benchmark_categories_list():
     this_dir = os.path.dirname(os.path.abspath(__file__))
 
     glob_path = os.path.join(
-        this_dir, "./classic/benchmark/agclassic/benchmark/challenges/**/[!deprecated]*/data.json"
+        this_dir,
+        "./classic/benchmark/agclassic/benchmark/challenges/**/[!deprecated]*/data.json",
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
@@ -338,7 +339,8 @@ def benchmark_tests_list():
     this_dir = os.path.dirname(os.path.abspath(__file__))
 
     glob_path = os.path.join(
-        this_dir, "./classic/benchmark/agclassic/benchmark/challenges/**/[!deprecated]*/data.json"
+        this_dir,
+        "./classic/benchmark/agclassic/benchmark/challenges/**/[!deprecated]*/data.json",
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
@@ -388,7 +390,8 @@ def benchmark_tests_details(test_name):
     this_dir = os.path.dirname(os.path.abspath(__file__))
 
     glob_path = os.path.join(
-        this_dir, "./classic/benchmark/agclassic/benchmark/challenges/**/[!deprecated]*/data.json"
+        this_dir,
+        "./classic/benchmark/agclassic/benchmark/challenges/**/[!deprecated]*/data.json",
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
