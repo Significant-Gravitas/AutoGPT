@@ -4,11 +4,11 @@ on:
   push:
     branches: [ master ]
     paths:
-      - '.github/workflows/autogpt-builder-ci.yml'
+      - '.github/workflows/platform-frontend-ci.yml'
       - 'autogpt_platform/frontend/**'
   pull_request:
     paths:
-      - '.github/workflows/autogpt-builder-ci.yml'
+      - '.github/workflows/platform-frontend-ci.yml'
       - 'autogpt_platform/frontend/**'
 
 defaults:
