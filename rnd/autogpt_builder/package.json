@@ -10,7 +10,7 @@
     "format": "prettier --write .",
     "test": "playwright test",
     "test-ui": "playwright test --ui",
-    "prepTests": "npm run build && npm run start &"
+    "gentests": "playwright codegen http://localhost:3000"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
