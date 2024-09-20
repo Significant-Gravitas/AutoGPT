@@ -32,7 +32,7 @@ WORKDIR /app/autogpt
 COPY original_autogpt/pyproject.toml original_autogpt/poetry.lock ./
 
 # Include forge so it can be used AS a path dependency
-COPY classic/forge/ ../forge
+COPY forge/ ../forge
 
 # Include frontend
 COPY frontend/ ../frontend
