@@ -142,11 +142,11 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 /* Mirror of autogpt_server/data/graph.py:ExecutionMeta */
 export type ExecutionMeta = {
   execution_id: string;
-  started_at: Date;
-  ended_at: Date;
+  started_at: number;
+  ended_at: number;
   duration: number;
   total_run_time: number;
-  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  status: "running" | "waiting" | "success" | "failed";
 };
 
 /* Mirror of backend/data/graph.py:GraphMeta */
@@ -157,6 +157,9 @@ export type GraphMeta = {
   is_template: boolean;
   name: string;
   description: string;
+};
+
+export type GraphMetaWithRuns = GraphMeta & {
   executions: ExecutionMeta[];
 };
 

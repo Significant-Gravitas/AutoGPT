@@ -121,7 +121,7 @@ class GraphMeta(BaseDbModel):
     is_template: bool = False
     name: str
     description: str
-    executions: list[ExecutionMeta] = []
+    executions: list[ExecutionMeta] | None = None
 
     @staticmethod
     def from_db(graph: AgentGraph):
@@ -131,7 +131,7 @@ class GraphMeta(BaseDbModel):
                 for execution in graph.AgentGraphExecution
             ]
         else:
-            executions = []
+            executions = None
 
         return GraphMeta(
             id=graph.id,
@@ -419,7 +419,7 @@ async def get_graphs_meta(
             )
             if include_executions
             else None
-        ),  # type: ignore
+        ),
     )
 
     if not graphs:

@@ -2,9 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import AutoGPTServerAPI, {
-  GraphMeta,
+  GraphMetaWithRuns,
   ExecutionMeta,
-  NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
@@ -18,15 +17,17 @@ import {
 } from "@/components/monitor";
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<GraphMeta[]>([]);
+  const [flows, setFlows] = useState<GraphMetaWithRuns[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
+  const [selectedFlow, setSelectedFlow] = useState<GraphMetaWithRuns | null>(
+    null,
+  );
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const fetchAgents = useCallback(() => {
-    api.listGraphs(true).then((agent) => {
+    api.listGraphsWithRuns().then((agent) => {
       setFlows(agent);
       const flowRuns = agent.flatMap((graph) =>
         graph.executions != null
@@ -61,7 +62,9 @@ const Monitor = () => {
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
-          setSelectedFlow(f.id == selectedFlow?.id ? null : f);
+          setSelectedFlow(
+            f.id == selectedFlow?.id ? null : (f as GraphMetaWithRuns),
+          );
         }}
       />
       <FlowRunsList
@@ -98,26 +101,16 @@ const Monitor = () => {
 };
 
 function flowRunFromExecutionMeta(
-  graphMeta: GraphMeta,
+  graphMeta: GraphMetaWithRuns,
   executionMeta: ExecutionMeta,
 ): FlowRun {
-  let status: "running" | "waiting" | "success" | "failed" = "success";
-  if (executionMeta.status === "FAILED") {
-    status = "failed";
-  } else if (["QUEUED", "RUNNING"].includes(executionMeta.status)) {
-    status = "running";
-  } else if (executionMeta.status === "INCOMPLETE") {
-    status = "waiting";
-  }
   return {
     id: executionMeta.execution_id,
     graphID: graphMeta.id,
     graphVersion: graphMeta.version,
-    status,
-    startTime: new Date(executionMeta.started_at).getTime(),
-    endTime: executionMeta.ended_at
-      ? new Date(executionMeta.ended_at).getTime()
-      : undefined,
+    status: executionMeta.status,
+    startTime: executionMeta.started_at,
+    endTime: executionMeta.ended_at,
     duration: executionMeta.duration,
     totalRunTime: executionMeta.total_run_time,
   } as FlowRun;
