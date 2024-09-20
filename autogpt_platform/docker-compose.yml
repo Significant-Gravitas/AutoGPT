@@ -182,7 +182,7 @@ services:
 #  frontend:
 #    build:
 #      context: ../
-#      dockerfile: autogpt_platform/autogpt_builder/Dockerfile
+#      dockerfile: autogpt_platform/frontend/Dockerfile
 #      target: dev
 #    depends_on:
 #      postgres:

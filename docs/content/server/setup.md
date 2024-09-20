@@ -80,7 +80,7 @@ poetry install
 **In another terminal**, run the following command to install the dependencies for the frontend:
 
 ```bash
-cd autogpt_platform/autogpt_builder
+cd autogpt_platform/frontend
 yarn install
 ```
 
@@ -120,7 +120,7 @@ docker compose -f docker-compose.combined.yml build
 docker compose -f docker-compose.combined.yml up -d
 ```
 
-In the other terminal from autogpt_builder, you can run the following command to start the frontend:
+In the other terminal from frontend, you can run the following command to start the frontend:
 
 ```bash
 yarn dev
