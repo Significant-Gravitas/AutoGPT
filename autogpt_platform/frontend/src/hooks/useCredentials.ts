@@ -58,11 +58,20 @@ export default function useCredentials(): CredentialsData | null {
     };
   }
 
+  // Filter by OAuth credentials that have sufficient scopes for this block
+  const requiredScopes = credentialsSchema.credentials_scopes;
+  const savedOAuthCredentials = requiredScopes
+    ? provider.savedOAuthCredentials.filter((c) =>
+        new Set(c.scopes).isSupersetOf(new Set(requiredScopes)),
+      )
+    : provider.savedOAuthCredentials;
+
   return {
     ...provider,
     schema: credentialsSchema,
     supportsApiKey,
     supportsOAuth2,
+    savedOAuthCredentials,
     isLoading: false,
   };
 }
