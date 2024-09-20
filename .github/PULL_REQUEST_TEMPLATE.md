@@ -9,7 +9,7 @@
 
 ### Testing 🔍
 > [!NOTE] 
-Only for the new autogpt platform, currently in rnd/
+Only for the new autogpt platform, currently in autogpt_platform/
 
 <!--
 Please make sure your changes have been tested and are in good working condition. 

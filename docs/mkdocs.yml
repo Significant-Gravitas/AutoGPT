@@ -30,7 +30,7 @@ nav:
           - Code of Conduct: code-of-conduct.md
 
   - Benchmark:
-      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
+      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md
 
   - Forge:
       - Introduction: forge/get-started.md
@@ -44,7 +44,7 @@ nav:
           - Creating Components: forge/components/creating-components.md
 
   - Frontend:
-      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
+      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md
 
   - Docs: docs/index.md
     

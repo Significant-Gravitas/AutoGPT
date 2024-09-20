@@ -1,0 +1,269 @@
+{
+    "command": "agbenchmark start",
+    "completion_time": "2023-07-23-19:53",
+    "metrics": {
+        "run_time": "21.26 seconds",
+        "highest_difficulty": "No successful tests"
+    },
+    "tests": {
+        "TestWriteFile": {
+            "data_path": "agbenchmark/challenges/interface/write_file",
+            "is_regression": false,
+            "task": "Print the the capital of America to a .txt file",
+            "answer": "Washington",
+            "description": "Tests the writing to file",
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "fail_reason": "assert 1 in [0.0]",
+                "success_%": 50.0,
+                "run_time": "21.028 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestBasicCodeGeneration": {
+            "data_path": "agbenchmark/challenges/code/d3_two_sum",
+            "is_regression": false,
+            "task": "Create a two_sum function in a file called code.py. Given an array of integers, return indices of the two numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 9, Because nums[0] + nums[1] = 2 + 7 = 9, return [0, 1].",
+            "answer": "The two_sum function coded properly.",
+            "description": "Tests ability for the agent to create the two_sum function.",
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicCodeGeneration::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestWriteFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestSearch": {
+            "data_path": "agbenchmark/challenges/interface/search",
+            "is_regression": false,
+            "task": "Open 'https://silennaihin.com/random/plain.html' and paste the text on the page in a .txt file",
+            "answer": "This is a Heading\nThis is a paragraph.",
+            "description": "Tests if an llm can search",
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestSearch::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestWriteFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestReadFile": {
+            "data_path": "agbenchmark/challenges/interface/read_file",
+            "is_regression": false,
+            "task": "Write the string 'random string' before any existing text to the file called file_to_check.txt",
+            "answer": "random string Hello World!",
+            "description": "This reads the file quickly",
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestReadFile::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestWriteFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestThreeSum": {
+            "data_path": "agbenchmark/challenges/code/d5_three_sum",
+            "is_regression": false,
+            "task": "Create a three_sum function in a file called code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2].",
+            "answer": "The three_sum function coded properly.",
+            "description": "Tests ability for the agent to create the three_sum function.",
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestThreeSum::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestWriteFile::test_method[challenge_data0], venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicCodeGeneration::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestBasicRetrieval": {
+            "data_path": "agbenchmark/challenges/retrieval/r1_book_price",
+            "is_regression": false,
+            "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
+            "answer": "\u00a325.89",
+            "description": "Specifies specific website to retrieve website from.",
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicRetrieval::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestWriteFile::test_method[challenge_data0], venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestSearch::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestDebugSimpleTypoWithGuidance": {
+            "data_path": "agbenchmark/challenges/code/d1_debug",
+            "is_regression": false,
+            "task": "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+            "answer": "[0, 1] [2, 5] [0, 3]",
+            "description": "Tests ability for the agent to debug python code with a simple typo in it.",
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestWriteFile::test_method[challenge_data0], venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestReadFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestBasicMemory": {
+            "data_path": "agbenchmark/challenges/memory/m1_id",
+            "is_regression": false,
+            "task": "Follow the instructions in the instructions_1.txt file",
+            "answer": "2314",
+            "description": "Tests ability for the agent to remember information between each action. An id is presented initially and the agent has to remember it after reading 4 other files",
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicMemory::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestWriteFile::test_method[challenge_data0], venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestReadFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestRetrieval2.0": {
+            "data_path": "agbenchmark/challenges/retrieval/r2_tesla_revenue",
+            "is_regression": false,
+            "task": "Write tesla's revenue in 2022 into a .txt file.",
+            "answer": "It was $81.462 billion in 2022.",
+            "description": "A no guardrails search for info",
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2.0::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicRetrieval::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestDebugSimpleTypoWithoutGuidance": {
+            "data_path": "agbenchmark/challenges/code/d2_vague",
+            "is_regression": false,
+            "task": "Make test.py run without errors.",
+            "answer": "[0, 1] [2, 5] [0, 3]",
+            "description": "Tests ability for the agent to debug python code with a simple typo in it, using a very broad prompt without guidance",
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithoutGuidance::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestCreateSimpleWebServer": {
+            "data_path": "agbenchmark/challenges/code/d4_web_server",
+            "is_regression": false,
+            "task": "Create a basic flask web server that responds to a GET localhost:8079/health with a 200 OK. Run this web server in the background locally at the port 8079, and then your task is complete.",
+            "answer": "GET localhost:8079/health responds with a 200 OK",
+            "description": "Tests ability for the agent to build a simple web server locally",
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestCreateSimpleWebServer::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestRememberMultipleIds": {
+            "data_path": "agbenchmark/challenges/memory/m2_multiple",
+            "is_regression": false,
+            "task": "Follow the instructions in the instructions_1.txt file",
+            "answer": "3145\n3791\n9317\n9471",
+            "description": "Tests ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file.",
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIds::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicMemory::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestRetrieval2.1": {
+            "data_path": "agbenchmark/challenges/retrieval/r2.1_specific",
+            "is_regression": false,
+            "task": "Write Tesla's precise revenue in 2022 into a .txt file.",
+            "answer": "It was $81.462 billion in 2022.",
+            "description": "This one checks the accuracy of the information over r2",
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2.1::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2.0::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestRememberMultipleWithNoise": {
+            "data_path": "agbenchmark/challenges/memory/m3_noise",
+            "is_regression": false,
+            "task": "Follow the instructions in the instructions_1.txt file",
+            "answer": "3145\n3791\n9317\n9471",
+            "description": "Tests ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleWithNoise::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIds::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestRetrieval3": {
+            "data_path": "agbenchmark/challenges/retrieval/r3",
+            "is_regression": false,
+            "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
+            "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",
+            "description": "Tests ability to retrieve information.",
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval3::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2.1::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestRetrieval2.2": {
+            "data_path": "agbenchmark/challenges/retrieval/r2.2_formatting",
+            "is_regression": false,
+            "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
+            "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+            "description": "Advanced version of the r2.1 challenge that also asks for specific formatting.",
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2.2::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2.1::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestRememberMultiplePhrasesWithNoise": {
+            "data_path": "agbenchmark/challenges/memory/m4_phrases",
+            "is_regression": false,
+            "task": "Follow the instructions in the instructions_1.txt file",
+            "answer": "The purple elephant danced on a rainbow while eating a taco\nThe sneaky toaster stole my socks and ran away to Hawaii\nMy pet rock sings better than Beyonc\u00e9 on Tuesdays\nThe giant hamster rode a unicycle through the crowded mall",
+            "description": "Tests ability for the agent to remember information between each action. Multiple phrases are presented in different files and the last file instructs the agent to write these phrases into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultiplePhrasesWithNoise::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleWithNoise::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        }
+    },
+    "config": {
+        "workspace": "classic/original_autogpt/workspace/auto_gpt_workspace",
+        "entry_path": "agbenchmark.benchmarks"
+    }
+}
