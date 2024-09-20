@@ -37,6 +37,49 @@ type FormData = {
   selectedAgentId: string;
 };
 
+const keywords = [
+  "Automation",
+  "AI Workflows",
+  "Integration",
+  "Task Automation",
+  "Data Processing",
+  "Workflow Management",
+  "Real-time Analytics",
+  "Custom Triggers",
+  "Event-driven",
+  "API Integration",
+  "Data Transformation",
+  "Multi-step Workflows",
+  "Collaboration Tools",
+  "Business Process Automation",
+  "No-code Solutions",
+  "AI-Powered",
+  "Smart Notifications",
+  "Data Syncing",
+  "User Engagement",
+  "Reporting Automation",
+  "Lead Generation",
+  "Customer Support Automation",
+  "E-commerce Automation",
+  "Social Media Management",
+  "Email Marketing Automation",
+  "Document Management",
+  "Data Enrichment",
+  "Performance Tracking",
+  "Predictive Analytics",
+  "Resource Allocation",
+  "Chatbot", // Added
+  "Virtual Assistant", // Added
+  "Workflow Automation", // Added
+  "Social Media Manager", // Added
+  "Email Optimizer", // Added
+  "Content Generator", // Added
+  "Data Analyzer", // Added
+  "Task Scheduler", // Added
+  "Customer Service Bot", // Added
+  "Personalization Engine", // Added
+];
+
 const SubmitPage: React.FC = () => {
   const router = useRouter();
   const {
@@ -291,15 +334,11 @@ const SubmitPage: React.FC = () => {
                       <MultiSelectorInput placeholder="Add keywords" />
                     </MultiSelectorTrigger>
                     <MultiSelectorContent>
-                      <MultiSelectorList>
-                        <MultiSelectorItem value="keyword1">
-                          Keyword 1
+                      {keywords.map((keyword) => (
+                        <MultiSelectorItem key={keyword} value={keyword}>
+                          {keyword}
                         </MultiSelectorItem>
-                        <MultiSelectorItem value="keyword2">
-                          Keyword 2
-                        </MultiSelectorItem>
-                        {/* Add more predefined keywords as needed */}
-                      </MultiSelectorList>
+                      ))}
                     </MultiSelectorContent>
                   </MultiSelector>
                   {errors.keywords && (
