@@ -97,7 +97,9 @@ class AgentProtocolServer:
         app.include_router(router, prefix="/ap/v1")
         script_dir = os.path.dirname(os.path.realpath(__file__))
         frontend_path = (
-            pathlib.Path(script_dir).joinpath("../../../classic/classic/frontend/build/web").resolve()
+            pathlib.Path(script_dir)
+            .joinpath("../../../classic/frontend/build/web")
+            .resolve()
         )
 
         if os.path.exists(frontend_path):

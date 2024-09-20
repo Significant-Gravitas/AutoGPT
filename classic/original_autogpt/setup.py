@@ -59,7 +59,10 @@ txt_to_rtf("../LICENSE", license_file)
 setup(
     executables=[
         Executable(
-            "classic/original_autogpt/__main__.py", target_name="autogpt", base="console", icon=icon
+            "classic/original_autogpt/__main__.py",
+            target_name="autogpt",
+            base="console",
+            icon=icon,
         ),
     ],
     options={
