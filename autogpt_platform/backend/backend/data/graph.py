@@ -11,10 +11,10 @@ from prisma.types import AgentGraphInclude
 from pydantic import BaseModel, PrivateAttr
 from pydantic_core import PydanticUndefinedType
 
-import autogpt_server.data.execution
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockInput, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
+from backend.data.execution import ExecutionStatus
 from backend.data.user import DEFAULT_USER_ID
 from backend.util import json
 
@@ -86,7 +86,7 @@ class ExecutionMeta(BaseDbModel):
     ended_at: datetime
     duration: float
     total_run_time: float
-    status: autogpt_server.data.execution.ExecutionStatus
+    status: ExecutionStatus
 
     @staticmethod
     def from_agent_graph_execution(execution: AgentGraphExecution):
@@ -109,9 +109,7 @@ class ExecutionMeta(BaseDbModel):
             ended_at=end_time,
             duration=duration,
             total_run_time=total_run_time,
-            status=autogpt_server.data.execution.ExecutionStatus(
-                execution.executionStatus
-            ),
+            status=ExecutionStatus(execution.executionStatus),
         )
 
 
