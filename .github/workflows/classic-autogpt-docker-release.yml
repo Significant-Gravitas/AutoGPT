@@ -1,4 +1,4 @@
-name: Classic -AutoGPT Docker Release
+name: Classic - AutoGPT Docker Release
 
 on:
   release:
@@ -44,6 +44,7 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v5
       with:
+        context: classic/
         file: Dockerfile.autogpt
         build-args: BUILD_TYPE=release
         load: true    # save to docker images
