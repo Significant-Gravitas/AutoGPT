@@ -89,23 +89,23 @@ jobs:
       # Install dependencies
 
       - name: Install Python dependencies
-        run: poetry -C ${{ matrix.sub-package }} install
+        run: poetry -C classic/${{ matrix.sub-package }} install
 
       # Lint
 
       - name: Lint (isort)
         run: poetry run isort --check .
-        working-directory: ${{ matrix.sub-package }}
+        working-directory: classic/${{ matrix.sub-package }}
 
       - name: Lint (Black)
         if: success() || failure()
         run: poetry run black --check .
-        working-directory: ${{ matrix.sub-package }}
+        working-directory: classic/${{ matrix.sub-package }}
 
       - name: Lint (Flake8)
         if: success() || failure()
         run: poetry run flake8 .
-        working-directory: ${{ matrix.sub-package }}
+        working-directory: classic/${{ matrix.sub-package }}
 
   types:
     needs: get-changed-parts
@@ -141,11 +141,11 @@ jobs:
       # Install dependencies
 
       - name: Install Python dependencies
-        run: poetry -C ${{ matrix.sub-package }} install
+        run: poetry -C classic/${{ matrix.sub-package }} install
 
       # Typecheck
 
       - name: Typecheck
         if: success() || failure()
         run: poetry run pyright
-        working-directory: ${{ matrix.sub-package }}
+        working-directory: classic/${{ matrix.sub-package }}
