@@ -48,27 +48,6 @@ jobs:
       #   if: runner.os == 'macOS'
       #   uses: crazy-max/ghaction-setup-docker@v3
 
-      - name: Start MinIO service (Linux)
-        if: runner.os == 'Linux'
-        working-directory: "."
-        run: |
-          docker pull minio/minio:edge-cicd
-          docker run -d -p 9000:9000 minio/minio:edge-cicd
-
-      - name: Start MinIO service (macOS)
-        if: runner.os == 'macOS'
-        working-directory: ${{ runner.temp }}
-        run: |
-          brew install minio/stable/minio
-          mkdir data
-          minio server ./data &
-
-      # No MinIO on Windows:
-      # - Windows doesn't support running Linux Docker containers
-      # - It doesn't seem possible to start background processes on Windows. They are
-      #   killed after the step returns.
-      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
