@@ -42,13 +42,13 @@ ENTRYPOINT ["poetry", "run", "autogpt"]
 CMD []
 
 # dev build -> include everything
-FROM autogpt-base as autogpt-dev
+FROM autogpt-base AS autogpt-dev
 RUN poetry install --no-cache --no-root \
     && rm -rf $(poetry env info --path)/src
 ONBUILD COPY original_autogpt/ ./
 
 # release build -> include bare minimum
-FROM autogpt-base as autogpt-release
+FROM autogpt-base AS autogpt-release
 RUN poetry install --no-cache --no-root --without dev \
     && rm -rf $(poetry env info --path)/src
 ONBUILD COPY original_autogpt/ ./autogpt
