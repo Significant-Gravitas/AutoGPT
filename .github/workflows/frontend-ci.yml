@@ -34,7 +34,7 @@ jobs:
 
     - name: Build Flutter to Web
       run: |
-        cd frontend
+        cd classic/frontend
         flutter build web --base-href /app/
 
     # - name: Commit and Push to ${{ env.BUILD_BRANCH }}
