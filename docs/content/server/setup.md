@@ -102,9 +102,17 @@ poetry run prisma generate
 
 Without running this command, the necessary Python modules (prisma.models) won't be available, leading to a `ModuleNotFoundError`.
 
+### Get access to Supabase
+
+Navigate to rnd/supabase
+Run the following command:
+
+```bash
+  git submodule update --init --recursive
+```
 ### Running the server 
 
-To run the server, you can run the following commands in the same terminal you ran the `poetry install` command:
+To run the server, navigate back to rnd (cd..) and run the following commands in the same terminal you ran the `poetry install` command:
 
 ```bash
 cp supabase/docker/.env.example .env
