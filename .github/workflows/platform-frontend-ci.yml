@@ -1,4 +1,4 @@
-name: AutoGPT Platform - AutoGPT Frontend CI
+name: AutoGPT Platform - Frontend CI
 
 on:
   push:

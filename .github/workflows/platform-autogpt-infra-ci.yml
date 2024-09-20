@@ -1,4 +1,4 @@
-name: AutoGPT Platform - AutoGPT Builder Infra
+name: AutoGPT Platform - Infra
 
 on:
   push:
