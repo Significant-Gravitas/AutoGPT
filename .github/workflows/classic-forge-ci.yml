@@ -4,13 +4,13 @@ on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
-      - '.github/workflows/forge-ci.yml'
+      - '.github/workflows/classic-forge-ci.yml'
       - 'classic/forge/**'
       - '!classic/forge/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
-      - '.github/workflows/forge-ci.yml'
+      - '.github/workflows/classic-forge-ci.yml'
       - 'classic/forge/**'
       - '!classic/forge/tests/vcr_cassettes'
 
@@ -21,7 +21,7 @@ concurrency:
 defaults:
   run:
     shell: bash
-    working-directory: forge
+    working-directory: classic/forge
 
 jobs:
   test:
