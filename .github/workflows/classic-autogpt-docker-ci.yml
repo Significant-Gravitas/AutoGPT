@@ -6,11 +6,13 @@ on:
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
       - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
       - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
 
 concurrency:
   group: ${{ format('classic-autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -48,7 +50,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: classic/
-        file: Dockerfile.autogpt
+        file: classic/Dockerfile.autogpt
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         tags: ${{ env.IMAGE_NAME }}
         labels: GIT_REVISION=${{ github.sha }}
@@ -117,7 +119,8 @@ jobs:
         name: Build image
         uses: docker/build-push-action@v5
         with:
-          file: Dockerfile.autogpt
+          context: classic/
+          file: classic/Dockerfile.autogpt
           build-args: BUILD_TYPE=dev  # include pytest
           tags: >
             ${{ env.IMAGE_NAME }},
