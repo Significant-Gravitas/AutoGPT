@@ -160,13 +160,7 @@ export type GraphMeta = {
   description: string;
 };
 
-export type GraphMetaWithRuns = {
-  id: string;
-  version: number;
-  is_active: boolean;
-  is_template: boolean;
-  name: string;
-  description: string;
+export type GraphMetaWithRuns = GraphMeta & {
   executions: ExecutionMeta[];
 };
 
