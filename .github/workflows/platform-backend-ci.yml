@@ -76,7 +76,9 @@ jobs:
 
       - id: supabase
         name: Start Supabase
+        working-directory: .
         run: |
+          supabase init
           supabase start
           supabase status -o env >> $GITHUB_OUTPUT
         # outputs:
