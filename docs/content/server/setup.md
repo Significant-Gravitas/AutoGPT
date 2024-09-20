@@ -123,6 +123,7 @@ docker compose -f docker-compose.combined.yml up -d
 In the other terminal from frontend, you can run the following command to start the frontend:
 
 ```bash
+cp .env.example .env
 yarn dev
 ```
 
