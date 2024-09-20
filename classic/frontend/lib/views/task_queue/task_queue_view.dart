@@ -1,4 +1,4 @@
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/benchmark_task_status.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
 import 'package:auto_gpt_flutter_client/models/test_option.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';

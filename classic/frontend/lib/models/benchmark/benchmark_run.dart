@@ -1,8 +1,8 @@
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/config.dart';
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/metrics.dart';
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/repository_info.dart';
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/run_details.dart';
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/task_info.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/config.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/metrics.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/repository_info.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/run_details.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/task_info.dart';
 
 // TODO: Remove the ability to have null values when benchmark implementation is complete
 /// `BenchmarkRun` represents a complete benchmark run and encapsulates all associated data.

@@ -1,5 +1,5 @@
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/api_type.dart';
-import 'package:auto_gpt_flutter_client/models/classic/benchmark/benchmark_run.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/api_type.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_run.dart';
 import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 
 class LeaderboardService {
