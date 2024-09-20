@@ -29,11 +29,6 @@ def save_combined_radar_chart(
     ax.set_theta_direction(-1)  # type: ignore
     ax.spines["polar"].set_visible(False)  # Remove border
 
-    # Define a custom normalization to start the color from the middle
-    norm = Normalize(
-        vmin=0, vmax=max([max(val.values()) for val in categories.values()])
-    )  # We use the maximum of all categories for normalization
-
     cmap = plt.cm.get_cmap("nipy_spectral", len(categories))  # type: ignore
 
     colors = [cmap(i) for i in range(len(categories))]
@@ -57,7 +52,7 @@ def save_combined_radar_chart(
         )  # Draw points
 
         # Draw legend
-        legend = ax.legend(
+        ax.legend(
             handles=[
                 mpatches.Patch(color=color, label=cat_name, alpha=0.25)
                 for cat_name, color in zip(categories.keys(), colors)

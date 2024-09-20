@@ -172,7 +172,8 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
 
         # Call the LLM and parse result
         # THIS NEEDS TO BE REPLACED WITH YOUR LLM CALL/LOGIC
-        # Have a look at classic/original_autogpt/agents/agent.py for an example (complete_and_parse)
+        # Have a look at classic/original_autogpt/agents/agent.py 
+        # for an example (complete_and_parse)
         proposal = ActionProposal(
             thoughts="I cannot solve the task!",
             use_tool=AssistantFunctionCall(

@@ -21,7 +21,8 @@ def get_reports_data(report_path: str) -> dict[str, Any]:
     if latest_files is None:
         raise Exception("No files found in the reports directory")
 
-    # This will print the latest file in each subdirectory and add to the files_data dictionary
+    # This will print the latest file in each s
+    # ubdirectory and add to the files_data dictionary
     for subdir, file in latest_files:
         subdir_name = os.path.basename(os.path.normpath(subdir))
         with open(Path(subdir) / file, "r") as f:

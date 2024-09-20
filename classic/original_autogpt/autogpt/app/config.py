@@ -176,8 +176,8 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
 
             logger.error("Set your Groq API key in .env or as an environment variable")
             logger.info(
-                "For further instructions: " +
-                "https://docs.agpt.co/classic/original_autogpt/setup/#groq"
+                "For further instructions: "
+                + "https://docs.agpt.co/classic/original_autogpt/setup/#groq"
             )
             raise ValueError("Groq is unavailable: can't load credentials")
         except AuthenticationError as e:
@@ -203,8 +203,8 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
                 "Set your OpenAI API key in .env or as an environment variable"
             )
             logger.info(
-                "For further instructions: " +
-                "https://docs.agpt.co/classic/original_autogpt/setup/#openai"
+                "For further instructions: "
+                + "https://docs.agpt.co/classic/original_autogpt/setup/#openai"
             )
             raise ValueError("OpenAI is unavailable: can't load credentials")
         except AuthenticationError as e:
