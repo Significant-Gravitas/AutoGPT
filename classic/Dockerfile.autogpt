@@ -29,13 +29,13 @@ ENV PATH="$POETRY_HOME/bin:$PATH"
 RUN poetry config installer.max-workers 10
 
 WORKDIR /app/autogpt
-COPY classic/original_autogpt/pyproject.toml classic/original_autogpt/poetry.lock ./
+COPY original_autogpt/pyproject.toml original_autogpt/poetry.lock ./
 
 # Include forge so it can be used as a path dependency
-COPY classic/forge/ ../forge
+COPY forge/ ../forge
 
 # Include frontend
-COPY classic/frontend/ ../frontend
+COPY frontend/ ../frontend
 
 # Set the entrypoint
 ENTRYPOINT ["poetry", "run", "autogpt"]
@@ -45,16 +45,16 @@ CMD []
 FROM autogpt-base as autogpt-dev
 RUN poetry install --no-cache --no-root \
     && rm -rf $(poetry env info --path)/src
-ONBUILD COPY classic/original_autogpt/ ./
+ONBUILD COPY original_autogpt/ ./
 
 # release build -> include bare minimum
 FROM autogpt-base as autogpt-release
 RUN poetry install --no-cache --no-root --without dev \
     && rm -rf $(poetry env info --path)/src
-ONBUILD COPY classic/original_autogpt/ ./autogpt
-ONBUILD COPY classic/original_autogpt/scripts/ ./scripts
-ONBUILD COPY classic/original_autogpt/plugins/ ./plugins
-ONBUILD COPY classic/original_autogpt/README.md ./README.md
+ONBUILD COPY original_autogpt/ ./autogpt
+ONBUILD COPY original_autogpt/scripts/ ./scripts
+ONBUILD COPY original_autogpt/plugins/ ./plugins
+ONBUILD COPY original_autogpt/README.md ./README.md
 ONBUILD RUN mkdir ./data
 
 FROM autogpt-${BUILD_TYPE} AS autogpt
