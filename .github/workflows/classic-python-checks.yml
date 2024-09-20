@@ -40,7 +40,7 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
-            autogpt:
+            original_autogpt:
               - classic/original_autogpt/autogpt/**
               - classic/original_autogpt/tests/**
               - classic/original_autogpt/poetry.lock
@@ -104,7 +104,7 @@ jobs:
 
       - name: Lint (Flake8)
         if: success() || failure()
-        run: poetry run flake8 --config=./classic/.flake8 .
+        run: poetry run flake8 .
         working-directory: classic/${{ matrix.sub-package }}
 
   types:
