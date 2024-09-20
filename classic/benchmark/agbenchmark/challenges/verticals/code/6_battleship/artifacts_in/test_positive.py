@@ -1,4 +1,4 @@
-from abstract_class import ShipPlacement, Turn
+from .abstract_class import ShipPlacement, Turn
 
 
 def test_turns_and_results(battleship_game, initialized_game_id):

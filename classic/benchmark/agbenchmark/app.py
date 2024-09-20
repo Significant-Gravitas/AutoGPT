@@ -60,7 +60,6 @@ while challenge_spec_files:
             logger.warning(f"Spec file {challenge_relpath} failed to load:\n{e}")
         logger.debug(f"Invalid challenge spec: {challenge_spec_file.read_text()}")
         continue
-    challenge_info.spec_file = challenge_spec_file
 
     if not challenge_info.eval_id:
         challenge_info.eval_id = str(uuid.uuid4())

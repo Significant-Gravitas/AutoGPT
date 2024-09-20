@@ -1,6 +1,6 @@
 # pyright: reportMissingImports=false
 import pytest
-from abstract_class import ShipPlacement, Turn
+from .abstract_class import ShipPlacement, Turn
 from battleship import Battleship
 
 

@@ -1,6 +1,6 @@
 import re
 
-from sample_code import get_ethereum_price
+from .sample_code import get_ethereum_price
 
 
 def test_get_ethereum_price() -> None:

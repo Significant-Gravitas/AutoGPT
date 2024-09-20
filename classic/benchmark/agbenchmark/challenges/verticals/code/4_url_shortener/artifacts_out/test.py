@@ -1,6 +1,6 @@
 import unittest
 
-from url_shortener import retrieve_url, shorten_url
+from .url_shortener import retrieve_url, shorten_url
 
 
 class TestURLShortener(unittest.TestCase):

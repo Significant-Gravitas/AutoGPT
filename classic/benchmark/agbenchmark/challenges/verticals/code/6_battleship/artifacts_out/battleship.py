@@ -1,6 +1,6 @@
 from typing import Dict
 
-from abstract_class import (
+from .abstract_class import (
     AbstractBattleship,
     Game,
     GameStatus,
