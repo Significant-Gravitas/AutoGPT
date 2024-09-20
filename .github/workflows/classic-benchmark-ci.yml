@@ -5,14 +5,14 @@ on:
     branches: [ master, development, ci-test* ]
     paths:
       - 'classic/benchmark/**'
-      - .github/workflows/benchmark-ci.yml
       - '!classic/benchmark/reports/**'
+      - .github/workflows/classic-benchmark-ci.yml
   pull_request:
     branches: [ master, development, release-* ]
     paths:
       - 'classic/benchmark/**'
       - '!classic/benchmark/reports/**'
-      - .github/workflows/benchmark-ci.yml
+      - .github/workflows/classic-benchmark-ci.yml
 
 concurrency:
   group: ${{ format('benchmark-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -39,7 +39,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: benchmark
+        working-directory: classic/benchmark
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -122,7 +122,7 @@ jobs:
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
-        working-directory: .
+        working-directory: classic
         run: |
           ./run agent start ${{ matrix.agent-name }}
           cd ${{ matrix.agent-name }}
