@@ -9,4 +9,4 @@ exclude =
     venv*/,
     .venv/,
     reports/,
-    agclassic/benchmark/reports/,
+    agbenchmark/reports/,

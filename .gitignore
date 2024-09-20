@@ -157,7 +157,7 @@ openai/
 CURRENT_BULLETIN.md
 
 # AgBenchmark
-agclassic/benchmark/reports/
+agbenchmark/reports/
 
 # Nodejs
 package-lock.json
