@@ -419,7 +419,7 @@ async def get_graphs_meta(
             )
             if include_executions
             else None
-        ),  # type: ignore
+        ),
     )
 
     if not graphs:

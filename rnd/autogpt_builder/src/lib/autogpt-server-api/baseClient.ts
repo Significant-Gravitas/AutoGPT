@@ -188,17 +188,9 @@ export default class BaseAutoGPTServerAPI {
           ? {
               "Content-Type": "application/json",
               Authorization: token ? `Bearer ${token}` : "",
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods":
-                "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, Authorization",
             }
           : {
               Authorization: token ? `Bearer ${token}` : "",
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods":
-                "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, Authorization",
             },
       body: JSON.stringify(payload),
     });
