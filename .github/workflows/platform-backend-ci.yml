@@ -82,9 +82,7 @@ jobs:
           supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
           supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
         # outputs:
-        # API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET,
-        # DB_URL, INBUCKET_URL, STUDIO_URL,
-        # S3_PROTOCOL_ACCESS_KEY_ID, S3_PROTOCOL_ACCESS_KEY_SECRET, STORAGE_S3_URL, STUDIO_URL
+        # DB_URL, API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET
 
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --name updates
