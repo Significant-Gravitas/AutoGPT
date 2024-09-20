@@ -1,5 +1,3 @@
-/* Mirror of autogpt_server/data/block.py:Block */
-
 export type Category = {
   category: string;
   description: string;
@@ -17,6 +15,7 @@ export type BlockCost = {
   cost_filter: { [key: string]: any };
 };
 
+/* Mirror of backend/data/block.py:Block */
 export type Block = {
   id: string;
   name: string;
@@ -113,7 +112,7 @@ type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
       }
   );
 
-/* Mirror of autogpt_server/data/graph.py:Node */
+/* Mirror of backend/data/graph.py:Node */
 export type Node = {
   id: string;
   block_id: string;
@@ -126,7 +125,7 @@ export type Node = {
   };
 };
 
-/* Mirror of autogpt_server/data/graph.py:Link */
+/* Mirror of backend/data/graph.py:Link */
 export type Link = {
   id: string;
   source_id: string;
@@ -140,7 +139,7 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of autogpt_server/data/graph.py:GraphMeta */
+/* Mirror of backend/data/graph.py:GraphMeta */
 export type GraphMeta = {
   id: string;
   version: number;
@@ -150,7 +149,7 @@ export type GraphMeta = {
   description: string;
 };
 
-/* Mirror of autogpt_server/data/graph.py:Graph */
+/* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
@@ -168,7 +167,7 @@ export type GraphUpdateable = Omit<
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 
-/* Derived from autogpt_server/executor/manager.py:ExecutionManager.add_execution */
+/* Derived from backend/executor/manager.py:ExecutionManager.add_execution */
 export type GraphExecuteResponse = {
   /** ID of the initiated run */
   id: string;
@@ -176,7 +175,7 @@ export type GraphExecuteResponse = {
   executions: Array<{ id: string; node_id: string }>;
 };
 
-/* Mirror of autogpt_server/data/execution.py:ExecutionResult */
+/* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
   graph_exec_id: string;
   node_exec_id: string;

@@ -72,7 +72,7 @@ https://docs.docker.com/compose/install/
 Once you have installed Yarn and Poetry, you can run the following command to install the dependencies:
 
 ```bash
-cd autogpt_platform/autogpt_server
+cd autogpt_platform/backend
 cp .env.example .env
 poetry install
 ```
