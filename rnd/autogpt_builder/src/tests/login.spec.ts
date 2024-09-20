@@ -22,7 +22,7 @@ test("test", async ({ page }) => {
   await page.getByPlaceholder("user@email.com").press("Tab");
   await page.getByPlaceholder("password").fill("459034902904923904293");
   await page.getByLabel("I agree to the Terms of").click();
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Sign up" }).click();
 
   await expect(page.getByText("test7@ntindle.com")).toBeVisible();
 });
