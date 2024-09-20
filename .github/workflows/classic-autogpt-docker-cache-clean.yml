@@ -1,4 +1,4 @@
-name: Purge Auto-GPT Docker CI cache
+name: Classic - Purge Auto-GPT Docker CI cache
 
 on:
   schedule:

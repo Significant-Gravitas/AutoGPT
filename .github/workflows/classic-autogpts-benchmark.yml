@@ -1,4 +1,4 @@
-name: AutoGPTs Nightly Benchmark
+name: Classic - AutoGPTs Nightly Benchmark
 
 on:
   workflow_dispatch:

@@ -1,4 +1,4 @@
-name: Forge CI
+name: Classic - Forge CI
 
 on:
   push:

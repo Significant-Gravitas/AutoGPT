@@ -1,4 +1,4 @@
-name: AutoGPT Builder CI
+name: Platform - AutoGPT Builder CI
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: AGBenchmark CI
+name: Classic - AGBenchmark CI
 
 on:
   push:

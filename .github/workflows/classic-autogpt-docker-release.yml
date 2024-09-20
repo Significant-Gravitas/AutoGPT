@@ -1,4 +1,4 @@
-name: AutoGPT Docker Release
+name: Classic -AutoGPT Docker Release
 
 on:
   release:

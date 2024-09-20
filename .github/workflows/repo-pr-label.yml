@@ -1,4 +1,4 @@
-name: "Pull Request auto-label"
+name: Repo - Pull Request auto-label
 
 on:
   # So that PRs touching the same files as the push are updated

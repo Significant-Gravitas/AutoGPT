@@ -1,4 +1,4 @@
-name: 'Close stale issues'
+name: Repo - Close stale issues
 on:
   schedule:
     - cron: '30 1 * * *'

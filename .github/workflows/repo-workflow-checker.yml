@@ -1,4 +1,4 @@
-name: PR Status Checker
+name: Repo - PR Status Checker
 on:
   pull_request:
     types: [opened, synchronize, reopened]

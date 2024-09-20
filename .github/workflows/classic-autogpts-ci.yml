@@ -1,4 +1,4 @@
-name: Agent smoke tests
+name: Classic - Agent smoke tests
 
 on:
   workflow_dispatch:

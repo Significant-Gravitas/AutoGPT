@@ -1,4 +1,4 @@
-name: AGPT Classic Python checks
+name: Classic - Python checks
 
 on:
   push:
