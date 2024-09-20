@@ -30,19 +30,19 @@
     },
     {
       "name": "classic - autogpt",
-      "path": "../autogpt"
+      "path": "../classic/original_autogpt"
     },
     {
       "name": "classic - benchmark",
-      "path": "../benchmark"
+      "path": "../classic/benchmark"
     },
     {
       "name": "classic - forge",
-      "path": "../forge"
+      "path": "../classic/forge"
     },
     {
       "name": "classic - frontend",
-      "path": "../frontend"
+      "path": "../classic/frontend"
     },
   ],
   "settings": {
