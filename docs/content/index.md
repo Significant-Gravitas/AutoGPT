@@ -54,7 +54,7 @@ Measure your agent's performance! The `agbenchmark` can be used with any agent t
 
 <!-- TODO: insert visual demonstrating the benchmark -->
 
-- 📦 [**`agbenchmark`**](https://pypi.org/project/agclassic/benchmark/) on Pypi
+- 📦 [**`agbenchmark`**](https://pypi.org/project/agbenchmark/) on Pypi
 
 - 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
 
@@ -62,7 +62,7 @@ Measure your agent's performance! The `agbenchmark` can be used with any agent t
 
 ## 🏗️ Forge
 
-**[📖 Introduction](classic/forge/get-started.md)**
+**[📖 Introduction](forge/get-started.md)**
 &ensp;|&ensp;
 **[🚀 Quickstart](https://github.com/Significant-Gravitas/AutoGPT/blob/master/QUICKSTART.md)**
 

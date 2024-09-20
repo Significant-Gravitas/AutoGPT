@@ -50,11 +50,11 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 ### Completing the Setup
 
 Once you have cloned or downloaded the project, you can find the AutoGPT Agent in the
-`classic/original_autogpt/` folder.
+`original_autogpt/` folder.
 Inside this folder you can configure the AutoGPT application with an `.env` file and (optionally) a JSON configuration file:
 
 - `.env` for environment variables, which are mostly used for sensitive data like API keys
-- a JSON configuration file to customize certain features of AutoGPT's [Components](../../classic/forge/components/introduction.md)
+- a JSON configuration file to customize certain features of AutoGPT's [Components](../../forge/components/introduction.md)
 
 See the [Configuration](../configuration/options.md) reference for a list of available environment variables.
 
@@ -79,7 +79,7 @@ See the [Configuration](../configuration/options.md) reference for a list of ava
     application also checks for and installs any required dependencies when it starts.
 8. _Optional: configure the JSON file (e.g. `config.json`) with your desired settings._
     The application will use default settings if you don't provide a JSON configuration file.
-    Learn how to [set up the JSON configuration file](../../classic/forge/components/components.md#json-configuration)
+    Learn how to [set up the JSON configuration file](../../forge/components/components.md#json-configuration)
 
 You should now be able to explore the CLI (`./autogpt.sh --help`) and run the application.
 
@@ -260,4 +260,4 @@ For more information and in-depth documentation, check out the [llamafile docume
    set `LLAMAFILE_API_BASE` in `.env` to the right base URL
 
 [llamafile documentation]: https://github.com/Mozilla-Ocho/llamafile#readme
-[classic/forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/forge/classic/forge/llm/providers/llamafile/llamafile.py
+[classic/forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/forge/llm/providers/llamafile/llamafile.py

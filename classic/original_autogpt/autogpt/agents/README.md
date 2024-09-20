@@ -34,4 +34,4 @@ class MyAgent(Agent):
         self.my_component = MyComponent()
 ```
 
-For more customization, you can override the `propose_action` and `execute` or even subclass `BaseAgent` directly. This way you can have full control over the agent's components and behavior. Have a look at the [implementation of Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/classic/original_autogpt/agents/agent.py) for more details.
+For more customization, you can override the `propose_action` and `execute` or even subclass `BaseAgent` directly. This way you can have full control over the agent's components and behavior. Have a look at the [implementation of Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/agents/agent.py) for more details.

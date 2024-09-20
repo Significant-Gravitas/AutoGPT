@@ -51,7 +51,7 @@ ONBUILD COPY classic/original_autogpt/ ./
 FROM autogpt-base as autogpt-release
 RUN poetry install --no-cache --no-root --without dev \
     && rm -rf $(poetry env info --path)/src
-ONBUILD COPY classic/original_autogpt/classic/original_autogpt/ ./autogpt
+ONBUILD COPY classic/original_autogpt/ ./autogpt
 ONBUILD COPY classic/original_autogpt/scripts/ ./scripts
 ONBUILD COPY classic/original_autogpt/plugins/ ./plugins
 ONBUILD COPY classic/original_autogpt/README.md ./README.md
