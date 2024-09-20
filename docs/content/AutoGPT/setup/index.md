@@ -50,7 +50,7 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 ### Completing the Setup
 
 Once you have cloned or downloaded the project, you can find the AutoGPT Agent in the
-`autogpt/` folder.
+`original_autogpt/` folder.
 Inside this folder you can configure the AutoGPT application with an `.env` file and (optionally) a JSON configuration file:
 
 - `.env` for environment variables, which are mostly used for sensitive data like API keys
@@ -220,7 +220,7 @@ For more information and in-depth documentation, check out the [llamafile docume
 
     1. Get the `llamafile/serve.py` script through one of these two ways:
         1. Clone the AutoGPT repo somewhere in your Windows environment,
-           with the script located at `autogpt/scripts/llamafile/serve.py`
+           with the script located at `classic/original_autogpt/scripts/llamafile/serve.py`
         2. Download just the [serve.py] script somewhere in your Windows environment
     2. Make sure you have `click` installed: `pip install click`
     3. Run `ip route | grep default | awk '{print $3}'` *inside WSL* to get the address
@@ -231,7 +231,7 @@ For more information and in-depth documentation, check out the [llamafile docume
     5. In WSL, set `LLAMAFILE_API_BASE=http://{WSL_HOST_ADDR}:8080/v1` in your `.env`.
     6. Follow the rest of the regular instructions below.
 
-    [serve.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/scripts/llamafile/serve.py
+    [serve.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/original_autogpt/scripts/llamafile/serve.py
     </details>
 
     * [Mozilla-Ocho/llamafile#356](https://github.com/Mozilla-Ocho/llamafile/issues/356)
@@ -241,7 +241,7 @@ For more information and in-depth documentation, check out the [llamafile docume
     These instructions will download and use `mistral-7b-instruct-v0.2.Q5_K_M.llamafile`.
     `mistral-7b-instruct-v0.2` is currently the only tested and supported model.
     If you want to try other models, you'll have to add them to `LlamafileModelName` in
-    [`llamafile.py`][forge/llamafile.py].
+    [`llamafile.py`][classic/forge/llamafile.py].
     For optimal results, you may also have to add some logic to adapt the message format,
     like `LlamafileProvider._adapt_chat_messages_for_mistral_instruct(..)` does.
 
@@ -260,4 +260,4 @@ For more information and in-depth documentation, check out the [llamafile docume
    set `LLAMAFILE_API_BASE` in `.env` to the right base URL
 
 [llamafile documentation]: https://github.com/Mozilla-Ocho/llamafile#readme
-[forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/forge/forge/llm/providers/llamafile/llamafile.py
+[classic/forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/forge/llm/providers/llamafile/llamafile.py

@@ -6,7 +6,7 @@
 &ensp;|&ensp;
 [🐙 **GitHub**](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt)
 
-**Location:** `autogpt/` in the GitHub repo
+**Location:** `classic/original_autogpt/` in the GitHub repo
 
 AutoGPT was conceived when OpenAI published their GPT-4 model accompanied by a paper
 outlining the advanced reasoning and task-solving abilities of the model. The concept
