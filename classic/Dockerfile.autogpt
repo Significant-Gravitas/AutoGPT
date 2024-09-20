@@ -46,6 +46,7 @@ FROM autogpt-base AS autogpt-dev
 RUN poetry install --no-cache --no-root \
     && rm -rf $(poetry env info --path)/src
 ONBUILD COPY original_autogpt/ ./
+ONBUILD RUN mkdir ./data
 
 # release build -> include bare minimum
 FROM autogpt-base AS autogpt-release
