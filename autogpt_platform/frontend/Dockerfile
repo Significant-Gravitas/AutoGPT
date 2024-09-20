@@ -1,19 +1,19 @@
 # Base stage for both dev and prod
 FROM node:21-alpine AS base
 WORKDIR /app
-COPY autogpt_platform/autogpt_builder/package.json autogpt_platform/autogpt_builder/yarn.lock ./
+COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile
 
 # Dev stage
 FROM base AS dev
 ENV NODE_ENV=development
-COPY autogpt_platform/autogpt_builder/ .
+COPY autogpt_platform/frontend/ .
 EXPOSE 3000
 CMD ["yarn", "run", "dev"]
 
 # Build stage for prod
 FROM base AS build
-COPY autogpt_platform/autogpt_builder/ .
+COPY autogpt_platform/frontend/ .
 RUN npm run build
 
 # Prod stage

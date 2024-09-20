@@ -25,7 +25,7 @@ Follow these steps to set up and run Ollama and your AutoGPT project:
    - Open another terminal
    - Navigate to the frontend directory in the AutoGPT project:
      ```
-     cd autogpt_platform/autogpt_builder/
+     cd autogpt_platform/frontend/
      ```
    - Start the frontend development server:
      ```

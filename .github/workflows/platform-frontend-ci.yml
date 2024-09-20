@@ -1,20 +1,20 @@
-name: Platform - AutoGPT Builder CI
+name: Platform - AutoGPT Frontend CI
 
 on:
   push:
     branches: [ master ]
     paths:
-      - '.github/workflows/autogpt-builder-ci.yml'
-      - 'autogpt_platform/autogpt_builder/**'
+      - '.github/workflows/platform-frontend-ci.yml'
+      - 'autogpt_platform/frontend/**'
   pull_request:
     paths:
-      - '.github/workflows/autogpt-builder-ci.yml'
-      - 'autogpt_platform/autogpt_builder/**'
+      - '.github/workflows/platform-frontend-ci.yml'
+      - 'autogpt_platform/frontend/**'
 
 defaults:
   run:
     shell: bash
-    working-directory: autogpt_platform/autogpt_builder
+    working-directory: autogpt_platform/frontend
 
 jobs:
 
