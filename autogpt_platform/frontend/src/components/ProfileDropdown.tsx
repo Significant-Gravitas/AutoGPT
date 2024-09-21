@@ -42,7 +42,11 @@ const ProfileDropdown = () => {
             Admin Dashboard
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => supabase?.auth.signOut()}>
+        <DropdownMenuItem
+          onClick={() =>
+            supabase?.auth.signOut().then(() => router.replace("/login"))
+          }
+        >
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
