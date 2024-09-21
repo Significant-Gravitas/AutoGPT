@@ -195,6 +195,15 @@ export default class BaseAutoGPTServerAPI {
         response_data.detail,
         response,
       );
+
+      if (
+        response.status === 403 &&
+        response_data.detail === "Not authenticated" &&
+        window // Browser environment only: redirect to login page.
+      ) {
+        window.location.href = "/login";
+      }
+
       throw new Error(`HTTP error ${response.status}! ${response_data.detail}`);
     }
     return response_data;
