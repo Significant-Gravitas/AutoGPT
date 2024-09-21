@@ -68,9 +68,6 @@ class LogMetadata:
         }
         self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|nid:{node_eid}|{block_name}]"
 
-    def _wrap(self, msg: str, **extra):
-        return f"{self.prefix} {msg} {extra}"
-
     def info(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
         logger.info(msg, extra={"json_fields": {**self.metadata, **extra}})
@@ -90,6 +87,9 @@ class LogMetadata:
     def exception(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
         logger.exception(msg, extra={"json_fields": {**self.metadata, **extra}})
+
+    def _wrap(self, msg: str, **extra):
+        return f"{self.prefix} {msg} {extra}"
 
 
 T = TypeVar("T")
