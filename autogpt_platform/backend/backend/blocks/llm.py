@@ -320,7 +320,7 @@ class AITextGeneratorBlock(Block):
             if output_name == "response":
                 return output_data["response"]
             else:
-                raise output_data
+                raise RuntimeError(output_data)
         raise ValueError("Failed to get a response from the LLM.")
 
     def run(self, input_data: Input) -> BlockOutput:
