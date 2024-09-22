@@ -9,7 +9,6 @@ on:
 defaults:
   run:
     shell: bash
-    working-directory: AutoGPT
 
 env:
   PROJECT_ID: agpt-dev
