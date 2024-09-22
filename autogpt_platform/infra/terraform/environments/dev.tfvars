@@ -28,6 +28,10 @@ service_accounts = {
    "dev-agpt-market-sa" = {
     display_name = "AutoGPT Dev Market Server Account"
     description  = "Service account for agpt dev market server"
+  },
+   "dev-agpt-gha-sa" = {
+    display_name = "AutoGPT Dev GHA account"
+    description  = "Service account for GHA ci account in dev"
   }
 }
 
@@ -59,7 +63,8 @@ role_bindings = {
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.client" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
@@ -93,6 +98,12 @@ role_bindings = {
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/storage.admin" = [
+    "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/artifactregistry.writer" = [
+   "serviceAccount:dev-agpt-gha-sa@agpt-dev.iam.gserviceaccount.com"
   ]
 }
 
