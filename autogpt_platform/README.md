@@ -27,7 +27,7 @@ To run the AutoGPT Platform, follow these steps:
 6. Run the following command:
 
    ```
-   docker compose -f docker-compose.combined.yml up -d
+   docker compose up -d
 
    ```
 
@@ -46,8 +46,8 @@ To run the AutoGPT Platform, follow these steps:
 
 Here are some useful Docker Compose commands for managing your AutoGPT Platform:
 
-- `docker compose -f docker-compose.combined.yml up -d`: Start the services in detached mode.
-- `docker compose -f docker-compose.combined.yml stop`: Stop the running services without removing them.
+- `docker compose up -d`: Start the services in detached mode.
+- `docker compose stop`: Stop the running services without removing them.
 - `docker compose rm`: Remove stopped service containers.
 - `docker compose build`: Build or rebuild services.
 - `docker compose down`: Stop and remove containers, networks, and volumes.
