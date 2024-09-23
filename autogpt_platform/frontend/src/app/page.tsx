@@ -2,8 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import AutoGPTServerAPI, {
-  GraphMeta,
-  NodeExecutionResult,
+  GraphMetaWithRuns,
+  ExecutionMeta,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
@@ -17,62 +17,37 @@ import {
 } from "@/components/monitor";
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<GraphMeta[]>([]);
+  const [flows, setFlows] = useState<GraphMetaWithRuns[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
+  const [selectedFlow, setSelectedFlow] = useState<GraphMetaWithRuns | null>(
+    null,
+  );
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
-  const refreshFlowRuns = useCallback(
-    (flowID: string) => {
-      // Fetch flow run IDs
-      api.listGraphRunIDs(flowID).then((runIDs) =>
-        runIDs.map((runID) => {
-          let run;
-          if (
-            (run = flowRuns.find((fr) => fr.id == runID)) &&
-            !["waiting", "running"].includes(run.status)
-          ) {
-            return;
-          }
-
-          // Fetch flow run
-          api.getGraphExecutionInfo(flowID, runID).then((execInfo) =>
-            setFlowRuns((flowRuns) => {
-              if (execInfo.length == 0) return flowRuns;
-
-              const flowRunIndex = flowRuns.findIndex((fr) => fr.id == runID);
-              const flowRun = flowRunFromNodeExecutionResults(execInfo);
-              if (flowRunIndex > -1) {
-                flowRuns.splice(flowRunIndex, 1, flowRun);
-              } else {
-                flowRuns.push(flowRun);
-              }
-              return [...flowRuns];
-            }),
-          );
-        }),
+  const fetchAgents = useCallback(() => {
+    api.listGraphsWithRuns().then((agent) => {
+      setFlows(agent);
+      const flowRuns = agent.flatMap((graph) =>
+        graph.executions != null
+          ? graph.executions.map((execution) =>
+              flowRunFromExecutionMeta(graph, execution),
+            )
+          : [],
       );
-    },
-    [api, flowRuns],
-  );
-
-  const fetchFlowsAndRuns = useCallback(() => {
-    api.listGraphs().then((flows) => {
-      setFlows(flows);
-      flows.map((flow) => refreshFlowRuns(flow.id));
+      setFlowRuns(flowRuns);
     });
-  }, [api, refreshFlowRuns]);
+  }, [api]);
 
-  useEffect(() => fetchFlowsAndRuns(), [fetchFlowsAndRuns]);
   useEffect(() => {
-    const intervalId = setInterval(
-      () => flows.map((f) => refreshFlowRuns(f.id)),
-      5000,
-    );
+    fetchAgents();
+  }, [api, fetchAgents]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => fetchAgents(), 5000);
     return () => clearInterval(intervalId);
-  }, [flows, refreshFlowRuns]);
+  }, [fetchAgents, flows]);
 
   const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
   const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
@@ -87,7 +62,9 @@ const Monitor = () => {
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
-          setSelectedFlow(f.id == selectedFlow?.id ? null : f);
+          setSelectedFlow(
+            f.id == selectedFlow?.id ? null : (f as GraphMetaWithRuns),
+          );
         }}
       />
       <FlowRunsList
@@ -123,56 +100,20 @@ const Monitor = () => {
   );
 };
 
-function flowRunFromNodeExecutionResults(
-  nodeExecutionResults: NodeExecutionResult[],
+function flowRunFromExecutionMeta(
+  graphMeta: GraphMetaWithRuns,
+  executionMeta: ExecutionMeta,
 ): FlowRun {
-  // Determine overall status
-  let status: "running" | "waiting" | "success" | "failed" = "success";
-  for (const execution of nodeExecutionResults) {
-    if (execution.status === "FAILED") {
-      status = "failed";
-      break;
-    } else if (["QUEUED", "RUNNING"].includes(execution.status)) {
-      status = "running";
-      break;
-    } else if (execution.status === "INCOMPLETE") {
-      status = "waiting";
-    }
-  }
-
-  // Determine aggregate startTime, endTime, and totalRunTime
-  const now = Date.now();
-  const startTime = Math.min(
-    ...nodeExecutionResults.map((ner) => ner.add_time.getTime()),
-    now,
-  );
-  const endTime = ["success", "failed"].includes(status)
-    ? Math.max(
-        ...nodeExecutionResults.map((ner) => ner.end_time?.getTime() || 0),
-        startTime,
-      )
-    : now;
-  const duration = (endTime - startTime) / 1000; // Convert to seconds
-  const totalRunTime =
-    nodeExecutionResults.reduce(
-      (cum, node) =>
-        cum +
-        ((node.end_time?.getTime() ?? now) -
-          (node.start_time?.getTime() ?? now)),
-      0,
-    ) / 1000;
-
   return {
-    id: nodeExecutionResults[0].graph_exec_id,
-    graphID: nodeExecutionResults[0].graph_id,
-    graphVersion: nodeExecutionResults[0].graph_version,
-    status,
-    startTime,
-    endTime,
-    duration,
-    totalRunTime,
-    nodeExecutionResults: nodeExecutionResults,
-  };
+    id: executionMeta.execution_id,
+    graphID: graphMeta.id,
+    graphVersion: graphMeta.version,
+    status: executionMeta.status,
+    startTime: executionMeta.started_at,
+    endTime: executionMeta.ended_at,
+    duration: executionMeta.duration,
+    totalRunTime: executionMeta.total_run_time,
+  } as FlowRun;
 }
 
 export default Monitor;

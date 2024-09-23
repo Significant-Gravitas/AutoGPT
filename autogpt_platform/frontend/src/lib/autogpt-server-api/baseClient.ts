@@ -5,7 +5,9 @@ import {
   GraphCreatable,
   GraphUpdateable,
   GraphMeta,
+  GraphMetaWithRuns,
   GraphExecuteResponse,
+  ExecutionMeta,
   NodeExecutionResult,
   User,
   AnalyticsMetrics,
@@ -45,7 +47,12 @@ export default class BaseAutoGPTServerAPI {
   }
 
   async listGraphs(): Promise<GraphMeta[]> {
-    return this._get("/graphs");
+    return this._get(`/graphs`);
+  }
+
+  async listGraphsWithRuns(): Promise<GraphMetaWithRuns[]> {
+    let graphs = await this._get(`/graphs?with_runs=true`);
+    return graphs.map(parseGraphMetaWithRuns);
   }
 
   async listTemplates(): Promise<GraphMeta[]> {
@@ -326,5 +333,30 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
     queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
     start_time: result.start_time ? new Date(result.start_time) : undefined,
     end_time: result.end_time ? new Date(result.end_time) : undefined,
+  };
+}
+
+function parseGraphMetaWithRuns(result: any): GraphMetaWithRuns {
+  return {
+    ...result,
+    executions: result.executions.map(parseExecutionMetaTimestamps),
+  };
+}
+
+function parseExecutionMetaTimestamps(result: any): ExecutionMeta {
+  let status: "running" | "waiting" | "success" | "failed" = "success";
+  if (result.status === "FAILED") {
+    status = "failed";
+  } else if (["QUEUED", "RUNNING"].includes(result.status)) {
+    status = "running";
+  } else if (result.status === "INCOMPLETE") {
+    status = "waiting";
+  }
+
+  return {
+    ...result,
+    status,
+    started_at: new Date(result.started_at).getTime(),
+    ended_at: result.ended_at ? new Date(result.ended_at).getTime() : undefined,
   };
 }
