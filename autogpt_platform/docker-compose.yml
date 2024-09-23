@@ -1,210 +1,144 @@
-services:
-  postgres:
-    image: ankane/pgvector:latest
-    environment:
-      - POSTGRES_USER=agpt_user
-      - POSTGRES_PASSWORD=pass123
-      - POSTGRES_DB=agpt_local
-    healthcheck:
-      test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    ports:
-      - "5433:5432"
-    networks:
-      - app-network
-
-  migrate:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/backend/Dockerfile
-      target: server
-    command: ["sh", "-c", "poetry run prisma migrate deploy"]
-    develop:
-      watch:
-        - path: ./
-          target: autogpt_platform/backend/migrate
-          action: rebuild
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
-    networks:
-      - app-network
-    restart: on-failure
-    healthcheck:
-      test: ["CMD", "poetry", "run", "prisma", "migrate", "status"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:latest
-    command: redis-server --requirepass password
-    ports:
-      - "6379:6379"
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  rest_server:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/backend/Dockerfile
-      target: server
-    command: ["python", "-m", "backend.rest"]
-    develop:
-      watch:
-        - path: ./
-          target: autogpt_platform/backend/
-          action: rebuild
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      - SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=password
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-      - EXECUTIONMANAGER_HOST=executor
-    ports:
-      - "8006:8006"
-      - "8003:8003" # execution scheduler
-    networks:
-      - app-network
-
-  executor:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/backend/Dockerfile
-      target: server
-    command: ["python", "-m", "backend.exec"]
-    develop:
-      watch:
-        - path: ./
-          target: autogpt_platform/backend/
-          action: rebuild
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=password
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-      - AGENTSERVER_HOST=rest_server
-    ports:
-      - "8002:8000"
-    networks:
-      - app-network
-
-  websocket_server:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/backend/Dockerfile
-      target: server
-    command: ["python", "-m", "backend.ws"]
-    develop:
-      watch:
-        - path: ./
-          target: autogpt_platform/backend/
-          action: rebuild
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      - SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=password
-      - ENABLE_AUTH=true
-      - PYRO_HOST=0.0.0.0
-    ports:
-      - "8001:8001"
-    networks:
-      - app-network
-
-  market:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/market/Dockerfile
-    develop:
-      watch:
-        - path: ./
-          target: autogpt_platform/market/
-          action: rebuild
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      - SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60&schema=market
-    ports:
-      - "8015:8015"
-    networks:
-      - app-network
-
-#  frontend:
-#    build:
-#      context: ../
-#      dockerfile: autogpt_platform/frontend/Dockerfile
-#      target: dev
-#    depends_on:
-#      postgres:
-#        condition: service_healthy
-#      rest_server:
-#        condition: service_started
-#      websocket_server:
-#        condition: service_started
-#      migrate:
-#        condition: service_completed_successfully
-#    environment:
-#      - NEXT_PUBLIC_SUPABASE_URL=http://kong:8000
-#      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-#      - DATABASE_URL=postgresql://agpt_user:pass123@postgres:5432/agpt_local?connect_timeout=60
-#      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
-#      - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
-#      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
-#    ports:
-#      - "3000:3000"
-#    networks:
-#      - app-network
-
 networks:
   app-network:
-    driver: bridge
+    name: app-network
+  shared-network:
+    name: shared-network
+
+volumes:
+  db-config:
+
+x-agpt-services:
+  &agpt-services
+  networks:
+    - app-network
+    - shared-network
+
+x-supabase-services:
+  &supabase-services
+  networks:
+    - app-network
+    - shared-network
+
+services:
+  # AGPT services
+  migrate:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: migrate
+
+  redis:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: redis
+
+  rest_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: rest_server
+
+  executor:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: executor
+
+  websocket_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: websocket_server
+
+  market:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: market
+
+  market-migrations:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: market-migrations
+
+#  frontend:
+#    <<: *agpt-services
+#    extends:
+#      file: ./docker-compose.platform.yml
+#      service: frontend
+
+  # Supabase services
+  studio:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: studio
+
+  kong:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: kong
+
+  auth:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: auth
+    environment:
+      GOTRUE_MAILER_AUTOCONFIRM: true
+
+  rest:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: rest
+
+  realtime:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: realtime
+
+  storage:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: storage
+
+  imgproxy:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: imgproxy
+
+  meta:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: meta
+
+  functions:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: functions
+
+  analytics:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: analytics
+
+  db:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: db
+  vector:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: vector

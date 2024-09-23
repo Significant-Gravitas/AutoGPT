@@ -6,6 +6,7 @@ authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
 packages = [{ include = "backend" }]
 
+
 [tool.poetry.dependencies]
 python = "^3.10"
 aio-pika = "^9.4.3"
@@ -67,40 +68,6 @@ cli = "backend.cli:main"
 format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
-# https://poethepoet.natn.io/index.html
-
-[tool.poe]
-poetry_command = ""
-
-# poetry run poe xxx
-[tool.poe.tasks]
-test = "pytest"
-build = ["test", "_dbuild"]
-
-# This might break your python install :)
-install = ["build", "_dinstall"]
-
-# https://cx-freeze.readthedocs.io/en/stable/index.html
-[tool.poe.tasks._dbuild]
-cmd = "python setup.py build"
-
-[tool.poe.tasks.dist_app]
-cmd = "python setup.py bdist_app"
-
-[tool.poe.tasks.dist_dmg]
-cmd = "python setup.py bdist_dmg"
-
-[tool.poe.tasks.dist_msi]
-cmd = "python setup.py bdist_msi"
-
-[tool.poe.tasks.dist_appimage]
-cmd = "python setup.py bdist_appimage"
-
-[tool.poe.tasks.dist_deb]
-cmd = "python setup.py bdist_deb"
-
-[tool.poe.tasks._dinstall]
-cmd = "python setup.py install"
 
 [tool.pytest-watcher]
 now = false
