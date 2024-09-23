@@ -1,0 +1,2433 @@
+interactions:
+- request:
+    body: '{"messages": [{"content": "You are Get-PhysicsNobelPrize, An autonomous
+      agent that specializes in physics history.\nYour decisions must always be made
+      independently without seeking user assistance. Play to your strengths as an
+      LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Write to file the winner''s name(s), affiliated university, and discovery of
+      the 2010 nobel prize in physics. Write your final answer to 2010_nobel_prize_winners.txt.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args:
+      \"key\": \"<key>\"\n7. get_hyperlinks: Get hyperlinks, args: \"url\": \"<url>\"\n8.
+      get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\":
+      \"<question>\"\n9. list_agents: List GPT Agents, args: () -> str\n10. message_agent:
+      Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11.
+      start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. browse_website: Browse Website, args: \"url\":
+      \"<url>\", \"question\": \"<what_you_want_to_find_on_website>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads", "role": "system"},
+      {"content": "The current time and date is Tue Jan  1 00:00:00 2000", "role":
+      "system"}, {"content": "Determine which next command to use, and respond using
+      the format specified above:", "role": "user"}], "model": "gpt-3.5-turbo", "temperature":
+      0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '3304'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 8181236cb66ed968b9e9da85dd4eaa937937921c5e1eb6506a0850bad3ec995d
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA5xTS2/bMAy+71cQPDuvPpbG9wHrMAwdumED5iGQZdpma0muRNdNi/z3QXaaNimw
+        AbsZNPW9SD4hF5iirpVo0zaT5efHs0/z/vr+46LOV4vG/OQPj6W+u/56c/EDE3T5DWnZvZhqZ9qG
+        hJ3FBLUnJVRgunh/cX62PF2tFgkaV1CDKVatTE6n5xPpfO4m89P5AhPsgqoI0ydsvTOtrMXdkg2Y
+        Ls9OEnzB3tdPTs8TFCeq2ZdWy+U2QV071hQw/fWEhsIzrHcNYYoqBA6irESRzgrZaOApswAAGUrt
+        uqqWkGEKu+LuBz1ILGZ4CZaoAHFQsi3AdQJ97aB3FqQmOJkv5vDF5dTAledHArZwVW8C6wDKFtB7
+        Foqd7MEqQyEBVZbccMwLOsv35APLJhm6Cw7a3ZPfRD4FJTc0hUvQykIQ5QXyDQRSXtdsKyidHzSw
+        LZ03KuYFzjZsaZph8tqOJxWcZVsde6qU1OQPEHIqnacd6yif5bWebwOlkLckwAEUVM4V0DZKU+wb
+        lB4raBtlR/IJfA9DIpB71wda95SHyKKdMTGECDF4HAwemvtX5llmX/AH8Wtx66j7Nfx+KAfoe4tH
+        0rVnYc3BHIdn1C1B6HyEUvIG73LcmJiQ1p1XQsOMh95LUAasEzAcQpylshtg0zoflxUKEsVNOA4x
+        tKRun1X03DT/H9Sr5TyYboYj4TZ5vpFdbm9OJG7zqOVwjkeala+Oz2v80flmfF6LtCGdzfq+n9oo
+        to1ap85Xs+ErzNpR8yz6mYXOGOU3swOeEfKuoxD9j7h/c9+zteSfzQ6Gd74zu8VtgiVbDvV6PBxM
+        MYhrMUG2BT1gOt/+3r77AwAA//8DALC6hzNABQAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94afe2b4f1403-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:13:28 GMT
+      Function-Execution-Id:
+      - ldou4cmk8dvo
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '16803'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 4c5fd5eab0fd112b592f227468c4ce4a;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86502'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.332s
+      X-Request-Id:
+      - 310cab176f000a0275ee5a50471c7dbc
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "Write a concise summary of the following text;
+      include any information that can be used to answer the question \"2010 Nobel
+      Prize in Physics winner\". Do not directly answer the question itself:\n\n\nLITERAL
+      TEXT: \"\"\"Skip to content This website uses cookies to improve the user experience.
+      By using this website you consent to all cookies in accordance with our cookie
+      policy.I understand Close the search form A button that allows you to close
+      the search form if needed Close the search form A button that allows you to
+      close the search form if needed Close Mobile Menu The Nobel Prize The Nobel
+      Prize Logo Toggle Mobile Menu Nobel Prizes & Laureates All Nobel Prizes Physics
+      Prize Chemistry Prize Medicine Prize Literature Prize Peace Prize Prize in Economic
+      Sciences Quick facts Nomination Physics Prize Chemistry Prize Medicine Prize
+      Literature Prize Peace Prize Prize in Economic Sciences Nomination Archive Alfred
+      Nobel Alfred Nobel\u2019s life Alfred Nobel\u2019s will News & insights Press
+      In-depth Events Public events Nobel Prize Concert Nobel Week Dialogue Nobel
+      Prize Dialogue Nobel Prize Summit Nobel Prize Inspiration Initiative Nobel Prize
+      award ceremonies Educational Close the search form A button that allows you
+      to close the search form if needed Close the search form A button that allows
+      you to close the search form if needed Header Search Submit a search term Allows
+      users to submit a search term Physics The Nobel Prize in Physics 2010 Explore
+      Summary Physics Prizes Chemistry Prizes Medicine Prizes Literature Prizes Peace
+      Prizes Prizes in Economic Sciences Summary Prize announcement Press release
+      Advanced information Popular information Illustrated information Speed read
+      Award ceremony video Award ceremony speech Banquet video Laureates Andre Geim
+      Konstantin Novoselov Enhanced Page Navigation The Nobel Prize in Physics 2010
+      The Nobel Prize in Physics 2010 - Prize announcement The 2010 Nobel Prize in
+      Physics - Press release The Nobel Prize in Physics 2010 Andre Geim Konstantin
+      Novoselov Share this Share on Facebook: The Nobel Prize in Physics 2010 Share
+      this content on Facebook Facebook Tweet: The Nobel Prize in Physics 2010 Share
+      this content on Twitter Twitter Share on LinkedIn: The Nobel Prize in Physics
+      2010 Share this content on LinkedIn LinkedIn Share via Email: The Nobel Prize
+      in Physics 2010 Share this content via Email Email this page The Nobel Prize
+      in Physics 2010 \u00a9 The Nobel Foundation. Photo: U. Montan Andre Geim Prize
+      share: 1/2 \u00a9 The Nobel Foundation. Photo: U. Montan Konstantin Novoselov
+      Prize share: 1/2 The Nobel Prize in Physics 2010 was awarded jointly to Andre
+      Geim and Konstantin Novoselov \"for groundbreaking experiments regarding the
+      two-dimensional material graphene\" To cite this section MLA style: The Nobel
+      Prize in Physics 2010. NobelPrize.org. Nobel Prize Outreach AB 2023. Tue. 30
+      May 2023. <https://www.nobelprize.org/prizes/physics/2010/summary/> Back to
+      top Back To Top Takes users back to the top of the page Nobel Prizes and laureates
+      Nobel Prizes 2022 Fourteen laureates were awarded a Nobel Prize in 2022, for
+      achievements that have conferred the greatest benefit to humankind. Their work
+      and discoveries range from paleogenomics and click chemistry to documenting
+      war crimes.See them all presented here. Explore prizes and laureates Look for
+      popular awards and laureates in different fields, and discover the history of
+      the Nobel Prize. Select the category or categories you would like to filter
+      by Physics Chemistry Medicine Literature Peace Economic Sciences Select the
+      category or categories you would like to filter by Physics Chemistry Medicine
+      Literature Peace Economic Sciences Decrease the year by one - Choose a year
+      you would like to search in Increase the year by one + Explore About the Nobel
+      Prize organisation The Nobel Foundation Tasked with a mission to manage Alfred
+      Nobel''s fortune and has\u00a0ultimate responsibility for fulfilling the intentions
+      of Nobel''s will. The prize-awarding institutions For more than a century, these
+      academic institutions have worked independently to select Nobel Prize laureates.
+      Nobel Prize outreach activities Several outreach organisations and activities
+      have been developed to inspire generations and disseminate knowledge about the
+      Nobel Prize. Press Contact FAQ Privacy policy Technical support Terms of use
+      For developers Media player Join us Facebook Twitter Icon Follow The Nobel Prize
+      on Twitter Twitter Instagram Icon Follow The Nobel Prize on Instagram Instagram
+      Youtube Icon Follow The Nobel Prize on Youtube Youtube LinkedIn IconConnect
+      with The Nobel Prize on LinkedIn LinkedIn The Nobel Prize Copyright \u00a9 Nobel
+      Prize Outreach AB 2023\"\"\"\n\n\nCONCISE SUMMARY: The text is best summarized
+      as", "role": "user"}], "model": "gpt-3.5-turbo", "temperature": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '4870'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 29d7656aad4088ae628e3565eeb19a0069ac684ba220dd01baa519d495105e85
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0TOT2/bMAwF8Ps+BcGzHNhL3Ky67bIi2FBkh+4yDIUiszEzifQkJv0T5LsPHtb2
+        +vj4wzsjD+gxjsFinlKz/vayOmzyn+Pddj2Mp7T5chqu+pvvm8PyR4cOdXegaP8/FlHzlMhYBR3G
+        QsFoQN9dfepX61XbrR1mHSihx/1kzXLRN3YsO23aZTtjxxr2hP6MU9E82b3pb5KK/rprHb7bb/my
+        d2hqIb03V/3FYRyVI1X0P8+Yqb6qRROhx1ArVwti80YVI5n3BxE9SmTZg40EH9uuhVvdUYJt4RcC
+        FtiOz5VjhUcWoVIdfJahENwQZwgywFeVfy4L3OpJKyU9OXjQMotcgJ4mKpxJrIIK7EuYRhJyEMAe
+        tRnmU2WVkCAHo8IhLfDi8IGF63hfKFQV9FhNJ3TIMtAT+vby6/LhLwAAAP//AwCxXhQNtwEAAA==
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94b9e2a45119b-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:13:39 GMT
+      Function-Execution-Id:
+      - ldoucqfmwj9c
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '2791'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 5b910ed49bf11234e094e665a36013a6;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '88317'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 1.121s
+      X-Request-Id:
+      - 9bff19c2948df6fb290febe90a17eeb8
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"encoding_format": "base64", "input": ["Skip to content This website uses
+      cookies to improve the user experience. By using this website you consent to
+      all cookies in accordance with our cookie policy.I understand Close the search
+      form A button that allows you to close the search form if needed Close the search
+      form A button that allows you to close the search form if needed Close Mobile
+      Menu The Nobel Prize The Nobel Prize Logo Toggle Mobile Menu Nobel Prizes &
+      Laureates All Nobel Prizes Physics Prize Chemistry Prize Medicine Prize Literature
+      Prize Peace Prize Prize in Economic Sciences Quick facts Nomination Physics
+      Prize Chemistry Prize Medicine Prize Literature Prize Peace Prize Prize in Economic
+      Sciences Nomination Archive Alfred Nobel Alfred Nobel\u2019s life Alfred Nobel\u2019s
+      will News & insights Press In-depth Events Public events Nobel Prize Concert
+      Nobel Week Dialogue Nobel Prize Dialogue Nobel Prize Summit Nobel Prize Inspiration
+      Initiative Nobel Prize award ceremonies Educational Close the search form A
+      button that allows you to close the search form if needed Close the search form
+      A button that allows you to close the search form if needed Header Search Submit
+      a search term Allows users to submit a search term Physics The Nobel Prize in
+      Physics 2010 Explore Summary Physics Prizes Chemistry Prizes Medicine Prizes
+      Literature Prizes Peace Prizes Prizes in Economic Sciences Summary Prize announcement
+      Press release Advanced information Popular information Illustrated information
+      Speed read Award ceremony video Award ceremony speech Banquet video Laureates
+      Andre Geim Konstantin Novoselov Enhanced Page Navigation The Nobel Prize in
+      Physics 2010 The Nobel Prize in Physics 2010 - Prize announcement The 2010 Nobel
+      Prize in Physics - Press release The Nobel Prize in Physics 2010 Andre Geim
+      Konstantin Novoselov Share this Share on Facebook: The Nobel Prize in Physics
+      2010 Share this content on Facebook Facebook Tweet: The Nobel Prize in Physics
+      2010 Share this content on Twitter Twitter Share on LinkedIn: The Nobel Prize
+      in Physics 2010 Share this content on LinkedIn LinkedIn Share via Email: The
+      Nobel Prize in Physics 2010 Share this content via Email Email this page The
+      Nobel Prize in Physics 2010 \u00a9 The Nobel Foundation. Photo: U. Montan Andre
+      Geim Prize share: 1/2 \u00a9 The Nobel Foundation. Photo: U. Montan Konstantin
+      Novoselov Prize share: 1/2 The Nobel Prize in Physics 2010 was awarded jointly
+      to Andre Geim and Konstantin Novoselov \"for groundbreaking experiments regarding
+      the two-dimensional material graphene\" To cite this section MLA style: The
+      Nobel Prize in Physics 2010. NobelPrize.org. Nobel Prize Outreach AB 2023. Tue.
+      30 May 2023. <https://www.nobelprize.org/prizes/physics/2010/summary/> Back
+      to top Back To Top Takes users back to the top of the page Nobel Prizes and
+      laureates Nobel Prizes 2022 Fourteen laureates were awarded a Nobel Prize in
+      2022, for achievements that have conferred the greatest benefit to humankind.
+      Their work and discoveries range from paleogenomics and click chemistry to documenting
+      war crimes.See them all presented here. Explore prizes and laureates Look for
+      popular awards and laureates in different fields, and discover the history of
+      the Nobel Prize. Select the category or categories you would like to filter
+      by Physics Chemistry Medicine Literature Peace Economic Sciences Select the
+      category or categories you would like to filter by Physics Chemistry Medicine
+      Literature Peace Economic Sciences Decrease the year by one - Choose a year
+      you would like to search in Increase the year by one + Explore About the Nobel
+      Prize organisation The Nobel Foundation Tasked with a mission to manage Alfred
+      Nobel''s fortune and has\u00a0ultimate responsibility for fulfilling the intentions
+      of Nobel''s will. The prize-awarding institutions For more than a century, these
+      academic institutions have worked independently to select Nobel Prize laureates.
+      Nobel Prize outreach activities Several outreach organisations and activities
+      have been developed to inspire generations and disseminate knowledge about the
+      Nobel Prize. Press Contact FAQ Privacy policy Technical support Terms of use
+      For developers Media player Join us Facebook Twitter Icon Follow The Nobel Prize
+      on Twitter Twitter Instagram Icon Follow The Nobel Prize on Instagram Instagram
+      Youtube Icon Follow The Nobel Prize on Youtube Youtube LinkedIn IconConnect
+      with The Nobel Prize on LinkedIn LinkedIn The Nobel Prize Copyright \u00a9 Nobel
+      Prize Outreach AB 2023"], "model": "text-embedding-ada-002"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '4560'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 86f44f4c53fd0b8994b13ed733d2e685ad84d0e9b7f042fa8f104e3315e5a256
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - private
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94bc2f89de23d-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:13:43 GMT
+      Function-Execution-Id:
+      - ldou6edrrjfb
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '176'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 384df9262218dd36d483722601437611
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3000'
+      X-Ratelimit-Remaining-Requests:
+      - '2999'
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Request-Id:
+      - 4f717577279beaebeda58ccce2e10097
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"encoding_format": "base64", "input": "announcing the 2010 Nobel Prize
+      in Physics winners, Andre Geim and Konstantin Novoselov, for their experiments
+      on graphene, a two-dimensional material.", "model": "text-embedding-ada-002"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '228'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - a61edd3b35f7614b92a7ce79212a615e3b4a9d1efea3b1691dadbe2497f20367
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - private
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94bca8995e268-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:13:44 GMT
+      Function-Execution-Id:
+      - ldou72tkymgg
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '28'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 81f3d87fa060df13ae30e75aaeff5685
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3000'
+      X-Ratelimit-Remaining-Requests:
+      - '2999'
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Request-Id:
+      - cb4a72efeb7d8328b98a8e3f1215e991
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "You are Get-PhysicsNobelPrize, An autonomous
+      agent that specializes in physics history.\nYour decisions must always be made
+      independently without seeking user assistance. Play to your strengths as an
+      LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Write to file the winner''s name(s), affiliated university, and discovery of
+      the 2010 nobel prize in physics. Write your final answer to 2010_nobel_prize_winners.txt.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args:
+      \"key\": \"<key>\"\n7. get_hyperlinks: Get hyperlinks, args: \"url\": \"<url>\"\n8.
+      get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\":
+      \"<question>\"\n9. list_agents: List GPT Agents, args: () -> str\n10. message_agent:
+      Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11.
+      start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. browse_website: Browse Website, args: \"url\":
+      \"<url>\", \"question\": \"<what_you_want_to_find_on_website>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads", "role": "system"},
+      {"content": "The current time and date is Tue Jan  1 00:00:00 2000", "role":
+      "system"}, {"content": "This reminds you of these events from your past: \nI
+      was created", "role": "system"}, {"content": "Determine which next command to
+      use, and respond using the format specified above:", "role": "user"}, {"content":
+      "{\n    \"thoughts\": {\n        \"text\": \"I need to find out who won the
+      2010 Nobel Prize in Physics and write their names, affiliated university, and
+      discovery to a file. I can start by searching for the information online.\",\n        \"reasoning\":
+      \"I need to gather information before I can write it to a file. The internet
+      is a good place to start.\",\n        \"plan\": \"- Use the browse_website command
+      to search for information on the 2010 Nobel Prize in Physics\\n- Use the write_to_file
+      command to write the information to a file\",\n        \"criticism\": \"I need
+      to make sure that the information I find is accurate and that I am not missing
+      any important details.\",\n        \"speak\": \"I will search for information
+      on the 2010 Nobel Prize in Physics and write it to a file.\"\n    },\n    \"command\":
+      {\n        \"name\": \"browse_website\",\n        \"args\": {\n            \"url\":
+      \"https://www.nobelprize.org/prizes/physics/2010/summary/\",\n            \"question\":
+      \"2010 Nobel Prize in Physics winner\"\n        }\n    }\n}", "role": "assistant"},
+      {"content": "Command browse_website returned: Answer gathered from website:
+      announcing the 2010 Nobel Prize in Physics winners, Andre Geim and Konstantin
+      Novoselov, for their experiments on graphene, a two-dimensional material.\n\nLinks:
+      [''\\nSkip to content  (https://www.nobelprize.org/prizes/physics/2010/summary/#content)'',
+      ''cookie policy (https://www.nobelprize.org/about/privacy-policy/)'', ''\\n\\nClose
+      the search form\\nA button that allows you to close the search form if needed\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\nClose
+      the search form\\nA button that allows you to close the search form if needed\\n\\n\\n
+      (https://www.nobelprize.org/prizes/physics/2010/summary/)'', ''\\nClose Mobile
+      Menu\\n (https://www.nobelprize.org/prizes/physics/2010/summary/)'', ''\\n\\nThe
+      Nobel Prize\\nThe Nobel Prize Logo\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n (https://www.nobelprize.org)'']",
+      "role": "system"}, {"content": "Determine which next command to use, and respond
+      using the format specified above:", "role": "user"}], "model": "gpt-3.5-turbo",
+      "temperature": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '5499'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - daaf3ce6ceed44c20ac938bba906210ed5e7bf0a6bfb37a70ab53dbf15afe63e
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA6SST28aQQzF7/0Uls8LggQasrceqoi0jVSp6aVEq8muYV1m7O2MgRDEd6+WPyEl
+        yqm30Xj88/Obt0GuMMeydlaGxneuvj4P7Od1s9Kb6c3w9k/vtrkfDX58n6+HnwUz1MffVNqho1tq
+        aDwZa1sqIzmjCvP+x9FwcDXoXVxlGLQijznOGutcdocdW8RH7fQue33McJHcjDDfYBM1NFaYzkkS
+        5v2LwXWGJ/ipMLrO0NScP10NLkfbDMtauaSE+a8NBkpHcFRPmKNLiZM5sVamipG0K2wmAgAwQat1
+        MastTTCHw+WhQE/WXk5wDLVbEkx1IRVYTcAy1RhcKw/GIERVF+50dTiDKawiGwFbe3YwZU/dCWav
+        8ZFcUmGZHWeUTmCRaDdg116YFm0nlBqCk1fccw3vDmm8kz2/A/f/yT5Dl5GNS07hqP+4enBzgrSI
+        LcoZjMGFHZpl9gbuynIRnZFfw07ES4OoQeCU2iYna+DQaGw/ESoyxz6db5oacvOjlBV7/8464+M3
+        vrJsz9lmx0gcPHmTCHGB9iP+8fBMiYuz8zDtC+3bE+Ki1+8Voo/kiybyMxUrFqGYutbGLjtvPqXx
+        k1SR4IY47Dz7orJLNwvc6VITeV1mcC+8pJjY1qBT+OakrCkZxQymGltTOAI9NRQ5kFgCFZhF19Qk
+        lIEDW2mnakuJVZyH4IwiO/9i1s6wg28T2eI2wykLp7rY5xpzTKYNZshS0RPmve3D9sNfAAAA//8D
+        APG3rSNxBAAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94bddcb3d2c40-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:01 GMT
+      Function-Execution-Id:
+      - ldou08e0m716
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '14325'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - a08e3c30268035df5fbe852c71190d43;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86020'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.652s
+      X-Request-Id:
+      - 0e28cb76406a8cde5951964012c2b184
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "You are Get-PhysicsNobelPrize, An autonomous
+      agent that specializes in physics history.\nYour decisions must always be made
+      independently without seeking user assistance. Play to your strengths as an
+      LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Write to file the winner''s name(s), affiliated university, and discovery of
+      the 2010 nobel prize in physics. Write your final answer to 2010_nobel_prize_winners.txt.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args:
+      \"key\": \"<key>\"\n7. get_hyperlinks: Get hyperlinks, args: \"url\": \"<url>\"\n8.
+      get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\":
+      \"<question>\"\n9. list_agents: List GPT Agents, args: () -> str\n10. message_agent:
+      Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11.
+      start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. browse_website: Browse Website, args: \"url\":
+      \"<url>\", \"question\": \"<what_you_want_to_find_on_website>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads", "role": "system"},
+      {"content": "The current time and date is Tue Jan  1 00:00:00 2000", "role":
+      "system"}, {"content": "This reminds you of these events from your past: \nI
+      was created", "role": "system"}, {"content": "Determine which next command to
+      use, and respond using the format specified above:", "role": "user"}, {"content":
+      "{\n    \"thoughts\": {\n        \"text\": \"I need to find out who won the
+      2010 Nobel Prize in Physics and write their names, affiliated university, and
+      discovery to a file. I can start by searching for the information online.\",\n        \"reasoning\":
+      \"I need to gather information before I can write it to a file. The internet
+      is a good place to start.\",\n        \"plan\": \"- Use the browse_website command
+      to search for information on the 2010 Nobel Prize in Physics\\n- Use the write_to_file
+      command to write the information to a file\",\n        \"criticism\": \"I need
+      to make sure that the information I find is accurate and that I am not missing
+      any important details.\",\n        \"speak\": \"I will search for information
+      on the 2010 Nobel Prize in Physics and write it to a file.\"\n    },\n    \"command\":
+      {\n        \"name\": \"browse_website\",\n        \"args\": {\n            \"url\":
+      \"https://www.nobelprize.org/prizes/physics/2010/summary/\",\n            \"question\":
+      \"2010 Nobel Prize in Physics winner\"\n        }\n    }\n}", "role": "assistant"},
+      {"content": "Command browse_website returned: Answer gathered from website:
+      announcing the 2010 Nobel Prize in Physics winners, Andre Geim and Konstantin
+      Novoselov, for their experiments on graphene, a two-dimensional material.\n\nLinks:
+      [''\\nSkip to content  (https://www.nobelprize.org/prizes/physics/2010/summary/#content)'',
+      ''cookie policy (https://www.nobelprize.org/about/privacy-policy/)'', ''\\n\\nClose
+      the search form\\nA button that allows you to close the search form if needed\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\nClose
+      the search form\\nA button that allows you to close the search form if needed\\n\\n\\n
+      (https://www.nobelprize.org/prizes/physics/2010/summary/)'', ''\\nClose Mobile
+      Menu\\n (https://www.nobelprize.org/prizes/physics/2010/summary/)'', ''\\n\\nThe
+      Nobel Prize\\nThe Nobel Prize Logo\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n (https://www.nobelprize.org)'']",
+      "role": "system"}, {"content": "Determine which next command to use, and respond
+      using the format specified above:", "role": "user"}, {"content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I have found the information I need. Now I need to write
+      it to a file.\",\n        \"reasoning\": \"I can use the write_to_file command
+      to write the information to a file.\",\n        \"plan\": \"- Use the write_to_file
+      command to write the information to a file\",\n        \"criticism\": \"I need
+      to make sure that I am writing the information accurately and that I am not
+      missing any important details.\",\n        \"speak\": \"I will write the information
+      I found to a file.\"\n    },\n    \"command\": {\n        \"name\": \"write_to_file\",\n        \"args\":
+      {\n            \"filename\": \"2010_nobel_prize_winners.txt\",\n            \"text\":
+      \"Andre Geim and Konstantin Novoselov, University of Manchester, for their experiments
+      on graphene, a two-dimensional material.\"\n        }\n    }\n}", "role": "assistant"},
+      {"content": "Command write_to_file returned: File written to successfully.",
+      "role": "system"}, {"content": "Determine which next command to use, and respond
+      using the format specified above:", "role": "user"}], "model": "gpt-3.5-turbo",
+      "temperature": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '6594'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 40aabb2d99d750967915ddaa12249a709d6910132926ec05fea8bd850b8eb038
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA6ySQWvbQBCF7/0Vw5xlYyd2EnTvIVAIhDZQ6mJW0kjaendG7I7sOMb/vaxkY+P0
+        2JuY2Xnvm6c5oK0wx7I1WvrOTR6/fSy/NpX9/uLf+vc3z/pDX+aLeruT4idmKMUfKvU0MS3Fd47U
+        CmOGZSCjVGE+f3haLh4Xs8VThl4qcphj0+nkfrqcaB8KmczuZ3PMsI+mIcwP2AXxna5VNsQR8/ni
+        aZbhRfzSeLzLUEWNu5QelnfHDMtWbEkR818H9BTPwkEcYY4mRhvVsCZMYSVOKxxWDACwQm2lb1qN
+        K8zhVDw16F1TcYXP0JotwYmJKtCWQE3cTOEZYiu9qyDQ1tIO/B5MmbAjqABx7AOBtkbhJNJRqCX4
+        JCKDTkFRQephsrDOqqU4XWF2jRLIRGHLzcjzOnhZbq7tdtY5aMl14AlsRay23oPhPZg0DruWAsEz
+        lIbB+i7IlsBwBd5sEoQqBaiotHFQszzA1b32gW5xOmd4JJnA66e9k+jFf/CuJZw9PbHeyJXBqi1t
+        9Oe0mcZ4BrTrBI2HgtLerXCKbWe1Bb+P5OrB9vKMRUG2FJzIJg2kHHw6gw1FkJC+I1UgXSdBe/5n
+        6rEjszkzDfH+7588uh2z8y2W4r3h6tMpsvE0ggQy1bq2jm5YTWhuL3hspLeX8bvZfLZmKcitu2A/
+        aL2zzBTiVNOtX2aPJ7IVH/GYYW3ZxnY9niHmGFU6zNByRe+Yz46/j1/+AgAA//8DAGcaVHlMBAAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94c611cc4634a-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:20 GMT
+      Function-Execution-Id:
+      - ldoufyhkjt80
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '12652'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - bc00246bd99aa29c71ea7cac23f2dcc2;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86017'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.654s
+      X-Request-Id:
+      - c29de628b3f6c8f00e965c283a79737b
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "Write a concise summary of the following text:\n\n\nLITERAL
+      TEXT: \"\"\"Andre Geim and Konstantin Novoselov, University of Manchester, for
+      their experiments on graphene, a two-dimensional material.\"\"\"\n\n\nCONCISE
+      SUMMARY: The text is best summarized as", "role": "user"}], "model": "gpt-3.5-turbo",
+      "temperature": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '366'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 980ec91e2a3ffd042d5b5a576b8d948fa4eb51deb4527cc0ac18ef2bd5760b93
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0SOy24TQRBF93xFqdY91jh+hPSOFUhAVjgbhKJKd9nTYbpqqC4/guV/R0aQbO89
+        9+iesWSMmAbyVKexu/3ye/Ww+HSzv1/S6dd8t1na5iF9K/bs6xcMqE/PnPzfYpa0TiN7UcGAyZic
+        M8b5+v1qebvs16uAVTOPGHE3ebeYrTrf25N2/aKfY8B9ox1jPONkWid/dP3J0jCu5wHf1K/xzV1A
+        V6fxNbnrLwHToCVxw/j9jJXbf6fpyBiRWivNSfz6UMVZru8/SDaGj1wqkGT4rPKXKQL3etDGox5g
+        a1rBB4aNlANbK/4CuoWvJGng5mxwZGOgI1nmDFu1K10M+DSxlcriDVRgZzQNLByAwI/a5WvVigqN
+        UMnZCo0zvATcFilteDSmpoIRm+uEAYtkPmHsLz8u7/4AAAD//wMATpfBVq8BAAA=
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94ccedc2a29f1-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:28 GMT
+      Function-Execution-Id:
+      - edh33d4cdqfo
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '2440'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - ca98a4f1886ba45b13f25ca474539fbb;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '89437'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 374ms
+      X-Request-Id:
+      - d366453eb1b0c0c62bd7b8ba250ea83b
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"encoding_format": "base64", "input": ["Andre Geim and Konstantin Novoselov,
+      University of Manchester, for their experiments on graphene, a two-dimensional
+      material."], "model": "text-embedding-ada-002"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '204'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 253e20203cf3c7c8869816e72354b953cc79b7d3922b15ae4674b54ea4f82879
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA1SaWc+zvJqlz/ev+PSdprdCCMFmnzGFOXYCmWi1WkAIgUAIg21wqf57i7xb1VUn
+        j/QQxGR73Wtdt//jH3/99XebVnk2/v2vv/6uy2H8+38txx7JmPz9r7/+9z/++uuvv/7j9/d/nJk3
+        af54lJ/id/rvx/LzyKe///WX8F9H/v9J//rr7zLtJbKTxN6Yg33XyNfLO6SIwk9EcpwK8H53Uppe
+        s70/Xy/oCpWoT+h+1ZTGhGovAzErZ7KR7mE0fQwYQJlPmLobGhn83bl3WJhBRg/bg2R0zWeVwEf6
+        OGH19V2D7/5rSMAvriJFV5H47XgQzkp78A708K5u0bShxIP2QXphPNo24NP7kMCVK6R0P8IdmKxk
+        J8GPZ6dEOjRZxG8n2MKk9zZkEod3ReJ1U+x8qz4j9mF91EZK1kAyN5BABuxoPr7YDEVQjHTfkr0x
+        twgWsNWcNT6al9zn+93uCnaeuadhJWU+q1DUAfmqQ2xR9QKIhKUcMjYY9HDpD2AsRq8Dn0pQsIom
+        MZ1y0c2BKnY3irdVYUwa0EqI766FXTTBamrt/AzSy7ml+yutet5jE8Ku1gCKVrc8JV7olwBP2Y3G
+        FTtVg6pt7jD43GNqp/uMD5vmKsHD3hsQ3esFn85OtgLEiV3sxc9DxPy3rMMsu/v4YXEz2sJLZsJD
+        Ka8RNF5Syg6J58BN1bTUUPJrNH/c1xmUrLSp5bm+P/fbvoPiY06wnneflGcUyDDDZUL13T7mM60b
+        HUa7QcJWrJ37CZqkAxumOvjgO5P/rlbHUvmKmxuRaj72IzRJC0+H+EDEPdB7GpYugnt//mLbtnTO
+        +vZzhEwYBBoYbVZxp2wLiL6wpBeV6elWuYsBsHTxQF0D8Wp+9FsBzkG7Q/LOqSLeKccZTgwnGB3b
+        PJ2qGkrg/lUVqu7EyZ/6/HSFNNpRvN+vtj4DceFAh79l6urIjrZOWZQwvuEX3gfBxx/sO5Hljbu1
+        kHy5u8acdYjBoE89NG0Hxuc9K004P6qU4nq2o63MbB06lfNFkexeOGf5jCDdIYRtFso9GckgAO0V
+        plj1sm/fXK/bO2yeoEWsW30qkr55A5f3w/5DcoFoKoYKV95xwMZGr6PZiKkJwKhoWNPCC5gvRoLA
+        RxifeK99vfT7dJsB3kxs40N10SNGIlyAlz8ccW5si2hWjzsGzsXVp/vJEw36qAMVwsCvybp4PPs5
+        P5TzWt8FBb1R/8unyHBn+GxyF62D+st5l44SPObsTjZVKAHi9Ie7fIEnbbne1Z9eOeuA3ICciOLl
+        ms6F0Iog5SYgq7Dd9yxWC6j81pcbrVVfbGzpCO+jQVCznM+SM3JAxR4UO4bx7Of6HCP48aqBYvfo
+        RttPyBql6h0P3+zDx2Cx2kKo91KOr+OujgbNaHI4XE8nwpb1O22evQnVTN5Q7+O++Hi2egkqFv8i
+        JXyc+vkdFg689ALDTnq7+GNBOIF3nwAko02QTmFkimDliikR6suZ810HBAge1hNtd6SpSNl3KiTf
+        ESJBtLRoGvjnDb4vaFJDT7RefPRrEdrDfk9edqxFW7KFFnwePi7GdyfkU5cVoRKztYFNRwbG5Hv1
+        FdYGnLHa7qWoBvOcKdsvPWFn8177NHsyAeyz3ifrJ/b6ub56R0B3AaIPz3kDYn+qo4I3T4ewTdv2
+        k7q753Du0gCJlm6BQSgFBmOLH7FFdlM/X6/bBJpEv1L7upIq3l7DAd5WG48UfrbhrCX+CvrPLCKF
+        SGN/Mj+JAIuTdaC4eKx7QkJHhN1OdtHX7QajI6EqKMYnNSnCyTfqsf22oFU0BdVLCXP2G58OD1ea
+        C8+MT1/XvoM8X52pd7m7/ub3/eYaeti/ZaeIScetAwd3O5HLrfUrkp6lErJKDKnaryIg/K4Hs1ok
+        cZw+qmk4sTtUHzeLqqfJMzbP/vSGKyF/kkUf0rlaYwQ0u9wRuQL7fjo9BAJOvMFodmex6m8n2MHy
+        Foio6FccdKc6keV99vWxfrQ9MOEry+Dt2H0wJioFvHisjkDXa4TvuDH6VkFSCFaHTUCdRs594hWX
+        ElrelpLOLnzO7v5dBFZEKJEaOTemxJUQ2AeBTC3/CCq2f9UDpMYjp+qmdXqWfY+W8t6+Qmry9aWa
+        xNPJhMa+VanZZgMnT32WYHExV9RoToXPm2dcShXTcuoZ8ec3P0L4ypoZ6ySV+Hh7uSqMvscP1sHK
+        9RnyJQemDnDIZBazwci6DEFMO0zteG/+u36Vb+uDJPd59/kKhh7QfAXg/SssIvaKjQI+Xc/GB4Rd
+        n3X1wYG5VTVU37+RMTknbgKjjzfYBGmSzl5xKcC91gNq6QABMW2GDkz0ukWbVaMb2+zJRKgYB5ds
+        l/szeasg0GwCBwGsFmmb520ApurypTpYfX3CPk/zp/dIOusCX+pVC1/j80xx+e79aXiBHH4SRcEB
+        8uN0EewzdEpyxypUvgbDmhPCqBWv2E3TN5/TN39DNT5fSKld62p6ug2Rv7FtYuv9Vnq6SxhTnprf
+        oUYHBMykSATIjWNAb8meVTM8KDJAD2siCr7G1UxrokNwWnMcjKNvsLLbdiDDsMfOV3P5cF7vW2i3
+        5pmswdT2o1m/ZlDM2xMKxzSo+KG86aBiT/obj4grkqSDOTZjumfGvuKHYyfD83s6oF1WXqpZZWsJ
+        SC9sUV99VJyrXWD+1jP91Ru2vsASbISHh5f62Q+rNyp//gfx1S2PhmyXenDvIJfqGtairZwn0q4e
+        Q526n1Xiz/mhm+F3vl8oevoJnxa/Axd/gth5bUUzZ44JxbIn5KNKkT/u0vUyf8wPPobrnC/rJQTF
+        xVoRqaxPEdufug48Ikkl/EmMlErb8wywf7oQZXM2+LToH3wm6pcic+/6bPVGBbzfiEcEkMop7XGw
+        ArX8NmmywpyTY/UVlNDMJ+xhmAEOjqoE39w84sMubX1eOdcStpq3JhLYRT6pHkcdvsF+RoUsKukY
+        t/sjfB3rNzVF6xVN310Qgmgcv/TwyZp+tusZwWeTuXQfJZVBVRl7MqvuGr54wboaxVfmAPjK91Qf
+        0iJty2xs4UDfL+pKCk25t/sI8Ok6NpkZG43ZMvEZkDqUqUdyPWX3RwABVySMzcu7ihh8eEdgKfmR
+        GmF4S7l5fSRyd/RaGhivezr7xq6E8OwZZF3Pn2guldyDh/hD0CZRBmOSnPAIo5F+iayGFPAghzI8
+        DlaCNc2fehaBqoQGO5rYcZ+S8R1ttYBhiU3qJ9U3mjTgltBd208CM5j3W2wPlry6OQ/qD1/q//HP
+        S/3AJnY8wJ9J5sEMFwm2H9HAGeXuGfBXxrAFJwTGp/+c4bH6Dti8vmn/ja+xB6yjg7EDdtz4iqfY
+        hMN+o2IHqrdqPt0cGR7R2aaeXfhgYE17hy4wCdWf05aPpWBJcmS8ttTzPhVnMZJXcsWMHGP3NlZE
+        wc0K7O9dghg0Xz4x4o8Jq3DMUFNd24oE22OhHEL1gUQhK43uENszSMKTiG0FYoN/YygC1kZntB7t
+        D+Cn1RhAoS0irMna3iCFUAjQf+YRRcqoppuyDGc4VK6Otot/WvTSgX0aQGrvPnokOMlzBcSu86n2
+        eNr+RnKSI5TmfUv1M8LGvNev4Z88EX1OQTrn6zuB5ykY6d08VWkT3icIzy1fEUE+1P2IqvgO+Nkj
+        SHpzLZrecbqCbScX1M6iop9zHAkykhNOHTx+wHh/9x4Unt+IhNvtG0x1Tj14fp8hWY+q0Qtb0Irw
+        3XSM2nHQVnNjsyO8+wPAx/vZ4iTKDw6gT1nByAnGdByqoQAoNlVsD74YTSdcEqWolQKrJoqX9088
+        EEcBI0O6GcHoVJ8ApmvTpVo5puDrRG/vt56QYgzB4u9XCKqZtEF1ENg+HeZWhvU5NtAb4RLQo28F
+        8MmZj0jUnjj91YtffbEyZ+hpcQABzFYuxvvo9YnYJB+anz+ktrLpwLzow64+b8/4jz7+rud0o4yD
+        jd5XgyMVA1AbZKFdtC58ikx3BRwT7nF4QiDl+vOMIJ6klrp9cE2Z42UyXPwvxuXD4uIWPkv45LOP
+        D9FDAdM7PejAYXqC0UpgfADgeYb17F6J+Ok3Ece7UIVnQ3Wxf7uMPtPq+Azl6ryiKDXFfpw3ngCz
+        LPEx+m4AmI1dISvL85EJEY2zIpKucAqfNlXty1RVXvwicBkfEi/+evaKRwkd3shUk+WDMYFZzsGS
+        50i+5CN2P2gy4K+cUXXzeke0cvISbOf3CWffpuHTCXcDtGlfE5hvXj1XpdwEsNbrxS9v/H46Fmin
+        FJVPVhTaEVHZVpIVfZaw/Ugmf3rH0QrUR7GiGt7MEUd7oMN0Wymk5lAzBpTyAIRrU8DX76z5fCrP
+        V9Ae3jm1WZj05JdvntoHIFh6pcGDg8PAfSMRtK57w58t076CJZ9RTQ3dfigidv3pH90fE9q3lGvn
+        3ZIXlv9xP5BTnoHFr6A3nUa/q56u+fOvC8/QDfb6oje8JCuEUUv8lBsnPYArbbtCijpIYHIqGsih
+        mqvUrVdaz+Els/7kR8s70mg8vNorIGZyp+hLtn29A7sQaBGMsR93Wro99o4OFz3CS77t6fI95Wq/
+        6bEpn79gWqXfDjhJ9MWmUb8A2+m1JydafCarILmAQXRlCRxKaY1VsT3zeTXFi58cKA1QqPSDI8cz
+        9OwCLX5nF3UVDRx5p1c7wvVXzfnj4kB4bTKBXC9cStmlfLXw2WUy6ZJn3M8HT5lhAmqL2tetEPFR
+        iCHcfD4xKRTzkP5532W+IJGjPJ08aXLA2dZlap1qzCcrmSRIXiTBfpc+/QkKVQEf6a4k8HO/8onm
+        WJQr7f6lXugNnH8ddYDdqN+xlcoV5/Z4T6BufdZkrYGWT+vxMoOmZe3Cg7bRNGmVCA0WmkQ+eUXP
+        ALidoV+cRUL8oOBMKCGDJ/ee0exzCvvvUm9A710TMi/+nSnF+y6lc9tRtd/7fAia3oT+cDaX+rpN
+        xx3YHeFtLG+EW21njGK1R6BHPMO+sAJ8FngXwPUVV2jrpJn/J48P1DvS4Fwcqn43DBL8+YUl71fU
+        KMXzr95Ra9zt002o3Qnw7ndGg8rofPacDwl4vYwNmsx45NPz25bQE10D+6U1p+zQi0cQs2KmLvT9
+        agZOOcj1OERUNWzXpxbo7vBsqzJF23vgD1hzjvDHA7yTV1TD64saeS/HOa4X3jHkK3KGNqyu+Ocn
+        ps1j1uFFtzHi/Z31/Bq8MrgVax2bStkYg8rcALqrHlFPjc/+/Mvr/OwQGjiK2Qu9JVnw3QTPP/pB
+        jhMX5Q6He2oiXHKqPzMEBX2qlvE1wAyDQISJpDbU93dOxBO5Z9Co7tEfv8P9NJnBmc0ZWmlM4MOz
+        4gnMYXjFKPdJxULJvUOnHO44ZychouftMwPXxDiT3uyHaDwmSQOW+okf23OWTptnZQFtIgNiWUkj
+        Br49gkkyvH/rpeJJ8ITw63QcLfnWGMh0DMFPn4C4qgy2uQcSWAk6ogsPMtjhHlugpZcSHzK7Scfn
+        tyh+fo4+f3wkLLUAHgczof5Bjf0R6JsGLjyE/tbjwitWsDOoQ/fm1qoEKsh3oAyWg/V1UKfD7VvL
+        UA3yN1b7fQ/GsgwZnLehQk0mKWDeZvFdVoEdo7le24DZV0WEm4/vEMHRIp+BHTnKMYQn7Bo2juas
+        fRDQPHct9WTNT7m0zRgItmKH8a/eT0Bsf34BW1LVROTgKUze3RIbcdm9gIVHnGFzvMjY2lVhRZc8
+        Aq1aK0l8sY58LpWrAz6VqCAgrgxDYO0p++OHrO+sGZvFP4IlP5Hmid8puW4cD4arrsI2j+eUkdM1
+        k1+YatR4GVlP7fF+B/6E73Q/bL7RvKmPSBak1RsjJ5p6NiSPI0AmntFp7VyqUVs+7jGf73Rf+m3U
+        rd9MhgpbZ9TRDNsnLvkUcCs6EwHCPgJLnlJh0G9SUsJINCg673Uoll9C1SHIqrn5iAlo2vONauMN
+        8uk2bxz442UerWcwP0NlBYzt5oJ9tt32v/EGany9oA5thpTfXlsir0Gh430Q+alsbZQjPAl6gdVm
+        W6VTZGjsN1/++OPf/eDC89B8uzScba6pAPXhSgnPNmef31SnhCsvHBA/+RZgSXgxwW+8DqdHHfGF
+        B8H3ZUbY1x/Zv/W8PgrVn/U3POd9Ap+a22EsdUc+tfb1DPBLtehz4emD3oIcDmFYYLdevaoRzHIG
+        A7e1ELXdRzXmVtCA8HKJqBofCOhka9fCJY8uepiCefjGHZyI3FDs3LR0ONxPJuzOfkwKElRguF4d
+        Ao1k/cb7hRey1dnI4ExiBQfrujVm+WJ0P7+HkSKYFdsqJ+nH4yieLiydD25AwPNQu1h7CRyM+vEm
+        AvUum6hJ5Qq0qqYkci/AnB5DKanmHz9dh2gmu6PkRPyaP5o//tBPux0fyV1of/pDRliqxvK8lrLw
+        MOp6nRRNO9kJ4IblMVr03x/8SoUgHJn2bz1XE01X6pXzxobditHgKgsPN6qATFt+8fkzOTtwylWT
+        rKNB60cnejtwfEx7rB4l3adP72T++AgSCmSmYiGeZFjXpxr7EXL4fJO6UJYUdEZbFq/4j8fDds35
+        z89UHdZECC9hVSx82vZZXsRH2L00D3UVqHuO3YsD07nr6M9/b1feO4BeHb7ITlJwxPr7EMgKYhZ2
+        od/3m0nrRXi2mi/2RI4NQfR7+EdfjYUHjFmxLgHb+SI1VykyxF/+DYSjR6+7Kuxb+97I8jaIMcWg
+        e6fsXEgNfLQ8oj4I+p5trDuDx8IOFr7+SeePn9z/5F1r4f/sd7/4bYdUd3rL4OdPdodGorxJZ3+Y
+        QexPH8KxC2qsm+8XYPP47oDy7Fpqkqng4/YMEBxJ/0FrolLeXcUdguvmK2BH3jV8rh53VR4DqaLG
+        JabpIJRwhrfV1sP73HwbrWaQHJbW9UwD/RUYLyFTV1BH74zq3VmoWHfxLAj98YzNNgs40+/SXT5G
+        OP2j7xNbywMcH1eBOolbRFOdfxxZ/c7Nn3wuIJ95yjfem/jHV6n3fTNYvksJ71VWpvz8PWRAebYt
+        NfvqXfH8OuvKMv+o/5C+nFyv6wSuJHWNzcJWfeHH29ZhMGNt6T+wyzwQuJL0NVq9P7YxBQhnkCH7
+        RW2ZzJxmlEtKqGYqfsQ7MeWqbHswZ2OMf3mIMPu+kr12q5FX3tx69ug1T9lID0DVUEr6zS5dZ1CZ
+        0hEb3bPt+XRsETSE44a6hk2j+cjfMnjmWoLtmiqcZJ01Q+kphdg2D7wfnOS2Asv3pvpQmv2GemWr
+        HGHZY/zd9dWcnqUCgi884tzcuwYDu+YIXu1bw1Zx3fiETzsHkpr6dNEbzjatvfrlIbJd+D/dDYMM
+        A8+64X0dv6uZM9WSK02UqVPWU8qc5AnBXK88fMhU3RD3rLRgdtwiihJljvhoWQ5ceAGZgHaKptNh
+        18nQcQRslY+imtJDeIbQp+eFHxvR8Hs+JN85jZf11MqNZi4K+qHIXJ182ry8N/h4r4HqJ3trzIIx
+        XuVlvuMg8AswpJudCqucdOSr25XPY9ucwSeEKVIQ/vr8HOt3cJRWPmKPdBsRuVmzXz8ESft7xIfi
+        8k3Adcs/dJ+IHzAv9Q0Uc6xifKhFf8mzCKJV+kZCW00GvXjSHQxQ1Wiubgc+ipHn/OG3geBWFe+U
+        O4O//qM23Fg/h11jQpkhirY8RD7drMoCnm9PH1tPbEaTD9MjXPobCy+6G1yynzJceB41b2/AJ8lJ
+        Qpg6+ZaixOzSed18IXzmRoJRu8HVuEpfnfL9Kg0SSlvqp1XM3lCVe2fhja+U8/hRQmlgBo6aU2FM
+        drG3YKJta3yY1lXKjmZ5h4ergZb+4slg+kdP4PdSvP/UWzb1/L2DZ8dY+s13YxD9fvXnexOVOf3U
+        DdVVWfw8UmxZAPym7d5KRT8B1lS/ThceH8BlPSz9kHu19JMyaKPrTGj14P402mqp+FR6YyfPD/7i
+        JwOw1PfFP8DqMbxABinWUyIXwoFvoHhulGcjJdhqeteYv3r6hqEqn9DWPtjG+PRvDJ4N3aX+UHZ8
+        LsSTBPsb8rETAtNn8KGH8ELjI5H7m5cKS/8A2hIUFz627UchcyDcq3ig+DgQf+mnBjC+fWdq96Ib
+        Ca/PowTgpHC694J1XyNx9d6pj4tFZAXb/bCutw38+7cr4D//8ddf/+e3w6BpH3m9bAwY82n8539t
+        Ffhn8kj+KQjiP6n4ZycCGZIi//tf/96E8Pe3b5vv+H/H9p1/hr//9ZcI/mw3+Htsx6T+78f/sdzt
+        P//x/wAAAP//AwDdgpZ+4yAAAA==
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - private
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94ceaf8561157-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:30 GMT
+      Function-Execution-Id:
+      - edh3o640by07
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '248'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 0c141b2d116fb7cbef45bb5ce5cac91a
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3000'
+      X-Ratelimit-Remaining-Requests:
+      - '2999'
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Request-Id:
+      - d44b3093f6e390eca95b6e2367631fb7
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"encoding_format": "base64", "input": "Andre Geim and Konstantin Novoselov
+      from the University of Manchester were awarded for their experiments on graphene,
+      a two-dimensional material.", "model": "text-embedding-ada-002"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '222'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 628ae3ed202b9266c6797e5917d75d9c4ca0508f36805e6f25d6daea6834b73e
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+        IAAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - private
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94cf8db922317-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:33 GMT
+      Function-Execution-Id:
+      - edh3o2jg8ehu
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '456'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - c52218405b4b3c2daea566af09cb5ffb
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3000'
+      X-Ratelimit-Remaining-Requests:
+      - '2999'
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Request-Id:
+      - 87d6bc01c3b5ee04ca0260a6751b0731
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "You are Get-PhysicsNobelPrize, An autonomous
+      agent that specializes in physics history.\nYour decisions must always be made
+      independently without seeking user assistance. Play to your strengths as an
+      LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Write to file the winner''s name(s), affiliated university, and discovery of
+      the 2010 nobel prize in physics. Write your final answer to 2010_nobel_prize_winners.txt.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args:
+      \"key\": \"<key>\"\n7. get_hyperlinks: Get hyperlinks, args: \"url\": \"<url>\"\n8.
+      get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\":
+      \"<question>\"\n9. list_agents: List GPT Agents, args: () -> str\n10. message_agent:
+      Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11.
+      start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. browse_website: Browse Website, args: \"url\":
+      \"<url>\", \"question\": \"<what_you_want_to_find_on_website>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads", "role": "system"},
+      {"content": "The current time and date is Tue Jan  1 00:00:00 2000", "role":
+      "system"}, {"content": "This reminds you of these events from your past: \nI
+      was created", "role": "system"}, {"content": "Determine which next command to
+      use, and respond using the format specified above:", "role": "user"}, {"content":
+      "{\n    \"thoughts\": {\n        \"text\": \"I need to find out who won the
+      2010 Nobel Prize in Physics and write their names, affiliated university, and
+      discovery to a file. I can start by searching for the information online.\",\n        \"reasoning\":
+      \"I need to gather information before I can write it to a file. The internet
+      is a good place to start.\",\n        \"plan\": \"- Use the browse_website command
+      to search for information on the 2010 Nobel Prize in Physics\\n- Use the write_to_file
+      command to write the information to a file\",\n        \"criticism\": \"I need
+      to make sure that the information I find is accurate and that I am not missing
+      any important details.\",\n        \"speak\": \"I will search for information
+      on the 2010 Nobel Prize in Physics and write it to a file.\"\n    },\n    \"command\":
+      {\n        \"name\": \"browse_website\",\n        \"args\": {\n            \"url\":
+      \"https://www.nobelprize.org/prizes/physics/2010/summary/\",\n            \"question\":
+      \"2010 Nobel Prize in Physics winner\"\n        }\n    }\n}", "role": "assistant"},
+      {"content": "Command browse_website returned: Answer gathered from website:
+      announcing the 2010 Nobel Prize in Physics winners, Andre Geim and Konstantin
+      Novoselov, for their experiments on graphene, a two-dimensional material.\n\nLinks:
+      [''\\nSkip to content  (https://www.nobelprize.org/prizes/physics/2010/summary/#content)'',
+      ''cookie policy (https://www.nobelprize.org/about/privacy-policy/)'', ''\\n\\nClose
+      the search form\\nA button that allows you to close the search form if needed\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\nClose
+      the search form\\nA button that allows you to close the search form if needed\\n\\n\\n
+      (https://www.nobelprize.org/prizes/physics/2010/summary/)'', ''\\nClose Mobile
+      Menu\\n (https://www.nobelprize.org/prizes/physics/2010/summary/)'', ''\\n\\nThe
+      Nobel Prize\\nThe Nobel Prize Logo\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n (https://www.nobelprize.org)'']",
+      "role": "system"}, {"content": "Determine which next command to use, and respond
+      using the format specified above:", "role": "user"}, {"content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I have found the information I need. Now I need to write
+      it to a file.\",\n        \"reasoning\": \"I can use the write_to_file command
+      to write the information to a file.\",\n        \"plan\": \"- Use the write_to_file
+      command to write the information to a file\",\n        \"criticism\": \"I need
+      to make sure that I am writing the information accurately and that I am not
+      missing any important details.\",\n        \"speak\": \"I will write the information
+      I found to a file.\"\n    },\n    \"command\": {\n        \"name\": \"write_to_file\",\n        \"args\":
+      {\n            \"filename\": \"2010_nobel_prize_winners.txt\",\n            \"text\":
+      \"Andre Geim and Konstantin Novoselov, University of Manchester, for their experiments
+      on graphene, a two-dimensional material.\"\n        }\n    }\n}", "role": "assistant"},
+      {"content": "Command write_to_file returned: File written to successfully.",
+      "role": "system"}, {"content": "Determine which next command to use, and respond
+      using the format specified above:", "role": "user"}, {"content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I have completed the task. I should review my actions
+      to ensure that I have performed to the best of my abilities.\",\n        \"reasoning\":
+      \"Reviewing my actions will help me identify any areas where I can improve and
+      make better decisions in the future.\",\n        \"plan\": \"- Review my actions
+      and identify areas for improvement\",\n        \"criticism\": \"I need to make
+      sure that I am being honest with myself and that I am not overlooking any mistakes
+      or missed opportunities.\",\n        \"speak\": \"I will review my actions to
+      ensure that I have performed to the best of my abilities.\"\n    },\n    \"command\":
+      {\n        \"name\": \"read_file\",\n        \"args\": {\n            \"filename\":
+      \"2010_nobel_prize_winners.txt\"\n        }\n    }\n}", "role": "assistant"},
+      {"content": "Command read_file returned: Andre Geim and Konstantin Novoselov,
+      University of Manchester, for their experiments on graphene, a two-dimensional
+      material.", "role": "system"}, {"content": "Determine which next command to
+      use, and respond using the format specified above:", "role": "user"}], "model":
+      "gpt-3.5-turbo", "temperature": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '7744'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - e2672526c16e44664a1cf8d1849f4d2b186cc49923668e9413ee575a95b623b7
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA4RSTY/TQAy98yssn9OqpdvtkhvqAS1CcEFcKFq5EyeZ7cw4O+P0gyr/HWWTqmw5
+        cLX9nt979hltgTmamtT4xk1WX34vrb5ff/r4Ybt+savv5fG59J/Xvvn2Y4YZyvaZjY6IqRHfOFYr
+        ATM0kUm5wHx+/7C8W93NVg8ZeinYYY5Vo5PFdDnRNm5lMlvM5phhm6hizM/YRPGNPqnsOCTM56v5
+        MsMr+bWxuM9QRcldSw/LeZehqcUaTpj/PKPndCGO4hhzpJRsUgray5SgHHoL500AANig1tJWtaYN
+        5jAWxwYftS9u8BFq2jNE3ls+cAH+BGR6bQkoFPAI5CGR2lRaLuBgtQatGaRVI56nMOJHT1y8dpXS
+        DlJrDKdUts6dphvM/t4fmZIEG6pRhIJNYH0jsTcDKhC5dGwUJNxKsgUHteUJqGeBUmKPjLJnz0Ez
+        2LYK9pWQXJK3rGR2QQ6Oi4rhUHO4yG84lhJ975Cdu1XbOAqD0Al8FSjbqDXHUVS/KPJLayMXt0AT
+        rVpjk79kHbhPSMDTjiG1kUFr0iHlIApbNuJtqIY8yXDQV8/XKXIHOiVIGu2+H1S5uL9dnhqm3Zsj
+        //9IA77LLg9kxHsKxT//E8jzQH2zlGI1fFs3Um1Ch12GpQ021U/D3THHpNJghjYUfMR81v3q3v0B
+        AAD//wMArIUGhLIDAAA=
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94d1d1966e12b-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:48 GMT
+      Function-Execution-Id:
+      - edh383euagce
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '9927'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - ff02bfdc093693b48ddfc096cecd6fa1;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86004'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.664s
+      X-Request-Id:
+      - 02773f1693aaa77bbe36491f9fd3dbcd
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "Write a concise summary of the following text:\n\n\nLITERAL
+      TEXT: \"\"\"Andre Geim and Konstantin Novoselov, University of Manchester, for
+      their experiments on graphene, a two-dimensional material.\"\"\"\n\n\nCONCISE
+      SUMMARY: The text is best summarized as", "role": "user"}], "model": "gpt-3.5-turbo",
+      "temperature": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '366'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 980ec91e2a3ffd042d5b5a576b8d948fa4eb51deb4527cc0ac18ef2bd5760b93
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0SOwU7jQBBE73xFq8/jyAYCZG4cYMUuiwSIE1qhwdOxZ9fTbXoaJxDl31EQG65V
+        r55qgymix7YP1uZxqE6v3+fTz/Oz27tOLl66F22uFzdTvFzP76+u0KE8/6XWvhazVvI4kCVhdNgq
+        BaOIvjk5mx+fHteLxmGWSAN67Earjmbzyl71War6qG7Q4WsJHaHf4KiSR3sy+Udc0J80Dr/V+/hw
+        4dDEwrBPFvXWYdtLaqmgf9xgpvLfqTIQegylpGKBbfdQ2Ih37885KsEPShkCR/gl/MkkhhuZpNAg
+        EyxVMlhP8MBpIi3J3kCW8Dtw21MxUliREoRV0EgRlqI7OinQeiRNmdgKCEOnYeyJyUEAW0kVd1VJ
+        wmGAHIw0hWGGW4fLxKn0T0qhCKPHYjKiw8SR1ujr7Z/twQcAAAD//wMAq+oeaK8BAAA=
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94d70cb1c10f4-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:54 GMT
+      Function-Execution-Id:
+      - edh3785v0vca
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '2475'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - c68cb813d1057241cbe711f8a2f7d43b;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '89438'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 374ms
+      X-Request-Id:
+      - 96665b4ddd6e8f66b27afe3454c25d44
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"encoding_format": "base64", "input": ["Andre Geim and Konstantin Novoselov,
+      University of Manchester, for their experiments on graphene, a two-dimensional
+      material."], "model": "text-embedding-ada-002"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '204'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 253e20203cf3c7c8869816e72354b953cc79b7d3922b15ae4674b54ea4f82879
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+        P//x/wAAAP//AwDdgpZ+4yAAAA==
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - private
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94d875e7f61e0-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:55 GMT
+      Function-Execution-Id:
+      - edh3up6zgtvv
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '352'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - c700adf31be0c87a6f65daad3b3fb382
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3000'
+      X-Ratelimit-Remaining-Requests:
+      - '2999'
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Request-Id:
+      - 218f7b4182122a4abc46b4478e630a3d
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"encoding_format": "base64", "input": "Andre Geim and Konstantin Novoselov
+      from the University of Manchester were awarded for their experiments on graphene,
+      a two-dimensional material.", "model": "text-embedding-ada-002"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '222'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 628ae3ed202b9266c6797e5917d75d9c4ca0508f36805e6f25d6daea6834b73e
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+        IAAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - private
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cf94d913c398140-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 30 May 2023 19:14:57 GMT
+      Function-Execution-Id:
+      - edh3a5lsm8nk
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '247'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - f9b19c031cfa978744eb509a32eeee58
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3000'
+      X-Ratelimit-Remaining-Requests:
+      - '2999'
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Request-Id:
+      - 30d5d360293b74e0a8b00b9c38daf18a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "Write a concise summary of the following text;
+      include any information that can be used to answer the question \"2010 Nobel
+      Prize in Physics winner\". Do not directly answer the question itself:\n\n\nLITERAL
+      TEXT: \"\"\"Skip to content This website uses cookies to improve the user experience.
+      By using this website you consent to all cookies in accordance with our cookie
+      policy.I understand Close the search form A button that allows you to close
+      the search form if needed Close the search form A button that allows you to
+      close the search form if needed Close Mobile Menu The Nobel Prize The Nobel
+      Prize Logo Toggle Mobile Menu Nobel Prizes & Laureates All Nobel Prizes Physics
+      Prize Chemistry Prize Medicine Prize Literature Prize Peace Prize Prize in Economic
+      Sciences Quick facts Nomination Physics Prize Chemistry Prize Medicine Prize
+      Literature Prize Peace Prize Prize in Economic Sciences Nomination Archive Alfred
+      Nobel Alfred Nobel\u2019s life Alfred Nobel\u2019s will News & insights Press
+      In-depth Events Public events Nobel Prize Concert Nobel Week Dialogue Nobel
+      Prize Dialogue Nobel Prize Summit Nobel Prize Inspiration Initiative Nobel Prize
+      award ceremonies Educational Close the search form A button that allows you
+      to close the search form if needed Close the search form A button that allows
+      you to close the search form if needed Header Search Submit a search term Allows
+      users to submit a search term Physics The Nobel Prize in Physics 2010 Explore
+      Summary Physics Prizes Chemistry Prizes Medicine Prizes Literature Prizes Peace
+      Prizes Prizes in Economic Sciences Summary Prize announcement Press release
+      Advanced information Popular information Illustrated information Speed read
+      Award ceremony video Award ceremony speech Banquet video Laureates Andre Geim
+      Konstantin Novoselov Enhanced Page Navigation The Nobel Prize in Physics 2010
+      The Nobel Prize in Physics 2010 - Prize announcement The 2010 Nobel Prize in
+      Physics - Press release The Nobel Prize in Physics 2010 Andre Geim Konstantin
+      Novoselov Share this Share on Facebook: The Nobel Prize in Physics 2010 Share
+      this content on Facebook Facebook Tweet: The Nobel Prize in Physics 2010 Share
+      this content on Twitter Twitter Share on LinkedIn: The Nobel Prize in Physics
+      2010 Share this content on LinkedIn LinkedIn Share via Email: The Nobel Prize
+      in Physics 2010 Share this content via Email Email this page The Nobel Prize
+      in Physics 2010 \u00a9 The Nobel Foundation. Photo: U. Montan Andre Geim Prize
+      share: 1/2 \u00a9 The Nobel Foundation. Photo: U. Montan Konstantin Novoselov
+      Prize share: 1/2 The Nobel Prize in Physics 2010 was awarded jointly to Andre
+      Geim and Konstantin Novoselov \"for groundbreaking experiments regarding the
+      two-dimensional material graphene\" To cite this section MLA style: The Nobel
+      Prize in Physics 2010. NobelPrize.org. Nobel Prize Outreach AB 2023. Sat. 3
+      Jun 2023. <https://www.nobelprize.org/prizes/physics/2010/summary/> Back to
+      top Back To Top Takes users back to the top of the page Nobel Prizes and laureates
+      Nobel Prizes 2022 Fourteen laureates were awarded a Nobel Prize in 2022, for
+      achievements that have conferred the greatest benefit to humankind. Their work
+      and discoveries range from paleogenomics and click chemistry to documenting
+      war crimes.See them all presented here. Explore prizes and laureates Look for
+      popular awards and laureates in different fields, and discover the history of
+      the Nobel Prize. Select the category or categories you would like to filter
+      by Physics Chemistry Medicine Literature Peace Economic Sciences Select the
+      category or categories you would like to filter by Physics Chemistry Medicine
+      Literature Peace Economic Sciences Decrease the year by one - Choose a year
+      you would like to search in Increase the year by one + Explore About the Nobel
+      Prize organisation The Nobel Foundation Tasked with a mission to manage Alfred
+      Nobel''s fortune and has\u00a0ultimate responsibility for fulfilling the intentions
+      of Nobel''s will. The prize-awarding institutions For more than a century, these
+      academic institutions have worked independently to select Nobel Prize laureates.
+      Nobel Prize outreach activities Several outreach organisations and activities
+      have been developed to inspire generations and disseminate knowledge about the
+      Nobel Prize. Press Contact FAQ Privacy policy Technical support Terms of use
+      For developers Media player Join us Facebook Twitter Icon Follow The Nobel Prize
+      on Twitter Twitter Instagram Icon Follow The Nobel Prize on Instagram Instagram
+      Youtube Icon Follow The Nobel Prize on Youtube Youtube LinkedIn IconConnect
+      with The Nobel Prize on LinkedIn LinkedIn The Nobel Prize Copyright \u00a9 Nobel
+      Prize Outreach AB 2023\"\"\"\n\n\nCONCISE SUMMARY: The text is best summarized
+      as", "role": "user"}], "model": "gpt-3.5-turbo", "temperature": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '4869'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 0bcf0e56dd8561aab36d8591668978e63122c19fbb98eef05eed927928f6fb8b
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0SOTW/TQBCG7/yK0ZzXkY1rSPcGlyJVjdoLBaGq2qwn9oB3ZrU7aQpR/jsKou31
+        /Xj0HJFH9BjnYDHlpfm4uam78er+8123a++/pfT1cHN5l+WL5ek7OtTtT4r2/7GKmvJCxiroMBYK
+        RiP67sN6WLf9eugdJh1pQY9TtqZfDY3ty1abtm87dLivYSL0R8xFU7ZH018kFf1l1zp8Y7/m/eDQ
+        1MLytrwYTg7jrBypov9xxET1hVp0IfQYauVqQezsqGIkZ/8gonuJLBPYTPC+7VrY6JYWuC38h4AF
+        bufflWOFA4tQqQ4+yVgIrogTBBnhWuUflwU2+qSVFn1ysNNyJnIBes5UOJFYBRWYSsgzCTkIYAdt
+        xnNVWSUskIJR4bCs8ORwx8J1fiwUqgp6rKYZHbKM9Iy+PT2c3v0FAAD//wMAqRRYQLcBAAA=
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7d18c04588db0280-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 03 Jun 2023 14:50:57 GMT
+      Function-Execution-Id:
+      - sdi1g00pdthf
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '3394'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 1560f4f146c5a74a696ce9203436d7f7;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '88318'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 1.121s
+      X-Request-Id:
+      - 987099714f2959f4f801b6be3b2e3318
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"encoding_format": "base64", "input": ["Skip to content This website uses
+      cookies to improve the user experience. By using this website you consent to
+      all cookies in accordance with our cookie policy.I understand Close the search
+      form A button that allows you to close the search form if needed Close the search
+      form A button that allows you to close the search form if needed Close Mobile
+      Menu The Nobel Prize The Nobel Prize Logo Toggle Mobile Menu Nobel Prizes &
+      Laureates All Nobel Prizes Physics Prize Chemistry Prize Medicine Prize Literature
+      Prize Peace Prize Prize in Economic Sciences Quick facts Nomination Physics
+      Prize Chemistry Prize Medicine Prize Literature Prize Peace Prize Prize in Economic
+      Sciences Nomination Archive Alfred Nobel Alfred Nobel\u2019s life Alfred Nobel\u2019s
+      will News & insights Press In-depth Events Public events Nobel Prize Concert
+      Nobel Week Dialogue Nobel Prize Dialogue Nobel Prize Summit Nobel Prize Inspiration
+      Initiative Nobel Prize award ceremonies Educational Close the search form A
+      button that allows you to close the search form if needed Close the search form
+      A button that allows you to close the search form if needed Header Search Submit
+      a search term Allows users to submit a search term Physics The Nobel Prize in
+      Physics 2010 Explore Summary Physics Prizes Chemistry Prizes Medicine Prizes
+      Literature Prizes Peace Prizes Prizes in Economic Sciences Summary Prize announcement
+      Press release Advanced information Popular information Illustrated information
+      Speed read Award ceremony video Award ceremony speech Banquet video Laureates
+      Andre Geim Konstantin Novoselov Enhanced Page Navigation The Nobel Prize in
+      Physics 2010 The Nobel Prize in Physics 2010 - Prize announcement The 2010 Nobel
+      Prize in Physics - Press release The Nobel Prize in Physics 2010 Andre Geim
+      Konstantin Novoselov Share this Share on Facebook: The Nobel Prize in Physics
+      2010 Share this content on Facebook Facebook Tweet: The Nobel Prize in Physics
+      2010 Share this content on Twitter Twitter Share on LinkedIn: The Nobel Prize
+      in Physics 2010 Share this content on LinkedIn LinkedIn Share via Email: The
+      Nobel Prize in Physics 2010 Share this content via Email Email this page The
+      Nobel Prize in Physics 2010 \u00a9 The Nobel Foundation. Photo: U. Montan Andre
+      Geim Prize share: 1/2 \u00a9 The Nobel Foundation. Photo: U. Montan Konstantin
+      Novoselov Prize share: 1/2 The Nobel Prize in Physics 2010 was awarded jointly
+      to Andre Geim and Konstantin Novoselov \"for groundbreaking experiments regarding
+      the two-dimensional material graphene\" To cite this section MLA style: The
+      Nobel Prize in Physics 2010. NobelPrize.org. Nobel Prize Outreach AB 2023. Sat.
+      3 Jun 2023. <https://www.nobelprize.org/prizes/physics/2010/summary/> Back to
+      top Back To Top Takes users back to the top of the page Nobel Prizes and laureates
+      Nobel Prizes 2022 Fourteen laureates were awarded a Nobel Prize in 2022, for
+      achievements that have conferred the greatest benefit to humankind. Their work
+      and discoveries range from paleogenomics and click chemistry to documenting
+      war crimes.See them all presented here. Explore prizes and laureates Look for
+      popular awards and laureates in different fields, and discover the history of
+      the Nobel Prize. Select the category or categories you would like to filter
+      by Physics Chemistry Medicine Literature Peace Economic Sciences Select the
+      category or categories you would like to filter by Physics Chemistry Medicine
+      Literature Peace Economic Sciences Decrease the year by one - Choose a year
+      you would like to search in Increase the year by one + Explore About the Nobel
+      Prize organisation The Nobel Foundation Tasked with a mission to manage Alfred
+      Nobel''s fortune and has\u00a0ultimate responsibility for fulfilling the intentions
+      of Nobel''s will. The prize-awarding institutions For more than a century, these
+      academic institutions have worked independently to select Nobel Prize laureates.
+      Nobel Prize outreach activities Several outreach organisations and activities
+      have been developed to inspire generations and disseminate knowledge about the
+      Nobel Prize. Press Contact FAQ Privacy policy Technical support Terms of use
+      For developers Media player Join us Facebook Twitter Icon Follow The Nobel Prize
+      on Twitter Twitter Instagram Icon Follow The Nobel Prize on Instagram Instagram
+      Youtube Icon Follow The Nobel Prize on Youtube Youtube LinkedIn IconConnect
+      with The Nobel Prize on LinkedIn LinkedIn The Nobel Prize Copyright \u00a9 Nobel
+      Prize Outreach AB 2023"], "model": "text-embedding-ada-002"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '4559'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - b7a1eb8ed730fa78acca4d4142ded5364372136302571e685d1b9be5ef0ebfaf
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+        /uUgAAA=
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - private
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7d18c0811e101106-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 03 Jun 2023 14:51:03 GMT
+      Function-Execution-Id:
+      - sdi11njw4waa
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '171'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 02a67934988d7b19a053f870e84a29c2;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3000'
+      X-Ratelimit-Remaining-Requests:
+      - '2999'
+      X-Ratelimit-Reset-Requests:
+      - 20ms
+      X-Request-Id:
+      - cec8f681ebc9587e35361eba2b653730
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -1,0 +1,41 @@
+name: AutoGPT Platform - Frontend CI
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/platform-frontend-ci.yml'
+      - 'autogpt_platform/frontend/**'
+  pull_request:
+    paths:
+      - '.github/workflows/platform-frontend-ci.yml'
+      - 'autogpt_platform/frontend/**'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/frontend
+
+jobs:
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '21'
+
+    - name: Install dependencies
+      run: |
+        npm install
+
+    - name: Check formatting with Prettier
+      run: |
+        npx prettier --check .
+
+    - name: Run lint
+      run: |
+        npm run lint
