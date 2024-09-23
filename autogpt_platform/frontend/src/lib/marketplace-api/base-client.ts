@@ -255,7 +255,7 @@ export default class BaseMarketplaceAPI {
             },
       body: JSON.stringify(payload),
     });
-    
+
     const response_data = await response.json();
 
     if (!response.ok) {
