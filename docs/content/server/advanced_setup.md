@@ -42,13 +42,10 @@ This is useful when running on docker so you can copy the secrets into the conta
 
 ## Database selection
 
-### SQLite
-
-By default, the server uses SQLite as the database. SQLite is a file-based database that is easy to set up and use. However, it is not recommended for production usecases where auth is required because that subsystem requires Postgres.
 
 ### PostgreSQL
 
-For production use, it is recommended to use PostgreSQL as the database. You will swap the commands you use to generate and run prisma to the following
+We use a Supabase PostgreSQL as the database. You will swap the commands you use to generate and run prisma to the following
 
 ```bash
 poetry run prisma generate --schema postgres/schema.prisma
