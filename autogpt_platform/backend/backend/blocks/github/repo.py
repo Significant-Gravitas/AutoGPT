@@ -30,7 +30,7 @@ class GithubReadTagsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0007g3h4-5678-90ab-1234-567890abcdef",
+            id="358924e7-9a11-4d1a-a0f2-13c67fe59e2e",
             description="This block lists all tags for a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadTagsBlock.Input,
@@ -122,7 +122,7 @@ class GithubReadBranchesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0008i3j4-5678-90ab-1234-567890abcdef",
+            id="74243e49-2bec-4916-8bf4-db43d44aead5",
             description="This block lists all branches for a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadBranchesBlock.Input,
@@ -217,7 +217,7 @@ class GithubReadDiscussionsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0009j3k4-5678-90ab-1234-567890abcdef",
+            id="3ef1a419-3d76-4e07-b761-de9dad4d51d7",
             description="This block lists recent discussions for a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadDiscussionsBlock.Input,
@@ -323,7 +323,7 @@ class GithubReadReleasesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0010k3l4-5678-90ab-1234-567890abcdef",
+            id="3460367a-6ba7-4645-8ce6-47b05d040b92",
             description="This block lists all releases for a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadReleasesBlock.Input,
@@ -412,7 +412,7 @@ class GithubReadCodeownersFileBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0006r3s7-8901-23de-4567-890123defghi",
+            id="ea64bb61-30c0-4693-9273-04081a8f955b",
             description="This block reads the CODEOWNERS file from the master branch of a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadCodeownersFileBlock.Input,
@@ -485,7 +485,7 @@ class GithubReadFileFromMasterBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0007r3s8-9012-34ef-5678-901234efghij",
+            id="87ce6c27-5752-4bbc-8e26-6da40a3dcfd3",
             description="This block reads the content of a specified file from the master branch of a GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadFileFromMasterBlock.Input,
@@ -562,7 +562,7 @@ class GithubReadFileFolderRepoBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0008r3s9-0123-45fg-6789-012345fghijk",
+            id="1355f863-2db3-4d75-9fba-f91e8a8ca400",
             description="This block reads the content of a specified file, folder, or repository from a specified branch using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadFileFolderRepoBlock.Input,
@@ -651,7 +651,7 @@ class GithubMakeBranchBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0008r3s9-0123-45fg-6789-012345fghijp",
+            id="944cc076-95e7-4d1b-b6b6-b15d8ee5448d",
             description="This block creates a new branch from a specified source branch using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubMakeBranchBlock.Input,
@@ -740,7 +740,7 @@ class GithubDeleteBranchBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0008r3s9-0123-45fg-6789-012345fghijq",
+            id="0d4130f7-e0ab-4d55-adc3-0a40225e80f4",
             description="This block deletes a specified branch using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubDeleteBranchBlock.Input,

@@ -46,7 +46,7 @@ class GithubMakePRBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0003q3r4-5678-90ab-1234-567890abcdef",
+            id="dfb987f8-f197-4b2e-bf19-111812afd692",
             description="This block creates a new pull request on a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubMakePRBlock.Input,
@@ -141,7 +141,7 @@ class GithubReadPRBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0005g3h4-5678-90ab-1234-567890abcdeg",
+            id="bf94b2a4-1a30-4600-a783-a8a44ee31301",
             description="This block reads the body, title, user, and changes of a specified GitHub pull request using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadPRBlock.Input,
@@ -275,7 +275,7 @@ class GithubAssignReviewerBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0014o3p4-5678-90ab-1234-567890abcdef",
+            id="c0d22c5e-e688-43e3-ba43-d5faba7927fd",
             description="This block assigns a reviewer to a specified GitHub pull request using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubAssignReviewerBlock.Input,
@@ -369,7 +369,7 @@ class GithubUnassignReviewerBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0015p3q4-5678-90ab-1234-567890abcdef",
+            id="9637945d-c602-4875-899a-9c22f8fd30de",
             description="This block unassigns a reviewer from a specified GitHub pull request using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubUnassignReviewerBlock.Input,
@@ -446,7 +446,7 @@ class GithubListReviewersBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0016q3r4-5678-90ab-1234-567890abcdef",
+            id="2646956e-96d5-4754-a3df-034017e7ed96",
             description="This block lists all reviewers for a specified GitHub pull request using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListReviewersBlock.Input,

@@ -32,7 +32,7 @@ class GithubCommentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0001c3d4-5678-90ef-1234-567890abcdef",
+            id="a8db4d8d-db1c-4a25-a1b0-416a8c33602b",
             description="This block posts a comment on a specified GitHub issue or pull request using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubCommentBlock.Input,
@@ -120,7 +120,7 @@ class GithubMakeIssueBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0002d3e4-5678-90ab-1234-567890abcdef",
+            id="691dad47-f494-44c3-a1e8-05b7990f2dab",
             description="This block creates a new issue on a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubMakeIssueBlock.Input,
@@ -194,7 +194,7 @@ class GithubReadIssueBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0004e3f4-5678-90ab-1234-567890abcdef",
+            id="6443c75d-032a-4772-9c08-230c707c8acc",
             description="This block reads the body, title, and user of a specified GitHub issue using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadIssueBlock.Input,
@@ -277,7 +277,7 @@ class GithubListIssuesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0006h3i4-5678-90ab-1234-567890abcdef",
+            id="c215bfd7-0e57-4573-8f8c-f7d4963dcd74",
             description="This block lists all issues for a specified GitHub repository using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListIssuesBlock.Input,
@@ -368,7 +368,7 @@ class GithubAddLabelBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0011l3m4-5678-90ab-1234-567890abcdef",
+            id="98bd6b77-9506-43d5-b669-6b9733c4b1f1",
             description="This block adds a label to a specified GitHub issue or pull request using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubAddLabelBlock.Input,
@@ -455,7 +455,7 @@ class GithubRemoveLabelBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0012m3n4-5678-90ab-1234-567890abcdef",
+            id="78f050c5-3e3a-48c0-9e5b-ef1ceca5589c",
             description="This block removes a label from a specified GitHub issue or pull request using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubRemoveLabelBlock.Input,
@@ -546,7 +546,7 @@ class GithubAssignIssueBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0004r3s5-6789-01bc-2345-678901bcdefg",
+            id="90507c72-b0ff-413a-886a-23bbbd66f542",
             description="This block assigns a user to a specified GitHub issue using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubAssignIssueBlock.Input,
@@ -631,7 +631,7 @@ class GithubUnassignIssueBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0005r3s6-7890-12cd-3456-789012cdefgh",
+            id="d154002a-38f4-46c2-962d-2488f2b05ece",
             description="This block unassigns a user from a specified GitHub issue using OAuth credentials.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubUnassignIssueBlock.Input,
