@@ -23,12 +23,6 @@ x-supabase-services:
 
 services:
   # AGPT services
-  postgres:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: postgres
-
   migrate:
     <<: *agpt-services
     extends:
@@ -77,6 +71,8 @@ services:
     extends:
       file: ./supabase/docker/docker-compose.yml
       service: studio
+    ports:
+      - "54323:3000"
 
   kong:
     <<: *supabase-services
