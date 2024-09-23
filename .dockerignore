@@ -2,26 +2,26 @@
 classic/run
 
 # AutoGPT
-!original_autogpt/autogpt/
-!original_autogpt/pyproject.toml
-!original_autogpt/poetry.lock
-!original_autogpt/README.md
-!original_autogpt/tests/
+!classic/original_autogpt/autogpt/
+!classic/original_autogpt/pyproject.toml
+!classic/original_autogpt/poetry.lock
+!classic/original_autogpt/README.md
+!classic/original_autogpt/tests/
 
 # Benchmark
-!benchmark/agbenchmark/
-!benchmark/pyproject.toml
-!benchmark/poetry.lock
-!benchmark/README.md
+!classic/benchmark/agbenchmark/
+!classic/benchmark/pyproject.toml
+!classic/benchmark/poetry.lock
+!classic/benchmark/README.md
 
 # Forge
-!forge/
-!forge/pyproject.toml
-!forge/poetry.lock
-!forge/README.md
+!classic/forge/
+!classic/forge/pyproject.toml
+!classic/forge/poetry.lock
+!classic/forge/README.md
 
 # Frontend
-!frontend/build/web/
+!classic/frontend/build/web/
 
 # Platform
 !autogpt_platform/
