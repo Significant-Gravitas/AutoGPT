@@ -67,10 +67,12 @@ class AgentServer(AppService):
 
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],  # Allows all origins
+            allow_origins=[
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "https://dev-builder.agpt.co",
+            ],
             allow_credentials=True,
-            allow_methods=["*"],  # Allows all methods
-            allow_headers=["*"],  # Allows all headers
         )
 
         # Define the API routes

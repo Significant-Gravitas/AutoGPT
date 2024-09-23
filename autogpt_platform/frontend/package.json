@@ -10,6 +10,9 @@
     "lint": "next lint",
     "format": "prettier --write ."
   },
+  "browserslist": [
+    "defaults"
+  ],
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
     "@next/third-parties": "^14.2.5",
