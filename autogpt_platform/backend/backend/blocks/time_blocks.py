@@ -23,7 +23,7 @@ class GetCurrentTimeBlock(Block):
                 {"trigger": "Hello", "format": "{time}"},
             ],
             test_output=[
-                ("time", time.strftime("%H:%M:%S")),
+                ("time", lambda _: time.strftime("%H:%M:%S")),
             ],
         )
 
