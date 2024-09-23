@@ -4,12 +4,12 @@ on:
   push:
     branches: [master]
     paths:
-      - '.github/workflows/platform-frontend-ci.yml'
-      - 'autogpt_platform/frontend/**'
+      - ".github/workflows/platform-frontend-ci.yml"
+      - "autogpt_platform/frontend/**"
   pull_request:
     paths:
-      - '.github/workflows/platform-frontend-ci.yml'
-      - 'autogpt_platform/frontend/**'
+      - ".github/workflows/platform-frontend-ci.yml"
+      - "autogpt_platform/frontend/**"
 
 defaults:
   run:
@@ -58,7 +58,7 @@ jobs:
 
       - name: Run docker compose
         run: |
-          docker compose -f ../docker-compose.combined.yml up -d
+          docker compose -f ../docker-compose.platform.yml up -d
 
       - name: Install dependencies
         run: |
@@ -81,4 +81,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
-
