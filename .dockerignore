@@ -1,5 +1,5 @@
 # Ignore everything by default, selectively add things to context
-*
+classic/run
 
 # AutoGPT
 !original_autogpt/autogpt/
@@ -23,6 +23,18 @@
 # Frontend
 !frontend/build/web/
 
+# Platform
+!autogpt_platform/
+
 # Explicitly re-ignore some folders
 .*
 **/__pycache__
+
+autogpt_platform/frontend/.next/
+autogpt_platform/frontend/node_modules
+autogpt_platform/frontend/.env.example
+autogpt_platform/frontend/.env.local
+autogpt_platform/backend/.env
+autogpt_platform/backend/.venv/
+
+autogpt_platform/market/.env
