@@ -326,9 +326,13 @@ class AgentServer(AppService):
 
     @classmethod
     async def get_graphs(
-        cls, user_id: Annotated[str, Depends(get_user_id)]
+        cls,
+        user_id: Annotated[str, Depends(get_user_id)],
+        with_runs: bool = False,
     ) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(filter_by="active", user_id=user_id)
+        return await graph_db.get_graphs_meta(
+            include_executions=with_runs, filter_by="active", user_id=user_id
+        )
 
     @classmethod
     async def get_templates(cls) -> list[graph_db.GraphMeta]:
