@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   app-network:
     name: app-network
@@ -23,12 +21,6 @@ x-supabase-services:
 
 services:
   # AGPT services
-  postgres:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: postgres
-
   migrate:
     <<: *agpt-services
     extends:
@@ -64,6 +56,12 @@ services:
     extends:
       file: ./docker-compose.platform.yml
       service: market
+
+  market-migrations:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: market-migrations
 
 #  frontend:
 #    <<: *agpt-services
@@ -139,7 +137,6 @@ services:
     extends:
       file: ./supabase/docker/docker-compose.yml
       service: db
-
   vector:
     <<: *supabase-services
     extends:
