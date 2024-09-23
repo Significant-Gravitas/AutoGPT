@@ -116,8 +116,8 @@ To run the server, navigate back to rnd (cd..) and run the following commands in
 
 ```bash
 cp supabase/docker/.env.example .env
-docker compose -f docker-compose.combined.yml build
-docker compose -f docker-compose.combined.yml up -d
+docker compose build
+docker compose up -d
 ```
 
 In the other terminal from frontend, you can run the following command to start the frontend:
