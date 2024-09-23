@@ -141,14 +141,14 @@ async def get_credential(
 
 @router.post("/{provider}/credentials", status_code=201)
 async def create_api_key_credentials(
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+    user_id: Annotated[str, Depends(get_user_id)],
     provider: Annotated[str, Path(title="The provider to create credentials for")],
     api_key: Annotated[str, Body(title="The API key to store")],
     title: Annotated[str, Body(title="Optional title for the credentials")],
     expires_at: Annotated[
         int | None, Body(title="Unix timestamp when the key expires")
-    ],
-    user_id: Annotated[str, Depends(get_user_id)],
-    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+    ] = None,
 ):
     new_credentials = APIKeyCredentials(
         provider=provider,
