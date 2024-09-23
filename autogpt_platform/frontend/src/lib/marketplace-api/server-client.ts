@@ -1,5 +1,5 @@
 import { createServerClient } from "../supabase/server";
-import BaseMarketplaceAPI from "./base_client";
+import BaseMarketplaceAPI from "./base-client";
 
 export default class ServerSideMarketplaceAPI extends BaseMarketplaceAPI {
   constructor(
