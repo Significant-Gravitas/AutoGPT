@@ -49,7 +49,7 @@ class BlockCategory(Enum):
     INPUT = "Block that interacts with input of the graph."
     OUTPUT = "Block that interacts with output of the graph."
     LOGIC = "Programming logic to control the flow of your agent"
-    DEVELOPER_TOOLS = "Developer tools like Github."  # added this so all the github blocks are in the same category for now, this is to be changed
+    DEVELOPER_TOOLS = "Developer tools such as GitHub blocks."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
