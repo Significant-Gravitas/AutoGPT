@@ -339,7 +339,9 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
 function parseGraphMetaWithRuns(result: any): GraphMetaWithRuns {
   return {
     ...result,
-    executions: result.executions.map(parseExecutionMetaTimestamps),
+    executions: result.executions
+      ? result.executions.map(parseExecutionMetaTimestamps)
+      : [],
   };
 }
 
