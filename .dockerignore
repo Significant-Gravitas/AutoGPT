@@ -1,40 +1,40 @@
 # Ignore everything by default, selectively add things to context
-*
+classic/run
 
 # AutoGPT
-!autogpt/autogpt/
-!autogpt/pyproject.toml
-!autogpt/poetry.lock
-!autogpt/README.md
-!autogpt/tests/
+!classic/original_autogpt/autogpt/
+!classic/original_autogpt/pyproject.toml
+!classic/original_autogpt/poetry.lock
+!classic/original_autogpt/README.md
+!classic/original_autogpt/tests/
 
 # Benchmark
-!benchmark/agbenchmark/
-!benchmark/pyproject.toml
-!benchmark/poetry.lock
-!benchmark/README.md
+!classic/benchmark/agbenchmark/
+!classic/benchmark/pyproject.toml
+!classic/benchmark/poetry.lock
+!classic/benchmark/README.md
 
 # Forge
-!forge/forge/
-!forge/pyproject.toml
-!forge/poetry.lock
-!forge/README.md
+!classic/forge/
+!classic/forge/pyproject.toml
+!classic/forge/poetry.lock
+!classic/forge/README.md
 
 # Frontend
-!frontend/build/web/
+!classic/frontend/build/web/
 
-# rnd
-!rnd/
+# Platform
+!autogpt_platform/
 
 # Explicitly re-ignore some folders
 .*
 **/__pycache__
-# rnd
-rnd/autogpt_builder/.next/
-rnd/autogpt_builder/node_modules
-rnd/autogpt_builder/.env.example
-rnd/autogpt_builder/.env.local
-rnd/autogpt_server/.env
-rnd/autogpt_server/.venv/
 
-rnd/market/.env
+autogpt_platform/frontend/.next/
+autogpt_platform/frontend/node_modules
+autogpt_platform/frontend/.env.example
+autogpt_platform/frontend/.env.local
+autogpt_platform/backend/.env
+autogpt_platform/backend/.venv/
+
+autogpt_platform/market/.env

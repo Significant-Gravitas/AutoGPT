@@ -42,13 +42,10 @@ This is useful when running on docker so you can copy the secrets into the conta
 
 ## Database selection
 
-### SQLite
-
-By default, the server uses SQLite as the database. SQLite is a file-based database that is easy to set up and use. However, it is not recommended for production usecases where auth is required because that subsystem requires Postgres.
 
 ### PostgreSQL
 
-For production use, it is recommended to use PostgreSQL as the database. You will swap the commands you use to generate and run prisma to the following
+We use a Supabase PostgreSQL as the database. You will swap the commands you use to generate and run prisma to the following
 
 ```bash
 poetry run prisma generate --schema postgres/schema.prisma
@@ -57,13 +54,13 @@ poetry run prisma generate --schema postgres/schema.prisma
 This will generate the Prisma client for PostgreSQL. You will also need to run the PostgreSQL database in a separate container. You can use the `docker-compose.yml` file in the `rnd` directory to run the PostgreSQL database.
 
 ```bash
-cd rnd/
+cd autogpt_platform/
 docker compose up -d
 ```
 
-You can then run the migrations from the `autogpt_server` directory.
+You can then run the migrations from the `backend` directory.
 
 ```bash
-cd ../autogpt_server
+cd ../backend
 prisma migrate dev --schema postgres/schema.prisma
 ```
