@@ -30,45 +30,9 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10"]
-        platform-os: [ubuntu, macos, macos-arm64, windows]
-    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Setup PostgreSQL
-        uses: ikalnytskyi/action-setup-postgres@v6
-        with:
-          username: ${{ secrets.DB_USER || 'postgres' }}
-          password: ${{ secrets.DB_PASS || 'postgres' }}
-          database: postgres
-          port: 5432
-        id: postgres
-
-      # Quite slow on macOS (2~4 minutes to set up Docker)
-      # - name: Set up Docker (macOS)
-      #   if: runner.os == 'macOS'
-      #   uses: crazy-max/ghaction-setup-docker@v3
-
-      - name: Start MinIO service (Linux)
-        if: runner.os == 'Linux'
-        working-directory: "."
-        run: |
-          docker pull minio/minio:edge-cicd
-          docker run -d -p 9000:9000 minio/minio:edge-cicd
-
-      - name: Start MinIO service (macOS)
-        if: runner.os == 'macOS'
-        working-directory: ${{ runner.temp }}
-        run: |
-          brew install minio/stable/minio
-          mkdir data
-          minio server ./data &
-
-      # No MinIO on Windows:
-      # - Windows doesn't support running Linux Docker containers
-      # - It doesn't seem possible to start background processes on Windows. They are
-      #   killed after the step returns.
-      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -80,20 +44,22 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Setup Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
       - id: get_date
         name: Get date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
-        # On Windows, unpacking cached dependencies takes longer than just installing them
-        if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
 
       - name: Install Poetry (Unix)
-        if: runner.os != 'Windows'
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
 
@@ -102,25 +68,26 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
-      - name: Install Poetry (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
-
-          $env:PATH += ";$env:APPDATA\Python\Scripts"
-          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
-
       - name: Install Python dependencies
         run: poetry install
 
       - name: Generate Prisma Client
         run: poetry run prisma generate
 
+      - id: supabase
+        name: Start Supabase
+        working-directory: .
+        run: |
+          supabase init
+          supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
+          supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
+        # outputs:
+        # DB_URL, API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET
+
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --name updates
         env:
-          CONNECTION_STR: ${{ steps.postgres.outputs.connection-uri }}
+          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
 
       - id: lint
         name: Run Linter
@@ -136,17 +103,16 @@ jobs:
         if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
+          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
+          SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
+          SUPABASE_SERVICE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
     env:
       CI: true
       PLAIN_OUTPUT: True
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DB_USER: ${{ secrets.DB_USER || 'postgres' }}
-      DB_PASS: ${{ secrets.DB_PASS || 'postgres' }}
-      DB_NAME: postgres
-      DB_PORT: 5432
       RUN_ENV: local
       PORT: 8080
-      DATABASE_URL: postgresql://${{ secrets.DB_USER || 'postgres' }}:${{ secrets.DB_PASS || 'postgres' }}@localhost:5432/${{ secrets.DB_NAME || 'postgres'}}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       # - name: Upload coverage reports to Codecov
       #   uses: codecov/codecov-action@v4
