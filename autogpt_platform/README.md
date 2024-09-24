@@ -8,39 +8,60 @@ Welcome to the AutoGPT Platform - a powerful system for creating and running AI 
 
 - Docker
 - Docker Compose V2 (comes with Docker Desktop, or can be installed separately)
+- Node.js & NPM (for running the frontend application)
 
 ### Running the System
 
 To run the AutoGPT Platform, follow these steps:
 
-1. Clone this repository to your local machine.
-2. Navigate to autogpt_platform/supabase
+1. Clone this repository to your local machine and navigate to the `autogpt_platform` directory within the repository:
+   ```
+   git clone <https://github.com/Significant-Gravitas/AutoGPT.git | git@github.com:Significant-Gravitas/AutoGPT.git>
+   cd AutoGPT/autogpt_platform
+   ```
+
+2. Run the following command:
+   ```
+   git submodule update --init --recursive
+   ```
+   This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
+
 3. Run the following command:
    ```
-      git submodule update --init --recursive
+   cp supabase/docker/.env.example .env
    ```
-4. Navigate back to autogpt_platform (cd ..)
-5. Run the following command:
-   ```
-      cp supabase/docker/.env.example .env
-   ```
-6. Run the following command:
+   This command will copy the `.env.example` file to `.env` in the `supabase/docker` directory. You can modify the `.env` file to add your own environment variables.
 
+4. Run the following command:
    ```
    docker compose up -d
+   ```
+   This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
 
+5. Navigate to `frontend` within the `autogpt_platform` directory:
+   ```
+   cd frontend
+   ```
+   You will need to run your frontend application separately on your local machine.
+
+6. Run the following command: 
+   ```
+   cp .env.example .env
+   ```
+   This command will copy the `.env.example` file to `.env` in the `frontend` directory. You can modify the `.env` within this folder to add your own environment variables for the frontend application.
+
+7. Run the following command:
+   ```
+   npm install
+   npm run dev
+   ```
+   This command will install the necessary dependencies and start the frontend application in development mode.
+   If you are using Yarn, you can run the following commands instead:
+   ```
+   yarn install && yarn dev
    ```
 
-   This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
-7. Navigate to autogpt_platform/frontend.
-8. Run the following command: 
-   ```
-      cp .env.example .env.local
-   ```
-9. Run the following command: 
-   ```
-      yarn dev
-   ```
+8. Open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
 
 ### Docker Compose Commands
 
