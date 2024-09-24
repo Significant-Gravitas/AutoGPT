@@ -273,6 +273,7 @@ export const APIKeyCredentialsModal: FC<{
     defaultValues: {
       apiKey: "",
       title: "",
+      expiresAt: "",
     },
   });
 
