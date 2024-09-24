@@ -33,6 +33,7 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
+import { IconCoin } from "./ui/icons";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -577,8 +578,10 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         </div>
       </div>
       {blockCost && (
-        <div className="p-3 text-right font-semibold">
-          Cost: {blockCost.cost_amount} / {blockCost.cost_type}
+        <div className="p-3 font-semibold">
+          <span className="ml-auto flex items-center">
+            <IconCoin /> {blockCost.cost_amount} per {blockCost.cost_type}
+          </span>
         </div>
       )}
       {data.uiType !== BlockUIType.NOTE ? (
