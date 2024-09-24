@@ -20,6 +20,7 @@ app = FastAPI()
 event_queue = AsyncRedisEventQueue()
 _connection_manager = None
 
+logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.config.backend_cors_allow_origins,
