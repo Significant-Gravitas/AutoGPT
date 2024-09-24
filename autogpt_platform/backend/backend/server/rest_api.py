@@ -67,7 +67,7 @@ class AgentServer(AppService):
         if self._test_dependency_overrides:
             app.dependency_overrides.update(self._test_dependency_overrides)
 
-        logger.info(
+        logger.debug(
             f"FastAPI CORS allow origins: {Config().backend_cors_allow_origins}"
         )
 
