@@ -1,8 +1,8 @@
 import json
 import os
-from typing import Any, Dict, Generic, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -104,6 +104,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=8006,
         description="The port for agent server API to run on",
     )
+
+    backend_cors_allow_origins: List[str] = []
+
+    @field_validator("backend_cors_allow_origins")
+    @classmethod
+    def validate_cors_allow_origins(cls, v):
+        out = []
+        if isinstance(v, list):
+            for url in v:
+                url = url.strip()
+                if url.startswith(("http://", "https://")):
+                    out.append(url)
+                else:
+                    raise ValueError(f"Invalid URL: {url}")
+        else:
+            raise ValueError("backend_cors_allow_origins must be a valid url")
+
+        # If using local callback add both localhost and 127.0.0.1
+        # NOTE: Localhost does not use ssl
+        has_localhost = any(["localhost" in url for url in out])
+        has_127_0_0_1 = any(["127.0.0.1" in url for url in out])
+        if has_127_0_0_1 and not has_localhost:
+            out.append("http://localhost:3000")
+        if has_localhost and not has_127_0_0_1:
+            out.append("http://127.0.0.1:3000")
+
+        return out
 
     @classmethod
     def settings_customise_sources(

@@ -66,6 +66,7 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
+      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
     ports:
       - "8006:8006"
       - "8003:8003" # execution scheduler
