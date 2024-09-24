@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "export NODE_ENV=development && next dev",
+    "dev": "next dev",
+    "dev:nosentry": "export NODE_ENV=development && export DISABLE_SENTRY=true && next dev",
     "dev:test": "export NODE_ENV=test && next dev",
     "build": "next build",
     "start": "next start",
