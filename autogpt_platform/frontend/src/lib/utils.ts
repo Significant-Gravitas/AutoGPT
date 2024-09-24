@@ -152,13 +152,13 @@ export function setNestedProperty(obj: any, path: string, value: any) {
 
 export function removeEmptyStringsAndNulls(obj: any): any {
   if (Array.isArray(obj)) {
-    // If obj is an array, recursively remove empty strings and nulls from its elements
-    return obj
-      .map((item) => removeEmptyStringsAndNulls(item))
-      .filter(
-        (item) =>
-          item !== null && (typeof item !== "string" || item.trim() !== ""),
-      );
+    // If obj is an array, recursively check each element,
+    // but element removal is avoided to prevent index changes.
+    return obj.map((item) =>
+      item === undefined || item === null
+        ? ""
+        : removeEmptyStringsAndNulls(item),
+    );
   } else if (typeof obj === "object" && obj !== null) {
     // If obj is an object, recursively remove empty strings and nulls from its properties
     for (const key in obj) {
@@ -166,7 +166,8 @@ export function removeEmptyStringsAndNulls(obj: any): any {
         const value = obj[key];
         if (
           value === null ||
-          (typeof value === "string" && value.trim() === "")
+          value === undefined ||
+          (typeof value === "string" && value === "")
         ) {
           delete obj[key];
         } else {

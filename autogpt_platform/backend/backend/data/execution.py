@@ -396,19 +396,19 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
 
     # Merge all input with <input_name>_$_<index> into a single list.
     items = list(data.items())
-    list_input: list[Any] = []
+
     for key, value in items:
         if LIST_SPLIT not in key:
             continue
         name, index = key.split(LIST_SPLIT)
         if not index.isdigit():
-            list_input.append((name, value, 0))
-        else:
-            list_input.append((name, value, int(index)))
+            raise ValueError(f"Invalid key: {key}, #{index} index must be an integer.")
 
-    for name, value, _ in sorted(list_input, key=lambda x: x[2]):
         data[name] = data.get(name, [])
-        data[name].append(value)
+        if int(index) >= len(data[name]):
+            # Pad list with empty string on missing indices.
+            data[name].extend([""] * (int(index) - len(data[name]) + 1))
+        data[name][int(index)] = value
 
     # Merge all input with <input_name>_#_<index> into a single dict.
     for key, value in items:
