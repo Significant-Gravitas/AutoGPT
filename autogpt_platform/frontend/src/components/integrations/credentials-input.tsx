@@ -235,7 +235,7 @@ export const CredentialsInput: FC<{
             <SelectItem key={index} value={credentials.id}>
               <ProviderIcon className="mr-2 inline h-4 w-4" />
               <IconKey className="mr-1.5 inline" />
-              {credentials.username}
+              {credentials.title}
             </SelectItem>
           ))}
           <SelectSeparator />
