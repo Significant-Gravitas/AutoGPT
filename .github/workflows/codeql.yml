@@ -70,7 +70,7 @@ jobs:
         # Prefix the list here with "+" to use these queries and those in the config file.
         config: |
           paths-ignore:
-            - frontend/build/**
+            - classic/frontend/build/**
 
         # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
         # queries: security-extended,security-and-quality
