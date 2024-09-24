@@ -135,6 +135,8 @@ services:
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
+      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
+
     ports:
       - "8001:8001"
     networks:
