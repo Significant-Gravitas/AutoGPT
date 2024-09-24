@@ -43,22 +43,22 @@ export async function NavBar() {
           <SheetContent side="left">
             <nav className="grid gap-6 text-lg font-medium">
               <Link
+                href="/marketplace"
+                className="mt-4 flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
+              >
+                <LuShoppingCart /> Marketplace
+              </Link>
+              <Link
                 href="/"
-                className="flex flex-row gap-2 text-muted-foreground hover:text-foreground"
+                className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
               >
                 <LuLaptop /> Monitor
               </Link>
               <Link
                 href="/build"
-                className="flex flex-row gap-2 text-muted-foreground hover:text-foreground"
+                className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
               >
                 <BsBoxes /> Build
-              </Link>
-              <Link
-                href="/marketplace"
-                className="flex flex-row gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <LuShoppingCart /> Marketplace
               </Link>
             </nav>
           </SheetContent>
