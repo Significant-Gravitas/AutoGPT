@@ -8,7 +8,7 @@
 
 ## How to Get Started
 
-https://github.com/user-attachments/assets/8508f4dc-b362-4cab-900f-644964a96cdf
+https://github.com/user-attachments/assets/d04273a5-b36a-4a37-818e-f631ce72d603
 
 ### 🧱 AutoGPT Builder 
 
