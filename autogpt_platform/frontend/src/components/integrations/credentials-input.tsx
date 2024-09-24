@@ -217,10 +217,7 @@ export const CredentialsInput: FC<{
   // Saved credentials exist
   return (
     <>
-      <Select
-        value={selectedCredentials?.id}
-        onValueChange={handleValueChange}
-      >
+      <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={schema.placeholder} />
         </SelectTrigger>
