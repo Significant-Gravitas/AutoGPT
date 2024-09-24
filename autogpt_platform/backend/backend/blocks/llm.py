@@ -90,7 +90,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         prompt: str
         expected_format: dict[str, str] = SchemaField(
             description="Expected format of the response. If provided, the response will be validated against this format. "
-                        "The keys should be the expected fields in the response, and the values should be the description of the field.",
+            "The keys should be the expected fields in the response, and the values should be the description of the field.",
         )
         model: LlmModel = LlmModel.GPT4_TURBO
         api_key: BlockSecret = SecretField(value="")
@@ -225,7 +225,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             format_prompt = ",\n  ".join(expected_format)
             sys_prompt = trim_prompt(
                 f"""
-                  |Reply only (nothing else) in this json format:
+                  |Reply strictly only in the following JSON format:
                   |{{
                   |  {format_prompt}
                   |}}
