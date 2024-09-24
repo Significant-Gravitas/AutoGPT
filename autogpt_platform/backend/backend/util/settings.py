@@ -105,7 +105,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
-    backend_cors_allow_origins: List[str] = []
+    backend_cors_allow_origins: List[str] = Field(default_factory=list)
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
