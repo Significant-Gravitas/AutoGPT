@@ -5,6 +5,7 @@ import sys
 import time
 from typing import Dict, List, Tuple
 
+CHECK_INTERVAL = 30
 
 def get_environment_variables() -> Tuple[str, str, str, str, str]:
     """Retrieve and return necessary environment variables."""
@@ -93,9 +94,10 @@ def main():
             break
 
         print(
-            "Some check runs are still in progress. Waiting 3 minutes before checking again..."
+            "Some check runs are still in progress. "
+            f"Waiting {CHECK_INTERVAL} seconds before checking again..."
         )
-        time.sleep(180)
+        time.sleep(CHECK_INTERVAL)
 
     if all_others_passed:
         print("All other completed check runs have passed. This check passes.")

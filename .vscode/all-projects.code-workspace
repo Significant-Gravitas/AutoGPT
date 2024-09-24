@@ -1,12 +1,12 @@
 {
   "folders": [
     {
-      "name": "autogpt_server",
-      "path": "../autogpt_platform/autogpt_server"
+      "name": "frontend",
+      "path": "../autogpt_platform/frontend"
     },
     {
-      "name": "autogpt_builder",
-      "path": "../autogpt_platform/autogpt_builder"
+      "name": "backend",
+      "path": "../autogpt_platform/backend"
     },
     {
       "name": "market",
@@ -24,10 +24,7 @@
       "name": "docs",
       "path": "../docs"
     },
-    {
-      "name": "[root]",
-      "path": ".."
-    },
+
     {
       "name": "classic - autogpt",
       "path": "../classic/original_autogpt"
@@ -44,6 +41,10 @@
       "name": "classic - frontend",
       "path": "../classic/frontend"
     },
+    {
+      "name": "[root]",
+      "path": ".."
+    }
   ],
   "settings": {
     "python.analysis.typeCheckingMode": "basic"
