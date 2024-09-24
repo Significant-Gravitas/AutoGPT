@@ -110,8 +110,8 @@ To run the frontend application, follow these steps:
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Notes: 
-By default the appplication for different services run on the following ports: 
+By default the application for different services run on the following ports: 
 
 Frontend UI Server: 3000
 Backend Websocket Server: 8001
-Backend API Rest Server: 8006
+Execution API Rest Server: 8006
