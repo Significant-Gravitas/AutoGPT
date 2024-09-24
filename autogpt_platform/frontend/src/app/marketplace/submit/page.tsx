@@ -37,6 +37,49 @@ type FormData = {
   selectedAgentId: string;
 };
 
+const keywords = [
+  "Automation",
+  "AI Workflows",
+  "Integration",
+  "Task Automation",
+  "Data Processing",
+  "Workflow Management",
+  "Real-time Analytics",
+  "Custom Triggers",
+  "Event-driven",
+  "API Integration",
+  "Data Transformation",
+  "Multi-step Workflows",
+  "Collaboration Tools",
+  "Business Process Automation",
+  "No-code Solutions",
+  "AI-Powered",
+  "Smart Notifications",
+  "Data Syncing",
+  "User Engagement",
+  "Reporting Automation",
+  "Lead Generation",
+  "Customer Support Automation",
+  "E-commerce Automation",
+  "Social Media Management",
+  "Email Marketing Automation",
+  "Document Management",
+  "Data Enrichment",
+  "Performance Tracking",
+  "Predictive Analytics",
+  "Resource Allocation",
+  "Chatbot",
+  "Virtual Assistant",
+  "Workflow Automation",
+  "Social Media Manager",
+  "Email Optimizer",
+  "Content Generator",
+  "Data Analyzer",
+  "Task Scheduler",
+  "Customer Service Bot",
+  "Personalization Engine",
+];
+
 const SubmitPage: React.FC = () => {
   const router = useRouter();
   const {
@@ -292,12 +335,11 @@ const SubmitPage: React.FC = () => {
                     </MultiSelectorTrigger>
                     <MultiSelectorContent>
                       <MultiSelectorList>
-                        <MultiSelectorItem value="keyword1">
-                          Keyword 1
-                        </MultiSelectorItem>
-                        <MultiSelectorItem value="keyword2">
-                          Keyword 2
-                        </MultiSelectorItem>
+                        {keywords.map((keyword) => (
+                          <MultiSelectorItem key={keyword} value={keyword}>
+                            {keyword}
+                          </MultiSelectorItem>
+                        ))}
                         {/* Add more predefined keywords as needed */}
                       </MultiSelectorList>
                     </MultiSelectorContent>
