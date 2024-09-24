@@ -80,6 +80,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         extra="allow",
     )
 
+    websocket_server_host: str = Field(
+        default="0.0.0.0",
+        description="The host for the websocket server to run on",
+    )
+
     websocket_server_port: int = Field(
         default=8001,
         description="The port for the websocket server to run on",
@@ -98,6 +103,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     agent_server_port: int = Field(
         default=8004,
         description="The port for agent server daemon to run on",
+    )
+
+    agent_api_host: str = Field(
+        default="0.0.0.0",
+        description="The host for agent server API to run on",
     )
 
     agent_api_port: int = Field(

@@ -251,7 +251,12 @@ class AgentServer(AppService):
 
         app.include_router(api_router)
 
-        uvicorn.run(app, host="0.0.0.0", port=Config().agent_api_port, log_config=None)
+        uvicorn.run(
+            app,
+            host=Config().agent_api_host,
+            port=Config().agent_api_port,
+            log_config=None,
+        )
 
     def set_test_dependency_overrides(self, overrides: dict):
         self._test_dependency_overrides = overrides
