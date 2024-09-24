@@ -149,7 +149,7 @@ async def create_api_key_credentials(
     expires_at: Annotated[
         int | None, Body(title="Unix timestamp when the key expires")
     ] = None,
-):
+) -> APIKeyCredentials:
     new_credentials = APIKeyCredentials(
         provider=provider,
         api_key=SecretStr(api_key),
@@ -163,7 +163,7 @@ async def create_api_key_credentials(
         raise HTTPException(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
         )
-    return {"id": new_credentials.id}
+    return new_credentials
 
 
 @router.delete("/{provider}/credentials/{cred_id}", status_code=204)
