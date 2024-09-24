@@ -36,7 +36,7 @@ To run the AutoGPT Platform, follow these steps:
    ```
    docker compose up -d
    ```
-   This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
+   This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
 
 5. Navigate to `frontend` within the `autogpt_platform` directory:
    ```
