@@ -218,7 +218,7 @@ export const CredentialsInput: FC<{
   return (
     <>
       <Select
-        defaultValue={selectedCredentials?.id}
+        value={selectedCredentials?.id}
         onValueChange={handleValueChange}
       >
         <SelectTrigger>
@@ -276,7 +276,6 @@ export const APIKeyCredentialsModal: FC<{
     defaultValues: {
       apiKey: "",
       title: "",
-      expiresAt: "",
     },
   });
 
