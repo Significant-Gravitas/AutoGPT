@@ -174,4 +174,8 @@ async def websocket_router(
 
 class WebsocketServer(AppProcess):
     def run(self):
-        uvicorn.run(app, host="0.0.0.0", port=Config().websocket_server_port)
+        uvicorn.run(
+            app,
+            host=Config().websocket_server_host,
+            port=Config().websocket_server_port,
+        )
