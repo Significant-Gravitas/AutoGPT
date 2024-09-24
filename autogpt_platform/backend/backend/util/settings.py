@@ -109,17 +109,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
-    def validate_cors_allow_origins(cls, v):
+    def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
         out = []
-        if isinstance(v, list):
-            for url in v:
-                url = url.strip()
-                if url.startswith(("http://", "https://")):
-                    out.append(url)
-                else:
-                    raise ValueError(f"Invalid URL: {url}")
-        else:
-            raise ValueError("backend_cors_allow_origins must be a valid url")
+        for url in v:
+            url = url.strip()
+            if url.startswith(("http://", "https://")):
+                out.append(url)
+            else:
+                raise ValueError(f"Invalid URL: {url}")
 
         # If using local callback add both localhost and 127.0.0.1
         # NOTE: Localhost does not use ssl
