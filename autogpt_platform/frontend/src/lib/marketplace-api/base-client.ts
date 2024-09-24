@@ -1,4 +1,4 @@
-import { createClient } from "../supabase/client";
+import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AddAgentRequest,
   AgentResponse,
@@ -11,15 +11,17 @@ import {
   AnalyticsEvent,
 } from "./types";
 
-export default class MarketplaceAPI {
+export default class BaseMarketplaceAPI {
   private baseUrl: string;
-  private supabaseClient = createClient();
+  private supabaseClient: SupabaseClient | null = null;
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
       "http://localhost:8015/api/v1/market",
+    supabaseClient: SupabaseClient | null = null,
   ) {
     this.baseUrl = baseUrl;
+    this.supabaseClient = supabaseClient;
   }
 
   async checkHealth(): Promise<{ status: string }> {
@@ -262,7 +264,15 @@ export default class MarketplaceAPI {
         response_data.detail,
         response,
       );
-      throw new Error(`HTTP error ${response.status}! ${response_data.detail}`);
+      try {
+        const response_data = await response.json();
+      } catch (e) {
+        console.warn("Failed to parse response body", e);
+      }
+
+      throw new Error(
+        `HTTP error ${response.status}! ${response_data.detail} ${method} ${response.url}`,
+      );
     }
     return response_data;
   }
