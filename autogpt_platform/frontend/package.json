@@ -9,7 +9,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "playwright test",
+    "test-ui": "playwright test --ui",
+    "gentests": "playwright codegen http://localhost:3000"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -59,6 +62,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.47.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
