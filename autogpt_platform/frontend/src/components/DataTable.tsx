@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import { beautifyString } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -20,9 +20,10 @@ type DataTableProps = {
 
 const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
   const getYouTubeVideoId = (url: string) => {
-    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    const regExp =
+      /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
     const match = url.match(regExp);
-    return (match && match[7].length === 11) ? match[7] : null;
+    return match && match[7].length === 11 ? match[7] : null;
   };
 
   const videoId = getYouTubeVideoId(videoUrl);
@@ -50,7 +51,7 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
 
 const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => (
   <div className="w-full p-2">
-    <img src={imageUrl} alt="Image" className="max-w-full h-auto" />
+    <img src={imageUrl} alt="Image" className="h-auto max-w-full" />
   </div>
 );
 
@@ -125,9 +126,11 @@ export default function DataTable({
                         beautifyString(key),
                         value
                           .map((i) =>
-                            typeof i === "object" ? JSON.stringify(i) : String(i)
+                            typeof i === "object"
+                              ? JSON.stringify(i)
+                              : String(i),
                           )
-                          .join(", ")
+                          .join(", "),
                       )
                     }
                     title="Copy Data"
