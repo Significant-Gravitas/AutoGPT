@@ -29,7 +29,7 @@ class GithubListTagsBlock(Block):
             url: str
 
         tag: TagItem = SchemaField(
-            description="Tags with their name and file tree browser URL"
+            title="Tag", description="Tags with their name and file tree browser URL"
         )
         error: str = SchemaField(description="Error message if listing tags failed")
 
@@ -120,7 +120,8 @@ class GithubListBranchesBlock(Block):
             url: str
 
         branch: BranchItem = SchemaField(
-            description="Branches with their name and file tree browser URL"
+            title="Branch",
+            description="Branches with their name and file tree browser URL",
         )
         error: str = SchemaField(description="Error message if listing branches failed")
 
@@ -209,7 +210,7 @@ class GithubListDiscussionsBlock(Block):
             url: str
 
         discussion: DiscussionItem = SchemaField(
-            description="Discussions with their title and URL"
+            title="Discussion", description="Discussions with their title and URL"
         )
         error: str = SchemaField(
             description="Error message if listing discussions failed"
@@ -316,7 +317,8 @@ class GithubListReleasesBlock(Block):
             url: str
 
         release: ReleaseItem = SchemaField(
-            description="Releases with their name and file tree browser URL"
+            title="Release",
+            description="Releases with their name and file tree browser URL",
         )
         error: str = SchemaField(description="Error message if listing releases failed")
 

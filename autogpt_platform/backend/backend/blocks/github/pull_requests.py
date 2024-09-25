@@ -26,7 +26,9 @@ class GithubListPullRequestsBlock(Block):
             title: str
             url: str
 
-        pull_request: PRItem = SchemaField(description="PRs with their title and URL")
+        pull_request: PRItem = SchemaField(
+            title="Pull Request", description="PRs with their title and URL"
+        )
         error: str = SchemaField(description="Error message if listing issues failed")
 
     def __init__(self):
@@ -513,7 +515,8 @@ class GithubListPRReviewersBlock(Block):
             url: str
 
         reviewer: ReviewerItem = SchemaField(
-            description="Reviewers with their username and profile URL"
+            title="Reviewer",
+            description="Reviewers with their username and profile URL",
         )
         error: str = SchemaField(
             description="Error message if listing reviewers failed"

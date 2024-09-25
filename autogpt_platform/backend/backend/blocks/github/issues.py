@@ -283,7 +283,9 @@ class GithubListIssuesBlock(Block):
             title: str
             url: str
 
-        issue: IssueItem = SchemaField(description="Issues with their title and URL")
+        issue: IssueItem = SchemaField(
+            title="Issue", description="Issues with their title and URL"
+        )
         error: str = SchemaField(description="Error message if listing issues failed")
 
     def __init__(self):
