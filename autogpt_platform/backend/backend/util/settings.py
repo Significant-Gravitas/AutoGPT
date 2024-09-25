@@ -121,21 +121,26 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
         out = []
+        port = None
+        has_localhost = False
+        has_127_0_0_1 = False
         for url in v:
             url = url.strip()
             if url.startswith(("http://", "https://")):
+                if "localhost" in url:
+                    port = url.split(":")[2]
+                    has_localhost = True
+                if "127.0.0.1" in url:
+                    port = url.split(":")[2]
+                    has_127_0_0_1 = True
                 out.append(url)
             else:
                 raise ValueError(f"Invalid URL: {url}")
 
-        # If using local callback add both localhost and 127.0.0.1
-        # NOTE: Localhost does not use ssl
-        has_localhost = any(["localhost" in url for url in out])
-        has_127_0_0_1 = any(["127.0.0.1" in url for url in out])
         if has_127_0_0_1 and not has_localhost:
-            out.append("http://localhost:3000")
+            out.append(f"http://localhost:{port}")
         if has_localhost and not has_127_0_0_1:
-            out.append("http://127.0.0.1:3000")
+            out.append(f"http://127.0.0.1:{port}")
 
         return out
 
