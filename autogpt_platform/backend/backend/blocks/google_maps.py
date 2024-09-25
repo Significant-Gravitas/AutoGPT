@@ -1,6 +1,7 @@
+from typing import List
+
 import googlemaps
 
-from typing import List
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 
