@@ -25,6 +25,7 @@ ingress:
     kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-builder-ip"
     networking.gke.io/managed-certificates: "autogpt-builder-cert"
     kubernetes.io/ingress.allow-http: "true"
+    networking.gke.io/v1beta1.FrontendConfig: "autogpt-builder-frontend-config"
   hosts:
     - host: dev-builder.agpt.co
       paths:
