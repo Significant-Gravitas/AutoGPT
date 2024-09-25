@@ -4,13 +4,7 @@ from typing import Any, List
 from jinja2 import BaseLoader, Environment
 from pydantic import Field
 
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchema,
-    BlockUIType,
-)
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 from backend.util.mock import MockObject
 
@@ -197,7 +191,7 @@ class AgentInputBlock(Block):
                 ("result", "Hello, World!"),
             ],
             categories={BlockCategory.INPUT, BlockCategory.BASIC},
-            ui_type=BlockUIType.INPUT,
+            block_type=BlockType.INPUT,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -280,7 +274,7 @@ class AgentOutputBlock(Block):
                 ("output", MockObject(value="!!", key="key")),
             ],
             categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
-            ui_type=BlockUIType.OUTPUT,
+            block_type=BlockType.OUTPUT,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
@@ -452,7 +446,7 @@ class NoteBlock(Block):
             test_output=[
                 ("output", "Hello, World!"),
             ],
-            ui_type=BlockUIType.NOTE,
+            block_type=BlockType.NOTE,
         )
 
     def run(self, input_data: Input) -> BlockOutput:
