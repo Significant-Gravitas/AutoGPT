@@ -49,7 +49,7 @@ class BlockSchema(BaseModel):
         if cls.cached_jsonschema:
             return cls.cached_jsonschema
 
-        model = jsonref.replace_refs(cls.model_json_schema())
+        model = jsonref.replace_refs(cls.model_json_schema(), merge_props=True)
 
         def ref_to_dict(obj):
             if isinstance(obj, dict):

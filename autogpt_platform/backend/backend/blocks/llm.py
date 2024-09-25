@@ -92,7 +92,12 @@ class AIStructuredResponseGeneratorBlock(Block):
             description="Expected format of the response. If provided, the response will be validated against this format. "
             "The keys should be the expected fields in the response, and the values should be the description of the field.",
         )
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for answering the prompt.",
+            advanced=False,
+        )
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
@@ -307,7 +312,12 @@ class AIStructuredResponseGeneratorBlock(Block):
 class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for answering the prompt.",
+            advanced=False,
+        )
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
@@ -355,7 +365,11 @@ class AITextGeneratorBlock(Block):
 class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for summarizing the text.",
+        )
         api_key: BlockSecret = SecretField(value="")
         # TODO: Make this dynamic
         max_tokens: int = 4000  # Adjust based on the model's context window
@@ -492,6 +506,7 @@ class AIConversationBlock(Block):
             description="List of messages in the conversation.", min_length=1
         )
         model: LlmModel = SchemaField(
+            title="LLM Model",
             default=LlmModel.GPT4_TURBO,
             description="The language model to use for the conversation.",
         )
