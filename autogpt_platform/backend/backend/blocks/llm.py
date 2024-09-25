@@ -208,7 +208,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         prompt = []
 
         def trim_prompt(s: str) -> str:
@@ -351,7 +351,7 @@ class AITextGeneratorBlock(Block):
                 raise RuntimeError(output_data)
         raise ValueError("Failed to get a response from the LLM.")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             object_input_data = AIStructuredResponseGeneratorBlock.Input(
                 **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
@@ -397,7 +397,7 @@ class AITextSummarizerBlock(Block):
             },
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             for output in self._run(input_data):
                 yield output
@@ -597,7 +597,7 @@ class AIConversationBlock(Block):
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             api_key = (
                 input_data.api_key.get_secret_value()
