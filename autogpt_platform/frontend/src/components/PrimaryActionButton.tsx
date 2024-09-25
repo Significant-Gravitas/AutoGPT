@@ -12,6 +12,7 @@ interface PrimaryActionBarProps {
   onClickAgentOutputs: () => void;
   onClickRunAgent: () => void;
   isRunning: boolean;
+  isDisabled: boolean;
   requestStopRun: () => void;
   runAgentTooltip: string;
 }
