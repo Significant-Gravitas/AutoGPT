@@ -61,3 +61,4 @@ env:
   REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
   REDIS_PORT: "6379"
   REDIS_PASSWORD: "password"
+  BACKEND_CORS_ALLOW_ORIGINS: "https://dev-builder.agpt.co"
