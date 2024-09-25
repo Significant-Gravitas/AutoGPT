@@ -77,7 +77,7 @@ theme:
     logo: material/book-open-variant
     edit: material/pencil
     view: material/eye
-  favicon: favicon.png
+  favicon: assets/favicon.png
   features:
     - navigation.sections
     - navigation.footer
