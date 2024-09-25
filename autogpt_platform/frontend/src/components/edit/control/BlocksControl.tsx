@@ -45,6 +45,13 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [filteredBlocks, setFilteredBlocks] = useState<Block[]>(blocks);
+
+  const resetFilters = React.useCallback(() => {
+    setSearchQuery("");
+    setSelectedCategory(null);
+    setFilteredBlocks(blocks);
+  }, [blocks]);
 
   // Extract unique categories from blocks
   const categories = Array.from(
@@ -53,18 +60,29 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
     ),
   );
 
-  const filteredBlocks = blocks.filter(
-    (block: Block) =>
-      (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        beautifyString(block.name)
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase())) &&
-      (!selectedCategory ||
-        block.categories.some((cat) => cat.category === selectedCategory)),
-  );
+  React.useEffect(() => {
+    setFilteredBlocks(
+      blocks.filter(
+        (block: Block) =>
+          (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            beautifyString(block.name)
+              .toLowerCase()
+              .includes(searchQuery.toLowerCase())) &&
+          (!selectedCategory ||
+            block.categories.some((cat) => cat.category === selectedCategory)),
+      ),
+    );
+  }, [blocks, searchQuery, selectedCategory]);
 
   return (
-    <Popover open={pinBlocksPopover ? true : undefined}>
+    <Popover
+      open={pinBlocksPopover ? true : undefined}
+      onOpenChange={(open) => {
+        if (!open) {
+          resetFilters();
+        }
+      }}
+    >
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
