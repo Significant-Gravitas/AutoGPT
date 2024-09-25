@@ -1,4 +1,5 @@
 import requests
+from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -437,8 +438,12 @@ class GithubListReviewersBlock(Block):
         )
 
     class Output(BlockSchema):
-        reviewers: list[dict[str, str]] = SchemaField(
-            description="List of reviewers with their usernames and URLs"
+        class ReviewerItem(TypedDict):
+            username: str
+            url: str
+
+        reviewer: ReviewerItem = SchemaField(
+            description="Reviewers with their username and profile URL"
         )
         error: str = SchemaField(
             description="Error message if listing reviewers failed"
@@ -458,13 +463,11 @@ class GithubListReviewersBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "reviewers",
-                    [
-                        {
-                            "username": "reviewer1",
-                            "url": "https://github.com/reviewer1",
-                        }
-                    ],
+                    "reviewer",
+                    {
+                        "username": "reviewer1",
+                        "url": "https://github.com/reviewer1",
+                    },
                 )
             ],
             test_mock={
@@ -480,7 +483,7 @@ class GithubListReviewersBlock(Block):
     @staticmethod
     def list_reviewers(
         credentials: GithubCredentials, pr_url: str
-    ) -> list[dict[str, str]]:
+    ) -> list[Output.ReviewerItem]:
         try:
             api_url = (
                 pr_url.replace("github.com", "api.github.com/repos").replace(
@@ -497,7 +500,7 @@ class GithubListReviewersBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            reviewers = [
+            reviewers: list[GithubListReviewersBlock.Output.ReviewerItem] = [
                 {"username": reviewer["login"], "url": reviewer["html_url"]}
                 for reviewer in data.get("users", [])
             ]
@@ -520,4 +523,4 @@ class GithubListReviewersBlock(Block):
         if any("Failed" in reviewer["url"] for reviewer in reviewers):
             yield "error", reviewers[0]["url"]
         else:
-            yield "reviewers", reviewers
+            yield from (("reviewer", reviewer) for reviewer in reviewers)

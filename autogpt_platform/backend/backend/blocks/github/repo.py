@@ -1,4 +1,5 @@
 import base64
+from typing_extensions import TypedDict
 
 import requests
 
@@ -23,8 +24,12 @@ class GithubReadTagsBlock(Block):
         )
 
     class Output(BlockSchema):
-        tags: list[dict[str, str]] = SchemaField(
-            description="List of tags with their names and URLs"
+        class TagItem(TypedDict):
+            name: str
+            url: str
+
+        tag: TagItem = SchemaField(
+            description="Tags with their name and file tree browser URL"
         )
         error: str = SchemaField(description="Error message if listing tags failed")
 
@@ -42,13 +47,11 @@ class GithubReadTagsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "tags",
-                    [
-                        {
-                            "name": "v1.0.0",
-                            "url": "https://github.com/owner/repo/tree/v1.0.0",
-                        }
-                    ],
+                    "tag",
+                    {
+                        "name": "v1.0.0",
+                        "url": "https://github.com/owner/repo/tree/v1.0.0",
+                    },
                 )
             ],
             test_mock={
@@ -64,7 +67,7 @@ class GithubReadTagsBlock(Block):
     @staticmethod
     def list_tags(
         credentials: GithubCredentials, repo_url: str
-    ) -> list[dict[str, str]]:
+    ) -> list[Output.TagItem]:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = f"https://api.github.com/repos/{repo_path}/tags"
@@ -77,7 +80,7 @@ class GithubReadTagsBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            tags = [
+            tags: list[GithubReadTagsBlock.Output.TagItem] = [
                 {
                     "name": tag["name"],
                     "url": f"https://github.com/{repo_path}/tree/{tag['name']}",
@@ -103,7 +106,7 @@ class GithubReadTagsBlock(Block):
         if any("Failed" in tag["url"] for tag in tags):
             yield "error", tags[0]["url"]
         else:
-            yield "tags", tags
+            yield from (("tag", tag) for tag in tags)
 
 
 class GithubReadBranchesBlock(Block):
@@ -115,8 +118,12 @@ class GithubReadBranchesBlock(Block):
         )
 
     class Output(BlockSchema):
-        branches: list[dict[str, str]] = SchemaField(
-            description="List of branches with their names and URLs"
+        class BranchItem(TypedDict):
+            name: str
+            url: str
+
+        branch: BranchItem = SchemaField(
+            description="Branches with their name and file tree browser URL"
         )
         error: str = SchemaField(description="Error message if listing branches failed")
 
@@ -134,13 +141,11 @@ class GithubReadBranchesBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "branches",
-                    [
-                        {
-                            "name": "main",
-                            "url": "https://github.com/owner/repo/tree/main",
-                        }
-                    ],
+                    "branch",
+                    {
+                        "name": "main",
+                        "url": "https://github.com/owner/repo/tree/main",
+                    },
                 )
             ],
             test_mock={
@@ -156,7 +161,7 @@ class GithubReadBranchesBlock(Block):
     @staticmethod
     def list_branches(
         credentials: GithubCredentials, repo_url: str
-    ) -> list[dict[str, str]]:
+    ) -> list[Output.BranchItem]:
         try:
             api_url = (
                 repo_url.replace("github.com", "api.github.com/repos") + "/branches"
@@ -170,7 +175,7 @@ class GithubReadBranchesBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            branches = [
+            branches: list[GithubReadBranchesBlock.Output.BranchItem] = [
                 {"name": branch["name"], "url": branch["commit"]["url"]}
                 for branch in data
             ]
@@ -193,7 +198,7 @@ class GithubReadBranchesBlock(Block):
         if any("Failed" in branch["url"] for branch in branches):
             yield "error", branches[0]["url"]
         else:
-            yield "branches", branches
+            yield from (("branch", branch) for branch in branches)
 
 
 class GithubReadDiscussionsBlock(Block):
@@ -208,8 +213,12 @@ class GithubReadDiscussionsBlock(Block):
         )
 
     class Output(BlockSchema):
-        discussions: list[dict[str, str]] = SchemaField(
-            description="List of discussions with their titles and URLs"
+        class DiscussionItem(TypedDict):
+            title: str
+            url: str
+
+        discussion: DiscussionItem = SchemaField(
+            description="Discussions with their title and URL"
         )
         error: str = SchemaField(
             description="Error message if listing discussions failed"
@@ -230,13 +239,11 @@ class GithubReadDiscussionsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "discussions",
-                    [
-                        {
-                            "title": "Discussion 1",
-                            "url": "https://github.com/owner/repo/discussions/1",
-                        }
-                    ],
+                    "discussion",
+                    {
+                        "title": "Discussion 1",
+                        "url": "https://github.com/owner/repo/discussions/1",
+                    },
                 )
             ],
             test_mock={
@@ -252,7 +259,7 @@ class GithubReadDiscussionsBlock(Block):
     @staticmethod
     def list_discussions(
         credentials: GithubCredentials, repo_url: str, num_discussions: int
-    ) -> list[dict[str, str]]:
+    ) -> list[Output.DiscussionItem]:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             owner, repo = repo_path.split("/")
@@ -282,7 +289,7 @@ class GithubReadDiscussionsBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            discussions = [
+            discussions: list[GithubReadDiscussionsBlock.Output.DiscussionItem] = [
                 {"title": discussion["title"], "url": discussion["url"]}
                 for discussion in data["data"]["repository"]["discussions"]["nodes"]
             ]
@@ -304,7 +311,7 @@ class GithubReadDiscussionsBlock(Block):
         if any("Failed" in discussion["url"] for discussion in discussions):
             yield "error", discussions[0]["url"]
         else:
-            yield "discussions", discussions
+            yield from (("discussion", discussion) for discussion in discussions)
 
 
 class GithubReadReleasesBlock(Block):
@@ -316,8 +323,12 @@ class GithubReadReleasesBlock(Block):
         )
 
     class Output(BlockSchema):
-        releases: list[dict[str, str]] = SchemaField(
-            description="List of releases with their names and URLs"
+        class ReleaseItem(TypedDict):
+            name: str
+            url: str
+
+        release: ReleaseItem = SchemaField(
+            description="Releases with their name and file tree browser URL"
         )
         error: str = SchemaField(description="Error message if listing releases failed")
 
@@ -335,13 +346,11 @@ class GithubReadReleasesBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "releases",
-                    [
-                        {
-                            "name": "v1.0.0",
-                            "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
-                        }
-                    ],
+                    "release",
+                    {
+                        "name": "v1.0.0",
+                        "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+                    },
                 )
             ],
             test_mock={
@@ -357,7 +366,7 @@ class GithubReadReleasesBlock(Block):
     @staticmethod
     def list_releases(
         credentials: GithubCredentials, repo_url: str
-    ) -> list[dict[str, str]]:
+    ) -> list[Output.ReleaseItem]:
         try:
             repo_path = repo_url.replace("https://github.com/", "")
             api_url = f"https://api.github.com/repos/{repo_path}/releases"
@@ -370,7 +379,7 @@ class GithubReadReleasesBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            releases = [
+            releases: list[GithubReadReleasesBlock.Output.ReleaseItem] = [
                 {"name": release["name"], "url": release["html_url"]}
                 for release in data
             ]
@@ -393,7 +402,7 @@ class GithubReadReleasesBlock(Block):
         if any("Failed" in release["url"] for release in releases):
             yield "error", releases[0]["url"]
         else:
-            yield "releases", releases
+            yield from (("release", release) for release in releases)
 
 
 class GithubReadCodeownersFileBlock(Block):

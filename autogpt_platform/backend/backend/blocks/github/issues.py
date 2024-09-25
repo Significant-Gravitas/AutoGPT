@@ -1,4 +1,5 @@
 import requests
+from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -270,9 +271,11 @@ class GithubListIssuesBlock(Block):
         )
 
     class Output(BlockSchema):
-        issues: list[dict[str, str]] = SchemaField(
-            description="List of issues with their URLs"
-        )
+        class IssueItem(TypedDict):
+            title: str
+            url: str
+
+        issue: IssueItem = SchemaField(description="Issues with their title and URL")
         error: str = SchemaField(description="Error message if listing issues failed")
 
     def __init__(self):
@@ -289,13 +292,11 @@ class GithubListIssuesBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "issues",
-                    [
-                        {
-                            "title": "Issue 1",
-                            "url": "https://github.com/owner/repo/issues/1",
-                        }
-                    ],
+                    "issue",
+                    {
+                        "title": "Issue 1",
+                        "url": "https://github.com/owner/repo/issues/1",
+                    },
                 )
             ],
             test_mock={
@@ -311,7 +312,7 @@ class GithubListIssuesBlock(Block):
     @staticmethod
     def list_issues(
         credentials: GithubCredentials, repo_url: str
-    ) -> list[dict[str, str]]:
+    ) -> list[Output.IssueItem]:
         try:
             api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
             headers = {
@@ -323,7 +324,7 @@ class GithubListIssuesBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            issues = [
+            issues: list[GithubListIssuesBlock.Output.IssueItem] = [
                 {"title": issue["title"], "url": issue["html_url"]} for issue in data
             ]
 
@@ -345,7 +346,7 @@ class GithubListIssuesBlock(Block):
         if any("Failed" in issue["url"] for issue in issues):
             yield "error", issues[0]["url"]
         else:
-            yield "issues", issues
+            yield from (("issue", issue) for issue in issues)
 
 
 class GithubAddLabelBlock(Block):
