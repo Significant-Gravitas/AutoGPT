@@ -15,7 +15,7 @@ from ._auth import (
 )
 
 
-class GithubReadTagsBlock(Block):
+class GithubListTagsBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
@@ -36,10 +36,10 @@ class GithubReadTagsBlock(Block):
     def __init__(self):
         super().__init__(
             id="358924e7-9a11-4d1a-a0f2-13c67fe59e2e",
-            description="This block lists all tags for a specified GitHub repository using OAuth credentials.",
+            description="This block lists all tags for a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadTagsBlock.Input,
-            output_schema=GithubReadTagsBlock.Output,
+            input_schema=GithubListTagsBlock.Input,
+            output_schema=GithubListTagsBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -80,7 +80,7 @@ class GithubReadTagsBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            tags: list[GithubReadTagsBlock.Output.TagItem] = [
+            tags: list[GithubListTagsBlock.Output.TagItem] = [
                 {
                     "name": tag["name"],
                     "url": f"https://github.com/{repo_path}/tree/{tag['name']}",
@@ -109,7 +109,7 @@ class GithubReadTagsBlock(Block):
             yield from (("tag", tag) for tag in tags)
 
 
-class GithubReadBranchesBlock(Block):
+class GithubListBranchesBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
@@ -130,10 +130,10 @@ class GithubReadBranchesBlock(Block):
     def __init__(self):
         super().__init__(
             id="74243e49-2bec-4916-8bf4-db43d44aead5",
-            description="This block lists all branches for a specified GitHub repository using OAuth credentials.",
+            description="This block lists all branches for a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadBranchesBlock.Input,
-            output_schema=GithubReadBranchesBlock.Output,
+            input_schema=GithubListBranchesBlock.Input,
+            output_schema=GithubListBranchesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -175,7 +175,7 @@ class GithubReadBranchesBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            branches: list[GithubReadBranchesBlock.Output.BranchItem] = [
+            branches: list[GithubListBranchesBlock.Output.BranchItem] = [
                 {"name": branch["name"], "url": branch["commit"]["url"]}
                 for branch in data
             ]
@@ -201,7 +201,7 @@ class GithubReadBranchesBlock(Block):
             yield from (("branch", branch) for branch in branches)
 
 
-class GithubReadDiscussionsBlock(Block):
+class GithubListDiscussionsBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
@@ -227,10 +227,10 @@ class GithubReadDiscussionsBlock(Block):
     def __init__(self):
         super().__init__(
             id="3ef1a419-3d76-4e07-b761-de9dad4d51d7",
-            description="This block lists recent discussions for a specified GitHub repository using OAuth credentials.",
+            description="This block lists recent discussions for a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadDiscussionsBlock.Input,
-            output_schema=GithubReadDiscussionsBlock.Output,
+            input_schema=GithubListDiscussionsBlock.Input,
+            output_schema=GithubListDiscussionsBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "num_discussions": 3,
@@ -289,7 +289,7 @@ class GithubReadDiscussionsBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            discussions: list[GithubReadDiscussionsBlock.Output.DiscussionItem] = [
+            discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = [
                 {"title": discussion["title"], "url": discussion["url"]}
                 for discussion in data["data"]["repository"]["discussions"]["nodes"]
             ]
@@ -314,7 +314,7 @@ class GithubReadDiscussionsBlock(Block):
             yield from (("discussion", discussion) for discussion in discussions)
 
 
-class GithubReadReleasesBlock(Block):
+class GithubListReleasesBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
@@ -335,10 +335,10 @@ class GithubReadReleasesBlock(Block):
     def __init__(self):
         super().__init__(
             id="3460367a-6ba7-4645-8ce6-47b05d040b92",
-            description="This block lists all releases for a specified GitHub repository using OAuth credentials.",
+            description="This block lists all releases for a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadReleasesBlock.Input,
-            output_schema=GithubReadReleasesBlock.Output,
+            input_schema=GithubListReleasesBlock.Input,
+            output_schema=GithubListReleasesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -379,7 +379,7 @@ class GithubReadReleasesBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            releases: list[GithubReadReleasesBlock.Output.ReleaseItem] = [
+            releases: list[GithubListReleasesBlock.Output.ReleaseItem] = [
                 {"name": release["name"], "url": release["html_url"]}
                 for release in data
             ]
@@ -422,7 +422,7 @@ class GithubReadCodeownersFileBlock(Block):
     def __init__(self):
         super().__init__(
             id="ea64bb61-30c0-4693-9273-04081a8f955b",
-            description="This block reads the CODEOWNERS file from the master branch of a specified GitHub repository using OAuth credentials.",
+            description="This block reads the CODEOWNERS file from the master branch of a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadCodeownersFileBlock.Input,
             output_schema=GithubReadCodeownersFileBlock.Output,
@@ -495,7 +495,7 @@ class GithubReadFileFromMasterBlock(Block):
     def __init__(self):
         super().__init__(
             id="87ce6c27-5752-4bbc-8e26-6da40a3dcfd3",
-            description="This block reads the content of a specified file from the master branch of a GitHub repository using OAuth credentials.",
+            description="This block reads the content of a specified file from the master branch of a GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadFileFromMasterBlock.Input,
             output_schema=GithubReadFileFromMasterBlock.Output,
@@ -572,7 +572,7 @@ class GithubReadFileFolderRepoBlock(Block):
     def __init__(self):
         super().__init__(
             id="1355f863-2db3-4d75-9fba-f91e8a8ca400",
-            description="This block reads the content of a specified file, folder, or repository from a specified branch using OAuth credentials.",
+            description="This block reads the content of a specified file, folder, or repository from a specified branch.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadFileFolderRepoBlock.Input,
             output_schema=GithubReadFileFolderRepoBlock.Output,
@@ -661,7 +661,7 @@ class GithubMakeBranchBlock(Block):
     def __init__(self):
         super().__init__(
             id="944cc076-95e7-4d1b-b6b6-b15d8ee5448d",
-            description="This block creates a new branch from a specified source branch using OAuth credentials.",
+            description="This block creates a new branch from a specified source branch.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubMakeBranchBlock.Input,
             output_schema=GithubMakeBranchBlock.Output,
@@ -750,7 +750,7 @@ class GithubDeleteBranchBlock(Block):
     def __init__(self):
         super().__init__(
             id="0d4130f7-e0ab-4d55-adc3-0a40225e80f4",
-            description="This block deletes a specified branch using OAuth credentials.",
+            description="This block deletes a specified branch.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubDeleteBranchBlock.Input,
             output_schema=GithubDeleteBranchBlock.Output,

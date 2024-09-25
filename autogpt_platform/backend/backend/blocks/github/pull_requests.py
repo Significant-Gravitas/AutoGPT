@@ -48,7 +48,7 @@ class GithubMakePRBlock(Block):
     def __init__(self):
         super().__init__(
             id="dfb987f8-f197-4b2e-bf19-111812afd692",
-            description="This block creates a new pull request on a specified GitHub repository using OAuth credentials.",
+            description="This block creates a new pull request on a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubMakePRBlock.Input,
             output_schema=GithubMakePRBlock.Output,
@@ -143,7 +143,7 @@ class GithubReadPRBlock(Block):
     def __init__(self):
         super().__init__(
             id="bf94b2a4-1a30-4600-a783-a8a44ee31301",
-            description="This block reads the body, title, user, and changes of a specified GitHub pull request using OAuth credentials.",
+            description="This block reads the body, title, user, and changes of a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadPRBlock.Input,
             output_schema=GithubReadPRBlock.Output,
@@ -277,7 +277,7 @@ class GithubAssignReviewerBlock(Block):
     def __init__(self):
         super().__init__(
             id="c0d22c5e-e688-43e3-ba43-d5faba7927fd",
-            description="This block assigns a reviewer to a specified GitHub pull request using OAuth credentials.",
+            description="This block assigns a reviewer to a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubAssignReviewerBlock.Input,
             output_schema=GithubAssignReviewerBlock.Output,
@@ -371,7 +371,7 @@ class GithubUnassignReviewerBlock(Block):
     def __init__(self):
         super().__init__(
             id="9637945d-c602-4875-899a-9c22f8fd30de",
-            description="This block unassigns a reviewer from a specified GitHub pull request using OAuth credentials.",
+            description="This block unassigns a reviewer from a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubUnassignReviewerBlock.Input,
             output_schema=GithubUnassignReviewerBlock.Output,
@@ -452,7 +452,7 @@ class GithubListReviewersBlock(Block):
     def __init__(self):
         super().__init__(
             id="2646956e-96d5-4754-a3df-034017e7ed96",
-            description="This block lists all reviewers for a specified GitHub pull request using OAuth credentials.",
+            description="This block lists all reviewers for a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListReviewersBlock.Input,
             output_schema=GithubListReviewersBlock.Output,

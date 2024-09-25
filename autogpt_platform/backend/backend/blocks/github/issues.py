@@ -34,7 +34,7 @@ class GithubCommentBlock(Block):
     def __init__(self):
         super().__init__(
             id="a8db4d8d-db1c-4a25-a1b0-416a8c33602b",
-            description="This block posts a comment on a specified GitHub issue or pull request using OAuth credentials.",
+            description="This block posts a comment on a specified GitHub issue or pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubCommentBlock.Input,
             output_schema=GithubCommentBlock.Output,
@@ -122,7 +122,7 @@ class GithubMakeIssueBlock(Block):
     def __init__(self):
         super().__init__(
             id="691dad47-f494-44c3-a1e8-05b7990f2dab",
-            description="This block creates a new issue on a specified GitHub repository using OAuth credentials.",
+            description="This block creates a new issue on a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubMakeIssueBlock.Input,
             output_schema=GithubMakeIssueBlock.Output,
@@ -196,7 +196,7 @@ class GithubReadIssueBlock(Block):
     def __init__(self):
         super().__init__(
             id="6443c75d-032a-4772-9c08-230c707c8acc",
-            description="This block reads the body, title, and user of a specified GitHub issue using OAuth credentials.",
+            description="This block reads the body, title, and user of a specified GitHub issue.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadIssueBlock.Input,
             output_schema=GithubReadIssueBlock.Output,
@@ -281,7 +281,7 @@ class GithubListIssuesBlock(Block):
     def __init__(self):
         super().__init__(
             id="c215bfd7-0e57-4573-8f8c-f7d4963dcd74",
-            description="This block lists all issues for a specified GitHub repository using OAuth credentials.",
+            description="This block lists all issues for a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListIssuesBlock.Input,
             output_schema=GithubListIssuesBlock.Output,
@@ -370,7 +370,7 @@ class GithubAddLabelBlock(Block):
     def __init__(self):
         super().__init__(
             id="98bd6b77-9506-43d5-b669-6b9733c4b1f1",
-            description="This block adds a label to a specified GitHub issue or pull request using OAuth credentials.",
+            description="This block adds a label to a specified GitHub issue or pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubAddLabelBlock.Input,
             output_schema=GithubAddLabelBlock.Output,
@@ -457,7 +457,7 @@ class GithubRemoveLabelBlock(Block):
     def __init__(self):
         super().__init__(
             id="78f050c5-3e3a-48c0-9e5b-ef1ceca5589c",
-            description="This block removes a label from a specified GitHub issue or pull request using OAuth credentials.",
+            description="This block removes a label from a specified GitHub issue or pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubRemoveLabelBlock.Input,
             output_schema=GithubRemoveLabelBlock.Output,
@@ -548,7 +548,7 @@ class GithubAssignIssueBlock(Block):
     def __init__(self):
         super().__init__(
             id="90507c72-b0ff-413a-886a-23bbbd66f542",
-            description="This block assigns a user to a specified GitHub issue using OAuth credentials.",
+            description="This block assigns a user to a specified GitHub issue.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubAssignIssueBlock.Input,
             output_schema=GithubAssignIssueBlock.Output,
@@ -633,7 +633,7 @@ class GithubUnassignIssueBlock(Block):
     def __init__(self):
         super().__init__(
             id="d154002a-38f4-46c2-962d-2488f2b05ece",
-            description="This block unassigns a user from a specified GitHub issue using OAuth credentials.",
+            description="This block unassigns a user from a specified GitHub issue.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubUnassignIssueBlock.Input,
             output_schema=GithubUnassignIssueBlock.Output,
