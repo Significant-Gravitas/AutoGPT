@@ -1,15 +1,26 @@
 import logging
-from typing import Annotated, Literal
+from typing import Annotated
 
 from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
 from autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
     Credentials,
+    CredentialsType,
     OAuth2Credentials,
 )
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+)
+from pydantic import BaseModel, SecretStr
 from supabase import Client
 
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
@@ -28,6 +39,7 @@ def get_store(supabase: Client = Depends(get_supabase)):
 
 class LoginResponse(BaseModel):
     login_url: str
+    state_token: str
 
 
 @router.get("/{provider}/login")
@@ -43,17 +55,17 @@ async def login(
     handler = _get_provider_oauth_handler(request, provider)
 
     # Generate and store a secure random state token
-    state = await store.store_state_token(user_id, provider)
+    state_token = await store.store_state_token(user_id, provider)
 
     requested_scopes = scopes.split(",") if scopes else []
-    login_url = handler.get_login_url(requested_scopes, state)
+    login_url = handler.get_login_url(requested_scopes, state_token)
 
-    return LoginResponse(login_url=login_url)
+    return LoginResponse(login_url=login_url, state_token=state_token)
 
 
 class CredentialsMetaResponse(BaseModel):
     id: str
-    type: Literal["oauth2", "api_key"]
+    type: CredentialsType
     title: str | None
     scopes: list[str] | None
     username: str | None
@@ -127,6 +139,52 @@ async def get_credential(
     return credential
 
 
+@router.post("/{provider}/credentials", status_code=201)
+async def create_api_key_credentials(
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+    user_id: Annotated[str, Depends(get_user_id)],
+    provider: Annotated[str, Path(title="The provider to create credentials for")],
+    api_key: Annotated[str, Body(title="The API key to store")],
+    title: Annotated[str, Body(title="Optional title for the credentials")],
+    expires_at: Annotated[
+        int | None, Body(title="Unix timestamp when the key expires")
+    ] = None,
+) -> APIKeyCredentials:
+    new_credentials = APIKeyCredentials(
+        provider=provider,
+        api_key=SecretStr(api_key),
+        title=title,
+        expires_at=expires_at,
+    )
+
+    try:
+        store.add_creds(user_id, new_credentials)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to store credentials: {str(e)}"
+        )
+    return new_credentials
+
+
+@router.delete("/{provider}/credentials/{cred_id}", status_code=204)
+async def delete_credential(
+    provider: Annotated[str, Path(title="The provider to delete credentials for")],
+    cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
+):
+    creds = store.get_creds_by_id(user_id, cred_id)
+    if not creds:
+        raise HTTPException(status_code=404, detail="Credentials not found")
+    if creds.provider != provider:
+        raise HTTPException(
+            status_code=404, detail="Credentials do not match the specified provider"
+        )
+
+    store.delete_creds_by_id(user_id, cred_id)
+    return Response(status_code=204)
+
+
 # -------- UTILITIES --------- #
 
 
@@ -145,8 +203,9 @@ def _get_provider_oauth_handler(req: Request, provider_name: str) -> BaseOAuthHa
         )
 
     handler_class = HANDLERS_BY_NAME[provider_name]
+    frontend_base_url = settings.config.frontend_base_url or str(req.base_url)
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,
-        redirect_uri=str(req.url_for("callback", provider=provider_name)),
+        redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
     )

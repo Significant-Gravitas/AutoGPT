@@ -57,7 +57,7 @@ class StoreValueBlock(Block):
             static_output=True,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.data or input_data.input
 
 
@@ -79,7 +79,7 @@ class PrintToConsoleBlock(Block):
             test_output=("status", "printed"),
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         print(">>>>> Print: ", input_data.text)
         yield "status", "printed"
 
@@ -118,7 +118,7 @@ class FindInDictionaryBlock(Block):
             categories={BlockCategory.BASIC},
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         obj = input_data.input
         key = input_data.key
 
@@ -200,7 +200,7 @@ class AgentInputBlock(Block):
             ui_type=BlockUIType.INPUT,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "result", input_data.value
 
 
@@ -283,7 +283,7 @@ class AgentOutputBlock(Block):
             ui_type=BlockUIType.OUTPUT,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         """
         Attempts to format the recorded_value using the fmt_string if provided.
         If formatting fails or no fmt_string is given, returns the original recorded_value.
@@ -343,7 +343,7 @@ class AddToDictionaryBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # If no dictionary is provided, create a new one
             if input_data.dictionary is None:
@@ -414,7 +414,7 @@ class AddToListBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # If no list is provided, create a new one
             if input_data.list is None:
@@ -455,5 +455,5 @@ class NoteBlock(Block):
             ui_type=BlockUIType.NOTE,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text

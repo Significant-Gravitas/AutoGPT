@@ -81,14 +81,14 @@ class ReadDiscordMessagesBlock(Block):
 
         await client.start(token)
 
-    def run(self, input_data: "ReadDiscordMessagesBlock.Input") -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         while True:
             for output_name, output_value in self.__run(input_data):
                 yield output_name, output_value
             if not input_data.continuous_read:
                 break
 
-    def __run(self, input_data: "ReadDiscordMessagesBlock.Input") -> BlockOutput:
+    def __run(self, input_data: Input) -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.run_bot(input_data.discord_bot_token.get_secret_value())
@@ -187,7 +187,7 @@ class SendDiscordMessageBlock(Block):
         """Splits a message into chunks not exceeding the Discord limit."""
         return [message[i : i + limit] for i in range(0, len(message), limit)]
 
-    def run(self, input_data: "SendDiscordMessageBlock.Input") -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.send_message(

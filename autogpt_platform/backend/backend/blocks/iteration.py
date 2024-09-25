@@ -31,6 +31,6 @@ class ListIteratorBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         for index, item in enumerate(input_data.items):
             yield "item", (index, item)

@@ -9,6 +9,7 @@ import {
   BlockIOStringSubSchema,
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
+  BlockIOCredentialsSubSchema,
 } from "@/lib/autogpt-server-api/types";
 import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
@@ -23,6 +24,7 @@ import {
 import { Input } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
+import { CredentialsInput } from "./integrations/credentials-input";
 
 type NodeObjectInputTreeProps = {
   selfKey?: string;
@@ -112,6 +114,18 @@ export const NodeGenericInputField: FC<{
     // AFAIK this should NEVER happen though, as $refs are resolved server-side.
     propSchema = propSchema.allOf[0];
     console.warn(`Unsupported 'allOf' in schema for '${propKey}'!`, propSchema);
+  }
+
+  if ("credentials_provider" in propSchema) {
+    return (
+      <NodeCredentialsInput
+        selfKey={propKey}
+        value={currentValue}
+        errors={errors}
+        className={className}
+        handleInputChange={handleInputChange}
+      />
+    );
   }
 
   if ("properties" in propSchema) {
@@ -275,6 +289,28 @@ export const NodeGenericInputField: FC<{
         />
       );
   }
+};
+
+const NodeCredentialsInput: FC<{
+  selfKey: string;
+  value: any;
+  errors: { [key: string]: string | undefined };
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  className?: string;
+}> = ({ selfKey, value, errors, handleInputChange, className }) => {
+  return (
+    <div className={cn("flex flex-col", className)}>
+      <CredentialsInput
+        onSelectCredentials={(credsMeta) =>
+          handleInputChange(selfKey, credsMeta)
+        }
+        selectedCredentials={value}
+      />
+      {errors[selfKey] && (
+        <span className="error-message">{errors[selfKey]}</span>
+      )}
+    </div>
+  );
 };
 
 const NodeKeyValueInput: FC<{
