@@ -62,24 +62,21 @@ class GithubListPullRequestsBlock(Block):
 
     @staticmethod
     def list_prs(credentials: GithubCredentials, repo_url: str) -> list[Output.PRItem]:
-        try:
-            api_url = repo_url.replace("github.com", "api.github.com/repos") + "/pulls"
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/pulls"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            data = response.json()
-            pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = [
-                {"title": pr["title"], "url": pr["html_url"]} for pr in data
-            ]
+        data = response.json()
+        pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = [
+            {"title": pr["title"], "url": pr["html_url"]} for pr in data
+        ]
 
-            return pull_requests
-        except Exception as e:
-            return [{"title": "Error", "url": f"Failed to list issues: {str(e)}"}]
+        return pull_requests
 
     def run(
         self,
@@ -88,14 +85,14 @@ class GithubListPullRequestsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        pull_requests = self.list_prs(
-            credentials,
-            input_data.repo_url,
-        )
-        if any("Failed" in pr["url"] for pr in pull_requests):
-            yield "error", pull_requests[0]["url"]
-        else:
+        try:
+            pull_requests = self.list_prs(
+                credentials,
+                input_data.repo_url,
+            )
             yield from (("pull_request", pr) for pr in pull_requests)
+        except Exception as e:
+            yield "error", f"Failed to list pull requests: {str(e)}"
 
 
 class GithubMakePullRequestBlock(Block):
@@ -161,27 +158,18 @@ class GithubMakePullRequestBlock(Block):
         head: str,
         base: str,
     ) -> str:
-        response = None
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            api_url = f"https://api.github.com/repos/{repo_path}/pulls"
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
-            data = {"title": title, "body": body, "head": head, "base": base}
+        repo_path = repo_url.replace("https://github.com/", "")
+        api_url = f"https://api.github.com/repos/{repo_path}/pulls"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
+        data = {"title": title, "body": body, "head": head, "base": base}
 
-            response = requests.post(api_url, headers=headers, json=data)
-            response.raise_for_status()
+        response = requests.post(api_url, headers=headers, json=data)
+        response.raise_for_status()
 
-            return "Pull request created successfully"
-        except requests.exceptions.HTTPError as http_err:
-            if response and response.status_code == 422:
-                error_details = response.json()
-                return f"Failed to create pull request: {error_details.get('message', 'Unknown error')}"
-            return f"Failed to create pull request: {str(http_err)}"
-        except Exception as e:
-            return f"Failed to create pull request: {str(e)}"
+        return "Pull request created successfully"
 
     def run(
         self,
@@ -190,18 +178,25 @@ class GithubMakePullRequestBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.create_pr(
-            credentials,
-            input_data.repo_url,
-            input_data.title,
-            input_data.body,
-            input_data.head,
-            input_data.base,
-        )
-        if "successfully" in status:
+        try:
+            status = self.create_pr(
+                credentials,
+                input_data.repo_url,
+                input_data.title,
+                input_data.body,
+                input_data.head,
+                input_data.base,
+            )
             yield "status", status
-        else:
-            yield "error", status
+        except requests.exceptions.HTTPError as http_err:
+            if http_err.response.status_code == 422:
+                error_details = http_err.response.json()
+                error_message = error_details.get("message", "Unknown error")
+            else:
+                error_message = str(http_err)
+            yield "error", f"Failed to create pull request: {error_message}"
+        except Exception as e:
+            yield "error", f"Failed to create pull request: {str(e)}"
 
 
 class GithubReadPullRequestBlock(Block):
@@ -219,7 +214,7 @@ class GithubReadPullRequestBlock(Block):
     class Output(BlockSchema):
         title: str = SchemaField(description="Title of the pull request")
         body: str = SchemaField(description="Body of the pull request")
-        user: str = SchemaField(description="User who created the pull request")
+        author: str = SchemaField(description="User who created the pull request")
         changes: str = SchemaField(description="Changes made in the pull request")
         error: str = SchemaField(
             description="Error message if reading the pull request failed"
@@ -241,7 +236,7 @@ class GithubReadPullRequestBlock(Block):
             test_output=[
                 ("title", "Title of the pull request"),
                 ("body", "This is the body of the pull request."),
-                ("user", "username"),
+                ("author", "username"),
                 ("changes", "List of changes made in the pull request."),
             ],
             test_mock={
@@ -256,57 +251,51 @@ class GithubReadPullRequestBlock(Block):
 
     @staticmethod
     def read_pr(credentials: GithubCredentials, pr_url: str) -> tuple[str, str, str]:
-        try:
-            api_url = pr_url.replace("github.com", "api.github.com/repos").replace(
-                "/pull/", "/issues/"
-            )
+        api_url = pr_url.replace("github.com", "api.github.com/repos").replace(
+            "/pull/", "/issues/"
+        )
 
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            data = response.json()
-            title = data.get("title", "No title found")
-            body = data.get("body", "No body content found")
-            user = data.get("user", {}).get("login", "No user found")
+        data = response.json()
+        title = data.get("title", "No title found")
+        body = data.get("body", "No body content found")
+        author = data.get("user", {}).get("login", "No user found")
 
-            return title, body, user
-        except Exception as e:
-            return f"Failed to read pull request: {str(e)}", "", ""
+        return title, body, author
 
     @staticmethod
     def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
-        try:
-            api_url = (
-                pr_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/pulls/"
-                )
-                + "/files"
+        api_url = (
+            pr_url.replace("github.com", "api.github.com/repos").replace(
+                "/pull/", "/pulls/"
             )
+            + "/files"
+        )
 
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            files = response.json()
-            changes = []
-            for file in files:
-                filename = file.get("filename")
-                patch = file.get("patch")
-                if filename and patch:
-                    changes.append(f"File: {filename}\n{patch}")
+        files = response.json()
+        changes = []
+        for file in files:
+            filename = file.get("filename")
+            patch = file.get("patch")
+            if filename and patch:
+                changes.append(f"File: {filename}\n{patch}")
 
-            return "\n\n".join(changes)
-        except Exception as e:
-            return f"Failed to read PR changes: {str(e)}"
+        return "\n\n".join(changes)
 
     def run(
         self,
@@ -315,28 +304,23 @@ class GithubReadPullRequestBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        title, body, user = self.read_pr(
-            credentials,
-            input_data.pr_url,
-        )
-        if "Failed" in title:
-            yield "error", title
-        else:
-            yield "title", title
-            yield "body", body
-            yield "user", user
-
-        if input_data.include_pr_changes:
-            changes = self.read_pr_changes(
+        try:
+            title, body, author = self.read_pr(
                 credentials,
                 input_data.pr_url,
             )
-            if "Failed" in changes:
-                yield "error", changes
-            else:
+            yield "title", title
+            yield "body", body
+            yield "author", author
+
+            if input_data.include_pr_changes:
+                changes = self.read_pr_changes(
+                    credentials,
+                    input_data.pr_url,
+                )
                 yield "changes", changes
-        else:
-            yield "changes", "Changes not included"
+        except Exception as e:
+            yield "error", f"Failed to read pull request: {str(e)}"
 
 
 class GithubAssignPRReviewerBlock(Block):
@@ -382,38 +366,24 @@ class GithubAssignPRReviewerBlock(Block):
     def assign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
-        try:
-            # Convert the PR URL to the appropriate API endpoint
-            api_url = (
-                pr_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/pulls/"
-                )
-                + "/requested_reviewers"
+        # Convert the PR URL to the appropriate API endpoint
+        api_url = (
+            pr_url.replace("github.com", "api.github.com/repos").replace(
+                "/pull/", "/pulls/"
             )
+            + "/requested_reviewers"
+        )
 
-            # Log the constructed API URL for debugging
-            print(f"Constructed API URL: {api_url}")
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
+        data = {"reviewers": [reviewer]}
 
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
-            data = {"reviewers": [reviewer]}
+        response = requests.post(api_url, headers=headers, json=data)
+        response.raise_for_status()
 
-            # Log the request data for debugging
-            print(f"Request data: {data}")
-
-            response = requests.post(api_url, headers=headers, json=data)
-            response.raise_for_status()
-
-            return "Reviewer assigned successfully"
-        except requests.exceptions.HTTPError as http_err:
-            if http_err.response.status_code == 422:
-                return f"Failed to assign reviewer: The reviewer '{reviewer}' may not have permission or the pull request is not in a valid state. Detailed error: {http_err.response.text}"
-            else:
-                return f"HTTP error occurred: {http_err} - {http_err.response.text}"
-        except Exception as e:
-            return f"Failed to assign reviewer: {str(e)}"
+        return "Reviewer assigned successfully"
 
     def run(
         self,
@@ -422,15 +392,26 @@ class GithubAssignPRReviewerBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.assign_reviewer(
-            credentials,
-            input_data.pr_url,
-            input_data.reviewer,
-        )
-        if "successfully" in status:
+        try:
+            status = self.assign_reviewer(
+                credentials,
+                input_data.pr_url,
+                input_data.reviewer,
+            )
             yield "status", status
-        else:
-            yield "error", status
+        except requests.exceptions.HTTPError as http_err:
+            if http_err.response.status_code == 422:
+                error_msg = (
+                    "Failed to assign reviewer: "
+                    f"The reviewer '{input_data.reviewer}' may not have permission "
+                    "or the pull request is not in a valid state. "
+                    f"Detailed error: {http_err.response.text}"
+                )
+            else:
+                error_msg = f"HTTP error: {http_err} - {http_err.response.text}"
+            yield "error", error_msg
+        except Exception as e:
+            yield "error", f"Failed to assign reviewer: {str(e)}"
 
 
 class GithubUnassignPRReviewerBlock(Block):
@@ -476,25 +457,22 @@ class GithubUnassignPRReviewerBlock(Block):
     def unassign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
-        try:
-            api_url = (
-                pr_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/pulls/"
-                )
-                + "/requested_reviewers"
+        api_url = (
+            pr_url.replace("github.com", "api.github.com/repos").replace(
+                "/pull/", "/pulls/"
             )
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
-            data = {"reviewers": [reviewer]}
+            + "/requested_reviewers"
+        )
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
+        data = {"reviewers": [reviewer]}
 
-            response = requests.delete(api_url, headers=headers, json=data)
-            response.raise_for_status()
+        response = requests.delete(api_url, headers=headers, json=data)
+        response.raise_for_status()
 
-            return "Reviewer unassigned successfully"
-        except Exception as e:
-            return f"Failed to unassign reviewer: {str(e)}"
+        return "Reviewer unassigned successfully"
 
     def run(
         self,
@@ -503,15 +481,15 @@ class GithubUnassignPRReviewerBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.unassign_reviewer(
-            credentials,
-            input_data.pr_url,
-            input_data.reviewer,
-        )
-        if "successfully" in status:
+        try:
+            status = self.unassign_reviewer(
+                credentials,
+                input_data.pr_url,
+                input_data.reviewer,
+            )
             yield "status", status
-        else:
-            yield "error", status
+        except Exception as e:
+            yield "error", f"Failed to unassign reviewer: {str(e)}"
 
 
 class GithubListPRReviewersBlock(Block):
@@ -569,30 +547,27 @@ class GithubListPRReviewersBlock(Block):
     def list_reviewers(
         credentials: GithubCredentials, pr_url: str
     ) -> list[Output.ReviewerItem]:
-        try:
-            api_url = (
-                pr_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/pulls/"
-                )
-                + "/requested_reviewers"
+        api_url = (
+            pr_url.replace("github.com", "api.github.com/repos").replace(
+                "/pull/", "/pulls/"
             )
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+            + "/requested_reviewers"
+        )
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            data = response.json()
-            reviewers: list[GithubListPRReviewersBlock.Output.ReviewerItem] = [
-                {"username": reviewer["login"], "url": reviewer["html_url"]}
-                for reviewer in data.get("users", [])
-            ]
+        data = response.json()
+        reviewers: list[GithubListPRReviewersBlock.Output.ReviewerItem] = [
+            {"username": reviewer["login"], "url": reviewer["html_url"]}
+            for reviewer in data.get("users", [])
+        ]
 
-            return reviewers
-        except Exception as e:
-            return [{"username": "Error", "url": f"Failed to list reviewers: {str(e)}"}]
+        return reviewers
 
     def run(
         self,
@@ -601,11 +576,11 @@ class GithubListPRReviewersBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        reviewers = self.list_reviewers(
-            credentials,
-            input_data.pr_url,
-        )
-        if any("Failed" in reviewer["url"] for reviewer in reviewers):
-            yield "error", reviewers[0]["url"]
-        else:
+        try:
+            reviewers = self.list_reviewers(
+                credentials,
+                input_data.pr_url,
+            )
             yield from (("reviewer", reviewer) for reviewer in reviewers)
+        except Exception as e:
+            yield "error", f"Failed to list reviewers: {str(e)}"

@@ -68,29 +68,26 @@ class GithubListTagsBlock(Block):
     def list_tags(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.TagItem]:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            api_url = f"https://api.github.com/repos/{repo_path}/tags"
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
+        repo_path = repo_url.replace("https://github.com/", "")
+        api_url = f"https://api.github.com/repos/{repo_path}/tags"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
+
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
+
+        data = response.json()
+        tags: list[GithubListTagsBlock.Output.TagItem] = [
+            {
+                "name": tag["name"],
+                "url": f"https://github.com/{repo_path}/tree/{tag['name']}",
             }
+            for tag in data
+        ]
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
-
-            data = response.json()
-            tags: list[GithubListTagsBlock.Output.TagItem] = [
-                {
-                    "name": tag["name"],
-                    "url": f"https://github.com/{repo_path}/tree/{tag['name']}",
-                }
-                for tag in data
-            ]
-
-            return tags
-        except Exception as e:
-            return [{"name": "Error", "url": f"Failed to list tags: {str(e)}"}]
+        return tags
 
     def run(
         self,
@@ -99,14 +96,14 @@ class GithubListTagsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        tags = self.list_tags(
-            credentials,
-            input_data.repo_url,
-        )
-        if any("Failed" in tag["url"] for tag in tags):
-            yield "error", tags[0]["url"]
-        else:
+        try:
+            tags = self.list_tags(
+                credentials,
+                input_data.repo_url,
+            )
             yield from (("tag", tag) for tag in tags)
+        except Exception as e:
+            yield "error", f"Failed to list tags: {str(e)}"
 
 
 class GithubListBranchesBlock(Block):
@@ -162,27 +159,21 @@ class GithubListBranchesBlock(Block):
     def list_branches(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.BranchItem]:
-        try:
-            api_url = (
-                repo_url.replace("github.com", "api.github.com/repos") + "/branches"
-            )
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/branches"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            data = response.json()
-            branches: list[GithubListBranchesBlock.Output.BranchItem] = [
-                {"name": branch["name"], "url": branch["commit"]["url"]}
-                for branch in data
-            ]
+        data = response.json()
+        branches: list[GithubListBranchesBlock.Output.BranchItem] = [
+            {"name": branch["name"], "url": branch["commit"]["url"]} for branch in data
+        ]
 
-            return branches
-        except Exception as e:
-            return [{"name": "Error", "url": f"Failed to list branches: {str(e)}"}]
+        return branches
 
     def run(
         self,
@@ -191,14 +182,14 @@ class GithubListBranchesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        branches = self.list_branches(
-            credentials,
-            input_data.repo_url,
-        )
-        if any("Failed" in branch["url"] for branch in branches):
-            yield "error", branches[0]["url"]
-        else:
+        try:
+            branches = self.list_branches(
+                credentials,
+                input_data.repo_url,
+            )
             yield from (("branch", branch) for branch in branches)
+        except Exception as e:
+            yield "error", f"Failed to list branches: {str(e)}"
 
 
 class GithubListDiscussionsBlock(Block):
@@ -260,43 +251,40 @@ class GithubListDiscussionsBlock(Block):
     def list_discussions(
         credentials: GithubCredentials, repo_url: str, num_discussions: int
     ) -> list[Output.DiscussionItem]:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            owner, repo = repo_path.split("/")
-            query = """
-            query($owner: String!, $repo: String!, $num: Int!) {
-                repository(owner: $owner, name: $repo) {
-                    discussions(first: $num) {
-                        nodes {
-                            title
-                            url
-                        }
+        repo_path = repo_url.replace("https://github.com/", "")
+        owner, repo = repo_path.split("/")
+        query = """
+        query($owner: String!, $repo: String!, $num: Int!) {
+            repository(owner: $owner, name: $repo) {
+                discussions(first: $num) {
+                    nodes {
+                        title
+                        url
                     }
                 }
             }
-            """
-            variables = {"owner": owner, "repo": repo, "num": num_discussions}
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        }
+        """
+        variables = {"owner": owner, "repo": repo, "num": num_discussions}
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.post(
-                "https://api.github.com/graphql",
-                json={"query": query, "variables": variables},
-                headers=headers,
-            )
-            response.raise_for_status()
+        response = requests.post(
+            "https://api.github.com/graphql",
+            json={"query": query, "variables": variables},
+            headers=headers,
+        )
+        response.raise_for_status()
 
-            data = response.json()
-            discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = [
-                {"title": discussion["title"], "url": discussion["url"]}
-                for discussion in data["data"]["repository"]["discussions"]["nodes"]
-            ]
+        data = response.json()
+        discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = [
+            {"title": discussion["title"], "url": discussion["url"]}
+            for discussion in data["data"]["repository"]["discussions"]["nodes"]
+        ]
 
-            return discussions
-        except Exception as e:
-            return [{"title": "Error", "url": f"Failed to list discussions: {str(e)}"}]
+        return discussions
 
     def run(
         self,
@@ -305,13 +293,13 @@ class GithubListDiscussionsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        discussions = self.list_discussions(
-            credentials, input_data.repo_url, input_data.num_discussions
-        )
-        if any("Failed" in discussion["url"] for discussion in discussions):
-            yield "error", discussions[0]["url"]
-        else:
+        try:
+            discussions = self.list_discussions(
+                credentials, input_data.repo_url, input_data.num_discussions
+            )
             yield from (("discussion", discussion) for discussion in discussions)
+        except Exception as e:
+            yield "error", f"Failed to list discussions: {str(e)}"
 
 
 class GithubListReleasesBlock(Block):
@@ -367,26 +355,22 @@ class GithubListReleasesBlock(Block):
     def list_releases(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.ReleaseItem]:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            api_url = f"https://api.github.com/repos/{repo_path}/releases"
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        repo_path = repo_url.replace("https://github.com/", "")
+        api_url = f"https://api.github.com/repos/{repo_path}/releases"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            data = response.json()
-            releases: list[GithubListReleasesBlock.Output.ReleaseItem] = [
-                {"name": release["name"], "url": release["html_url"]}
-                for release in data
-            ]
+        data = response.json()
+        releases: list[GithubListReleasesBlock.Output.ReleaseItem] = [
+            {"name": release["name"], "url": release["html_url"]} for release in data
+        ]
 
-            return releases
-        except Exception as e:
-            return [{"name": "Error", "url": f"Failed to list releases: {str(e)}"}]
+        return releases
 
     def run(
         self,
@@ -395,83 +379,14 @@ class GithubListReleasesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        releases = self.list_releases(
-            credentials,
-            input_data.repo_url,
-        )
-        if any("Failed" in release["url"] for release in releases):
-            yield "error", releases[0]["url"]
-        else:
+        try:
+            releases = self.list_releases(
+                credentials,
+                input_data.repo_url,
+            )
             yield from (("release", release) for release in releases)
-
-
-class GithubReadCodeownersFileBlock(Block):
-    class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
-        repo_url: str = SchemaField(
-            description="URL of the GitHub repository",
-            placeholder="https://github.com/owner/repo",
-        )
-
-    class Output(BlockSchema):
-        codeowners_content: str = SchemaField(
-            description="Content of the CODEOWNERS file"
-        )
-        error: str = SchemaField(description="Error message if the file reading failed")
-
-    def __init__(self):
-        super().__init__(
-            id="ea64bb61-30c0-4693-9273-04081a8f955b",
-            description="This block reads the CODEOWNERS file from the master branch of a specified GitHub repository.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadCodeownersFileBlock.Input,
-            output_schema=GithubReadCodeownersFileBlock.Output,
-            test_input={
-                "repo_url": "https://github.com/owner/repo",
-                "credentials": TEST_CREDENTIALS_INPUT,
-            },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[("codeowners_content", "# CODEOWNERS content")],
-            test_mock={
-                "read_codeowners": lambda *args, **kwargs: "# CODEOWNERS content"
-            },
-        )
-
-    @staticmethod
-    def read_codeowners(credentials: GithubCredentials, repo_url: str) -> str:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            api_url = f"https://api.github.com/repos/{repo_path}/contents/.github/CODEOWNERS?ref=master"
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
-
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
-
-            content = response.json()
-            return base64.b64decode(content["content"]).decode("utf-8")
-        except requests.exceptions.HTTPError as http_err:
-            return f"Failed to read CODEOWNERS file: {str(http_err)}"
         except Exception as e:
-            return f"Failed to read CODEOWNERS file: {str(e)}"
-
-    def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: GithubCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        content = self.read_codeowners(
-            credentials,
-            input_data.repo_url,
-        )
-        if "Failed" not in content:
-            yield "codeowners_content", content
-        else:
-            yield "error", content
+            yield "error", f"Failed to list releases: {str(e)}"
 
 
 class GithubReadFileBlock(Block):
@@ -757,30 +672,27 @@ class GithubMakeBranchBlock(Block):
         new_branch: str,
         source_branch: str,
     ) -> str:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            ref_api_url = f"https://api.github.com/repos/{repo_path}/git/refs/heads/{source_branch}"
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        repo_path = repo_url.replace("https://github.com/", "")
+        ref_api_url = (
+            f"https://api.github.com/repos/{repo_path}/git/refs/heads/{source_branch}"
+        )
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(ref_api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(ref_api_url, headers=headers)
+        response.raise_for_status()
 
-            sha = response.json()["object"]["sha"]
+        sha = response.json()["object"]["sha"]
 
-            create_branch_api_url = f"https://api.github.com/repos/{repo_path}/git/refs"
-            data = {"ref": f"refs/heads/{new_branch}", "sha": sha}
+        create_branch_api_url = f"https://api.github.com/repos/{repo_path}/git/refs"
+        data = {"ref": f"refs/heads/{new_branch}", "sha": sha}
 
-            response = requests.post(create_branch_api_url, headers=headers, json=data)
-            response.raise_for_status()
+        response = requests.post(create_branch_api_url, headers=headers, json=data)
+        response.raise_for_status()
 
-            return "Branch created successfully"
-        except requests.exceptions.HTTPError as http_err:
-            return f"Failed to create branch: {str(http_err)}"
-        except Exception as e:
-            return f"Failed to create branch: {str(e)}"
+        return "Branch created successfully"
 
     def run(
         self,
@@ -789,16 +701,16 @@ class GithubMakeBranchBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.create_branch(
-            credentials,
-            input_data.repo_url,
-            input_data.new_branch,
-            input_data.source_branch,
-        )
-        if "successfully" in status:
+        try:
+            status = self.create_branch(
+                credentials,
+                input_data.repo_url,
+                input_data.new_branch,
+                input_data.source_branch,
+            )
             yield "status", status
-        else:
-            yield "error", status
+        except Exception as e:
+            yield "error", f"Failed to create branch: {str(e)}"
 
 
 class GithubDeleteBranchBlock(Block):
@@ -842,24 +754,17 @@ class GithubDeleteBranchBlock(Block):
     def delete_branch(
         credentials: GithubCredentials, repo_url: str, branch: str
     ) -> str:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            api_url = (
-                f"https://api.github.com/repos/{repo_path}/git/refs/heads/{branch}"
-            )
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+        repo_path = repo_url.replace("https://github.com/", "")
+        api_url = f"https://api.github.com/repos/{repo_path}/git/refs/heads/{branch}"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.delete(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.delete(api_url, headers=headers)
+        response.raise_for_status()
 
-            return "Branch deleted successfully"
-        except requests.exceptions.HTTPError as http_err:
-            return f"Failed to delete branch: {str(http_err)}"
-        except Exception as e:
-            return f"Failed to delete branch: {str(e)}"
+        return "Branch deleted successfully"
 
     def run(
         self,
@@ -868,12 +773,12 @@ class GithubDeleteBranchBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.delete_branch(
-            credentials,
-            input_data.repo_url,
-            input_data.branch,
-        )
-        if "successfully" in status:
+        try:
+            status = self.delete_branch(
+                credentials,
+                input_data.repo_url,
+                input_data.branch,
+            )
             yield "status", status
-        else:
-            yield "error", status
+        except Exception as e:
+            yield "error", f"Failed to delete branch: {str(e)}"
