@@ -1,4 +1,3 @@
-import glob
 import importlib
 import os
 import re
@@ -8,17 +7,17 @@ from backend.data.block import Block
 
 # Dynamically load all modules under backend.blocks
 AVAILABLE_MODULES = []
-current_dir = os.path.dirname(__file__)
-modules = glob.glob(os.path.join(current_dir, "*.py"))
+current_dir = Path(__file__).parent
 modules = [
-    Path(f).stem
-    for f in modules
-    if os.path.isfile(f) and f.endswith(".py") and not f.endswith("__init__.py")
+    str(f.relative_to(current_dir))[:-3].replace(os.path.sep, ".")
+    for f in current_dir.rglob("*.py")
+    if f.is_file() and f.name != "__init__.py"
 ]
 for module in modules:
-    if not re.match("^[a-z_]+$", module):
+    if not re.match("^[a-z_.]+$", module):
         raise ValueError(
-            f"Block module {module} error: module name must be lowercase, separated by underscores, and contain only alphabet characters"
+            f"Block module {module} error: module name must be lowercase, "
+            "separated by underscores, and contain only alphabet characters"
         )
 
     importlib.import_module(f".{module}", package=__name__)

@@ -37,7 +37,7 @@ class SendWebRequestBlock(Block):
             output_schema=SendWebRequestBlock.Output,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         if isinstance(input_data.body, str):
             input_data.body = json.loads(input_data.body)
 
