@@ -85,3 +85,4 @@ env:
   NUM_NODE_WORKERS: 5
   REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
   REDIS_PORT: "6379"
+  BACKEND_CORS_ALLOW_ORIGINS: ["https://dev-builder.agpt.co"]
