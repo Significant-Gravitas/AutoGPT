@@ -66,6 +66,7 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
+      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
     ports:
       - "8006:8006"
       - "8003:8003" # execution scheduler
@@ -134,6 +135,8 @@ services:
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
+      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
+
     ports:
       - "8001:8001"
     networks:
@@ -158,6 +161,7 @@ services:
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=market
+      - BACKEND_CORS_ALLOW_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
     ports:
       - "8015:8015"
     networks:
