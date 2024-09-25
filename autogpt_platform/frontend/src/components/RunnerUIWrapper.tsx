@@ -31,12 +31,12 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     const getBlockInputsAndOutputs = useCallback(() => {
       const inputBlocks = filterBlocksByType(
         nodes,
-        (node) => node.data.block_id === BlockUIType.INPUT,
+        (node) => node.data.uiType === BlockUIType.INPUT,
       );
 
       const outputBlocks = filterBlocksByType(
         nodes,
-        (node) => node.data.block_id === BlockUIType.OUTPUT,
+        (node) => node.data.uiType === BlockUIType.OUTPUT,
       );
 
       const inputs = inputBlocks.map((node) => ({
