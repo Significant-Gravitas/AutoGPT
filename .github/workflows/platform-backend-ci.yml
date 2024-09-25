@@ -105,7 +105,7 @@ jobs:
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
           DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
           SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
-          SUPABASE_SERVICE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
           SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
     env:
       CI: true
