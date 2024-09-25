@@ -1,7 +1,7 @@
 import base64
-from typing_extensions import TypedDict
 
 import requests
+from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -474,7 +474,7 @@ class GithubReadCodeownersFileBlock(Block):
             yield "error", content
 
 
-class GithubReadFileFromMasterBlock(Block):
+class GithubReadFileBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
@@ -485,49 +485,70 @@ class GithubReadFileFromMasterBlock(Block):
             description="Path to the file in the repository",
             placeholder="path/to/file",
         )
+        branch: str = SchemaField(
+            description="Branch to read from",
+            placeholder="branch_name",
+            default="master",
+        )
 
     class Output(BlockSchema):
-        file_content: str = SchemaField(
-            description="Content of the file from the master branch"
+        text_content: str = SchemaField(
+            description="Content of the file (decoded as UTF-8 text)"
         )
+        raw_content: str = SchemaField(
+            description="Raw base64-encoded content of the file"
+        )
+        size: int = SchemaField(description="The size of the file (in bytes)")
         error: str = SchemaField(description="Error message if the file reading failed")
 
     def __init__(self):
         super().__init__(
             id="87ce6c27-5752-4bbc-8e26-6da40a3dcfd3",
-            description="This block reads the content of a specified file from the master branch of a GitHub repository.",
+            description="This block reads the content of a specified file from a GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadFileFromMasterBlock.Input,
-            output_schema=GithubReadFileFromMasterBlock.Output,
+            input_schema=GithubReadFileBlock.Input,
+            output_schema=GithubReadFileBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "file_path": "path/to/file",
+                "branch": "master",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("file_content", "File content")],
-            test_mock={"read_file": lambda *args, **kwargs: "File content"},
+            test_output=[
+                ("raw_content", "RmlsZSBjb250ZW50"),
+                ("text_content", "File content"),
+                ("size", 13),
+            ],
+            test_mock={"read_file": lambda *args, **kwargs: ("RmlsZSBjb250ZW50", 13)},
         )
 
     @staticmethod
-    def read_file(credentials: GithubCredentials, repo_url: str, file_path: str) -> str:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            api_url = f"https://api.github.com/repos/{repo_path}/contents/{file_path}?ref=master"
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+    def read_file(
+        credentials: GithubCredentials, repo_url: str, file_path: str, branch: str
+    ) -> tuple[str, int]:
+        repo_path = repo_url.replace("https://github.com/", "")
+        api_url = f"https://api.github.com/repos/{repo_path}/contents/{file_path}?ref={branch}"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            content = response.json()
-            return base64.b64decode(content["content"]).decode("utf-8")
-        except requests.exceptions.HTTPError as http_err:
-            return f"Failed to read file: {str(http_err)}"
-        except Exception as e:
-            return f"Failed to read file: {str(e)}"
+        content = response.json()
+
+        if isinstance(content, list):
+            # Multiple entries of different types exist at this path
+            if not (file := next((f for f in content if f["type"] == "file"), None)):
+                raise TypeError("Not a file")
+            content = file
+
+        if content["type"] != "file":
+            raise TypeError("Not a file")
+
+        return content["content"], content["size"]
 
     def run(
         self,
@@ -536,86 +557,136 @@ class GithubReadFileFromMasterBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        content = self.read_file(
-            credentials,
-            input_data.repo_url,
-            input_data.file_path,
-        )
-        if "Failed" not in content:
-            yield "file_content", content
-        else:
-            yield "error", content
+        try:
+            raw_content, size = self.read_file(
+                credentials,
+                input_data.repo_url,
+                input_data.file_path.lstrip("/"),
+                input_data.branch,
+            )
+            yield "raw_content", raw_content
+            yield "text_content", base64.b64decode(raw_content).decode("utf-8")
+            yield "size", size
+        except Exception as e:
+            yield "error", f"Failed to read file: {str(e)}"
 
 
-class GithubReadFileFolderRepoBlock(Block):
+class GithubReadFolderBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
-        path: str = SchemaField(
-            description="Path to the file/folder in the repository",
-            placeholder="path/to/file_or_folder",
+        folder_path: str = SchemaField(
+            description="Path to the folder in the repository",
+            placeholder="path/to/folder",
         )
         branch: str = SchemaField(
-            description="Branch name to read from",
+            description="Branch name to read from (defaults to master)",
             placeholder="branch_name",
+            default="master",
         )
 
     class Output(BlockSchema):
-        content: str = SchemaField(
-            description="Content of the file/folder/repo from the specified branch"
+        class DirEntry(TypedDict):
+            name: str
+            path: str
+
+        class FileEntry(TypedDict):
+            name: str
+            path: str
+            size: int
+
+        file: FileEntry = SchemaField(description="Files in the folder")
+        dir: DirEntry = SchemaField(description="Directories in the folder")
+        error: str = SchemaField(
+            description="Error message if reading the folder failed"
         )
-        error: str = SchemaField(description="Error message if the reading failed")
 
     def __init__(self):
         super().__init__(
             id="1355f863-2db3-4d75-9fba-f91e8a8ca400",
-            description="This block reads the content of a specified file, folder, or repository from a specified branch.",
+            description="This block reads the content of a specified folder from a GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadFileFolderRepoBlock.Input,
-            output_schema=GithubReadFileFolderRepoBlock.Output,
+            input_schema=GithubReadFolderBlock.Input,
+            output_schema=GithubReadFolderBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "path": "path/to/file_or_folder",
-                "branch": "branch_name",
+                "folder_path": "path/to/folder",
+                "branch": "master",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("content", "File or folder content")],
+            test_output=[
+                (
+                    "file",
+                    {
+                        "name": "file1.txt",
+                        "path": "path/to/folder/file1.txt",
+                        "size": 1337,
+                    },
+                ),
+                ("dir", {"name": "dir2", "path": "path/to/folder/dir2"}),
+            ],
             test_mock={
-                "read_content": lambda *args, **kwargs: "File or folder content"
+                "read_folder": lambda *args, **kwargs: (
+                    [
+                        {
+                            "name": "file1.txt",
+                            "path": "path/to/folder/file1.txt",
+                            "size": 1337,
+                        }
+                    ],
+                    [{"name": "dir2", "path": "path/to/folder/dir2"}],
+                )
             },
         )
 
     @staticmethod
-    def read_content(
-        credentials: GithubCredentials, repo_url: str, path: str, branch: str
-    ) -> str:
-        try:
-            repo_path = repo_url.replace("https://github.com/", "")
-            api_url = (
-                f"https://api.github.com/repos/{repo_path}/contents/{path}?ref={branch}"
-            )
-            headers = {
-                "Authorization": credentials.bearer(),
-                "Accept": "application/vnd.github.v3+json",
-            }
+    def read_folder(
+        credentials: GithubCredentials, repo_url: str, folder_path: str, branch: str
+    ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
+        repo_path = repo_url.replace("https://github.com/", "")
+        api_url = f"https://api.github.com/repos/{repo_path}/contents/{folder_path}?ref={branch}"
+        headers = {
+            "Authorization": credentials.bearer(),
+            "Accept": "application/vnd.github.v3+json",
+        }
 
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-            content = response.json()
-            if "content" in content:
-                return base64.b64decode(content["content"]).decode("utf-8")
-            else:
-                return content  # Return the directory content as JSON
+        content = response.json()
 
-        except requests.exceptions.HTTPError as http_err:
-            return f"Failed to read content: {str(http_err)}"
-        except Exception as e:
-            return f"Failed to read content: {str(e)}"
+        if isinstance(content, list):
+            # Multiple entries of different types exist at this path
+            if not (dir := next((d for d in content if d["type"] == "dir"), None)):
+                raise TypeError("Not a folder")
+            content = dir
+
+        if content["type"] != "dir":
+            raise TypeError("Not a folder")
+
+        return (
+            [
+                GithubReadFolderBlock.Output.FileEntry(
+                    name=entry["name"],
+                    path=entry["path"],
+                    size=entry["size"],
+                )
+                for entry in content["entries"]
+                if entry["type"] == "file"
+            ],
+            [
+                GithubReadFolderBlock.Output.DirEntry(
+                    name=entry["name"],
+                    path=entry["path"],
+                )
+                for entry in content["entries"]
+                if entry["type"] == "dir"
+            ],
+        )
 
     def run(
         self,
@@ -624,16 +695,17 @@ class GithubReadFileFolderRepoBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        content = self.read_content(
-            credentials,
-            input_data.repo_url,
-            input_data.path,
-            input_data.branch,
-        )
-        if "Failed" not in content:
-            yield "content", content
-        else:
-            yield "error", content
+        try:
+            files, dirs = self.read_folder(
+                credentials,
+                input_data.repo_url,
+                input_data.folder_path.lstrip("/"),
+                input_data.branch,
+            )
+            yield from (("file", file) for file in files)
+            yield from (("dir", dir) for dir in dirs)
+        except Exception as e:
+            yield "error", f"Failed to read folder: {str(e)}"
 
 
 class GithubMakeBranchBlock(Block):
