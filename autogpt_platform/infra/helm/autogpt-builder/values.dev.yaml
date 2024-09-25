@@ -56,7 +56,7 @@ domain: "dev-builder.agpt.co"
 
 env:
   APP_ENV: "dev"
-  NEXT_PUBLIC_AGPT_SERVER_URL: "http://agpt-server:8000/api"
+  NEXT_PUBLIC_AGPT_SERVER_URL: ["http://agpt-server:8000/api"]
   GOOGLE_CLIENT_ID: ""
   GOOGLE_CLIENT_SECRET: ""
   NEXT_PUBLIC_SUPABASE_URL: ""

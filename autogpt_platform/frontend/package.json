@@ -14,6 +14,9 @@
     "test-ui": "playwright test --ui",
     "gentests": "playwright codegen http://localhost:3000"
   },
+  "browserslist": [
+    "defaults"
+  ],
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
     "@next/third-parties": "^14.2.5",
