@@ -20,13 +20,10 @@ app = FastAPI()
 event_queue = AsyncRedisEventQueue()
 _connection_manager = None
 
+logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://dev-builder.agpt.co",
-    ],
+    allow_origins=settings.config.backend_cors_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -174,4 +171,8 @@ async def websocket_router(
 
 class WebsocketServer(AppProcess):
     def run(self):
-        uvicorn.run(app, host="0.0.0.0", port=Config().websocket_server_port)
+        uvicorn.run(
+            app,
+            host=Config().websocket_server_host,
+            port=Config().websocket_server_port,
+        )
