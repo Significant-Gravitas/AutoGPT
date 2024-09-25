@@ -13,7 +13,92 @@ from ._auth import (
 )
 
 
-class GithubMakePRBlock(Block):
+class GithubListPullRequestsBlock(Block):
+    class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+
+    class Output(BlockSchema):
+        class PRItem(TypedDict):
+            title: str
+            url: str
+
+        pull_request: PRItem = SchemaField(description="PRs with their title and URL")
+        error: str = SchemaField(description="Error message if listing issues failed")
+
+    def __init__(self):
+        super().__init__(
+            id="ffef3c4c-6cd0-48dd-817d-459f975219f4",
+            description="This block lists all pull requests for a specified GitHub repository.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubListPullRequestsBlock.Input,
+            output_schema=GithubListPullRequestsBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "pull_request",
+                    {
+                        "title": "Pull request 1",
+                        "url": "https://github.com/owner/repo/pull/1",
+                    },
+                )
+            ],
+            test_mock={
+                "list_prs": lambda *args, **kwargs: [
+                    {
+                        "title": "Pull request 1",
+                        "url": "https://github.com/owner/repo/pull/1",
+                    }
+                ]
+            },
+        )
+
+    @staticmethod
+    def list_prs(credentials: GithubCredentials, repo_url: str) -> list[Output.PRItem]:
+        try:
+            api_url = repo_url.replace("github.com", "api.github.com/repos") + "/pulls"
+            headers = {
+                "Authorization": credentials.bearer(),
+                "Accept": "application/vnd.github.v3+json",
+            }
+
+            response = requests.get(api_url, headers=headers)
+            response.raise_for_status()
+
+            data = response.json()
+            pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = [
+                {"title": pr["title"], "url": pr["html_url"]} for pr in data
+            ]
+
+            return pull_requests
+        except Exception as e:
+            return [{"title": "Error", "url": f"Failed to list issues: {str(e)}"}]
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        pull_requests = self.list_prs(
+            credentials,
+            input_data.repo_url,
+        )
+        if any("Failed" in pr["url"] for pr in pull_requests):
+            yield "error", pull_requests[0]["url"]
+        else:
+            yield from (("pull_request", pr) for pr in pull_requests)
+
+
+class GithubMakePullRequestBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
@@ -50,8 +135,8 @@ class GithubMakePRBlock(Block):
             id="dfb987f8-f197-4b2e-bf19-111812afd692",
             description="This block creates a new pull request on a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubMakePRBlock.Input,
-            output_schema=GithubMakePRBlock.Output,
+            input_schema=GithubMakePullRequestBlock.Input,
+            output_schema=GithubMakePullRequestBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "title": "Test Pull Request",
@@ -119,7 +204,7 @@ class GithubMakePRBlock(Block):
             yield "error", status
 
 
-class GithubReadPRBlock(Block):
+class GithubReadPullRequestBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
@@ -145,8 +230,8 @@ class GithubReadPRBlock(Block):
             id="bf94b2a4-1a30-4600-a783-a8a44ee31301",
             description="This block reads the body, title, user, and changes of a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubReadPRBlock.Input,
-            output_schema=GithubReadPRBlock.Output,
+            input_schema=GithubReadPullRequestBlock.Input,
+            output_schema=GithubReadPullRequestBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "include_pr_changes": True,
@@ -254,7 +339,7 @@ class GithubReadPRBlock(Block):
             yield "changes", "Changes not included"
 
 
-class GithubAssignReviewerBlock(Block):
+class GithubAssignPRReviewerBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
@@ -279,8 +364,8 @@ class GithubAssignReviewerBlock(Block):
             id="c0d22c5e-e688-43e3-ba43-d5faba7927fd",
             description="This block assigns a reviewer to a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubAssignReviewerBlock.Input,
-            output_schema=GithubAssignReviewerBlock.Output,
+            input_schema=GithubAssignPRReviewerBlock.Input,
+            output_schema=GithubAssignPRReviewerBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "reviewer": "reviewer_username",
@@ -348,7 +433,7 @@ class GithubAssignReviewerBlock(Block):
             yield "error", status
 
 
-class GithubUnassignReviewerBlock(Block):
+class GithubUnassignPRReviewerBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
@@ -373,8 +458,8 @@ class GithubUnassignReviewerBlock(Block):
             id="9637945d-c602-4875-899a-9c22f8fd30de",
             description="This block unassigns a reviewer from a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubUnassignReviewerBlock.Input,
-            output_schema=GithubUnassignReviewerBlock.Output,
+            input_schema=GithubUnassignPRReviewerBlock.Input,
+            output_schema=GithubUnassignPRReviewerBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "reviewer": "reviewer_username",
@@ -429,7 +514,7 @@ class GithubUnassignReviewerBlock(Block):
             yield "error", status
 
 
-class GithubListReviewersBlock(Block):
+class GithubListPRReviewersBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
@@ -454,8 +539,8 @@ class GithubListReviewersBlock(Block):
             id="2646956e-96d5-4754-a3df-034017e7ed96",
             description="This block lists all reviewers for a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=GithubListReviewersBlock.Input,
-            output_schema=GithubListReviewersBlock.Output,
+            input_schema=GithubListPRReviewersBlock.Input,
+            output_schema=GithubListPRReviewersBlock.Output,
             test_input={
                 "pr_url": "https://github.com/owner/repo/pull/1",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -500,7 +585,7 @@ class GithubListReviewersBlock(Block):
             response.raise_for_status()
 
             data = response.json()
-            reviewers: list[GithubListReviewersBlock.Output.ReviewerItem] = [
+            reviewers: list[GithubListPRReviewersBlock.Output.ReviewerItem] = [
                 {"username": reviewer["login"], "url": reviewer["html_url"]}
                 for reviewer in data.get("users", [])
             ]
