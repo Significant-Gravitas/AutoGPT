@@ -1,8 +1,8 @@
 import json
 import os
-from typing import Any, Dict, Generic, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -80,6 +80,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         extra="allow",
     )
 
+    websocket_server_host: str = Field(
+        default="0.0.0.0",
+        description="The host for the websocket server to run on",
+    )
+
     websocket_server_port: int = Field(
         default=8001,
         description="The port for the websocket server to run on",
@@ -100,10 +105,44 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server daemon to run on",
     )
 
+    agent_api_host: str = Field(
+        default="0.0.0.0",
+        description="The host for agent server API to run on",
+    )
+
     agent_api_port: int = Field(
         default=8006,
         description="The port for agent server API to run on",
     )
+
+    backend_cors_allow_origins: List[str] = Field(default_factory=list)
+
+    @field_validator("backend_cors_allow_origins")
+    @classmethod
+    def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
+        out = []
+        port = None
+        has_localhost = False
+        has_127_0_0_1 = False
+        for url in v:
+            url = url.strip()
+            if url.startswith(("http://", "https://")):
+                if "localhost" in url:
+                    port = url.split(":")[2]
+                    has_localhost = True
+                if "127.0.0.1" in url:
+                    port = url.split(":")[2]
+                    has_127_0_0_1 = True
+                out.append(url)
+            else:
+                raise ValueError(f"Invalid URL: {url}")
+
+        if has_127_0_0_1 and not has_localhost:
+            out.append(f"http://localhost:{port}")
+        if has_localhost and not has_127_0_0_1:
+            out.append(f"http://127.0.0.1:{port}")
+
+        return out
 
     @classmethod
     def settings_customise_sources(
