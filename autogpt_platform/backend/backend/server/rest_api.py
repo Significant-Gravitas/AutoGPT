@@ -1,4 +1,5 @@
 import inspect
+import logging
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -27,6 +28,7 @@ from backend.util.settings import Config, Settings
 from .utils import get_user_id
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 class AgentServer(AppService):
@@ -65,9 +67,13 @@ class AgentServer(AppService):
         if self._test_dependency_overrides:
             app.dependency_overrides.update(self._test_dependency_overrides)
 
+        logger.debug(
+            f"FastAPI CORS allow origins: {Config().backend_cors_allow_origins}"
+        )
+
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],  # Allows all origins
+            allow_origins=Config().backend_cors_allow_origins,
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
