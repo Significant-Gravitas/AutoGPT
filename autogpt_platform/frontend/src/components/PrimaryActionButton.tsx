@@ -20,6 +20,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   onClickAgentOutputs,
   onClickRunAgent,
   isRunning,
+  isDisabled,
   requestStopRun,
   runAgentTooltip,
 }) => {
@@ -56,7 +57,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
               size="primary"
               style={{
                 background: isRunning ? "#FFB3BA" : "#7544DF",
-                opacity: 1,
+                opacity: isDisabled ? 0.5 : 1,
               }}
             >
               {runButtonIcon}
