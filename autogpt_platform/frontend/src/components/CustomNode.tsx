@@ -34,6 +34,7 @@ import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
 import { IconCoin } from "./ui/icons";
+import PhotoNodeComponent from "@/components/PhotoNodeComponent";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -535,6 +536,25 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       ),
     );
   console.debug(`Block cost ${inputValues}|${data.blockCosts}=${blockCost}`);
+  if (data.blockType === "PhotoAnalysisBlock" ) {
+  return (
+    <div className={`${blockClasses} ${errorClass} ${statusClass}`}>
+      <div className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}>
+        <div className="flex items-center justify-between">
+          <div className="font-roboto p-3 text-lg font-semibold">
+            {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
+          </div>
+          <SchemaTooltip description={data.description} />
+        </div>
+      </div>
+      <PhotoNodeComponent
+        data={data}
+        handleInputChange={handleInputChange}
+        generateOutputHandles={generateOutputHandles}
+      />
+    </div>
+
+  );
 
   return (
     <div
