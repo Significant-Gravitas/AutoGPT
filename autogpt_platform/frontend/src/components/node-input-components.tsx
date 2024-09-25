@@ -479,7 +479,7 @@ const NodeArrayInput: FC<{
   handleInputChange,
   handleInputClick,
   className,
-  displayName,  
+  displayName,
 }) => {
   entries ??= schema.default ?? [];
   const isItemObject = "items" in schema && "properties" in schema.items!;
