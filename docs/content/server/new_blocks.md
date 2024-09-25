@@ -84,7 +84,7 @@ Follow these steps to create and test a new block:
 5. **Implement the `run` method with error handling:**, this should contain the main logic of the block:
 
    ```python
-   def run(self, input_data: Input) -> BlockOutput:
+   def run(self, input_data: Input, **kwargs) -> BlockOutput:
        try:
            topic = input_data.topic
            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
@@ -105,6 +105,145 @@ Follow these steps to create and test a new block:
    - **Error handling**: Handle various exceptions that might occur during the API request and data processing.
    - **Yield**: Use `yield` to output the results.
 
+### Blocks with authentication
+
+Our system supports auth offloading for API keys and OAuth2 authorization flows.
+Adding a block with API key authentication is straight-forward, as is adding a block
+for a service that we already have OAuth2 support for.
+
+Implementing the block itself is relatively simple. On top of the instructions above,
+you're going to add a `credentials` parameter to the `Input` model and the `run` method:
+```python
+from autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+    OAuth2Credentials,
+    Credentials,
+)
+
+from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.model import CredentialsField
+
+
+# API Key auth:
+class BlockWithAPIKeyAuth(Block):
+    class Input(BlockSchema):
+        credentials = CredentialsField(
+            provider="github",
+            supported_credential_types={"api_key"},
+            required_scopes={"repo"},
+            description="The GitHub integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
+        )
+
+    # ...
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        ...
+
+# OAuth:
+class BlockWithOAuth(Block):
+    class Input(BlockSchema):
+        credentials = CredentialsField(
+            provider="github",
+            supported_credential_types={"oauth2"},
+            required_scopes={"repo"},
+            description="The GitHub integration can be used with OAuth.",
+        )
+
+    # ...
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials,
+        **kwargs,
+    ) -> BlockOutput:
+        ...
+
+# API Key auth + OAuth:
+class BlockWithAPIKeyAndOAuth(Block):
+    class Input(BlockSchema):
+        credentials = CredentialsField(
+            provider="github",
+            supported_credential_types={"api_key", "oauth2"},
+            required_scopes={"repo"},
+            description="The GitHub integration can be used with OAuth, "
+            "or any API key with sufficient permissions for the blocks it is used on.",
+        )
+
+    # ...
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: Credentials,
+        **kwargs,
+    ) -> BlockOutput:
+        ...
+```
+The credentials will be automagically injected by the executor in the back end.
+
+The `APIKeyCredentials` and `OAuth2Credentials` models are defined [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/rnd/autogpt_libs/autogpt_libs/supabase_integration_credentials_store/types.py).
+To use them in e.g. an API request, you can either access the token directly:
+```python
+# credentials: APIKeyCredentials
+response = requests.post(
+    url,
+    headers={
+        "Authorization": f"Bearer {credentials.api_key.get_secret_value()})",
+    },
+)
+
+# credentials: OAuth2Credentials
+response = requests.post(
+    url,
+    headers={
+        "Authorization": f"Bearer {credentials.access_token.get_secret_value()})",
+    },
+)
+```
+or use the shortcut `credentials.bearer()`:
+```python
+# credentials: APIKeyCredentials | OAuth2Credentials
+response = requests.post(
+    url,
+    headers={"Authorization": credentials.bearer()},
+)
+```
+
+#### Adding an OAuth2 service integration
+
+To add support for a new OAuth2-authenticated service, you'll need to add an `OAuthHandler`.
+All our existing handlers and the base class can be found [here][OAuth2 handlers].
+
+Every handler must implement the following parts of the [`BaseOAuthHandler`] interface:
+- `PROVIDER_NAME`
+- `__init__(client_id, client_secret, redirect_uri)`
+- `get_login_url(scopes, state)`
+- `exchange_code_for_tokens(code)`
+- `_refresh_tokens(credentials)`
+
+As you can see, this is modeled after the standard OAuth2 flow.
+
+Aside from implementing the `OAuthHandler` itself, adding a handler into the system requires two more things:
+- Adding the handler class to `HANDLERS_BY_NAME` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/__init__.py)
+- Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/e3f35d79c7e9fc6ee0cabefcb73e0fad15a0ce2d/autogpt_platform/backend/backend/util/settings.py#L132)
+
+[OAuth2 handlers]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/integrations/oauth
+[`BaseOAuthHandler`]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/base.py
+
+#### Example: GitHub integration
+- GitHub blocks with API key + OAuth2 support: [`blocks/github`](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/blocks/github/)
+- GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
+
 ## Key Points to Remember
 
 - **Unique ID**: Give your block a unique ID in the **init** method.
@@ -117,7 +256,8 @@ Follow these steps to create and test a new block:
 
 The testing of blocks is handled by `test_block.py`, which does the following:
 
-1. It calls the block with the provided `test_input`.
+1. It calls the block with the provided `test_input`.  
+   If the block has a `credentials` field, `test_credentials` is passed in as well.
 2. If a `test_mock` is provided, it temporarily replaces the specified methods with the mock functions.
 3. It then asserts that the output matches the `test_output`.
 
