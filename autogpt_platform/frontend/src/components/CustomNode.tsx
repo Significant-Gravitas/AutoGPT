@@ -536,148 +536,152 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       ),
     );
   console.debug(`Block cost ${inputValues}|${data.blockCosts}=${blockCost}`);
-  if (data.blockType === "PhotoAnalysisBlock" ) {
-  return (
-    <div className={`${blockClasses} ${errorClass} ${statusClass}`}>
-      <div className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}>
-        <div className="flex items-center justify-between">
-          <div className="font-roboto p-3 text-lg font-semibold">
-            {beautifyString(data.blockType?.replace(/Block$/, "") || data.title)}
+  if (data.blockType === "PhotoAnalysisBlock") {
+    return (
+      <div className={`${blockClasses} ${errorClass} ${statusClass}`}>
+        <div
+          className={`mb-2 p-3 ${getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="font-roboto p-3 text-lg font-semibold">
+              {beautifyString(
+                data.blockType?.replace(/Block$/, "") || data.title,
+              )}
+            </div>
+            <SchemaTooltip description={data.description} />
           </div>
-          <SchemaTooltip description={data.description} />
         </div>
+        <PhotoNodeComponent
+          data={data}
+          handleInputChange={handleInputChange}
+          generateOutputHandles={generateOutputHandles}
+        />
       </div>
-      <PhotoNodeComponent
-        data={data}
-        handleInputChange={handleInputChange}
-        generateOutputHandles={generateOutputHandles}
-      />
-    </div>
+    );
 
-  );
-
-  return (
-    <div
-      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
-      onMouseEnter={handleHovered}
-      onMouseLeave={handleMouseLeave}
-      data-id={`custom-node-${id}`}
-    >
+    return (
       <div
-        className={`mb-2 p-3 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
+        className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
+        onMouseEnter={handleHovered}
+        onMouseLeave={handleMouseLeave}
+        data-id={`custom-node-${id}`}
       >
-        <div className="flex items-center justify-between">
-          <div className="font-roboto p-3 text-lg font-semibold">
-            {beautifyString(
-              data.blockType?.replace(/Block$/, "") || data.title,
+        <div
+          className={`mb-2 p-3 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="font-roboto p-3 text-lg font-semibold">
+              {beautifyString(
+                data.blockType?.replace(/Block$/, "") || data.title,
+              )}
+            </div>
+            <SchemaTooltip description={data.description} />
+          </div>
+          <div className="flex gap-[5px]">
+            {isHovered && (
+              <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={copyNode}
+                  title="Copy node"
+                >
+                  <Copy size={18} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={deleteNode}
+                  title="Delete node"
+                >
+                  <Trash2 size={18} />
+                </Button>
+              </>
             )}
           </div>
-          <SchemaTooltip description={data.description} />
         </div>
-        <div className="flex gap-[5px]">
-          {isHovered && (
-            <>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copyNode}
-                title="Copy node"
-              >
-                <Copy size={18} />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={deleteNode}
-                title="Delete node"
-              >
-                <Trash2 size={18} />
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-      {blockCost && (
-        <div className="p-3 font-semibold">
-          <span className="ml-auto flex items-center">
-            <IconCoin /> {blockCost.cost_amount} per {blockCost.cost_type}
-          </span>
-        </div>
-      )}
-      {data.uiType !== BlockUIType.NOTE ? (
-        <div className="flex items-start justify-between p-3">
+        {blockCost && (
+          <div className="p-3 font-semibold">
+            <span className="ml-auto flex items-center">
+              <IconCoin /> {blockCost.cost_amount} per {blockCost.cost_type}
+            </span>
+          </div>
+        )}
+        {data.uiType !== BlockUIType.NOTE ? (
+          <div className="flex items-start justify-between p-3">
+            <div>
+              {data.inputSchema &&
+                generateInputHandles(data.inputSchema, data.uiType)}
+            </div>
+            <div className="flex-none">
+              {data.outputSchema &&
+                generateOutputHandles(data.outputSchema, data.uiType)}
+            </div>
+          </div>
+        ) : (
           <div>
             {data.inputSchema &&
               generateInputHandles(data.inputSchema, data.uiType)}
           </div>
-          <div className="flex-none">
-            {data.outputSchema &&
-              generateOutputHandles(data.outputSchema, data.uiType)}
+        )}
+        {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
+          <div
+            data-id="latest-output"
+            className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
+          >
+            {(data.executionResults?.length ?? 0) > 0 ? (
+              <>
+                <DataTable
+                  title="Latest Output"
+                  truncateLongData
+                  data={data.executionResults!.at(-1)?.data || {}}
+                />
+                <div className="flex justify-end">
+                  <Button variant="ghost" onClick={handleOutputClick}>
+                    View More
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <span>No outputs yet</span>
+            )}
           </div>
-        </div>
-      ) : (
-        <div>
-          {data.inputSchema &&
-            generateInputHandles(data.inputSchema, data.uiType)}
-        </div>
-      )}
-      {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
-        <div
-          data-id="latest-output"
-          className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
-        >
-          {(data.executionResults?.length ?? 0) > 0 ? (
-            <>
-              <DataTable
-                title="Latest Output"
-                truncateLongData
-                data={data.executionResults!.at(-1)?.data || {}}
-              />
-              <div className="flex justify-end">
-                <Button variant="ghost" onClick={handleOutputClick}>
-                  View More
-                </Button>
-              </div>
-            </>
-          ) : (
-            <span>No outputs yet</span>
-          )}
-        </div>
-      )}
-      {data.uiType !== BlockUIType.NOTE && (
-        <div className="mt-2.5 flex items-center pb-4 pl-4">
-          <Switch checked={isOutputOpen} onCheckedChange={toggleOutput} />
-          <span className="m-1 mr-4">Output</span>
-          {hasAdvancedFields && (
-            <>
-              <Switch onCheckedChange={toggleAdvancedSettings} />
-              <span className="m-1">Advanced</span>
-            </>
-          )}
-          {data.status && (
-            <Badge
-              variant="outline"
-              data-id={`badge-${id}-${data.status}`}
-              className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
-            >
-              {data.status}
-            </Badge>
-          )}
-        </div>
-      )}
-      <InputModalComponent
-        title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSave={handleModalSave}
-        defaultValue={inputModalValue}
-        key={activeKey}
-      />
-      <OutputModalComponent
-        isOpen={isOutputModalOpen}
-        onClose={() => setIsOutputModalOpen(false)}
-        executionResults={data.executionResults?.toReversed() || []}
-      />
-    </div>
-  );
+        )}
+        {data.uiType !== BlockUIType.NOTE && (
+          <div className="mt-2.5 flex items-center pb-4 pl-4">
+            <Switch checked={isOutputOpen} onCheckedChange={toggleOutput} />
+            <span className="m-1 mr-4">Output</span>
+            {hasAdvancedFields && (
+              <>
+                <Switch onCheckedChange={toggleAdvancedSettings} />
+                <span className="m-1">Advanced</span>
+              </>
+            )}
+            {data.status && (
+              <Badge
+                variant="outline"
+                data-id={`badge-${id}-${data.status}`}
+                className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
+              >
+                {data.status}
+              </Badge>
+            )}
+          </div>
+        )}
+        <InputModalComponent
+          title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSave={handleModalSave}
+          defaultValue={inputModalValue}
+          key={activeKey}
+        />
+        <OutputModalComponent
+          isOpen={isOutputModalOpen}
+          onClose={() => setIsOutputModalOpen(false)}
+          executionResults={data.executionResults?.toReversed() || []}
+        />
+      </div>
+    );
+  }
 }
