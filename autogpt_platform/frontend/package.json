@@ -3,13 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "export NODE_ENV=development && next dev",
+    "dev": "next dev",
+    "dev:nosentry": "export NODE_ENV=development && export DISABLE_SENTRY=true && next dev",
     "dev:test": "export NODE_ENV=test && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "playwright test",
+    "test-ui": "playwright test --ui",
+    "gentests": "playwright codegen http://localhost:3000"
   },
+  "browserslist": [
+    "defaults"
+  ],
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
     "@next/third-parties": "^14.2.5",
@@ -58,6 +65,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.47.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
