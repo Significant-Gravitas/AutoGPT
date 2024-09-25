@@ -136,7 +136,7 @@ class PublishToMediumBlock(Block):
 
         return response.json()
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             response = self.create_post(
                 input_data.api_key.get_secret_value(),
