@@ -26,7 +26,8 @@ class GithubCommentBlock(Block):
         )
 
     class Output(BlockSchema):
-        status: str = SchemaField(description="Status of the comment posting operation")
+        id: int = SchemaField(description="ID of the created comment")
+        url: str = SchemaField(description="URL to the comment on GitHub")
         error: str = SchemaField(
             description="Error message if the comment posting failed"
         )
@@ -44,16 +45,22 @@ class GithubCommentBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("status", "Comment posted successfully")],
+            test_output=[
+                ("id", 1337),
+                ("url", "https://github.com/owner/repo/issues/1#issuecomment-1337"),
+            ],
             test_mock={
-                "post_comment": lambda *args, **kwargs: "Comment posted successfully"
+                "post_comment": lambda *args, **kwargs: (
+                    1337,
+                    "https://github.com/owner/repo/issues/1#issuecomment-1337",
+                )
             },
         )
 
     @staticmethod
     def post_comment(
-        credentials: GithubCredentials, issue_url: str, comment: str
-    ) -> str:
+        credentials: GithubCredentials, issue_url: str, body_text: str
+    ) -> tuple[int, str]:
         if "/pull/" in issue_url:
             api_url = (
                 issue_url.replace("github.com", "api.github.com/repos").replace(
@@ -70,12 +77,13 @@ class GithubCommentBlock(Block):
             "Authorization": credentials.bearer(),
             "Accept": "application/vnd.github.v3+json",
         }
-        data = {"body": comment}
+        data = {"body": body_text}
 
         response = requests.post(api_url, headers=headers, json=data)
         response.raise_for_status()
 
-        return "Comment posted successfully"
+        comment = response.json()
+        return comment["id"], comment["html_url"]
 
     def run(
         self,
@@ -85,12 +93,13 @@ class GithubCommentBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            status = self.post_comment(
+            id, url = self.post_comment(
                 credentials,
                 input_data.issue_url,
                 input_data.comment,
             )
-            yield "status", status
+            yield "id", id
+            yield "url", url
         except Exception as e:
             yield "error", f"Failed to post comment: {str(e)}"
 
@@ -110,7 +119,8 @@ class GithubMakeIssueBlock(Block):
         )
 
     class Output(BlockSchema):
-        status: str = SchemaField(description="Status of the issue creation operation")
+        number: int = SchemaField(description="Number of the created issue")
+        url: str = SchemaField(description="URL of the created issue")
         error: str = SchemaField(
             description="Error message if the issue creation failed"
         )
@@ -129,16 +139,22 @@ class GithubMakeIssueBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("status", "Issue created successfully")],
+            test_output=[
+                ("number", 1),
+                ("url", "https://github.com/owner/repo/issues/1"),
+            ],
             test_mock={
-                "create_issue": lambda *args, **kwargs: "Issue created successfully"
+                "create_issue": lambda *args, **kwargs: (
+                    1,
+                    "https://github.com/owner/repo/issues/1",
+                )
             },
         )
 
     @staticmethod
     def create_issue(
         credentials: GithubCredentials, repo_url: str, title: str, body: str
-    ) -> str:
+    ) -> tuple[int, str]:
         api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
         headers = {
             "Authorization": credentials.bearer(),
@@ -149,7 +165,8 @@ class GithubMakeIssueBlock(Block):
         response = requests.post(api_url, headers=headers, json=data)
         response.raise_for_status()
 
-        return "Issue created successfully"
+        issue = response.json()
+        return issue["number"], issue["html_url"]
 
     def run(
         self,
@@ -159,13 +176,14 @@ class GithubMakeIssueBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            status = self.create_issue(
+            number, url = self.create_issue(
                 credentials,
                 input_data.repo_url,
                 input_data.title,
                 input_data.body,
             )
-            yield "status", status
+            yield "number", number
+            yield "url", url
         except Exception as e:
             yield "error", f"Failed to create issue: {str(e)}"
 

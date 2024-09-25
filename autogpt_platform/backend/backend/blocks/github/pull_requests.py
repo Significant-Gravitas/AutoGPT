@@ -120,9 +120,8 @@ class GithubMakePullRequestBlock(Block):
         )
 
     class Output(BlockSchema):
-        status: str = SchemaField(
-            description="Status of the pull request creation operation"
-        )
+        number: int = SchemaField(description="Number of the created pull request")
+        url: str = SchemaField(description="URL of the created pull request")
         error: str = SchemaField(
             description="Error message if the pull request creation failed"
         )
@@ -143,9 +142,15 @@ class GithubMakePullRequestBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("status", "Pull request created successfully")],
+            test_output=[
+                ("number", 1),
+                ("url", "https://github.com/owner/repo/pull/1"),
+            ],
             test_mock={
-                "create_pr": lambda *args, **kwargs: "Pull request created successfully"
+                "create_pr": lambda *args, **kwargs: (
+                    1,
+                    "https://github.com/owner/repo/pull/1",
+                )
             },
         )
 
@@ -157,7 +162,7 @@ class GithubMakePullRequestBlock(Block):
         body: str,
         head: str,
         base: str,
-    ) -> str:
+    ) -> tuple[int, str]:
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/pulls"
         headers = {
@@ -169,7 +174,8 @@ class GithubMakePullRequestBlock(Block):
         response = requests.post(api_url, headers=headers, json=data)
         response.raise_for_status()
 
-        return "Pull request created successfully"
+        pr_data = response.json()
+        return pr_data["number"], pr_data["html_url"]
 
     def run(
         self,
@@ -179,7 +185,7 @@ class GithubMakePullRequestBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            status = self.create_pr(
+            number, url = self.create_pr(
                 credentials,
                 input_data.repo_url,
                 input_data.title,
@@ -187,7 +193,8 @@ class GithubMakePullRequestBlock(Block):
                 input_data.head,
                 input_data.base,
             )
-            yield "status", status
+            yield "number", number
+            yield "url", url
         except requests.exceptions.HTTPError as http_err:
             if http_err.response.status_code == 422:
                 error_details = http_err.response.json()
