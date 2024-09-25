@@ -21,5 +21,5 @@ def get_user_id(payload: dict = Depends(auth_middleware)) -> str:
 
 def get_supabase() -> Client:
     return create_client(
-        settings.secrets.supabase_url, settings.secrets.supabase_service_key
+        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
     )

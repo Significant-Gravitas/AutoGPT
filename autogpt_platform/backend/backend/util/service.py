@@ -82,7 +82,7 @@ class AppService(AppProcess):
 
             secrets = Secrets()
             self.supabase = create_client(
-                secrets.supabase_url, secrets.supabase_service_key
+                secrets.supabase_url, secrets.supabase_service_role_key
             )
 
         # Initialize the async loop.
