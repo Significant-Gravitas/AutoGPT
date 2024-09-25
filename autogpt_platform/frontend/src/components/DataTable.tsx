@@ -48,10 +48,21 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
   );
 };
 
+const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => (
+  <div className="w-full p-2">
+    <img src={imageUrl} alt="Image" className="max-w-full h-auto" />
+  </div>
+);
+
 const isValidVideoUrl = (url: string): boolean => {
   const videoExtensions = /\.(mp4|webm|ogg)$/i;
   const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
   return videoExtensions.test(url) || youtubeRegex.test(url);
+};
+
+const isValidImageUrl = (url: string): boolean => {
+  const imageExtensions = /\.(jpeg|jpg|gif|png|svg|webp)$/i;
+  return imageExtensions.test(url);
 };
 
 export default function DataTable({
@@ -72,11 +83,16 @@ export default function DataTable({
   };
 
   const renderCellContent = (value: any) => {
-    if (typeof value === 'string' && isValidVideoUrl(value)) {
-      return <VideoRenderer videoUrl={value} />;
+    if (typeof value === "string") {
+      if (isValidVideoUrl(value)) {
+        return <VideoRenderer videoUrl={value} />;
+      } else if (isValidImageUrl(value)) {
+        return <ImageRenderer imageUrl={value} />;
+      }
     }
 
-    const text = typeof value === "object" ? JSON.stringify(value) : String(value);
+    const text =
+      typeof value === "object" ? JSON.stringify(value) : String(value);
     return truncateLongData && text.length > maxChars
       ? text.slice(0, maxChars) + "..."
       : text;
@@ -109,11 +125,9 @@ export default function DataTable({
                         beautifyString(key),
                         value
                           .map((i) =>
-                            typeof i === "object"
-                              ? JSON.stringify(i)
-                              : String(i),
+                            typeof i === "object" ? JSON.stringify(i) : String(i)
                           )
-                          .join(", "),
+                          .join(", ")
                       )
                     }
                     title="Copy Data"
