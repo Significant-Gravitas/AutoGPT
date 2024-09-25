@@ -16,9 +16,9 @@ import sentry_sdk.integrations.starlette
 import market.config
 import market.routes.admin
 import market.routes.agents
+import market.routes.analytics
 import market.routes.search
 import market.routes.submissions
-import market.routes.analytics
 
 dotenv.load_dotenv()
 
@@ -62,12 +62,9 @@ app = fastapi.FastAPI(
 app.add_middleware(fastapi.middleware.gzip.GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     middleware_class=fastapi.middleware.cors.CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3000",
-        "https://dev-builder.agpt.co",
-    ],
+    allow_origins=os.environ.get(
+        "BACKEND_CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+    ).split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,6 +83,7 @@ def health():
     return fastapi.responses.HTMLResponse(
         content="<h1>Marketplace API</h1>", status_code=200
     )
+
 
 @app.get("/")
 def default():

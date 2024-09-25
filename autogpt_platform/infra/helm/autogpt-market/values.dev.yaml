@@ -100,3 +100,4 @@ env:
   SUPABASE_ANON_KEY: ""
   SUPABASE_URL: ""
   DATABASE_URL: ""
+  BACKEND_CORS_ALLOW_ORIGINS: "https://dev-builder.agpt.co"
