@@ -1,8 +1,8 @@
 {
   "id": "8e716585-2681-4359-8aa7-6db56000c115",
   "version": 89,
-  "is_active": true,
-  "is_template": false,
+  "is_active": false,
+  "is_template": true,
   "name": "Business Owner Finder",
   "description": "Find Local Businesses Owners",
   "executions": null,
