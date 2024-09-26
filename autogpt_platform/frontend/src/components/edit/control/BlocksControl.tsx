@@ -138,7 +138,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               ))}
             </div>
           </CardHeader>
-          <CardContent className="py-0 px-1 border-t">
+          <CardContent className="border-t px-1 py-0">
             <ScrollArea
               className="h-[60vh]"
               data-id="blocks-control-scroll-area"
