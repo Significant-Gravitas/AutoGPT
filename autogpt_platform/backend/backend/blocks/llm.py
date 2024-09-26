@@ -30,6 +30,8 @@ class ModelMetadata(NamedTuple):
 
 class LlmModel(str, Enum):
     # OpenAI models
+    O1_PREVIEW = "o1-preview"
+    O1_MINI = "o1-mini"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
@@ -57,6 +59,8 @@ class LlmModel(str, Enum):
 
 
 MODEL_METADATA = {
+    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000, cost_factor=60),
+    LlmModel.O1_MINI: ModelMetadata("openai", 62000, cost_factor=30),
     LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=10),
     LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=12),
     LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=11),
@@ -84,8 +88,16 @@ for model in LlmModel:
 class AIStructuredResponseGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str
-        expected_format: dict[str, str]
-        model: LlmModel = LlmModel.GPT4_TURBO
+        expected_format: dict[str, str] = SchemaField(
+            description="Expected format of the response. If provided, the response will be validated against this format. "
+            "The keys should be the expected fields in the response, and the values should be the description of the field.",
+        )
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for answering the prompt.",
+            advanced=False,
+        )
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
@@ -132,7 +144,18 @@ class AIStructuredResponseGeneratorBlock(Block):
 
         if provider == "openai":
             openai.api_key = api_key
-            response_format = {"type": "json_object"} if json_format else None
+            response_format = None
+
+            if model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
+                sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
+                usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
+                prompt = [
+                    {"role": "user", "content": "\n".join(sys_messages)},
+                    {"role": "user", "content": "\n".join(usr_messages)},
+                ]
+            elif json_format:
+                response_format = {"type": "json_object"}
+
             response = openai.chat.completions.create(
                 model=model.value,
                 messages=prompt,  # type: ignore
@@ -185,7 +208,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         prompt = []
 
         def trim_prompt(s: str) -> str:
@@ -207,11 +230,11 @@ class AIStructuredResponseGeneratorBlock(Block):
             format_prompt = ",\n  ".join(expected_format)
             sys_prompt = trim_prompt(
                 f"""
-              |Reply in json format:
-              |{{
-              |  {format_prompt}
-              |}}
-            """
+                  |Reply strictly only in the following JSON format:
+                  |{{
+                  |  {format_prompt}
+                  |}}
+                """
             )
             prompt.append({"role": "system", "content": sys_prompt})
 
@@ -289,7 +312,12 @@ class AIStructuredResponseGeneratorBlock(Block):
 class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for answering the prompt.",
+            advanced=False,
+        )
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
@@ -323,7 +351,7 @@ class AITextGeneratorBlock(Block):
                 raise RuntimeError(output_data)
         raise ValueError("Failed to get a response from the LLM.")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             object_input_data = AIStructuredResponseGeneratorBlock.Input(
                 **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
@@ -334,10 +362,23 @@ class AITextGeneratorBlock(Block):
             yield "error", str(e)
 
 
+class SummaryStyle(Enum):
+    CONCISE = "concise"
+    DETAILED = "detailed"
+    BULLET_POINTS = "bullet points"
+    NUMBERED_LIST = "numbered list"
+
+
 class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for summarizing the text.",
+        )
+        focus: str = "general information"
+        style: SummaryStyle = SummaryStyle.CONCISE
         api_key: BlockSecret = SecretField(value="")
         # TODO: Make this dynamic
         max_tokens: int = 4000  # Adjust based on the model's context window
@@ -365,7 +406,7 @@ class AITextSummarizerBlock(Block):
             },
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             for output in self._run(input_data):
                 yield output
@@ -408,7 +449,7 @@ class AITextSummarizerBlock(Block):
         raise ValueError("Failed to get a response from the LLM.")
 
     def _summarize_chunk(self, chunk: str, input_data: Input) -> str:
-        prompt = f"Summarize the following text concisely:\n\n{chunk}"
+        prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
         llm_response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
@@ -422,13 +463,10 @@ class AITextSummarizerBlock(Block):
         return llm_response["summary"]
 
     def _combine_summaries(self, summaries: list[str], input_data: Input) -> str:
-        combined_text = " ".join(summaries)
+        combined_text = "\n\n".join(summaries)
 
         if len(combined_text.split()) <= input_data.max_tokens:
-            prompt = (
-                "Provide a final, concise summary of the following summaries:\n\n"
-                + combined_text
-            )
+            prompt = f"Provide a final summary of the following section summaries in a {input_data.style} form, focus your summary on the topic of `{input_data.focus}` if present:\n\n ```{combined_text}```\n\n Just respond with the final_summary in the format specified."
 
             llm_response = self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
@@ -474,6 +512,7 @@ class AIConversationBlock(Block):
             description="List of messages in the conversation.", min_length=1
         )
         model: LlmModel = SchemaField(
+            title="LLM Model",
             default=LlmModel.GPT4_TURBO,
             description="The language model to use for the conversation.",
         )
@@ -564,7 +603,7 @@ class AIConversationBlock(Block):
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             api_key = (
                 input_data.api_key.get_secret_value()

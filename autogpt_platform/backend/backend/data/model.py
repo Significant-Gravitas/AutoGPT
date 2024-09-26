@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, ClassVar, Optional, TypeVar
+from typing import Any, Callable, ClassVar, Generic, Optional, TypeVar
 
+from autogpt_libs.supabase_integration_credentials_store.types import CredentialsType
 from pydantic import BaseModel, Field, GetCoreSchemaHandler
 from pydantic_core import (
     CoreSchema,
@@ -131,6 +132,51 @@ def SchemaField(
         title=title,
         description=description,
         exclude=exclude,
+        json_schema_extra=json_extra,
+        **kwargs,
+    )
+
+
+CP = TypeVar("CP", bound=str)
+CT = TypeVar("CT", bound=CredentialsType)
+
+
+CREDENTIALS_FIELD_NAME = "credentials"
+
+
+class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
+    id: str
+    title: Optional[str] = None
+    provider: CP
+    type: CT
+
+
+def CredentialsField(
+    provider: CP,
+    supported_credential_types: set[CT],
+    required_scopes: set[str] = set(),
+    *,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    **kwargs,
+) -> CredentialsMetaInput[CP, CT]:
+    """
+    `CredentialsField` must and can only be used on fields named `credentials`.
+    This is enforced by the `BlockSchema` base class.
+    """
+    json_extra = {
+        k: v
+        for k, v in {
+            "credentials_provider": provider,
+            "credentials_scopes": list(required_scopes) or None,  # omit if empty
+            "credentials_types": list(supported_credential_types),
+        }.items()
+        if v is not None
+    }
+
+    return Field(
+        title=title,
+        description=description,
         json_schema_extra=json_extra,
         **kwargs,
     )

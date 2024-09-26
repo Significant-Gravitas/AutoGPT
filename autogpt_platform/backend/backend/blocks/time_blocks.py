@@ -27,7 +27,7 @@ class GetCurrentTimeBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         current_time = time.strftime("%H:%M:%S")
         yield "time", current_time
 
@@ -59,7 +59,7 @@ class GetCurrentDateBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             offset = int(input_data.offset)
         except ValueError:
@@ -96,7 +96,7 @@ class GetCurrentDateAndTimeBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         current_date_time = time.strftime("%Y-%m-%d %H:%M:%S")
         yield "date_time", current_date_time
 
@@ -129,7 +129,7 @@ class CountdownTimerBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         seconds = int(input_data.seconds)
         minutes = int(input_data.minutes)
         hours = int(input_data.hours)
