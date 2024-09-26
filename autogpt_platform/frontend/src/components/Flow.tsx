@@ -39,7 +39,6 @@ import {
   IconUndo2,
   IconRedo2,
   IconSquare,
-  IconOutput,
 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
@@ -49,6 +48,7 @@ import { LogOut } from "lucide-react";
 import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
+import PrimaryActionBar from "@/components/PrimaryActionButton";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -557,23 +557,6 @@ const FlowEditor: React.FC<{
       icon: <IconRedo2 />,
       onClick: handleRedo,
     },
-    {
-      label: !savedAgent
-        ? "Please save the agent to run"
-        : !isRunning
-          ? "Run"
-          : "Stop",
-      icon: !isRunning ? <IconPlay /> : <IconSquare />,
-      onClick: !isRunning
-        ? () => runnerUIRef.current?.runOrOpenInput()
-        : requestStopRun,
-      disabled: !savedAgent,
-    },
-    {
-      label: "Runner Output",
-      icon: <LogOut size={18} strokeWidth={1.8} />,
-      onClick: () => runnerUIRef.current?.openRunnerOutput(),
-    },
   ];
 
   return (
@@ -614,6 +597,31 @@ const FlowEditor: React.FC<{
               onNameChange={setAgentName}
             />
           </ControlPanel>
+          <PrimaryActionBar
+            onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
+            onClickRunAgent={() => {
+              if (!savedAgent) {
+                alert(
+                  "Please save the agent to run, by clicking the save button in the left sidebar.",
+                );
+                return;
+              }
+              if (!isRunning) {
+                runnerUIRef.current?.runOrOpenInput();
+              } else {
+                requestStopRun();
+              }
+            }}
+            isRunning={isRunning}
+            requestStopRun={requestStopRun}
+            runAgentTooltip={
+              !savedAgent
+                ? "Please save the agent to run"
+                : !isRunning
+                  ? "Run Agent"
+                  : "Stop Agent"
+            }
+          />
         </ReactFlow>
       </div>
       <RunnerUIWrapper
