@@ -22,10 +22,10 @@ export default function CreditButton() {
       <Button
         onClick={fetchCredit}
         variant="outline"
-        className="flex items-center space-x-2 text-muted-foreground"
+        className="flex items-center space-x-2 rounded-xl bg-gray-200"
       >
-        <span className="flex items-center">
-          <IconCoin /> {credit}
+        <span className="mr-2 flex items-center text-foreground">
+          {credit} <span className="ml-2 text-muted-foreground"> credits</span>
         </span>
         <IconRefresh />
       </Button>
