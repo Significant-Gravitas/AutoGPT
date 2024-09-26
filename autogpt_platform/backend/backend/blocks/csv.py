@@ -22,6 +22,7 @@ class ReadCsvBlock(Block):
             id="acf7625e-d2cb-4941-bfeb-2819fc6fc015",
             input_schema=ReadCsvBlock.Input,
             output_schema=ReadCsvBlock.Output,
+            description="Reads a CSV file and outputs the data as a list of dictionaries and individual rows via rows.",
             contributors=[ContributorDetails(name="Nicholas Tindle")],
             categories={BlockCategory.TEXT},
             test_input={

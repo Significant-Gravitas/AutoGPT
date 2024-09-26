@@ -69,6 +69,7 @@ class PublishToMediumBlock(Block):
             id="3f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
             input_schema=PublishToMediumBlock.Input,
             output_schema=PublishToMediumBlock.Output,
+            description="Publishes a post to Medium.",
             categories={BlockCategory.SOCIAL},
             test_input={
                 "author_id": "1234567890abcdef",
