@@ -39,6 +39,7 @@ class CalculatorBlock(Block):
             id="b1ab9b19-67a6-406d-abf5-2dba76d00c79",
             input_schema=CalculatorBlock.Input,
             output_schema=CalculatorBlock.Output,
+            description="Performs a mathematical operation on two numbers.",
             categories={BlockCategory.LOGIC},
             test_input={
                 "operation": Operation.ADD.value,
@@ -51,7 +52,7 @@ class CalculatorBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operation = input_data.operation
         a = input_data.a
         b = input_data.b
@@ -98,6 +99,7 @@ class CountItemsBlock(Block):
             id="3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
             input_schema=CountItemsBlock.Input,
             output_schema=CountItemsBlock.Output,
+            description="Counts the number of items in a collection.",
             categories={BlockCategory.LOGIC},
             test_input={"collection": [1, 2, 3, 4, 5]},
             test_output=[
@@ -105,7 +107,7 @@ class CountItemsBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         collection = input_data.collection
 
         try:

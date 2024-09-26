@@ -41,6 +41,7 @@ export type BlockIOSubSchema =
 
 type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
+  | BlockIOCredentialsSubSchema
   | BlockIOKVSubSchema
   | BlockIOArraySubSchema
   | BlockIOStringSubSchema
@@ -89,6 +90,14 @@ export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   type: "boolean";
   default?: boolean;
+};
+
+export type CredentialsType = "api_key" | "oauth2";
+
+export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
+  credentials_provider: "github" | "google" | "notion";
+  credentials_scopes?: string[];
+  credentials_types: Array<CredentialsType>;
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
@@ -203,6 +212,51 @@ export type NodeExecutionResult = {
   queue_time?: Date;
   start_time?: Date;
   end_time?: Date;
+};
+
+/* Mirror of backend/server/integrations.py:CredentialsMetaResponse */
+export type CredentialsMetaResponse = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  scopes?: Array<string>;
+  username?: string;
+};
+
+/* Mirror of backend/data/model.py:CredentialsMetaInput */
+export type CredentialsMetaInput = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  provider: string;
+};
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
+type BaseCredentials = {
+  id: string;
+  type: CredentialsType;
+  title?: string;
+  provider: string;
+};
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
+export type OAuth2Credentials = BaseCredentials & {
+  type: "oauth2";
+  scopes: string[];
+  username?: string;
+  access_token: string;
+  access_token_expires_at?: number;
+  refresh_token?: string;
+  refresh_token_expires_at?: number;
+  metadata: Record<string, any>;
+};
+
+/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
+export type APIKeyCredentials = BaseCredentials & {
+  type: "api_key";
+  title: string;
+  api_key: string;
+  expires_at?: number;
 };
 
 export type User = {

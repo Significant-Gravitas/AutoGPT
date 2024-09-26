@@ -9,6 +9,7 @@ import {
   BlockIOStringSubSchema,
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
+  BlockIOCredentialsSubSchema,
 } from "@/lib/autogpt-server-api/types";
 import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
@@ -23,6 +24,7 @@ import {
 import { Input } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
+import { CredentialsInput } from "./integrations/credentials-input";
 
 type NodeObjectInputTreeProps = {
   selfKey?: string;
@@ -47,7 +49,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   className,
   displayName,
 }) => {
-  object ??= ("default" in schema ? schema.default : null) ?? {};
+  object ||= ("default" in schema ? schema.default : null) ?? {};
   return (
     <div className={cn(className, "w-full flex-col")}>
       {displayName && <strong>{displayName}</strong>}
@@ -103,7 +105,7 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
-  displayName ??= propSchema.title || beautifyString(propKey);
+  displayName ||= propSchema.title || beautifyString(propKey);
 
   if ("allOf" in propSchema) {
     // If this happens, that is because Pydantic wraps $refs in an allOf if the
@@ -112,6 +114,18 @@ export const NodeGenericInputField: FC<{
     // AFAIK this should NEVER happen though, as $refs are resolved server-side.
     propSchema = propSchema.allOf[0];
     console.warn(`Unsupported 'allOf' in schema for '${propKey}'!`, propSchema);
+  }
+
+  if ("credentials_provider" in propSchema) {
+    return (
+      <NodeCredentialsInput
+        selfKey={propKey}
+        value={currentValue}
+        errors={errors}
+        className={className}
+        handleInputChange={handleInputChange}
+      />
+    );
   }
 
   if ("properties" in propSchema) {
@@ -275,6 +289,28 @@ export const NodeGenericInputField: FC<{
         />
       );
   }
+};
+
+const NodeCredentialsInput: FC<{
+  selfKey: string;
+  value: any;
+  errors: { [key: string]: string | undefined };
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  className?: string;
+}> = ({ selfKey, value, errors, handleInputChange, className }) => {
+  return (
+    <div className={cn("flex flex-col", className)}>
+      <CredentialsInput
+        onSelectCredentials={(credsMeta) =>
+          handleInputChange(selfKey, credsMeta)
+        }
+        selectedCredentials={value}
+      />
+      {errors[selfKey] && (
+        <span className="error-message">{errors[selfKey]}</span>
+      )}
+    </div>
+  );
 };
 
 const NodeKeyValueInput: FC<{
@@ -537,6 +573,7 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
+  value ||= schema.default || "";
   return (
     <div className={className}>
       {schema.enum ? (
@@ -606,6 +643,7 @@ export const NodeTextBoxInput: FC<{
   className,
   displayName,
 }) => {
+  value ||= schema.default || "";
   return (
     <div className={className}>
       <div
@@ -650,8 +688,8 @@ const NodeNumberInput: FC<{
   className,
   displayName,
 }) => {
-  value ??= schema.default;
-  displayName ??= schema.title || beautifyString(selfKey);
+  value ||= schema.default;
+  displayName ||= schema.title || beautifyString(selfKey);
   return (
     <div className={className}>
       <div className="nodrag flex items-center justify-between space-x-3">
@@ -687,7 +725,7 @@ const NodeBooleanInput: FC<{
   className,
   displayName,
 }) => {
-  value ??= schema.default ?? false;
+  value ||= schema.default ?? false;
   return (
     <div className={className}>
       <div className="nodrag flex items-center">
@@ -721,6 +759,7 @@ const NodeFallbackInput: FC<{
   className,
   displayName,
 }) => {
+  value ||= (schema as BlockIOStringSubSchema)?.default;
   return (
     <NodeStringInput
       selfKey={selfKey}

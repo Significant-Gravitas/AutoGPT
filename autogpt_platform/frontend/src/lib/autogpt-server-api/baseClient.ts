@@ -1,6 +1,10 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
+  AnalyticsMetrics,
+  AnalyticsDetails,
+  APIKeyCredentials,
   Block,
+  CredentialsMetaResponse,
   Graph,
   GraphCreatable,
   GraphUpdateable,
@@ -9,9 +13,8 @@ import {
   GraphExecuteResponse,
   ExecutionMeta,
   NodeExecutionResult,
+  OAuth2Credentials,
   User,
-  AnalyticsMetrics,
-  AnalyticsDetails,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -32,6 +35,14 @@ export default class BaseAutoGPTServerAPI {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
     this.supabaseClient = supabaseClient;
+  }
+
+  async isAuthenticated(): Promise<boolean> {
+    if (!this.supabaseClient) return false;
+    const {
+      data: { session },
+    } = await this.supabaseClient?.auth.getSession();
+    return session != null;
   }
 
   async createUser(): Promise<User> {
@@ -156,6 +167,53 @@ export default class BaseAutoGPTServerAPI {
     ).map(parseNodeExecutionResultTimestamps);
   }
 
+  async oAuthLogin(
+    provider: string,
+    scopes?: string[],
+  ): Promise<{ login_url: string; state_token: string }> {
+    const query = scopes ? { scopes: scopes.join(",") } : undefined;
+    return await this._get(`/integrations/${provider}/login`, query);
+  }
+
+  async oAuthCallback(
+    provider: string,
+    code: string,
+    state_token: string,
+  ): Promise<CredentialsMetaResponse> {
+    return this._request("POST", `/integrations/${provider}/callback`, {
+      code,
+      state_token,
+    });
+  }
+
+  async createAPIKeyCredentials(
+    credentials: Omit<APIKeyCredentials, "id" | "type">,
+  ): Promise<APIKeyCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      credentials,
+    );
+  }
+
+  async listCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
+    return this._get(`/integrations/${provider}/credentials`);
+  }
+
+  async getCredentials(
+    provider: string,
+    id: string,
+  ): Promise<APIKeyCredentials | OAuth2Credentials> {
+    return this._get(`/integrations/${provider}/credentials/${id}`);
+  }
+
+  async deleteCredentials(provider: string, id: string): Promise<void> {
+    return this._request(
+      "DELETE",
+      `/integrations/${provider}/credentials/${id}`,
+    );
+  }
+
   async logMetric(metric: AnalyticsMetrics) {
     return this._request("POST", "/analytics/log_raw_metric", metric);
   }
@@ -164,14 +222,14 @@ export default class BaseAutoGPTServerAPI {
     return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
-  private async _get(path: string) {
-    return this._request("GET", path);
+  private async _get(path: string, query?: Record<string, any>) {
+    return this._request("GET", path, query);
   }
 
   private async _request(
-    method: "GET" | "POST" | "PUT" | "PATCH",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
-    payload?: { [key: string]: any },
+    payload?: Record<string, any>,
   ) {
     if (method != "GET") {
       console.debug(`${method} ${path} payload:`, payload);
@@ -181,18 +239,25 @@ export default class BaseAutoGPTServerAPI {
       (await this.supabaseClient?.auth.getSession())?.data.session
         ?.access_token || "";
 
-    const response = await fetch(this.baseUrl + path, {
+    let url = this.baseUrl + path;
+    if (method === "GET" && payload) {
+      // For GET requests, use payload as query
+      const queryParams = new URLSearchParams(payload);
+      url += `?${queryParams.toString()}`;
+    }
+
+    const hasRequestBody = method !== "GET" && payload !== undefined;
+    const response = await fetch(url, {
       method,
-      headers:
-        method != "GET"
-          ? {
-              "Content-Type": "application/json",
-              Authorization: token ? `Bearer ${token}` : "",
-            }
-          : {
-              Authorization: token ? `Bearer ${token}` : "",
-            },
-      body: JSON.stringify(payload),
+      headers: hasRequestBody
+        ? {
+            "Content-Type": "application/json",
+            Authorization: token ? `Bearer ${token}` : "",
+          }
+        : {
+            Authorization: token ? `Bearer ${token}` : "",
+          },
+      body: hasRequestBody ? JSON.stringify(payload) : undefined,
     });
     const response_data = await response.json();
 

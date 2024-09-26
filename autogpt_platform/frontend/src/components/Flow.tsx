@@ -34,21 +34,16 @@ import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import {
-  IconPlay,
-  IconUndo2,
-  IconRedo2,
-  IconSquare,
-  IconOutput,
-} from "@/components/ui/icons";
+import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
+import PrimaryActionBar from "@/components/PrimaryActionButton";
+import { useToast } from "@/components/ui/use-toast";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -107,6 +102,8 @@ const FlowEditor: React.FC<{
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
+
+  const { toast } = useToast();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -557,23 +554,6 @@ const FlowEditor: React.FC<{
       icon: <IconRedo2 />,
       onClick: handleRedo,
     },
-    {
-      label: !savedAgent
-        ? "Please save the agent to run"
-        : !isRunning
-          ? "Run"
-          : "Stop",
-      icon: !isRunning ? <IconPlay /> : <IconSquare />,
-      onClick: !isRunning
-        ? () => runnerUIRef.current?.runOrOpenInput()
-        : requestStopRun,
-      disabled: !savedAgent,
-    },
-    {
-      label: "Runner Output",
-      icon: <LogOut size={18} strokeWidth={1.8} />,
-      onClick: () => runnerUIRef.current?.openRunnerOutput(),
-    },
   ];
 
   return (
@@ -614,6 +594,27 @@ const FlowEditor: React.FC<{
               onNameChange={setAgentName}
             />
           </ControlPanel>
+          <PrimaryActionBar
+            onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
+            onClickRunAgent={() => {
+              if (!savedAgent) {
+                toast({
+                  title: `Please save the agent using the button in the left sidebar before running it.`,
+                  duration: 2000,
+                });
+                return;
+              }
+              if (!isRunning) {
+                runnerUIRef.current?.runOrOpenInput();
+              } else {
+                requestStopRun();
+              }
+            }}
+            isDisabled={!savedAgent}
+            isRunning={isRunning}
+            requestStopRun={requestStopRun}
+            runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
+          />
         </ReactFlow>
       </div>
       <RunnerUIWrapper

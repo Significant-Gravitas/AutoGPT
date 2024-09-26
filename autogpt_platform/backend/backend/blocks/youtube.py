@@ -26,6 +26,7 @@ class TranscribeYouTubeVideoBlock(Block):
             id="f3a8f7e1-4b1d-4e5f-9f2a-7c3d5a2e6b4c",
             input_schema=TranscribeYouTubeVideoBlock.Input,
             output_schema=TranscribeYouTubeVideoBlock.Output,
+            description="Transcribes a YouTube video.",
             categories={BlockCategory.SOCIAL},
             test_input={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
             test_output=[
@@ -62,7 +63,7 @@ class TranscribeYouTubeVideoBlock(Block):
     def get_transcript(video_id: str):
         return YouTubeTranscriptApi.get_transcript(video_id)
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             video_id = self.extract_video_id(input_data.youtube_url)
             yield "video_id", video_id

@@ -31,6 +31,7 @@ class ReadDiscordMessagesBlock(Block):
             id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
             input_schema=ReadDiscordMessagesBlock.Input,  # Assign input schema
             output_schema=ReadDiscordMessagesBlock.Output,  # Assign output schema
+            description="Reads messages from a Discord channel using a bot token.",
             categories={BlockCategory.SOCIAL},
             test_input={"discord_bot_token": "test_token", "continuous_read": False},
             test_output=[
@@ -81,14 +82,14 @@ class ReadDiscordMessagesBlock(Block):
 
         await client.start(token)
 
-    def run(self, input_data: "ReadDiscordMessagesBlock.Input") -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         while True:
             for output_name, output_value in self.__run(input_data):
                 yield output_name, output_value
             if not input_data.continuous_read:
                 break
 
-    def __run(self, input_data: "ReadDiscordMessagesBlock.Input") -> BlockOutput:
+    def __run(self, input_data: Input) -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.run_bot(input_data.discord_bot_token.get_secret_value())
@@ -148,6 +149,7 @@ class SendDiscordMessageBlock(Block):
             id="h1i2j3k4-5l6m-7n8o-9p0q-r1s2t3u4v5w6",  # Unique ID for the node
             input_schema=SendDiscordMessageBlock.Input,  # Assign input schema
             output_schema=SendDiscordMessageBlock.Output,  # Assign output schema
+            description="Sends a message to a Discord channel using a bot token.",
             categories={BlockCategory.SOCIAL},
             test_input={
                 "discord_bot_token": "YOUR_DISCORD_BOT_TOKEN",
@@ -187,7 +189,7 @@ class SendDiscordMessageBlock(Block):
         """Splits a message into chunks not exceeding the Discord limit."""
         return [message[i : i + limit] for i in range(0, len(message), limit)]
 
-    def run(self, input_data: "SendDiscordMessageBlock.Input") -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.send_message(
