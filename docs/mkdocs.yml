@@ -154,9 +154,7 @@ plugins:
   - search
   - git-revision-date-localized:
       enable_creation_date: true
-  - git-committers:
-      repository: Significant-Gravitas/AutoGPT
-      branch: master
+
 
 extra:
   social:
