@@ -78,13 +78,43 @@ function convertGraphToReactFlow(graph: any): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+async function downloadAgent(id: string): Promise<void> {
+  const api = new MarketplaceAPI();
+  try {
+    const file = await api.downloadAgentFile(id);
+    console.log(`Agent file downloaded:`, file);
+
+    // Create a Blob from the file content
+    const blob = new Blob([file], { type: 'application/json' });
+
+    // Create a temporary URL for the Blob
+    const url = window.URL.createObjectURL(blob);
+
+    // Create a temporary anchor element
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent_${id}.json`; // Set the filename
+
+    // Append the anchor to the body, click it, and remove it
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Revoke the temporary URL
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error(`Error downloading agent:`, error);
+    throw error;
+  }
+}
+
 async function installGraph(id: string): Promise<void> {
   const apiUrl =
     process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
     "http://localhost:8015/api/v1/market";
   const api = new MarketplaceAPI(apiUrl);
 
-  const serverAPIUrl = process.env.AGPT_SERVER_API_URL;
+  const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
   const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
   try {
     console.log(`Installing agent with id: ${id}`);
@@ -132,6 +162,15 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
         </Link>
         <Button
           onClick={() => installGraph(agent.id)}
+          className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        >
+          <Download className="mr-2" size={16} />
+          Save to Templates
+        </Button>
+        <Button
+          onClick={() => {
+            downloadAgent(agent.id);
+          }}
           className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
         >
           <Download className="mr-2" size={16} />
