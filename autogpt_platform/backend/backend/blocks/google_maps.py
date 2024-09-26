@@ -46,17 +46,15 @@ class GoogleMapsSearchBlock(Block):
             },
             test_output=[
                 (
-                    "businesses",
-                    [
-                        {
-                            "name": "Test Restaurant",
-                            "address": "123 Test St, New York, NY 10001",
-                            "phone": "+1 (555) 123-4567",
-                            "rating": 4.5,
-                            "reviews": 100,
-                            "website": "https://testrestaurant.com",
-                        }
-                    ],
+                    "place",
+                    {
+                        "name": "Test Restaurant",
+                        "address": "123 Test St, New York, NY 10001",
+                        "phone": "+1 (555) 123-4567",
+                        "rating": 4.5,
+                        "reviews": 100,
+                        "website": "https://testrestaurant.com",
+                    }
                 ),
             ],
             test_mock={
