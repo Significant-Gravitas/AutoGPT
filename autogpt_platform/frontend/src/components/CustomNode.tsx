@@ -601,29 +601,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               generateInputHandles(data.inputSchema, data.uiType)}
           </div>
         )}
-        {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
-          <div
-            data-id="latest-output"
-            className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
-          >
-            {(data.executionResults?.length ?? 0) > 0 ? (
-              <>
-                <DataTable
-                  title="Latest Output"
-                  truncateLongData
-                  data={data.executionResults!.at(-1)?.data || {}}
-                />
-                <div className="flex justify-end">
-                  <Button variant="ghost" onClick={handleOutputClick}>
-                    View More
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <span>No outputs yet</span>
-            )}
-          </div>
-        )}
+        
         {/* Advanced Settings */}
         {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
           <>
@@ -652,7 +630,30 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         ) : (
           <></>
         )}
-
+{/* Display Outputs  */}
+{isOutputOpen && data.uiType !== BlockUIType.NOTE && (
+          <div
+            data-id="latest-output"
+            className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
+          >
+            {(data.executionResults?.length ?? 0) > 0 ? (
+              <>
+                <DataTable
+                  title="Latest Output"
+                  truncateLongData
+                  data={data.executionResults!.at(-1)?.data || {}}
+                />
+                <div className="flex justify-end">
+                  <Button variant="ghost" onClick={handleOutputClick}>
+                    View More
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <></>
+            )}
+          </div>
+        )}
         <InputModalComponent
           title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
           isOpen={isModalOpen}
