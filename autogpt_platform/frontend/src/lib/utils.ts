@@ -203,3 +203,7 @@ export function filterBlocksByType<T>(
 ): T[] {
   return blocks.filter(predicate);
 }
+
+export function getBehaveAs(): "CLOUD" | "LOCAL" {
+  return process.env.NEXT_PUBLIC_BEHAVE_AS || "LOCAL";
+}
