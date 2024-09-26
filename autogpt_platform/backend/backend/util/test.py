@@ -4,6 +4,7 @@ import time
 from backend.data import db
 from backend.data.block import Block, initialize_blocks
 from backend.data.execution import ExecutionResult, ExecutionStatus
+from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.data.queue import AsyncEventQueue
 from backend.data.user import create_default_user
 from backend.executor import ExecutionManager, ExecutionScheduler
@@ -130,10 +131,19 @@ def execute_block_test(block: Block):
         else:
             log(f"{prefix} mock {mock_name} not found in block")
 
+    extra_exec_kwargs = {}
+
+    if CREDENTIALS_FIELD_NAME in block.input_schema.model_fields:
+        if not block.test_credentials:
+            raise ValueError(
+                f"{prefix} requires credentials but has no test_credentials"
+            )
+        extra_exec_kwargs[CREDENTIALS_FIELD_NAME] = block.test_credentials
+
     for input_data in block.test_input:
         log(f"{prefix} in: {input_data}")
 
-        for output_name, output_data in block.execute(input_data):
+        for output_name, output_data in block.execute(input_data, **extra_exec_kwargs):
             if output_index >= len(block.test_output):
                 raise ValueError(f"{prefix} produced output more than expected")
             ex_output_name, ex_output_data = block.test_output[output_index]

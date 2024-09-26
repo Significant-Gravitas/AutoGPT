@@ -13,7 +13,7 @@ from backend.data import db
 from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
-from backend.util.settings import Config
+from backend.util.settings import Config, Secrets
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -48,6 +48,7 @@ class AppService(AppProcess):
     event_queue: AsyncEventQueue = AsyncRedisEventQueue()
     use_db: bool = False
     use_redis: bool = False
+    use_supabase: bool = False
 
     def __init__(self, port):
         self.port = port
@@ -76,6 +77,13 @@ class AppService(AppProcess):
             self.shared_event_loop.run_until_complete(db.connect())
         if self.use_redis:
             self.shared_event_loop.run_until_complete(self.event_queue.connect())
+        if self.use_supabase:
+            from supabase import create_client
+
+            secrets = Secrets()
+            self.supabase = create_client(
+                secrets.supabase_url, secrets.supabase_service_role_key
+            )
 
         # Initialize the async loop.
         async_thread = threading.Thread(target=self.__start_async_loop)

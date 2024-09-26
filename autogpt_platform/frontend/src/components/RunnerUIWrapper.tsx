@@ -8,7 +8,7 @@ import RunnerInputUI from "./runner-ui/RunnerInputUI";
 import RunnerOutputUI from "./runner-ui/RunnerOutputUI";
 import { Node } from "@xyflow/react";
 import { filterBlocksByType } from "@/lib/utils";
-import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
+import { BlockIORootSchema, BlockUIType } from "@/lib/autogpt-server-api/types";
 
 interface RunnerUIWrapperProps {
   nodes: Node[];
@@ -31,12 +31,12 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     const getBlockInputsAndOutputs = useCallback(() => {
       const inputBlocks = filterBlocksByType(
         nodes,
-        (node) => node.data.block_id === "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+        (node) => node.data.uiType === BlockUIType.INPUT,
       );
 
       const outputBlocks = filterBlocksByType(
         nodes,
-        (node) => node.data.block_id === "363ae599-353e-4804-937e-b2ee3cef3da4",
+        (node) => node.data.uiType === BlockUIType.OUTPUT,
       );
 
       const inputs = inputBlocks.map((node) => ({

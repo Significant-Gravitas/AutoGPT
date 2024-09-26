@@ -7,12 +7,13 @@ from .config import settings
 from .jwt_utils import parse_jwt_token
 
 security = HTTPBearer()
+logger = logging.getLogger(__name__)
 
 
 async def auth_middleware(request: Request):
     if not settings.ENABLE_AUTH:
         # If authentication is disabled, allow the request to proceed
-        logging.warn("Auth disabled")
+        logger.warn("Auth disabled")
         return {}
 
     security = HTTPBearer()
@@ -24,7 +25,7 @@ async def auth_middleware(request: Request):
     try:
         payload = parse_jwt_token(credentials.credentials)
         request.state.user = payload
-        logging.info("Token decoded successfully")
+        logger.debug("Token decoded successfully")
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     return payload
