@@ -384,7 +384,9 @@ const NodeKeyValueInput: FC<{
   }
 
   return (
-    <div className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}>
+    <div
+      className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}
+    >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
@@ -444,7 +446,7 @@ const NodeKeyValueInput: FC<{
           </div>
         ))}
         <Button
-          className="w-[183p] bg-gray-200 text-black rounded-xl font-normal"
+          className="w-[183p] rounded-xl bg-gray-200 font-normal text-black"
           onClick={() =>
             updateKeyValuePairs(keyValuePairs.concat({ key: "", value: "" }))
           }
