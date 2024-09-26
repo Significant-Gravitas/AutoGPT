@@ -69,6 +69,7 @@ class PublishToMediumBlock(Block):
             id="3f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
             input_schema=PublishToMediumBlock.Input,
             output_schema=PublishToMediumBlock.Output,
+            description="Publishes a post to Medium.",
             categories={BlockCategory.SOCIAL},
             test_input={
                 "author_id": "1234567890abcdef",
@@ -136,7 +137,7 @@ class PublishToMediumBlock(Block):
 
         return response.json()
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             response = self.create_post(
                 input_data.api_key.get_secret_value(),

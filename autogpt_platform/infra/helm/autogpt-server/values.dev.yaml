@@ -86,3 +86,9 @@ env:
   REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
   REDIS_PORT: "6379"
   BACKEND_CORS_ALLOW_ORIGINS: ["https://dev-builder.agpt.co"]
+  SUPABASE_SERVICE_ROLE_KEY: ""
+  GITHUB_CLIENT_ID: ""
+  GITHUB_CLIENT_SECRET: ""
+  FRONTEND_BASE_URL: ""
+  SUPABASE_URL: ""
+  SUPABASE_JWT_SECRET: ""
