@@ -34,7 +34,7 @@ import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
 import { IconCoin } from "./ui/icons";
-import * as Separator from '@radix-ui/react-separator';
+import * as Separator from "@radix-ui/react-separator";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -170,7 +170,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 <span className="text-m green -mb-1 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
-                <div key={propKey} onMouseOver={() => { }}>
+                <div key={propKey} onMouseOver={() => {}}>
                   {!isConnected && (
                     <NodeGenericInputField
                       className="mb-2 mt-1"
@@ -216,7 +216,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => { }}>
+              <div key={propKey} onMouseOver={() => {}}>
                 {propKey !== "value" ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
@@ -255,7 +255,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => { }}>
+              <div key={propKey} onMouseOver={() => {}}>
                 {"credentials_provider" in propSchema ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     Credentials
@@ -555,10 +555,10 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       >
         {/* Color Stripe */}
         <div
-          className={`z-20 h-20 flex min-w-2 flex-shrink-0 rounded-tl-xl border ${getPrimaryCategoryColor(data.categories)}`}
+          className={`z-20 flex h-20 min-w-2 flex-shrink-0 rounded-tl-xl border ${getPrimaryCategoryColor(data.categories)}`}
         ></div>
 
-        <div className="flex flex-col w-full">
+        <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
             <div className="font-roboto p-3 text-lg font-semibold">
               {beautifyString(
@@ -567,7 +567,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
             </div>
             <Badge
               variant="outline"
-              className={`mr-5 ${getPrimaryCategoryColor(data.categories)} opacity-50 rounded-xl`}
+              className={`mr-5 ${getPrimaryCategoryColor(data.categories)} rounded-xl opacity-50`}
             >
               {data.categories[0].category}
             </Badge>
@@ -583,8 +583,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       </div>
       {/* Body */}
       <div className="ml-5">
-
-
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
           <div className="flex items-start justify-between">
@@ -629,19 +627,20 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         {/* Advanced Settings */}
         {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
           <>
-
-            <Separator.Root className="w-full h-[2px] bg-gray-200"></Separator.Root>
-            <div className="mt-2.5 flex items-center justify-between pb-4 ">
+            <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
+            <div className="mt-2.5 flex items-center justify-between pb-4">
               <span className="">Advanced</span>
-              <Switch onCheckedChange={toggleAdvancedSettings} className="mr-5" />
-
+              <Switch
+                onCheckedChange={toggleAdvancedSettings}
+                className="mr-5"
+              />
             </div>
           </>
         )}
         {/* Output Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
           <>
-            <Separator.Root className="w-full h-[2px] bg-gray-200"></Separator.Root>
+            <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
 
             <div className="flex items-start justify-end pr-2">
               <div className="flex-none">
@@ -651,10 +650,8 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
             </div>
           </>
         ) : (
-          <>
-          </>
+          <></>
         )}
-
 
         <InputModalComponent
           title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
