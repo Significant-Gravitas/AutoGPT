@@ -46,11 +46,11 @@ class RedisEventQueue(AbstractEventQueue):
         if self.connection:
             message = json.dumps(execution_result.model_dump(), cls=DateTimeEncoder)
             logger.info(f"Putting execution result to Redis {message}")
-            self.connection.lpush(self.queue_name, message)  # type: ignore
+            self.connection.lpush(self.queue_name, message)
 
     def get(self) -> ExecutionResult | None:
         if self.connection:
-            message = self.connection.rpop(self.queue_name)  # type: ignore
+            message = self.connection.rpop(self.queue_name)
             if message is not None and isinstance(message, (str, bytes, bytearray)):
                 data = json.loads(message)
                 logger.info(f"Getting execution result from Redis {data}")
