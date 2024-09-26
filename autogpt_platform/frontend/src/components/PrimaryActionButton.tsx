@@ -42,8 +42,10 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
               size="primary"
               variant="outline"
             >
-              <LogOut className="h-5 w-5" />
-              <span className="text-lg font-medium">Agent Outputs </span>
+              <LogOut className="hidden h-5 w-5 md:flex" />
+              <span className="text-sm font-medium md:text-lg">
+                Agent Outputs{" "}
+              </span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -62,7 +64,9 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
               }}
             >
               {runButtonIcon}
-              <span className="text-lg font-medium">{runButtonLabel}</span>
+              <span className="text-sm font-medium md:text-lg">
+                {runButtonLabel}
+              </span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>
