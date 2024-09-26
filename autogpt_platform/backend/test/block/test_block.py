@@ -1,7 +1,9 @@
-from backend.data.block import get_blocks
+import pytest
+
+from backend.data.block import Block, get_blocks
 from backend.util.test import execute_block_test
 
 
-def test_available_blocks():
-    for block in get_blocks().values():
-        execute_block_test(type(block)())
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b.name)
+def test_available_blocks(block: Block):
+    execute_block_test(type(block)())

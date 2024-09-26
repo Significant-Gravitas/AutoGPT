@@ -105,7 +105,7 @@ class CreateTalkingAvatarVideoBlock(Block):
         response.raise_for_status()
         return response.json()
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # Create the clip
             payload = {

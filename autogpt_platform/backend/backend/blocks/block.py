@@ -31,7 +31,7 @@ class BlockInstallationBlock(Block):
             disabled=True,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         code = input_data.code
 
         if search := re.search(r"class (\w+)\(Block\):", code):
