@@ -20,6 +20,7 @@ To setup the server, you need to have the following installed:
 
 - [Node.js](https://nodejs.org/en/)
 - [Docker](https://docs.docker.com/get-docker/)
+- [Git](https://git-scm.com/downloads)
 
 ### Checking if you have Node.js & NPM installed
 
@@ -58,6 +59,16 @@ docker-compose -v
 ```
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
+
+## Cloning the Repository
+The first step is cloning the AutoGPT repository to your computer.
+To do this, open a terminal window in a folder on your computer and run:
+```
+git clone https://github.com/Significant-Gravitas/AutoGPT.git
+```
+If you get stuck, follow [this guide](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
+
+Once that's complete you can close this terminal window.
 
 ## Running the backend services
 
