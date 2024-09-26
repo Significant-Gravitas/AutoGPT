@@ -46,6 +46,7 @@ class ReadRSSFeedBlock(Block):
             id="c6731acb-4105-4zp1-bc9b-03d0036h370g",
             input_schema=ReadRSSFeedBlock.Input,
             output_schema=ReadRSSFeedBlock.Output,
+            description="Reads RSS feed entries from a given URL.",
             categories={BlockCategory.INPUT},
             test_input={
                 "rss_url": "https://example.com/rss",

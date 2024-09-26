@@ -25,9 +25,7 @@ class MatchTextPatternBlock(Block):
     def __init__(self):
         super().__init__(
             id="3060088f-6ed9-4928-9ba7-9c92823a7ccd",
-            description="This block matches the given text with the pattern (regex) and"
-            " forwards the provided data to positive (if matching) or"
-            " negative (if not matching) output.",
+            description="Matches text against a regex pattern and forwards data to positive or negative output based on the match.",
             categories={BlockCategory.TEXT},
             input_schema=MatchTextPatternBlock.Input,
             output_schema=MatchTextPatternBlock.Output,
