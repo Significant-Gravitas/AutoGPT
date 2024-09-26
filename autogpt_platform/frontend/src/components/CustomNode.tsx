@@ -560,7 +560,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
-            <div className="font-roboto p-3 text-lg font-semibold">
+            <div className="font-roboto px-3 pt-3 text-lg font-semibold">
               {beautifyString(
                 data.blockType?.replace(/Block$/, "") || data.title,
               )}
@@ -573,9 +573,9 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
             </Badge>
           </div>
           {blockCost && (
-            <div className="p-3 font-semibold">
+            <div className="px-3 font-light text-base">
               <span className="ml-auto flex items-center">
-                <IconCoin /> {blockCost.cost_amount} per {blockCost.cost_type}
+                <IconCoin /> <span className="font-medium m-1">{blockCost.cost_amount}</span> per {blockCost.cost_type}
               </span>
             </div>
           )}
