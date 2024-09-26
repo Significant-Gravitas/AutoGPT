@@ -1,0 +1,411 @@
+{
+  "id": "c66bc846-cd4c-4ab5-902f-6ea6c155a610",
+  "version": 105,
+  "is_active": false,
+  "is_template": true,
+  "name": "Business Owner Finder",
+  "description": "Find Local Businesses Owners",
+  "executions": null,
+  "nodes": [
+    {
+      "id": "32462964-7545-48b4-8ea0-4cdce47ae062",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "value": "100",
+        "name": "Max Search Distance (Max 50000 meters)",
+        "description": "How far around the are to look for results (Max 50000 meters)",
+        "placeholder_values": [
+          "5000"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": -126.38521171563406,
+          "y": 328.77891171068234
+        }
+      }
+    },
+    {
+      "id": "07c9b220-1f35-408e-85a3-bb337809198a",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "\"address\":\\s*\"([^\"]+)\""
+      },
+      "metadata": {
+        "position": {
+          "x": 948.6227399469008,
+          "y": 553.4893715796129
+        }
+      }
+    },
+    {
+      "id": "a6e2d8ab-f32c-4a55-af47-3c0aefcb7186",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 5180.089792913574,
+          "y": -188.49928488576774
+        }
+      }
+    },
+    {
+      "id": "446d5a61-ea60-4eb5-ae47-7e4e110c5976",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "value": "1",
+        "name": "Max Results (Max 60)",
+        "description": "How many results to return from the google maps search (Max 60)",
+        "placeholder_values": [
+          "1"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": -135.47752739220675,
+          "y": 864.2619460983182
+        }
+      }
+    },
+    {
+      "id": "61e5baee-13c7-44fb-8490-d90de93af9c7",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "(?<=\":\\s\")[^\"]+(?=\")"
+      },
+      "metadata": {
+        "position": {
+          "x": 1553.4191455201103,
+          "y": 553.6386845833197
+        }
+      }
+    },
+    {
+      "id": "bc1684de-97f5-42af-904c-80c8b95cf3e4",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "(?<=<google_searches>)(.*?)(?=</google_searches>)"
+      },
+      "metadata": {
+        "position": {
+          "x": 4533.885219123674,
+          "y": 616.3655640934592
+        }
+      }
+    },
+    {
+      "id": "a5619e48-07ad-400a-8804-eae14d2e5325",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "(?<=\")[^\"]+(?=\")"
+      },
+      "metadata": {
+        "position": {
+          "x": 5137.460704987655,
+          "y": 589.6769024985973
+        }
+      }
+    },
+    {
+      "id": "9efaea14-0114-4864-bca9-bfa92e308897",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "(?<=\":\\s\")[^\"]+(?=\")"
+      },
+      "metadata": {
+        "position": {
+          "x": 1565.4191455201103,
+          "y": -137.45554153526007
+        }
+      }
+    },
+    {
+      "id": "21563307-14a1-45cf-9a1e-4b8c909b4a2d",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "value": "companies in  One Apple Park Way, Cupertino, CA 95014, United States",
+        "name": "What do you want to look for and where?",
+        "description": "This will check google maps",
+        "placeholder_values": [
+          "restaurants in london"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": -119.5889700226389,
+          "y": -225.80086117189666
+        }
+      }
+    },
+    {
+      "id": "327521ba-cb4c-4900-bbfd-a820fdfa8b69",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {
+        "input": [
+          "Who is the owner/CEO of: ",
+          "",
+          " at: ",
+          ""
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": 2120.3486225202146,
+          "y": 92.01723296770871
+        }
+      }
+    },
+    {
+      "id": "60aebf04-a223-4d41-abbe-46df2ea420c8",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Results!"
+      },
+      "metadata": {
+        "position": {
+          "x": 5804.114438527089,
+          "y": -187.68189081671593
+        }
+      }
+    },
+    {
+      "id": "6f0c1457-3215-4795-ac40-29bd30728b03",
+      "block_id": "b2c3d4e5-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 3269.616806366597,
+          "y": 139.50393707508204
+        }
+      }
+    },
+    {
+      "id": "8242df4f-655b-4b58-bd1a-49f3dcd974d8",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "\"name\":\\s*\"([^\"]+)\""
+      },
+      "metadata": {
+        "position": {
+          "x": 958.6227399469008,
+          "y": -139.0105826440198
+        }
+      }
+    },
+    {
+      "id": "fb74da2d-5102-4f85-8a32-b82688efc837",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2695.6152410601135,
+          "y": 70.49929058997617
+        }
+      }
+    },
+    {
+      "id": "75995a04-2602-4f76-b3ef-3b0bef3a81f3",
+      "block_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "input_default": {
+        "max_results": 1
+      },
+      "metadata": {
+        "position": {
+          "x": 401.10898294391325,
+          "y": 235.99340525075365
+        }
+      }
+    },
+    {
+      "id": "66e5aa0a-104e-4dea-94a1-8bffb9e6794c",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "(?<=<identified_owner_ceo>)[\\s\\S]*?(?=<\\/identified_owner_ceo>)"
+      },
+      "metadata": {
+        "position": {
+          "x": 4600.490567724912,
+          "y": -188.96019008718858
+        }
+      }
+    },
+    {
+      "id": "d3f3062f-2aa9-46fe-add2-6863a81d5496",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "prompt": "You are a business owner/CEO identifier. Your task is to analyze the given business information and determine if you can identify the business owner or CEO. If you cannot identify the owner/CEO, you will generate Google search queries to find more information.\n\nHere is the business information to analyze:\n<business_info>\n{BUSINESS_INFO}\n</business_info>\n\nCarefully review the provided business information. Look for any details that clearly indicate the identity of the business owner or CEO. This may include names, titles, or specific roles mentioned in connection with the business.\n\nIf you can confidently identify the business owner or CEO based on the given information, provide the details in the following format:\n<identified_owner_ceo>\nName: [Owner's or CEO's full name]\nPosition: [Owner or CEO]\nBusiness Name: [Name of the business]\nEmail: [Owner's or CEO's email address, if available]\nPhone Number: [Owner's or CEO's phone number, if available]\nBusiness Address: [Complete business address]\n</identified_owner_ceo>\n\nOnly include the fields for which you have information from the provided business info. Do not make assumptions or add information that is not explicitly stated.\n\nIf you cannot confidently identify the business owner or CEO based on the given information, generate a single Google search queries that could help find more information about the business owner or CEO. Output these queries as a JSON list using the following format:\n<google_searches>\n[\n  \"First search query\"\n]\n</google_searches>\n\nWhen creating these search queries:\n1. Use specific details from the business information provided\n2. Focus on finding the owner's or CEO's identity\n3. Vary the types of searches (e.g., business name + owner, business name + CEO, business address + proprietor, etc.)\n4. Include location-specific searches if applicable\n5. Consider searching for business registration or public records\n\nRemember:\n1. Only use the information provided in the business_info. Do not make assumptions or use external knowledge when identifying the owner or CEO.\n2. If any piece of required information is missing, do not try to fill it in with guesses.\n3. Be certain of the owner's or CEO's identity before providing an <identified_owner_ceo> response.\n4. If there is any doubt about the owner's or CEO's identity, proceed to generate Google search queries.\n\nAnalyze the business information now and provide your response accordingly.",
+        "model": "claude-3-5-sonnet-20240620",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 3947.27409417778,
+          "y": -29.392501344137685
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "4a58d226-036d-4b37-8d4e-a5e8ea95198b",
+      "source_id": "a6e2d8ab-f32c-4a55-af47-3c0aefcb7186",
+      "sink_id": "60aebf04-a223-4d41-abbe-46df2ea420c8",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": true
+    },
+    {
+      "id": "6fd8289a-a2e1-4c81-960a-977fb58fb19d",
+      "source_id": "446d5a61-ea60-4eb5-ae47-7e4e110c5976",
+      "sink_id": "75995a04-2602-4f76-b3ef-3b0bef3a81f3",
+      "source_name": "result",
+      "sink_name": "max_results",
+      "is_static": false
+    },
+    {
+      "id": "a9eb028b-98b9-415f-9e6f-9b571678c286",
+      "source_id": "8242df4f-655b-4b58-bd1a-49f3dcd974d8",
+      "sink_id": "9efaea14-0114-4864-bca9-bfa92e308897",
+      "source_name": "positive",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "790bdecc-8e52-48d1-82ed-b6cfdf92515c",
+      "source_id": "327521ba-cb4c-4900-bbfd-a820fdfa8b69",
+      "sink_id": "fb74da2d-5102-4f85-8a32-b82688efc837",
+      "source_name": "output",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "e69fdba7-d426-4e3a-8b35-57c23f5914cc",
+      "source_id": "d3f3062f-2aa9-46fe-add2-6863a81d5496",
+      "sink_id": "66e5aa0a-104e-4dea-94a1-8bffb9e6794c",
+      "source_name": "response",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "73c9403c-3e23-45da-a8a4-dc1d76cd3ca7",
+      "source_id": "75995a04-2602-4f76-b3ef-3b0bef3a81f3",
+      "sink_id": "07c9b220-1f35-408e-85a3-bb337809198a",
+      "source_name": "place",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "30580bbf-0e77-4be5-983a-1abdd84c0e01",
+      "source_id": "327521ba-cb4c-4900-bbfd-a820fdfa8b69",
+      "sink_id": "fb74da2d-5102-4f85-8a32-b82688efc837",
+      "source_name": "output",
+      "sink_name": "data",
+      "is_static": false
+    },
+    {
+      "id": "e345bc30-4abd-474f-857a-02b817be6914",
+      "source_id": "07c9b220-1f35-408e-85a3-bb337809198a",
+      "sink_id": "61e5baee-13c7-44fb-8490-d90de93af9c7",
+      "source_name": "positive",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "25f5a05d-4465-480c-9634-8ed02e51f7a5",
+      "source_id": "61e5baee-13c7-44fb-8490-d90de93af9c7",
+      "sink_id": "327521ba-cb4c-4900-bbfd-a820fdfa8b69",
+      "source_name": "positive",
+      "sink_name": "input_$_3",
+      "is_static": false
+    },
+    {
+      "id": "591201df-fae5-4b42-a4c4-bd3221c5f094",
+      "source_id": "d3f3062f-2aa9-46fe-add2-6863a81d5496",
+      "sink_id": "bc1684de-97f5-42af-904c-80c8b95cf3e4",
+      "source_name": "response",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "31009d83-065c-4b11-b23b-9814b9b724a8",
+      "source_id": "66e5aa0a-104e-4dea-94a1-8bffb9e6794c",
+      "sink_id": "a6e2d8ab-f32c-4a55-af47-3c0aefcb7186",
+      "source_name": "positive",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "08dff49d-abe3-4032-9e2b-f8eb2e7efb31",
+      "source_id": "a5619e48-07ad-400a-8804-eae14d2e5325",
+      "sink_id": "6f0c1457-3215-4795-ac40-29bd30728b03",
+      "source_name": "positive",
+      "sink_name": "query",
+      "is_static": false
+    },
+    {
+      "id": "68808ae6-d510-4a5a-9890-2aab35b4cfdb",
+      "source_id": "9efaea14-0114-4864-bca9-bfa92e308897",
+      "sink_id": "327521ba-cb4c-4900-bbfd-a820fdfa8b69",
+      "source_name": "positive",
+      "sink_name": "input_$_1",
+      "is_static": false
+    },
+    {
+      "id": "0e51c236-7099-4616-a9b8-c4811c030602",
+      "source_id": "d3f3062f-2aa9-46fe-add2-6863a81d5496",
+      "sink_id": "fb74da2d-5102-4f85-8a32-b82688efc837",
+      "source_name": "error",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "cd419d82-0066-4dc1-b439-d0df1344e848",
+      "source_id": "21563307-14a1-45cf-9a1e-4b8c909b4a2d",
+      "sink_id": "75995a04-2602-4f76-b3ef-3b0bef3a81f3",
+      "source_name": "result",
+      "sink_name": "query",
+      "is_static": false
+    },
+    {
+      "id": "875de4df-a8f8-4b6d-92af-0a67bb410a70",
+      "source_id": "32462964-7545-48b4-8ea0-4cdce47ae062",
+      "sink_id": "75995a04-2602-4f76-b3ef-3b0bef3a81f3",
+      "source_name": "result",
+      "sink_name": "radius",
+      "is_static": false
+    },
+    {
+      "id": "ea0a25bb-daf3-4a62-89b3-6f39d662c0dd",
+      "source_id": "bc1684de-97f5-42af-904c-80c8b95cf3e4",
+      "sink_id": "a5619e48-07ad-400a-8804-eae14d2e5325",
+      "source_name": "positive",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "6798b3c8-ae61-4fe9-92e7-95821c64daf6",
+      "source_id": "75995a04-2602-4f76-b3ef-3b0bef3a81f3",
+      "sink_id": "8242df4f-655b-4b58-bd1a-49f3dcd974d8",
+      "source_name": "place",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "5c778c46-e3a6-4290-bfcd-f1f9fe725153",
+      "source_id": "fb74da2d-5102-4f85-8a32-b82688efc837",
+      "sink_id": "6f0c1457-3215-4795-ac40-29bd30728b03",
+      "source_name": "output",
+      "sink_name": "query",
+      "is_static": true
+    },
+    {
+      "id": "e75db09e-aa0a-4d48-9a4f-2d0731baa699",
+      "source_id": "6f0c1457-3215-4795-ac40-29bd30728b03",
+      "sink_id": "d3f3062f-2aa9-46fe-add2-6863a81d5496",
+      "source_name": "results",
+      "sink_name": "prompt_values_#_BUSINESS_INFO",
+      "is_static": false
+    }
+  ],
+  "subgraphs": {}
+}
