@@ -111,9 +111,9 @@ textarea::placeholder {
 }
 
 .flow-container {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100vh;
-  /* 4rem nav, 1rem padding */
-  margin-top: -5rem;
-  margin-left: -1rem;
 }
