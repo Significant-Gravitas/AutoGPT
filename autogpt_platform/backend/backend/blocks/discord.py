@@ -31,6 +31,7 @@ class ReadDiscordMessagesBlock(Block):
             id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
             input_schema=ReadDiscordMessagesBlock.Input,  # Assign input schema
             output_schema=ReadDiscordMessagesBlock.Output,  # Assign output schema
+            description="Reads messages from a Discord channel using a bot token.",
             categories={BlockCategory.SOCIAL},
             test_input={"discord_bot_token": "test_token", "continuous_read": False},
             test_output=[
@@ -148,6 +149,7 @@ class SendDiscordMessageBlock(Block):
             id="h1i2j3k4-5l6m-7n8o-9p0q-r1s2t3u4v5w6",  # Unique ID for the node
             input_schema=SendDiscordMessageBlock.Input,  # Assign input schema
             output_schema=SendDiscordMessageBlock.Output,  # Assign output schema
+            description="Sends a message to a Discord channel using a bot token.",
             categories={BlockCategory.SOCIAL},
             test_input={
                 "discord_bot_token": "YOUR_DISCORD_BOT_TOKEN",

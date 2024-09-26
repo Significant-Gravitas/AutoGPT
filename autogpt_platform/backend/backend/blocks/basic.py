@@ -41,8 +41,7 @@ class StoreValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            description="This block forwards the `input` pin to `output` pin. "
-            "This block output will be static, the output can be consumed many times.",
+            description="This block forwards an input value as output, allowing reuse without change.",
             categories={BlockCategory.BASIC},
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,
@@ -244,14 +243,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description=(
-                "This block records the graph output. It takes a value to record, "
-                "with a name, description, and optional format string. If a format "
-                "string is given, it tries to format the recorded value. The "
-                "formatted (or raw, if formatting fails) value is then output. "
-                "This block is key for capturing and presenting final results or "
-                "important intermediate outputs of the graph execution."
-            ),
+            description=("Stores the output of the graph for users to see."),
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[
