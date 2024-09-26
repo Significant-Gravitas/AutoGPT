@@ -30,13 +30,13 @@ class GoogleMapsSearchBlock(Block):
         )
 
     class Output(BlockSchema):
-        businesses: List[dict] = SchemaField(description="List of businesses found")
+        place: dict = SchemaField(description="A place found in the search")
         error: str = SchemaField(description="Error message if the search failed")
 
     def __init__(self):
         super().__init__(
             id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
-            description="This block searches for local businesses using Google Maps API.",
+            description="This block searches for places using Google Maps API.",
             categories={BlockCategory.SEARCH},
             input_schema=GoogleMapsSearchBlock.Input,
             output_schema=GoogleMapsSearchBlock.Output,
@@ -48,17 +48,15 @@ class GoogleMapsSearchBlock(Block):
             },
             test_output=[
                 (
-                    "businesses",
-                    [
-                        {
-                            "name": "Test Restaurant",
-                            "address": "123 Test St, New York, NY 10001",
-                            "phone": "+1 (555) 123-4567",
-                            "rating": 4.5,
-                            "reviews": 100,
-                            "website": "https://testrestaurant.com",
-                        }
-                    ],
+                    "place",
+                    {
+                        "name": "Test Restaurant",
+                        "address": "123 Test St, New York, NY 10001",
+                        "phone": "+1 (555) 123-4567",
+                        "rating": 4.5,
+                        "reviews": 100,
+                        "website": "https://testrestaurant.com",
+                    }
                 ),
             ],
             test_mock={
@@ -77,13 +75,14 @@ class GoogleMapsSearchBlock(Block):
 
     def run(self, input_data: Input) -> BlockOutput:
         try:
-            businesses = self.search_places(
+            places = self.search_places(
                 input_data.api_key.get_secret_value(),
                 input_data.query,
                 input_data.radius,
                 input_data.max_results,
             )
-            yield "businesses", businesses
+            for place in places:
+                yield "place", place
         except Exception as e:
             yield "error", str(e)
 
