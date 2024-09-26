@@ -54,7 +54,7 @@ class GoogleMapsSearchBlock(Block):
                         "rating": 4.5,
                         "reviews": 100,
                         "website": "https://testrestaurant.com",
-                    }
+                    },
                 ),
             ],
             test_mock={
