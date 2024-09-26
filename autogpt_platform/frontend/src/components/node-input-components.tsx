@@ -606,7 +606,7 @@ const NodeStringInput: FC<{
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
             onBlur={(e) => handleInputChange(selfKey, e.target.value)}
-            className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
+            className="pr-8 read-only:cursor-pointer read-only:text-gray-500 rounded-xl"
           />
           <Button
             variant="ghost"
@@ -659,7 +659,7 @@ export const NodeTextBoxInput: FC<{
           }
           onChange={(e) => handleInputChange(selfKey, e.target.value)}
           onBlur={(e) => handleInputChange(selfKey, e.target.value)}
-          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none"
+          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none  rounded-xl"
           style={{
             fontSize: "min(1em, 16px)",
             lineHeight: "1.2",
