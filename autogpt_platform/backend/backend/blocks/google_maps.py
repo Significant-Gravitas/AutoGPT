@@ -81,7 +81,7 @@ class GoogleMapsSearchBlock(Block):
             },
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             places = self.search_places(
                 input_data.api_key.get_secret_value(),
