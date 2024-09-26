@@ -38,7 +38,7 @@ class StoreValueBlock(Block):
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,
             test_input=[
-                {"input": "Hello, World!", "value": "Existing Data"},
+                {"trigger": "Hello, World!", "value": "Existing Data"},
             ],
             test_output=[
                 ("output", "Existing Data"),
