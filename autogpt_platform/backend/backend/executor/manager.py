@@ -40,14 +40,16 @@ from backend.data.execution import (
 )
 from backend.data.graph import Graph, Link, Node, get_graph, get_node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
+from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.service import AppService, expose, get_service_client
-from backend.util.settings import Config
+from backend.util.settings import Settings
 from backend.util.type import convert
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 class LogMetadata:
@@ -402,7 +404,7 @@ def validate_exec(
 def get_agent_server_client() -> "AgentServer":
     from backend.server.rest_api import AgentServer
 
-    return get_service_client(AgentServer, Config().agent_server_port)
+    return get_service_client(AgentServer, settings.config.agent_server_port)
 
 
 class Executor:
@@ -521,7 +523,7 @@ class Executor:
     def on_graph_executor_start(cls):
         configure_logging()
 
-        cls.pool_size = Config().num_node_workers
+        cls.pool_size = settings.config.num_node_workers
         cls.loop = asyncio.new_event_loop()
         cls.pid = os.getpid()
 
@@ -676,10 +678,10 @@ class Executor:
 
 class ExecutionManager(AppService):
     def __init__(self):
-        super().__init__(port=Config().execution_manager_port)
+        super().__init__(port=settings.config.execution_manager_port)
         self.use_db = True
         self.use_supabase = True
-        self.pool_size = Config().num_graph_workers
+        self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
@@ -882,9 +884,38 @@ class ExecutionManager(AppService):
                     f"Invalid credentials #{credentials.id} for node #{node.id}: "
                     "type/provider mismatch"
                 )
+
+            # Refresh OAuth credentials
+            if credentials.type == "oauth2":
+                oauth_handler = _get_provider_oauth_handler(credentials.provider)
+                fresh_credentials = oauth_handler.refresh_tokens(credentials)
+                if fresh_credentials.access_token != credentials.access_token:
+                    self.credentials_store.update_creds(user_id, fresh_credentials)
+                    credentials = fresh_credentials
+
             node_credentials[node.id] = credentials
 
         return node_credentials
+
+
+def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
+    if provider_name not in HANDLERS_BY_NAME:
+        raise KeyError(f"Unknown provider '{provider_name}'")
+
+    client_id = getattr(settings.secrets, f"{provider_name}_client_id")
+    client_secret = getattr(settings.secrets, f"{provider_name}_client_secret")
+    if not (client_id and client_secret):
+        raise Exception(  # TODO: ConfigError
+            f"Integration with provider '{provider_name}' is not configured",
+        )
+
+    handler_class = HANDLERS_BY_NAME[provider_name]
+    frontend_base_url = settings.config.frontend_base_url
+    return handler_class(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
+    )
 
 
 def llprint(message: str):
