@@ -132,33 +132,31 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               {filteredBlocks.map((block) => (
                 <Card
                   key={block.id}
-                  className={`m-2 ${getPrimaryCategoryColor(block.categories)}`}
+                  className="m-2 my-4 flex h-20 border"
                   data-id={`block-card-${block.id}`}
+                  onClick={() => addBlock(block.id, block.name)}
                 >
-                  <div className="m-3 flex items-center justify-between">
+                  {/* This div needs to be 10px wide and the same height as the card and be the primary color showing up on top of the card with matching rounded corners */}
+                  <div
+                    className={`z-20 flex min-w-4 flex-shrink-0 rounded-l-xl border ${getPrimaryCategoryColor(block.categories)}`}
+                  ></div>
+
+                  <div className="mx-3 flex flex-1 items-center justify-between">
                     <div className="mr-2 min-w-0 flex-1">
                       <span
-                        className="block truncate font-medium"
+                        className="block truncate text-base font-semibold"
                         data-id={`block-name-${block.id}`}
                       >
                         {beautifyString(block.name)}
                       </span>
+                      <span className="block break-words text-sm font-normal text-gray-500">
+                        {block.description}
+                      </span>
                     </div>
-                    <SchemaTooltip description={block.description} />
                     <div
                       className="flex flex-shrink-0 items-center gap-1"
                       data-id={`block-tooltip-${block.id}`}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => addBlock(block.id, block.name)}
-                        aria-label="Add block"
-                        data-id={`add-block-button-${block.id}`}
-                      >
-                        <PlusIcon />
-                      </Button>
-                    </div>
+                    ></div>
                   </div>
                 </Card>
               ))}

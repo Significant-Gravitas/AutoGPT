@@ -148,6 +148,7 @@ class GetWeatherInformationBlock(Block, GetRequest):
             id="f7a8b2c3-6d4e-5f8b-9e7f-6d4e5f8b9e7f",
             input_schema=GetWeatherInformationBlock.Input,
             output_schema=GetWeatherInformationBlock.Output,
+            description="Retrieves weather information for a specified location using OpenWeatherMap API.",
             test_input={
                 "location": "New York",
                 "api_key": "YOUR_API_KEY",
