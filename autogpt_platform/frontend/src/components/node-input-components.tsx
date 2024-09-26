@@ -49,7 +49,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   className,
   displayName,
 }) => {
-  object ??= ("default" in schema ? schema.default : null) ?? {};
+  object ||= ("default" in schema ? schema.default : null) ?? {};
   return (
     <div className={cn(className, "w-full flex-col")}>
       {displayName && <strong>{displayName}</strong>}
@@ -105,7 +105,7 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
-  displayName ??= propSchema.title || beautifyString(propKey);
+  displayName ||= propSchema.title || beautifyString(propKey);
 
   if ("allOf" in propSchema) {
     // If this happens, that is because Pydantic wraps $refs in an allOf if the
@@ -573,6 +573,7 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
+  value ||= schema.default || "";
   return (
     <div className={className}>
       {schema.enum ? (
@@ -642,6 +643,7 @@ export const NodeTextBoxInput: FC<{
   className,
   displayName,
 }) => {
+  value ||= schema.default || "";
   return (
     <div className={className}>
       <div
@@ -686,8 +688,8 @@ const NodeNumberInput: FC<{
   className,
   displayName,
 }) => {
-  value ??= schema.default;
-  displayName ??= schema.title || beautifyString(selfKey);
+  value ||= schema.default;
+  displayName ||= schema.title || beautifyString(selfKey);
   return (
     <div className={className}>
       <div className="nodrag flex items-center justify-between space-x-3">
@@ -723,7 +725,7 @@ const NodeBooleanInput: FC<{
   className,
   displayName,
 }) => {
-  value ??= schema.default ?? false;
+  value ||= schema.default ?? false;
   return (
     <div className={className}>
       <div className="nodrag flex items-center">
@@ -757,6 +759,7 @@ const NodeFallbackInput: FC<{
   className,
   displayName,
 }) => {
+  value ||= (schema as BlockIOStringSubSchema)?.default;
   return (
     <NodeStringInput
       selfKey={selfKey}
