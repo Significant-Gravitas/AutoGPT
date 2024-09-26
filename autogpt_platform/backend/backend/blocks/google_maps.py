@@ -13,8 +13,8 @@ class GoogleMapsSearchBlock(Block):
             description="Google Maps API Key",
         )
         query: str = SchemaField(
-            description="Search query for local businesses",
-            placeholder="e.g., 'restaurants in New York'",
+            description="Search query",
+            placeholder="e.g., 'New York'",
         )
         radius: int = SchemaField(
             description="Search radius in meters (max 50000)",
@@ -23,10 +23,10 @@ class GoogleMapsSearchBlock(Block):
             le=50000,
         )
         max_results: int = SchemaField(
-            description="Maximum number of results to return",
-            default=20,
+            description="Maximum number of places to return",
+            default=5,
             ge=1,
-            le=60,
+            le=20,
         )
 
     class Output(BlockSchema):
@@ -42,34 +42,31 @@ class GoogleMapsSearchBlock(Block):
             output_schema=GoogleMapsSearchBlock.Output,
             test_input={
                 "api_key": "your_test_api_key",
-                "query": "restaurants in new york",
+                "query": "New York",
                 "radius": 5000,
-                "max_results": 5,
             },
             test_output=[
                 (
                     "place",
                     {
-                        "name": "Test Restaurant",
-                        "address": "123 Test St, New York, NY 10001",
-                        "phone": "+1 (555) 123-4567",
-                        "rating": 4.5,
-                        "reviews": 100,
-                        "website": "https://testrestaurant.com",
+                        "name": "New York",
+                        "address": "New York, NY, USA",
+                        "phone": "",
+                        "rating": 0,
+                        "reviews": 0,
+                        "website": "http://www.nyc.gov/",
                     }
                 ),
             ],
             test_mock={
-                "search_places": lambda *args, **kwargs: [
-                    {
-                        "name": "Test Restaurant",
-                        "address": "123 Test St, New York, NY 10001",
-                        "phone": "+1 (555) 123-4567",
-                        "rating": 4.5,
-                        "reviews": 100,
-                        "website": "https://testrestaurant.com",
-                    }
-                ]
+                "search_places": lambda *args, **kwargs: [{
+                    "name": "New York",
+                    "address": "New York, NY, USA",
+                    "phone": "",
+                    "rating": 0,
+                    "reviews": 0,
+                    "website": "http://www.nyc.gov/",
+                }]
             },
         )
 
@@ -86,39 +83,22 @@ class GoogleMapsSearchBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
-    def search_places(self, api_key, query, radius, max_results):
+    def search_places(self, api_key: str, query: str, radius: int, max_results: int) -> List[dict]:
         client = googlemaps.Client(key=api_key)
-        return self._search_places(client, query, radius, max_results)
-
-    def _search_places(self, client, query, radius, max_results):
-        results = []
-        next_page_token = None
-
-        while len(results) < max_results:
-            response = client.places(
-                query=query,
-                radius=radius,
-                page_token=next_page_token,
-            )
-
-            for place in response["results"]:
-                if len(results) >= max_results:
-                    break
-
-                place_details = client.place(place["place_id"])["result"]
-                results.append(
-                    {
-                        "name": place_details.get("name", ""),
-                        "address": place_details.get("formatted_address", ""),
-                        "phone": place_details.get("formatted_phone_number", ""),
-                        "rating": place_details.get("rating", 0),
-                        "reviews": place_details.get("user_ratings_total", 0),
-                        "website": place_details.get("website", ""),
-                    }
-                )
-
-            next_page_token = response.get("next_page_token")
-            if not next_page_token:
-                break
-
-        return results
+        result = client.places(query=query, radius=radius)
+        
+        if result['status'] == 'OK' and result['results']:
+            places = []
+            for place in result['results'][:max_results]:
+                place_details = client.place(place['place_id'])['result']
+                places.append({
+                    "name": place_details.get('name', ''),
+                    "address": place_details.get('formatted_address', ''),
+                    "phone": place_details.get('formatted_phone_number', ''),
+                    "rating": place_details.get('rating', 0),
+                    "reviews": place_details.get('user_ratings_total', 0),
+                    "website": place_details.get('website', '')
+                })
+            return places
+        else:
+            raise Exception("No results found or API error")
