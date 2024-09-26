@@ -1,7 +1,17 @@
 import googlemaps
+from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
+
+
+class Place(BaseModel):
+    name: str
+    address: str
+    phone: str
+    rating: float
+    reviews: int
+    website: str
 
 
 class GoogleMapsSearchBlock(Block):
@@ -21,14 +31,14 @@ class GoogleMapsSearchBlock(Block):
             le=50000,
         )
         max_results: int = SchemaField(
-            description="Maximum number of results to return",
+            description="Maximum number of results to return (max 60)",
             default=20,
             ge=1,
             le=60,
         )
 
     class Output(BlockSchema):
-        place: dict = SchemaField(description="Place found")
+        place: Place = SchemaField(description="Place found")
         error: str = SchemaField(description="Error message if the search failed")
 
     def __init__(self):
@@ -102,14 +112,14 @@ class GoogleMapsSearchBlock(Block):
                     break
                 place_details = client.place(place["place_id"])["result"]
                 results.append(
-                    {
-                        "name": place_details.get("name", ""),
-                        "address": place_details.get("formatted_address", ""),
-                        "phone": place_details.get("formatted_phone_number", ""),
-                        "rating": place_details.get("rating", 0),
-                        "reviews": place_details.get("user_ratings_total", 0),
-                        "website": place_details.get("website", ""),
-                    }
+                    Place(
+                        name=place_details.get("name", ""),
+                        address=place_details.get("formatted_address", ""),
+                        phone=place_details.get("formatted_phone_number", ""),
+                        rating=place_details.get("rating", 0),
+                        reviews=place_details.get("user_ratings_total", 0),
+                        website=place_details.get("website", ""),
+                    )
                 )
             next_page_token = response.get("next_page_token")
             if not next_page_token:
