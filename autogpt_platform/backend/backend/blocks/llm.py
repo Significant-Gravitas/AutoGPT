@@ -368,6 +368,7 @@ class SummaryStyle(Enum):
     BULLET_POINTS = "bullet points"
     NUMBERED_LIST = "numbered list"
 
+
 class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
@@ -465,9 +466,7 @@ class AITextSummarizerBlock(Block):
         combined_text = "\n\n".join(summaries)
 
         if len(combined_text.split()) <= input_data.max_tokens:
-            prompt = (
-                f"Provide a final summary of the following section summaries in a {input_data.style} form, focus your summary on the topic of `{input_data.focus}` if present:\n\n ```{combined_text}```\n\n Just respond with the final_summary in the format specified."
-            )
+            prompt = f"Provide a final summary of the following section summaries in a {input_data.style} form, focus your summary on the topic of `{input_data.focus}` if present:\n\n ```{combined_text}```\n\n Just respond with the final_summary in the format specified."
 
             llm_response = self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
