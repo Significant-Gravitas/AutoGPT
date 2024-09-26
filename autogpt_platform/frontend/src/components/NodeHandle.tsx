@@ -32,17 +32,21 @@ const NodeHandle: FC<HandleProps> = ({
 
   const label = (
     <div className="flex flex-grow flex-row">
-      <span className="text-m green flex items-end pr-2 text-gray-900">
+      <span className="text-m pr-2 green text-gray-900 flex items-end">
         {schema.title || beautifyString(keyName)}
         {isRequired ? "*" : ""}
       </span>
-      <span className={`${typeClass} flex items-end`}>
-        ({typeName[schema.type as keyof typeof typeName] || "any"})
-      </span>
+      <span className={`${typeClass} flex items-end`}>({typeName[schema.type as keyof typeof typeName] || "any"})</span>
     </div>
   );
 
-  const dot = (
+  const left_dot = (
+    <div
+      className={`m-1 -ml-2 mr-2 h-4 w-4 border-2 bg-white ${isConnected ? getTypeBgColor(schema.type || "any") : "border-gray-300"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
+    />
+  );
+
+  const right_dot = (
     <div
       className={`m-1 h-4 w-4 border-2 bg-white ${isConnected ? getTypeBgColor(schema.type || "any") : "border-gray-300"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
     />
@@ -55,10 +59,10 @@ const NodeHandle: FC<HandleProps> = ({
           type="target"
           position={Position.Left}
           id={keyName}
-          className="background-color: white; border: 2px solid black; width: 15px; height: 15px; border-radius: 50%; bottom: -7px; left: 20%; group -ml-[26px]"
+          className="background-color: white; border: 2px solid black; width: 15px; height: 15px; border-radius: 50%; bottom: 0px; left: 20%; group -ml-[26px]"
         >
           <div className="pointer-events-none flex items-center">
-            {dot}
+            {left_dot}
             {label}
           </div>
         </Handle>
@@ -76,7 +80,7 @@ const NodeHandle: FC<HandleProps> = ({
         >
           <div className="pointer-events-none flex items-center">
             {label}
-            {dot}
+            {right_dot}
           </div>
         </Handle>
       </div>
