@@ -362,6 +362,13 @@ class AITextGeneratorBlock(Block):
             yield "error", str(e)
 
 
+class SummaryStyle(Enum):
+    CONCISE = "concise"
+    DETAILED = "detailed"
+    BULLET_POINTS = "bullet points"
+    NUMBERED_LIST = "numbered list"
+
+
 class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
@@ -370,6 +377,8 @@ class AITextSummarizerBlock(Block):
             default=LlmModel.GPT4_TURBO,
             description="The language model to use for summarizing the text.",
         )
+        focus: str = "general information"
+        style: SummaryStyle = SummaryStyle.CONCISE
         api_key: BlockSecret = SecretField(value="")
         # TODO: Make this dynamic
         max_tokens: int = 4000  # Adjust based on the model's context window
@@ -440,7 +449,7 @@ class AITextSummarizerBlock(Block):
         raise ValueError("Failed to get a response from the LLM.")
 
     def _summarize_chunk(self, chunk: str, input_data: Input) -> str:
-        prompt = f"Summarize the following text concisely:\n\n{chunk}"
+        prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
         llm_response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
@@ -454,13 +463,10 @@ class AITextSummarizerBlock(Block):
         return llm_response["summary"]
 
     def _combine_summaries(self, summaries: list[str], input_data: Input) -> str:
-        combined_text = " ".join(summaries)
+        combined_text = "\n\n".join(summaries)
 
         if len(combined_text.split()) <= input_data.max_tokens:
-            prompt = (
-                "Provide a final, concise summary of the following summaries:\n\n"
-                + combined_text
-            )
+            prompt = f"Provide a final summary of the following section summaries in a {input_data.style} form, focus your summary on the topic of `{input_data.focus}` if present:\n\n ```{combined_text}```\n\n Just respond with the final_summary in the format specified."
 
             llm_response = self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
