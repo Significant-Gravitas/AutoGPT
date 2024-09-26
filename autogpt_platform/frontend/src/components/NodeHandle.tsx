@@ -31,12 +31,12 @@ const NodeHandle: FC<HandleProps> = ({
   const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${side === "left" ? "text-left" : "text-right"}`;
 
   const label = (
-    <div className="flex flex-grow flex-col">
-      <span className="text-m green -mb-1 text-gray-900">
+    <div className="flex flex-grow flex-row">
+      <span className="text-m pr-2 green text-gray-900 flex items-end">
         {schema.title || beautifyString(keyName)}
         {isRequired ? "*" : ""}
       </span>
-      <span className={typeClass}>{typeName[schema.type] || "any"}</span>
+      <span className={`${typeClass} flex items-end`}>({typeName[schema.type as keyof typeof typeName] || "any"})</span>
     </div>
   );
 
