@@ -384,14 +384,13 @@ const NodeKeyValueInput: FC<{
   }
 
   return (
-    <div className={cn(className, "flex flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
+    <div className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}>
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
             {key && (
               <NodeHandle
-                keyName={getEntryKey(key)}
+                keyName={key}
                 schema={{ type: "string" }}
                 isConnected={isConnected(key)}
                 isRequired={false}
@@ -445,7 +444,7 @@ const NodeKeyValueInput: FC<{
           </div>
         ))}
         <Button
-          className="w-full"
+          className="w-[183p] bg-gray-200 text-black rounded-xl font-normal"
           onClick={() =>
             updateKeyValuePairs(keyValuePairs.concat({ key: "", value: "" }))
           }
