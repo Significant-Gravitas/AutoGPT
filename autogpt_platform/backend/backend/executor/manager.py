@@ -17,9 +17,8 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from backend.server.rest_api import AgentServer
 
-from backend.blocks.basic import AgentInputBlock
 from backend.data import db
-from backend.data.block import Block, BlockData, BlockInput, get_block
+from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
     ExecutionQueue,
@@ -737,7 +736,14 @@ class ExecutionManager(AppService):
         nodes_input = []
         for node in graph.starting_nodes:
             input_data = {}
-            if isinstance(get_block(node.block_id), AgentInputBlock):
+            block = get_block(node.block_id)
+
+            # Invalid block & Note block should never be executed.
+            if not block or block.block_type == BlockType.NOTE:
+                continue
+
+            # Extract request input data, and assign it to the input pin.
+            if block.block_type == BlockType.INPUT:
                 name = node.input_default.get("name")
                 if name and name in data:
                     input_data = {"value": data[name]}
