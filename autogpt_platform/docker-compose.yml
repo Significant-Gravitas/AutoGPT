@@ -96,36 +96,6 @@ services:
       file: ./supabase/docker/docker-compose.yml
       service: rest
 
-  realtime:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: realtime
-
-  storage:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: storage
-
-  imgproxy:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: imgproxy
-
-  meta:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: meta
-
-  functions:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: functions
-
   analytics:
     <<: *supabase-services
     extends:
