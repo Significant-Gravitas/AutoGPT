@@ -1,14 +1,27 @@
+import inspect
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, ClassVar, Generator, Generic, Type, TypeVar, cast
+from typing import (
+    Any,
+    ClassVar,
+    Generator,
+    Generic,
+    Optional,
+    Type,
+    TypeVar,
+    cast,
+    get_origin,
+)
 
 import jsonref
 import jsonschema
+from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
-from backend.data.model import ContributorDetails
 from backend.util import json
+
+from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
@@ -36,6 +49,7 @@ class BlockCategory(Enum):
     INPUT = "Block that interacts with input of the graph."
     OUTPUT = "Block that interacts with output of the graph."
     LOGIC = "Programming logic to control the flow of your agent"
+    DEVELOPER_TOOLS = "Developer tools such as GitHub blocks."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -49,7 +63,7 @@ class BlockSchema(BaseModel):
         if cls.cached_jsonschema:
             return cls.cached_jsonschema
 
-        model = jsonref.replace_refs(cls.model_json_schema())
+        model = jsonref.replace_refs(cls.model_json_schema(), merge_props=True)
 
         def ref_to_dict(obj):
             if isinstance(obj, dict):
@@ -122,6 +136,46 @@ class BlockSchema(BaseModel):
             if field_info.is_required()
         }
 
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs):
+        """Validates the schema definition. Rules:
+        - Only one `CredentialsMetaInput` field may be present.
+          - This field MUST be called `credentials`.
+        - A field that is called `credentials` MUST be a `CredentialsMetaInput`.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        credentials_fields = [
+            field_name
+            for field_name, info in cls.model_fields.items()
+            if (
+                inspect.isclass(info.annotation)
+                and issubclass(
+                    get_origin(info.annotation) or info.annotation,
+                    CredentialsMetaInput,
+                )
+            )
+        ]
+        if len(credentials_fields) > 1:
+            raise ValueError(
+                f"{cls.__qualname__} can only have one CredentialsMetaInput field"
+            )
+        elif (
+            len(credentials_fields) == 1
+            and credentials_fields[0] != CREDENTIALS_FIELD_NAME
+        ):
+            raise ValueError(
+                f"CredentialsMetaInput field on {cls.__qualname__} "
+                "must be named 'credentials'"
+            )
+        elif (
+            len(credentials_fields) == 0
+            and CREDENTIALS_FIELD_NAME in cls.model_fields.keys()
+        ):
+            raise TypeError(
+                f"Field 'credentials' on {cls.__qualname__} "
+                f"must be of type {CredentialsMetaInput.__name__}"
+            )
+
 
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
 BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
@@ -143,6 +197,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockData | list[BlockData] | None = None,
         test_mock: dict[str, Any] | None = None,
+        test_credentials: Optional[Credentials] = None,
         disabled: bool = False,
         static_output: bool = False,
         ui_type: BlockUIType = BlockUIType.STANDARD,
@@ -170,6 +225,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.test_input = test_input
         self.test_output = test_output
         self.test_mock = test_mock
+        self.test_credentials = test_credentials
         self.description = description
         self.categories = categories or set()
         self.contributors = contributors or set()
@@ -178,7 +234,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.ui_type = ui_type
 
     @abstractmethod
-    def run(self, input_data: BlockSchemaInputType) -> BlockOutput:
+    def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
         """
         Run the block with the given input data.
         Args:
@@ -209,13 +265,15 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "uiType": self.ui_type.value,
         }
 
-    def execute(self, input_data: BlockInput) -> BlockOutput:
+    def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        for output_name, output_data in self.run(self.input_schema(**input_data)):
+        for output_name, output_data in self.run(
+            self.input_schema(**input_data), **kwargs
+        ):
             if error := self.output_schema.validate_field(output_name, output_data):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
