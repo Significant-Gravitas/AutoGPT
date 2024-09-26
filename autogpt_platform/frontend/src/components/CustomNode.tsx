@@ -34,6 +34,7 @@ import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
 import { IconCoin } from "./ui/icons";
+import * as Separator from '@radix-ui/react-separator';
 
 type ParsedKey = { key: string; index?: number };
 
@@ -169,7 +170,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 <span className="text-m green -mb-1 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
-                <div key={propKey} onMouseOver={() => {}}>
+                <div key={propKey} onMouseOver={() => { }}>
                   {!isConnected && (
                     <NodeGenericInputField
                       className="mb-2 mt-1"
@@ -215,7 +216,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey} onMouseOver={() => { }}>
                 {propKey !== "value" ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
@@ -254,7 +255,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey} onMouseOver={() => { }}>
                 {"credentials_provider" in propSchema ? (
                   <span className="text-m green -mb-1 text-gray-900">
                     Credentials
@@ -548,121 +549,128 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       onMouseLeave={handleMouseLeave}
       data-id={`custom-node-${id}`}
     >
+      {/* Header */}
       <div
-        className={`mb-2 p-3 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
+        className={`mb-2 flex h-20 border-b-2 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} rounded-t-xl`}
       >
-        <div className="flex items-center justify-between">
-          <div className="font-roboto p-3 text-lg font-semibold">
-            {beautifyString(
-              data.blockType?.replace(/Block$/, "") || data.title,
-            )}
+        {/* Color Stripe */}
+        <div
+          className={`z-20 h-20 flex min-w-2 flex-shrink-0 rounded-tl-xl border ${getPrimaryCategoryColor(data.categories)}`}
+        ></div>
+
+        <div className="flex flex-col w-full">
+          <div className="flex flex-row items-center justify-between">
+            <div className="font-roboto p-3 text-lg font-semibold">
+              {beautifyString(
+                data.blockType?.replace(/Block$/, "") || data.title,
+              )}
+            </div>
+            <Badge
+              variant="outline"
+              className={`mr-5 ${getPrimaryCategoryColor(data.categories)} opacity-50 rounded-xl`}
+            >
+              {data.categories[0].category}
+            </Badge>
           </div>
-          <SchemaTooltip description={data.description} />
-        </div>
-        <div className="flex gap-[5px]">
-          {isHovered && (
-            <>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copyNode}
-                title="Copy node"
-              >
-                <Copy size={18} />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={deleteNode}
-                title="Delete node"
-              >
-                <Trash2 size={18} />
-              </Button>
-            </>
+          {blockCost && (
+            <div className="p-3 font-semibold">
+              <span className="ml-auto flex items-center">
+                <IconCoin /> {blockCost.cost_amount} per {blockCost.cost_type}
+              </span>
+            </div>
           )}
         </div>
       </div>
-      {blockCost && (
-        <div className="p-3 font-semibold">
-          <span className="ml-auto flex items-center">
-            <IconCoin /> {blockCost.cost_amount} per {blockCost.cost_type}
-          </span>
-        </div>
-      )}
-      {data.uiType !== BlockUIType.NOTE ? (
-        <div className="flex items-start justify-between p-3">
+      {/* Body */}
+      <div className="ml-5">
+
+
+        {/* Input Handles */}
+        {data.uiType !== BlockUIType.NOTE ? (
+          <div className="flex items-start justify-between">
+            <div>
+              {data.inputSchema &&
+                generateInputHandles(data.inputSchema, data.uiType)}
+            </div>
+            {/* <div className="flex-none">
+            {data.outputSchema &&
+              generateOutputHandles(data.outputSchema, data.uiType)}
+          </div> */}
+          </div>
+        ) : (
           <div>
             {data.inputSchema &&
               generateInputHandles(data.inputSchema, data.uiType)}
           </div>
-          <div className="flex-none">
-            {data.outputSchema &&
-              generateOutputHandles(data.outputSchema, data.uiType)}
+        )}
+        {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
+          <div
+            data-id="latest-output"
+            className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
+          >
+            {(data.executionResults?.length ?? 0) > 0 ? (
+              <>
+                <DataTable
+                  title="Latest Output"
+                  truncateLongData
+                  data={data.executionResults!.at(-1)?.data || {}}
+                />
+                <div className="flex justify-end">
+                  <Button variant="ghost" onClick={handleOutputClick}>
+                    View More
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <span>No outputs yet</span>
+            )}
           </div>
-        </div>
-      ) : (
-        <div>
-          {data.inputSchema &&
-            generateInputHandles(data.inputSchema, data.uiType)}
-        </div>
-      )}
-      {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
-        <div
-          data-id="latest-output"
-          className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
-        >
-          {(data.executionResults?.length ?? 0) > 0 ? (
-            <>
-              <DataTable
-                title="Latest Output"
-                truncateLongData
-                data={data.executionResults!.at(-1)?.data || {}}
-              />
-              <div className="flex justify-end">
-                <Button variant="ghost" onClick={handleOutputClick}>
-                  View More
-                </Button>
+        )}
+        {/* Advanced Settings */}
+        {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
+          <>
+
+            <Separator.Root className="w-full h-[2px] bg-gray-200"></Separator.Root>
+            <div className="mt-2.5 flex items-center justify-between pb-4 ">
+              <span className="">Advanced</span>
+              <Switch onCheckedChange={toggleAdvancedSettings} className="mr-5" />
+
+            </div>
+          </>
+        )}
+        {/* Output Handles */}
+        {data.uiType !== BlockUIType.NOTE ? (
+          <>
+            <Separator.Root className="w-full h-[2px] bg-gray-200"></Separator.Root>
+
+            <div className="flex items-start justify-end pr-2">
+              <div className="flex-none">
+                {data.outputSchema &&
+                  generateOutputHandles(data.outputSchema, data.uiType)}
               </div>
-            </>
-          ) : (
-            <span>No outputs yet</span>
-          )}
-        </div>
-      )}
-      {data.uiType !== BlockUIType.NOTE && (
-        <div className="mt-2.5 flex items-center pb-4 pl-4">
-          <Switch checked={isOutputOpen} onCheckedChange={toggleOutput} />
-          <span className="m-1 mr-4">Output</span>
-          {hasAdvancedFields && (
-            <>
-              <Switch onCheckedChange={toggleAdvancedSettings} />
-              <span className="m-1">Advanced</span>
-            </>
-          )}
-          {data.status && (
-            <Badge
-              variant="outline"
-              data-id={`badge-${id}-${data.status}`}
-              className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
-            >
-              {data.status}
-            </Badge>
-          )}
-        </div>
-      )}
-      <InputModalComponent
-        title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSave={handleModalSave}
-        defaultValue={inputModalValue}
-        key={activeKey}
-      />
-      <OutputModalComponent
-        isOpen={isOutputModalOpen}
-        onClose={() => setIsOutputModalOpen(false)}
-        executionResults={data.executionResults?.toReversed() || []}
-      />
+            </div>
+          </>
+        ) : (
+          <>
+          </>
+        )}
+
+
+        <InputModalComponent
+          title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSave={handleModalSave}
+          defaultValue={inputModalValue}
+          key={activeKey}
+        />
+        <OutputModalComponent
+          isOpen={isOutputModalOpen}
+          onClose={() => setIsOutputModalOpen(false)}
+          executionResults={data.executionResults?.toReversed() || []}
+        />
+      </div>
     </div>
+    // End Body
   );
 }
