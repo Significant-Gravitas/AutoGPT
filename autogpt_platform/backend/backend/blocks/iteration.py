@@ -21,6 +21,7 @@ class ListIteratorBlock(Block):
             id="f8e7d6c5-b4a3-2c1d-0e9f-8g7h6i5j4k3l",
             input_schema=ListIteratorBlock.Input,
             output_schema=ListIteratorBlock.Output,
+            description="Iterates over a list of items and outputs each item with its index.",
             categories={BlockCategory.LOGIC},
             test_input={"items": [1, "two", {"three": 3}, [4, 5]]},
             test_output=[
@@ -31,6 +32,6 @@ class ListIteratorBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         for index, item in enumerate(input_data.items):
             yield "item", (index, item)

@@ -70,7 +70,7 @@ class ConditionBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         value1 = input_data.value1
         operator = input_data.operator
         value2 = input_data.value2

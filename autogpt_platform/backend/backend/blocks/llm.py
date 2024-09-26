@@ -92,7 +92,12 @@ class AIStructuredResponseGeneratorBlock(Block):
             description="Expected format of the response. If provided, the response will be validated against this format. "
             "The keys should be the expected fields in the response, and the values should be the description of the field.",
         )
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for answering the prompt.",
+            advanced=False,
+        )
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
@@ -203,7 +208,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         prompt = []
 
         def trim_prompt(s: str) -> str:
@@ -307,7 +312,12 @@ class AIStructuredResponseGeneratorBlock(Block):
 class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for answering the prompt.",
+            advanced=False,
+        )
         api_key: BlockSecret = SecretField(value="")
         sys_prompt: str = ""
         retry: int = 3
@@ -341,7 +351,7 @@ class AITextGeneratorBlock(Block):
                 raise RuntimeError(output_data)
         raise ValueError("Failed to get a response from the LLM.")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             object_input_data = AIStructuredResponseGeneratorBlock.Input(
                 **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
@@ -355,7 +365,11 @@ class AITextGeneratorBlock(Block):
 class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
         text: str
-        model: LlmModel = LlmModel.GPT4_TURBO
+        model: LlmModel = SchemaField(
+            title="LLM Model",
+            default=LlmModel.GPT4_TURBO,
+            description="The language model to use for summarizing the text.",
+        )
         api_key: BlockSecret = SecretField(value="")
         # TODO: Make this dynamic
         max_tokens: int = 4000  # Adjust based on the model's context window
@@ -383,7 +397,7 @@ class AITextSummarizerBlock(Block):
             },
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             for output in self._run(input_data):
                 yield output
@@ -492,6 +506,7 @@ class AIConversationBlock(Block):
             description="List of messages in the conversation.", min_length=1
         )
         model: LlmModel = SchemaField(
+            title="LLM Model",
             default=LlmModel.GPT4_TURBO,
             description="The language model to use for the conversation.",
         )
@@ -582,7 +597,7 @@ class AIConversationBlock(Block):
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             api_key = (
                 input_data.api_key.get_secret_value()
