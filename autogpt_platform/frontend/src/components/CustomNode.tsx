@@ -601,7 +601,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               generateInputHandles(data.inputSchema, data.uiType)}
           </div>
         )}
-        
+
         {/* Advanced Settings */}
         {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
           <>
@@ -630,8 +630,8 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         ) : (
           <></>
         )}
-{/* Display Outputs  */}
-{isOutputOpen && data.uiType !== BlockUIType.NOTE && (
+        {/* Display Outputs  */}
+        {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
           <div
             data-id="latest-output"
             className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
