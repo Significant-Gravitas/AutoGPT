@@ -540,7 +540,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           value === inputValues[key] || (!value && !inputValues[key]),
       ),
     );
-  console.debug(`Block cost ${inputValues}|${data.blockCosts}=${blockCost}`);
 
   return (
     <div
