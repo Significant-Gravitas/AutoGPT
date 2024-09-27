@@ -27,7 +27,7 @@ ingress:
     networking.gke.io/managed-certificates: "autogpt-market-cert"
     networking.gke.io/v1beta1.FrontendConfig: "autogpt-market-frontend-config"
   hosts:
-    - host: platform.agpt.co
+    - host: market.agpt.co
       paths:
         - path: /
           pathType: Prefix
