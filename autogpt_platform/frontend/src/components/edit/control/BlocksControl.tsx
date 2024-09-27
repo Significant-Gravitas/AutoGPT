@@ -77,11 +77,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   return (
     <Popover
       open={pinBlocksPopover ? true : undefined}
-      onOpenChange={(open) => {
-        if (!open) {
-          resetFilters();
-        }
-      }}
+      onOpenChange={(open) => open || resetFilters()}
     >
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
