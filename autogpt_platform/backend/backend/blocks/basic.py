@@ -22,7 +22,7 @@ class StoreValueBlock(Block):
         trigger: Any = SchemaField(
             description="Trigger the block to produce the output. Passed value is never used."
         )
-        value: Any = SchemaField(
+        input: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
             default=None,
@@ -40,7 +40,7 @@ class StoreValueBlock(Block):
             output_schema=StoreValueBlock.Output,
             test_input=[
                 {"trigger": "Hello, World!"},
-                {"trigger": "Hello, World!", "value": "Existing Data"},
+                {"trigger": "Hello, World!", "input": "Existing Data"},
             ],
             test_output=[
                 ("output", None),
@@ -50,7 +50,7 @@ class StoreValueBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "output", input_data.value
+        yield "output", input_data.input
 
 
 class PrintToConsoleBlock(Block):
