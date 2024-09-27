@@ -7,6 +7,7 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
+from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from autogpt_libs.utils.synchronize import KeyedMutex
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +22,7 @@ from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.server.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config, Settings
@@ -40,6 +42,7 @@ class AgentServer(AppService):
     def __init__(self, event_queue: AsyncEventQueue | None = None):
         super().__init__(port=Config().agent_server_port)
         self.event_queue = event_queue or AsyncRedisEventQueue()
+        self.integration_creds_manager = IntegrationCredentialsManager()
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
@@ -661,3 +664,13 @@ class AgentServer(AppService):
             }
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
+
+    # -------- CREDENTIALS MANAGEMENT -------- #
+
+    @expose
+    def acquire_credentials(self, user_id: str, credentials_id: str) -> Credentials:
+        return self.integration_creds_manager.acquire(user_id, credentials_id)
+
+    @expose
+    def release_credentials(self, user_id: str, credentials_id: str) -> None:
+        return self.integration_creds_manager.release(user_id, credentials_id)

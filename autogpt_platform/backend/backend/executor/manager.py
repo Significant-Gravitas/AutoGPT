@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar, cast
 
-from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -105,7 +104,6 @@ def execute_node(
     loop: asyncio.AbstractEventLoop,
     api_client: "AgentServer",
     data: NodeExecution,
-    input_credentials: Credentials | None = None,
     execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
     """
@@ -166,8 +164,12 @@ def execute_node(
     user_credit = get_user_credit_model()
 
     extra_exec_kwargs = {}
-    if input_credentials:
-        extra_exec_kwargs["credentials"] = input_credentials
+    # Last-minute fetch credentials + acquire a lock to prevent changes during execution
+    credentials = None
+    if CREDENTIALS_FIELD_NAME in input_data:
+        credentials_meta = CredentialsMetaInput(**input_data[CREDENTIALS_FIELD_NAME])
+        credentials = api_client.acquire_credentials(user_id, credentials_meta.id)
+        extra_exec_kwargs["credentials"] = credentials
 
     output_size = 0
     try:
@@ -194,6 +196,11 @@ def execute_node(
             ):
                 yield execution
 
+        # Release lock on credentials ASAP
+        if credentials:
+            api_client.release_credentials(user_id, credentials.id)
+            credentials = None
+
         r = update_execution(ExecutionStatus.COMPLETED)
         s = input_size + output_size
         t = (
@@ -212,18 +219,13 @@ def execute_node(
         raise e
 
     finally:
+        # Ensure credentials are released even if execution fails
+        if credentials:
+            api_client.release_credentials(user_id, credentials.id)
+            credentials = None
         if execution_stats is not None:
             execution_stats["input_size"] = input_size
             execution_stats["output_size"] = output_size
-
-
-@contextmanager
-def synchronized(api_client: "AgentServer", key: Any):
-    api_client.acquire_lock(key)
-    try:
-        yield
-    finally:
-        api_client.release_lock(key)
 
 
 def _enqueue_next_nodes(
@@ -401,12 +403,6 @@ def validate_exec(
     return data, node_block.name
 
 
-def get_agent_server_client() -> "AgentServer":
-    from backend.server.rest_api import AgentServer
-
-    return get_service_client(AgentServer, settings.config.agent_server_port)
-
-
 class Executor:
     """
     This class contains event handlers for the process pool executor events.
@@ -475,7 +471,6 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecution],
         node_exec: NodeExecution,
-        input_credentials: Credentials | None,
     ):
         log_metadata = LogMetadata(
             user_id=node_exec.user_id,
@@ -488,7 +483,7 @@ class Executor:
 
         execution_stats = {}
         timing_info, _ = cls._on_node_execution(
-            q, node_exec, input_credentials, log_metadata, execution_stats
+            q, node_exec, log_metadata, execution_stats
         )
         execution_stats["walltime"] = timing_info.wall_time
         execution_stats["cputime"] = timing_info.cpu_time
@@ -503,14 +498,13 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecution],
         node_exec: NodeExecution,
-        input_credentials: Credentials | None,
         log_metadata: LogMetadata,
         stats: dict[str, Any] | None = None,
     ):
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
             for execution in execute_node(
-                cls.loop, cls.agent_server_client, node_exec, input_credentials, stats
+                cls.loop, cls.agent_server_client, node_exec, stats
             ):
                 q.add(execution)
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
@@ -640,11 +634,7 @@ class Executor:
                 )
                 running_executions[exec_data.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
-                    (
-                        queue,
-                        exec_data,
-                        graph_exec.node_input_credentials.get(exec_data.node_id),
-                    ),
+                    (queue, exec_data),
                     callback=make_exec_callback(exec_data),
                 )
 
@@ -684,6 +674,13 @@ class ExecutionManager(AppService):
         self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        self._agent_server_client = None
+
+    @property
+    def agent_server_client(self) -> "AgentServer":
+        if not self._agent_server_client:
+            self._agent_server_client = get_agent_server_client()
+        return self._agent_server_client
 
     def run_service(self):
         from autogpt_libs.supabase_integration_credentials_store import (
@@ -720,10 +717,6 @@ class ExecutionManager(AppService):
 
         super().cleanup()
 
-    @property
-    def agent_server_client(self) -> "AgentServer":
-        return get_agent_server_client()
-
     @expose
     def add_execution(
         self, graph_id: str, data: BlockInput, user_id: str
@@ -733,7 +726,7 @@ class ExecutionManager(AppService):
             raise Exception(f"Graph #{graph_id} not found.")
 
         graph.validate_graph(for_run=True)
-        node_input_credentials = self._get_node_input_credentials(graph, user_id)
+        self._validate_node_input_credentials(graph, user_id)
 
         nodes_input = []
         for node in graph.starting_nodes:
@@ -789,7 +782,6 @@ class ExecutionManager(AppService):
             graph_id=graph_id,
             graph_exec_id=graph_exec_id,
             start_node_execs=starting_node_execs,
-            node_input_credentials=node_input_credentials,
         )
         self.queue.add(graph_exec)
 
@@ -836,12 +828,8 @@ class ExecutionManager(AppService):
                 )
                 self.agent_server_client.send_execution_update(exec_update.model_dump())
 
-    def _get_node_input_credentials(
-        self, graph: Graph, user_id: str
-    ) -> dict[str, Credentials]:
-        """Gets all credentials for all nodes of the graph"""
-
-        node_credentials: dict[str, Credentials] = {}
+    def _validate_node_input_credentials(self, graph: Graph, user_id: str):
+        """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:
             block = get_block(node.block_id)
@@ -885,17 +873,8 @@ class ExecutionManager(AppService):
                     "type/provider mismatch"
                 )
 
-            # Refresh OAuth credentials
-            if credentials.type == "oauth2":
-                oauth_handler = _get_provider_oauth_handler(credentials.provider)
-                fresh_credentials = oauth_handler.refresh_tokens(credentials)
-                if fresh_credentials.access_token != credentials.access_token:
-                    self.credentials_store.update_creds(user_id, fresh_credentials)
-                    credentials = fresh_credentials
 
-            node_credentials[node.id] = credentials
-
-        return node_credentials
+# ------- UTILITIES ------- #
 
 
 def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
@@ -916,6 +895,21 @@ def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
     )
+
+
+def get_agent_server_client() -> "AgentServer":
+    from backend.server.rest_api import AgentServer
+
+    return get_service_client(AgentServer, settings.config.agent_server_port)
+
+
+@contextmanager
+def synchronized(api_client: "AgentServer", key: Any):
+    api_client.acquire_lock(key)
+    try:
+        yield
+    finally:
+        api_client.release_lock(key)
 
 
 def llprint(message: str):
