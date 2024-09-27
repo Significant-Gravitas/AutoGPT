@@ -560,26 +560,29 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
-            <div className="font-roboto px-3 pt-3 text-lg font-semibold">
+            <div className="font-roboto px-3 text-lg font-semibold">
               {beautifyString(
                 data.blockType?.replace(/Block$/, "") || data.title,
               )}
             </div>
-            <Badge
+
+          </div>
+          {blockCost && (
+            <div className="px-3 text-base font-light">
+              <span className="ml-auto flex items-center">
+                <IconCoin />{" "}
+                <span className="m-1 font-medium">{blockCost.cost_amount}</span>{" "}
+                per {blockCost.cost_type}
+              </span>
+            </div>
+          )}
+        </div>
+        <Badge
               variant="outline"
               className={`mr-5 ${getPrimaryCategoryColor(data.categories)} rounded-xl opacity-50`}
             >
               {data.categories[0].category}
             </Badge>
-          </div>
-          {blockCost && (
-            <div className="px-3 font-light text-base">
-              <span className="ml-auto flex items-center">
-                <IconCoin /> <span className="font-medium m-1">{blockCost.cost_amount}</span> per {blockCost.cost_type}
-              </span>
-            </div>
-          )}
-        </div>
       </div>
       {/* Body */}
       <div className="ml-5">
