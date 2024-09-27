@@ -33,6 +33,7 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
+import NodeOutputs from "./NodeOutputs";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -705,11 +706,16 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
             {(data.executionResults?.length ?? 0) > 0 ? (
               <div className="mt-0 rounded-b-xl bg-gray-100">
                 <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
-                <DataTable
+                <NodeOutputs
                   title="Latest Output"
                   truncateLongData
                   data={data.executionResults!.at(-1)?.data || {}}
                 />
+                {/* <DataTable
+                  title="Latest Output"
+                  truncateLongData
+                  data={data.executionResults!.at(-1)?.data || {}}
+                /> */}
                 <div className="flex justify-end">
                   <Button variant="ghost" onClick={handleOutputClick}>
                     View More
@@ -742,14 +748,14 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                           data.status === "QUEUED",
                         "border-gray-600 bg-gray-600 font-black":
                           data.status === "INCOMPLETE",
-                      }
+                      },
                 )}
               >
                 {hasConfigErrors || hasOutputError
                   ? "Error"
                   : data.status
-                  ? beautifyString(data.status)
-                  : "Not Run"}
+                    ? beautifyString(data.status)
+                    : "Not Run"}
               </Badge>
             </div>
           </div>
