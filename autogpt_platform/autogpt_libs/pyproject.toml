@@ -8,6 +8,7 @@ packages = [{ include = "autogpt_libs" }]
 
 [tool.poetry.dependencies]
 colorama = "^0.4.6"
+expiringdict = "^1.2.2"
 google-cloud-logging = "^3.8.0"
 pydantic = "^2.8.2"
 pydantic-settings = "^2.5.2"

@@ -7,6 +7,7 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
+from autogpt_libs.utils.synchronize import KeyedMutex
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,7 +22,6 @@ from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
-from backend.util.lock import KeyedMutex
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config, Settings
 
