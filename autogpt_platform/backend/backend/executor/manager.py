@@ -673,13 +673,6 @@ class ExecutionManager(AppService):
         self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
-        self._agent_server_client = None
-
-    @property
-    def agent_server_client(self) -> "AgentServer":
-        if not self._agent_server_client:
-            self._agent_server_client = get_agent_server_client()
-        return self._agent_server_client
 
     def run_service(self):
         from autogpt_libs.supabase_integration_credentials_store import (
@@ -715,6 +708,12 @@ class ExecutionManager(AppService):
         self.executor.shutdown(cancel_futures=True)
 
         super().cleanup()
+
+    @property
+    def agent_server_client(self) -> "AgentServer":
+        # Since every single usage of this property happens from a different thread,
+        # there is no value in caching it.
+        return get_agent_server_client()
 
     @expose
     def add_execution(
