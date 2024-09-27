@@ -23,7 +23,7 @@ import { getBehaveAs } from "@/lib/utils";
 export async function NavBar() {
   const isAvailable = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   );
   const { user } = await getServerUser();
 
@@ -44,7 +44,11 @@ export async function NavBar() {
           <SheetContent side="left">
             <nav className="grid gap-6 text-lg font-medium">
               <Link
-                href={getBehaveAs() === "CLOUD" ? "/marketplace" : "http://dev-builder.agpt.co/marketplace"}
+                href={
+                  getBehaveAs() === "CLOUD"
+                    ? "/marketplace"
+                    : "http://dev-builder.agpt.co/marketplace"
+                }
                 // open in new tab if not local
                 target={getBehaveAs() === "CLOUD" ? "_self" : "_blank"}
                 className="mt-4 flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
@@ -79,7 +83,11 @@ export async function NavBar() {
             </a>
           </div>
           <Link
-            href={getBehaveAs() === "CLOUD" ? "/marketplace" : "http://dev-builder.agpt.co/marketplace"}
+            href={
+              getBehaveAs() === "CLOUD"
+                ? "/marketplace"
+                : "http://dev-builder.agpt.co/marketplace"
+            }
             className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground"
             target={getBehaveAs() === "CLOUD" ? "_self" : "_blank"}
           >
