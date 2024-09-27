@@ -35,6 +35,8 @@ import { Badge } from "./ui/badge";
 import DataTable from "./DataTable";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { DotsVerticalIcon } from "@radix-ui/react-icons";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -170,7 +172,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 <span className="text-m green mb-0 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
-                <div key={propKey} onMouseOver={() => { }}>
+                <div key={propKey} onMouseOver={() => {}}>
                   {!isConnected && (
                     <NodeGenericInputField
                       className="mb-2 mt-1"
@@ -216,7 +218,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => { }}>
+              <div key={propKey} onMouseOver={() => {}}>
                 {propKey !== "value" ? (
                   <span className="text-m green mb-0 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
@@ -255,7 +257,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => { }}>
+              <div key={propKey} onMouseOver={() => {}}>
                 {"credentials_provider" in propSchema ? (
                   <span className="text-m green mb-0 text-gray-900">
                     Credentials
@@ -523,27 +525,38 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const statusClass = (() => {
     if (hasConfigErrors || hasOutputError) return "border-red-200 border-4";
     switch (data.status?.toLowerCase()) {
-      case "completed": return "border-green-200 border-4";
-      case "running": return "border-yellow-200 border-4";
-      case "failed": return "border-red-200 border-4";
-      case "incomplete": return "border-purple-200 border-4";
-      case "queued": return "border-cyan-200 border-4";
-      default: return "";
+      case "completed":
+        return "border-green-200 border-4";
+      case "running":
+        return "border-yellow-200 border-4";
+      case "failed":
+        return "border-red-200 border-4";
+      case "incomplete":
+        return "border-purple-200 border-4";
+      case "queued":
+        return "border-cyan-200 border-4";
+      default:
+        return "";
     }
   })();
 
   const statusBackgroundClass = (() => {
     if (hasConfigErrors || hasOutputError) return "bg-red-200";
     switch (data.status?.toLowerCase()) {
-      case "completed": return "bg-green-200";
-      case "running": return "bg-yellow-200";
-      case "failed": return "bg-red-200";
-      case "incomplete": return "bg-purple-200";
-      case "queued": return "bg-cyan-200";
-      default: return "";
+      case "completed":
+        return "bg-green-200";
+      case "running":
+        return "bg-yellow-200";
+      case "failed":
+        return "bg-red-200";
+      case "incomplete":
+        return "bg-purple-200";
+      case "queued":
+        return "bg-cyan-200";
+      default:
+        return "";
     }
   })();
-    
 
   const hasAdvancedFields =
     data.inputSchema &&
@@ -605,6 +618,34 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         >
           {data.categories[0].category}
         </Badge>
+
+        {/* Context Menu Trigger */}
+        <ContextMenu.Root>
+          <ContextMenu.Trigger>
+            <button
+              aria-label="Options"
+              className="mr-2 cursor-pointer border-none bg-transparent p-1"
+            >
+              <DotsVerticalIcon className="h-5 w-5" />
+            </button>
+          </ContextMenu.Trigger>
+
+          <ContextMenu.Content className="rounded-xl bg-white p-1 shadow-md">
+            <ContextMenu.Item
+              onSelect={copyNode}
+              className="cursor-pointer rounded-md px-3 py-2 hover:bg-gray-100"
+            >
+              Copy
+            </ContextMenu.Item>
+            <ContextMenu.Separator className="my-1 h-px bg-gray-200" />
+            <ContextMenu.Item
+              onSelect={deleteNode}
+              className="cursor-pointer rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
+            >
+              Delete
+            </ContextMenu.Item>
+          </ContextMenu.Content>
+        </ContextMenu.Root>
       </div>
       {/* Body */}
       <div className="ml-5 rounded-b-xl">
@@ -641,7 +682,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           <>
             <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
 
-            <div className="flex items-start justify-end pr-2 rounded-b-xl mt-2">
+            <div className="mt-2 flex items-start justify-end rounded-b-xl pr-2">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
@@ -651,8 +692,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         ) : (
           <></>
         )}
-
-
       </div>
       {/* End Body */}
       {/* Footer */}
@@ -661,10 +700,13 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
           <div
             data-id="latest-output"
-            className={cn("nodrag break-words w-full overflow-hidden", statusBackgroundClass)}
+            className={cn(
+              "nodrag w-full overflow-hidden break-words",
+              statusBackgroundClass,
+            )}
           >
             {(data.executionResults?.length ?? 0) > 0 ? (
-              <div className="mt-0 bg-gray-100 rounded-b-xl">
+              <div className="mt-0 rounded-b-xl bg-gray-100">
                 <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
                 <DataTable
                   title="Latest Output"
@@ -678,18 +720,28 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 </div>
               </div>
             ) : (
-              <div className="min-h-4 mt-0 bg-white rounded-b-xl"></div>
+              <div className="mt-0 min-h-4 rounded-b-xl bg-white"></div>
             )}
-            <div className={cn("flex justify-end items-center min-h-12", statusBackgroundClass)}>
+            <div
+              className={cn(
+                "flex min-h-12 items-center justify-end",
+                statusBackgroundClass,
+              )}
+            >
               <Badge
                 variant="default"
                 className={cn(
-                  "text-xs font-semibold min-w-[114px] mr-4 rounded-3xl text-center flex items-center justify-center",
-                  data.status === "COMPLETED" && "bg-green-500 border-green-500 text-white",
-                  data.status === "RUNNING" && "bg-yellow-500 border-yellow-500 text-white",
-                  data.status === "FAILED" && "bg-red-500 border-red-500 text-white",
-                  data.status === "QUEUED" && "bg-blue-500 border-blue-500 text-white",
-                  data.status === "INCOMPLETE" && "bg-gray-500 border-gray-500 font-black"
+                  "mr-4 flex min-w-[114px] items-center justify-center rounded-3xl text-center text-xs font-semibold",
+                  data.status === "COMPLETED" &&
+                    "border-green-500 bg-green-500 text-white",
+                  data.status === "RUNNING" &&
+                    "border-yellow-500 bg-yellow-500 text-white",
+                  data.status === "FAILED" &&
+                    "border-red-500 bg-red-500 text-white",
+                  data.status === "QUEUED" &&
+                    "border-blue-500 bg-blue-500 text-white",
+                  data.status === "INCOMPLETE" &&
+                    "border-gray-500 bg-gray-500 font-black",
                 )}
               >
                 {data.status ? beautifyString(data.status) : "Not Run"}
