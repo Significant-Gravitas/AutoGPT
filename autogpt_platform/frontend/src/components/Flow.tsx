@@ -579,21 +579,27 @@ const FlowEditor: React.FC<{
         >
           <Controls />
           <Background />
-          <ControlPanel className="absolute z-10" controls={editorControls}>
-            <BlocksControl
-              pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
-              blocks={availableNodes}
-              addBlock={addNode}
-            />
-            <SaveControl
-              agentMeta={savedAgent}
-              onSave={(isTemplate) => requestSave(isTemplate ?? false)}
-              agentDescription={agentDescription}
-              onDescriptionChange={setAgentDescription}
-              agentName={agentName}
-              onNameChange={setAgentName}
-            />
-          </ControlPanel>
+          <ControlPanel
+            className="absolute z-10"
+            controls={editorControls}
+            topChildren={
+              <BlocksControl
+                pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
+                blocks={availableNodes}
+                addBlock={addNode}
+              />
+            }
+            botChildren={
+              <SaveControl
+                agentMeta={savedAgent}
+                onSave={(isTemplate) => requestSave(isTemplate ?? false)}
+                agentDescription={agentDescription}
+                onDescriptionChange={setAgentDescription}
+                agentName={agentName}
+                onNameChange={setAgentName}
+              />
+            }
+          ></ControlPanel>
           <PrimaryActionBar
             onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
             onClickRunAgent={() => {

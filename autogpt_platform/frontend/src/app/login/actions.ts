@@ -30,7 +30,7 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
     }
 
     revalidatePath("/", "layout");
-    redirect("/profile");
+    redirect("/");
   });
 }
 
@@ -61,7 +61,7 @@ export async function signup(values: z.infer<typeof loginFormSchema>) {
       }
 
       revalidatePath("/", "layout");
-      redirect("/profile");
+      redirect("/");
     },
   );
 }
