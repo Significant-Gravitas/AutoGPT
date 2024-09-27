@@ -39,7 +39,6 @@ from backend.data.execution import (
 )
 from backend.data.graph import Graph, Link, Node, get_graph, get_node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
-from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
@@ -875,26 +874,6 @@ class ExecutionManager(AppService):
 
 
 # ------- UTILITIES ------- #
-
-
-def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
-    if provider_name not in HANDLERS_BY_NAME:
-        raise KeyError(f"Unknown provider '{provider_name}'")
-
-    client_id = getattr(settings.secrets, f"{provider_name}_client_id")
-    client_secret = getattr(settings.secrets, f"{provider_name}_client_secret")
-    if not (client_id and client_secret):
-        raise Exception(  # TODO: ConfigError
-            f"Integration with provider '{provider_name}' is not configured",
-        )
-
-    handler_class = HANDLERS_BY_NAME[provider_name]
-    frontend_base_url = settings.config.frontend_base_url
-    return handler_class(
-        client_id=client_id,
-        client_secret=client_secret,
-        redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
-    )
 
 
 def get_agent_server_client() -> "AgentServer":
