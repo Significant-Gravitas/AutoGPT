@@ -167,7 +167,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
               <div key={propKey}>
-                <span className="text-m green -mb-1 text-gray-900">
+                <span className="text-m green mb-0 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
                 <div key={propKey} onMouseOver={() => { }}>
@@ -218,7 +218,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
             (isRequired || isAdvancedOpen || !isAdvanced) && (
               <div key={propKey} onMouseOver={() => { }}>
                 {propKey !== "value" ? (
-                  <span className="text-m green -mb-1 text-gray-900">
+                  <span className="text-m green mb-0 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
                   </span>
                 ) : (
@@ -257,7 +257,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} onMouseOver={() => { }}>
                 {"credentials_provider" in propSchema ? (
-                  <span className="text-m green -mb-1 text-gray-900">
+                  <span className="text-m green mb-0 text-gray-900">
                     Credentials
                   </span>
                 ) : (
@@ -508,7 +508,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     "custom-node",
     "dark-theme",
     "rounded-xl",
-    "border",
     "bg-white/[.9]",
     "shadow-md",
   ]
@@ -518,10 +517,33 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   const errorClass =
     hasConfigErrors || hasOutputError ? "border-red-500 border-2" : "";
 
-  const statusClass =
-    hasConfigErrors || hasOutputError
-      ? "failed"
-      : (data.status?.toLowerCase() ?? "");
+  const errorBackgroundClass =
+    hasConfigErrors || hasOutputError ? "bg-red-50" : "";
+
+  const statusClass = (() => {
+    if (hasConfigErrors || hasOutputError) return "border-red-200 border-4";
+    switch (data.status?.toLowerCase()) {
+      case "completed": return "border-green-200 border-4";
+      case "running": return "border-yellow-200 border-4";
+      case "failed": return "border-red-200 border-4";
+      case "incomplete": return "border-purple-200 border-4";
+      case "queued": return "border-cyan-200 border-4";
+      default: return "";
+    }
+  })();
+
+  const statusBackgroundClass = (() => {
+    if (hasConfigErrors || hasOutputError) return "bg-red-200";
+    switch (data.status?.toLowerCase()) {
+      case "completed": return "bg-green-200";
+      case "running": return "bg-yellow-200";
+      case "failed": return "bg-red-200";
+      case "incomplete": return "bg-purple-200";
+      case "queued": return "bg-cyan-200";
+      default: return "";
+    }
+  })();
+    
 
   const hasAdvancedFields =
     data.inputSchema &&
@@ -544,10 +566,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
   return (
     <div
-      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
+      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} border-1 ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
       data-id={`custom-node-${id}`}
+      z-index={1}
     >
       {/* Header */}
       <div
@@ -584,7 +607,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         </Badge>
       </div>
       {/* Body */}
-      <div className="ml-5">
+      <div className="ml-5 rounded-b-xl">
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
           <div className="flex items-start justify-between">
@@ -592,10 +615,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               {data.inputSchema &&
                 generateInputHandles(data.inputSchema, data.uiType)}
             </div>
-            {/* <div className="flex-none">
-            {data.outputSchema &&
-              generateOutputHandles(data.outputSchema, data.uiType)}
-          </div> */}
           </div>
         ) : (
           <div>
@@ -622,7 +641,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           <>
             <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
 
-            <div className="flex items-start justify-end pr-2">
+            <div className="flex items-start justify-end pr-2 rounded-b-xl">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
@@ -632,45 +651,69 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         ) : (
           <></>
         )}
+
+
+      </div>
+      {/* End Body */}
+      {/* Footer */}
+      <div className="flex rounded-b-xl ">
         {/* Display Outputs  */}
         {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
           <div
             data-id="latest-output"
-            className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
+            className={cn("rounded-b-xl nodrag break-words w-full", statusBackgroundClass)}
           >
             {(data.executionResults?.length ?? 0) > 0 ? (
-              <>
+              <div className="rounded-b-xl bg-gray-100 mt-0">
+                <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
                 <DataTable
                   title="Latest Output"
                   truncateLongData
                   data={data.executionResults!.at(-1)?.data || {}}
                 />
-                <div className="flex justify-end">
+                <div className="flex justify-end bg-gray-100 rounded-b-xl">
                   <Button variant="ghost" onClick={handleOutputClick}>
                     View More
                   </Button>
                 </div>
-              </>
+    
+
+              </div>
             ) : (
-              <></>
+              <div className="rounded-b-xl min-h-4 mt-0 bg-white"></div>
             )}
+            <div className={cn("flex justify-end items-center min-h-12 rounded-b-xl", statusBackgroundClass)} z-index={2}>
+                  <Badge
+                    variant="default"
+                    className={cn(
+                      "text-xs font-semibold min-w-[114px] mr-4 rounded-3xl text-center flex items-center justify-center",
+                      data.status === "COMPLETED" && "bg-green-500 border-green-500 text-white",
+                      data.status === "RUNNING" && "bg-yellow-500 border-yellow-500 text-white",
+                      data.status === "FAILED" && "bg-red-500 border-red-500 text-white",
+                      data.status === "QUEUED" && "bg-blue-500 border-blue-500 text-white",
+                      data.status === "INCOMPLETE" && "bg-gray-500 border-gray-500 font-black"
+                    )}
+                  >
+                    {data.status ? beautifyString(data.status) : "Not Run"}
+                  </Badge>
+                </div>
           </div>
         )}
-        <InputModalComponent
-          title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onSave={handleModalSave}
-          defaultValue={inputModalValue}
-          key={activeKey}
-        />
-        <OutputModalComponent
-          isOpen={isOutputModalOpen}
-          onClose={() => setIsOutputModalOpen(false)}
-          executionResults={data.executionResults?.toReversed() || []}
-        />
+
       </div>
+      <InputModalComponent
+        title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleModalSave}
+        defaultValue={inputModalValue}
+        key={activeKey}
+      />
+      <OutputModalComponent
+        isOpen={isOutputModalOpen}
+        onClose={() => setIsOutputModalOpen(false)}
+        executionResults={data.executionResults?.toReversed() || []}
+      />
     </div>
-    // End Body
   );
 }
