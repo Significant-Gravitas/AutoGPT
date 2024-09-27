@@ -77,11 +77,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   return (
     <Popover
       open={pinBlocksPopover ? true : undefined}
-      onOpenChange={(open) => {
-        if (!open) {
-          resetFilters();
-        }
-      }}
+      onOpenChange={(open) => open || resetFilters()}
     >
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
@@ -142,7 +138,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               ))}
             </div>
           </CardHeader>
-          <CardContent className="p-1">
+          <CardContent className="border-t px-1 py-0">
             <ScrollArea
               className="h-[60vh]"
               data-id="blocks-control-scroll-area"

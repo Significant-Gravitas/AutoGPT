@@ -48,7 +48,7 @@
     "dotenv": "^16.4.5",
     "lucide-react": "^0.407.0",
     "moment": "^2.30.1",
-    "next": "14.2.4",
+    "next": "^14.2.13",
     "next-themes": "^0.3.0",
     "react": "^18",
     "react-day-picker": "^8.10.1",

@@ -991,6 +991,19 @@ protobuf = ">=3.20.2,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4.21.3 || >4.21.3,<4
 grpc = ["grpcio (>=1.44.0,<2.0.0.dev0)"]
 
 [[package]]
+name = "googlemaps"
+version = "4.10.0"
+description = "Python client library for Google Maps Platform"
+optional = false
+python-versions = ">=3.5"
+files = [
+    {file = "googlemaps-4.10.0.tar.gz", hash = "sha256:3055fcbb1aa262a9159b589b5e6af762b10e80634ae11c59495bd44867e47d88"},
+]
+
+[package.dependencies]
+requests = ">=2.20.0,<3.0"
+
+[[package]]
 name = "gotrue"
 version = "2.8.1"
 description = "Python Client Library for Supabase Auth"
@@ -3624,4 +3637,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "c01e4ba05a9f3d9168d857416c1f414c51c1af49fb8c3a81bf465ae1a1c51275"
+content-hash = "080c25d41cc5fa9227d19fcf6d6758279dd5c81588dbd24ab1d4d2ffb5107444"
