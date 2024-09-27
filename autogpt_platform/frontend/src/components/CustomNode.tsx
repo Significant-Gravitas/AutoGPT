@@ -517,10 +517,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     .join(" ");
 
   const errorClass =
-    hasConfigErrors || hasOutputError ? "border-red-500 border-2" : "";
-
-  const errorBackgroundClass =
-    hasConfigErrors || hasOutputError ? "bg-red-50" : "";
+    hasConfigErrors || hasOutputError ? "border-red-200 border-2" : "";
 
   const statusClass = (() => {
     if (hasConfigErrors || hasOutputError) return "border-red-200 border-4";
@@ -732,19 +729,27 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 variant="default"
                 className={cn(
                   "mr-4 flex min-w-[114px] items-center justify-center rounded-3xl text-center text-xs font-semibold",
-                  data.status === "COMPLETED" &&
-                    "border-green-600 bg-green-600 text-white",
-                  data.status === "RUNNING" &&
-                    "border-yellow-600 bg-yellow-600 text-white",
-                  data.status === "FAILED" &&
-                    "border-red-600 bg-red-600 text-white",
-                  data.status === "QUEUED" &&
-                    "border-blue-600 bg-blue-600 text-white",
-                  data.status === "INCOMPLETE" &&
-                    "border-gray-600 bg-gray-600 font-black",
+                  hasConfigErrors || hasOutputError
+                    ? "border-red-600 bg-red-600 text-white"
+                    : {
+                        "border-green-600 bg-green-600 text-white":
+                          data.status === "COMPLETED",
+                        "border-yellow-600 bg-yellow-600 text-white":
+                          data.status === "RUNNING",
+                        "border-red-600 bg-red-600 text-white":
+                          data.status === "FAILED",
+                        "border-blue-600 bg-blue-600 text-white":
+                          data.status === "QUEUED",
+                        "border-gray-600 bg-gray-600 font-black":
+                          data.status === "INCOMPLETE",
+                      }
                 )}
               >
-                {data.status ? beautifyString(data.status) : "Not Run"}
+                {hasConfigErrors || hasOutputError
+                  ? "Error"
+                  : data.status
+                  ? beautifyString(data.status)
+                  : "Not Run"}
               </Badge>
             </div>
           </div>
