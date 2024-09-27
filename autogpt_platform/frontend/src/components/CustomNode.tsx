@@ -585,7 +585,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       {blockCost && (
         <div className="p-3 font-semibold">
           <span className="ml-auto flex items-center">
-            <IconCoin /> {blockCost.cost_amount} per {blockCost.cost_type}
+            <IconCoin /> {blockCost.cost_amount} credits/{blockCost.cost_type}
           </span>
         </div>
       )}

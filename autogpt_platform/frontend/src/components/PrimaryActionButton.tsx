@@ -32,7 +32,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   const runButtonOnClick = !isRunning ? onClickRunAgent : requestStopRun;
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-50 flex items-center justify-center p-4">
+    <div className="absolute bottom-0 left-1/2 z-50 flex w-fit -translate-x-1/2 transform items-center justify-center p-4">
       <div className={`flex gap-4`}>
         <Tooltip key="ViewOutputs" delayDuration={500}>
           <TooltipTrigger asChild>
@@ -42,8 +42,10 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
               size="primary"
               variant="outline"
             >
-              <LogOut className="h-5 w-5" />
-              <span className="text-lg font-medium">Agent Outputs </span>
+              <LogOut className="hidden h-5 w-5 md:flex" />
+              <span className="text-sm font-medium md:text-lg">
+                Agent Outputs{" "}
+              </span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -62,7 +64,9 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
               }}
             >
               {runButtonIcon}
-              <span className="text-lg font-medium">{runButtonLabel}</span>
+              <span className="text-sm font-medium md:text-lg">
+                {runButtonLabel}
+              </span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>
