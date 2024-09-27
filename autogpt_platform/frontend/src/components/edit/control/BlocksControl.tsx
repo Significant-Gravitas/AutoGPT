@@ -146,7 +146,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               {filteredBlocks.map((block) => (
                 <Card
                   key={block.id}
-                  className="m-2 my-4 flex h-20 border"
+                  className="m-2 my-4 flex h-20 border hover:cursor-pointer"
                   data-id={`block-card-${block.id}`}
                   onClick={() => addBlock(block.id, block.name)}
                 >
