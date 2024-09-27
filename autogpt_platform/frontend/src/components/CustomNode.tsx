@@ -392,7 +392,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   };
 
   const handleInputClick = (key: string) => {
-    console.log(`Opening modal for key: ${key}`);
+    console.debug(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
     setInputModalValue(
