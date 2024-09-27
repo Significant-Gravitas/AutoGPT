@@ -5,19 +5,9 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import Image from "next/image";
 import getServerUser from "@/hooks/getServerUser";
 import ProfileDropdown from "./ProfileDropdown";
-import {
-  IconCircleUser,
-  IconMenu,
-  IconPackage2,
-  IconRefresh,
-  IconSquareActivity,
-  IconWorkFlow,
-} from "@/components/ui/icons";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import { IconCircleUser, IconMenu } from "@/components/ui/icons";
 import CreditButton from "@/components/CreditButton";
-import { BsBoxes } from "react-icons/bs";
-import { LuLaptop } from "react-icons/lu";
-import { LuShoppingCart } from "react-icons/lu";
+import { NavBarButtons } from "./NavBarButtons";
 
 export async function NavBar() {
   const isAvailable = Boolean(
@@ -27,7 +17,7 @@ export async function NavBar() {
   const { user } = await getServerUser();
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:rounded-b-3xl md:px-6 md:shadow-md">
+    <header className="sticky top-0 z-50 mx-4 flex h-16 items-center gap-4 border-b bg-background p-3 md:rounded-b-2xl md:px-6 md:shadow">
       <div className="flex flex-1 items-center gap-4">
         <Sheet>
           <SheetTrigger asChild>
@@ -42,28 +32,11 @@ export async function NavBar() {
           </SheetTrigger>
           <SheetContent side="left">
             <nav className="grid gap-6 text-lg font-medium">
-              <Link
-                href="/marketplace"
-                className="mt-4 flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <LuShoppingCart /> Marketplace
-              </Link>
-              <Link
-                href="/"
-                className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <LuLaptop /> Monitor
-              </Link>
-              <Link
-                href="/build"
-                className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <BsBoxes /> Build
-              </Link>
+              <NavBarButtons className="flex flex-row items-center gap-2" />
             </nav>
           </SheetContent>
         </Sheet>
-        <nav className="hidden md:flex md:flex-row md:items-center md:gap-7 lg:gap-8">
+        <nav className="hidden md:flex md:flex-row md:items-center md:gap-5 lg:gap-8">
           <div className="flex h-10 w-20 flex-1 flex-row items-center justify-center gap-2">
             <a href="https://agpt.co/">
               <Image
@@ -75,24 +48,7 @@ export async function NavBar() {
               />
             </a>
           </div>
-          <Link
-            href="/marketplace"
-            className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground"
-          >
-            <LuShoppingCart /> Marketplace
-          </Link>
-          <Link
-            href="/"
-            className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground"
-          >
-            <LuLaptop className="mr-1" /> Monitor
-          </Link>
-          <Link
-            href="/build"
-            className="flex flex-row items-center gap-2 text-base font-semibold text-foreground hover:text-foreground"
-          >
-            <BsBoxes className="mr-1" /> Build
-          </Link>
+          <NavBarButtons className="flex flex-row items-center gap-1 border border-white font-semibold hover:border-gray-900" />
         </nav>
       </div>
       <div className="flex flex-1 items-center justify-end gap-4">

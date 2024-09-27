@@ -1,14 +1,14 @@
-# dev values, overwrite base values as needed.
+# prod values, overwrite base values as needed.
 
 image:
-  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-market-dev/agpt-market-dev
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-market-prod/agpt-market-prod
   pullPolicy: Always
   tag: "latest"
 
 serviceAccount:
   annotations:
-    iam.gke.io/gcp-service-account: "dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
-  name: "dev-agpt-market-sa"
+    iam.gke.io/gcp-service-account: "prod-agpt-market-sa@agpt-prod.iam.gserviceaccount.com"
+  name: "prod-agpt-market-sa"
 
 service:
   type: ClusterIP
@@ -23,11 +23,11 @@ ingress:
   className: "gce"
   annotations:
     kubernetes.io/ingress.class: gce
-    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-market-ip"
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-market-ip"
     networking.gke.io/managed-certificates: "autogpt-market-cert"
     networking.gke.io/v1beta1.FrontendConfig: "autogpt-market-frontend-config"
   hosts:
-    - host: dev-market.agpt.co
+    - host: market.agpt.co
       paths:
         - path: /
           pathType: Prefix
@@ -66,13 +66,13 @@ readinessProbe:
   timeoutSeconds: 10
   failureThreshold: 12
 
-domain: "dev-market.agpt.co"
+domain: "market.agpt.co"
 
 cloudSqlProxy:
   image:
     repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
     tag: 2.11.4
-  instanceConnectionName: "agpt-dev:us-central1:agpt-server-dev"
+  instanceConnectionName: "agpt-prod:us-central1:agpt-server-prod"
   port: 5432
   resources:
     requests:
@@ -80,7 +80,7 @@ cloudSqlProxy:
       cpu: "1"
 
 cors:
-  allowOrigin: "https://dev-builder.agpt.co"
+  allowOrigin: "https://platform.agpt.co"
   allowMethods:
     - "GET"
     - "POST"
@@ -94,7 +94,7 @@ cors:
   allowCredentials: true
 
 env:
-  APP_ENV: "dev"
+  APP_ENV: "prod"
   PYRO_HOST: "0.0.0.0"
   ENABLE_AUTH: "true"
   SUPABASE_JWT_SECRET: ""
@@ -103,6 +103,7 @@ env:
   SUPABASE_SERVICE_ROLE_KEY: ""
   GITHUB_CLIENT_ID: ""
   GITHUB_CLIENT_SECRET: ""
-  FRONTEND_BASE_URL: "https://dev-builder.agpt.co/"
-  SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co"
-  BACKEND_CORS_ALLOW_ORIGINS: "https://dev-builder.agpt.co"
+  FRONTEND_BASE_URL: "https://platform.agpt.co/"
+  SUPABASE_URL: "https://bgwpwdsxblryihinutbx.supabase.co"
+  BACKEND_CORS_ALLOW_ORIGINS: "https://platform.agpt.co"
+

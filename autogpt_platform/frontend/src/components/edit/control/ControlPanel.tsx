@@ -25,7 +25,8 @@ export type Control = {
 
 interface ControlPanelProps {
   controls: Control[];
-  children?: React.ReactNode;
+  topChildren?: React.ReactNode;
+  botChildren?: React.ReactNode;
   className?: string;
 }
 
@@ -39,14 +40,15 @@ interface ControlPanelProps {
  */
 export const ControlPanel = ({
   controls,
-  children,
+  topChildren,
+  botChildren,
   className,
 }: ControlPanelProps) => {
   return (
-    <Card className={cn("w-14", className)}>
+    <Card className={cn("m-4 mt-24 w-14", className)}>
       <CardContent className="p-0">
-        <div className="rounded-radius flex flex-col items-center gap-8 px-2 sm:py-5">
-          {children}
+        <div className="flex flex-col items-center gap-3 rounded-xl border py-3">
+          {topChildren}
           <Separator />
           {controls.map((control, index) => (
             <Tooltip key={index} delayDuration={500}>
@@ -67,6 +69,8 @@ export const ControlPanel = ({
               <TooltipContent side="right">{control.label}</TooltipContent>
             </Tooltip>
           ))}
+          <Separator />
+          {botChildren}
         </div>
       </CardContent>
     </Card>
