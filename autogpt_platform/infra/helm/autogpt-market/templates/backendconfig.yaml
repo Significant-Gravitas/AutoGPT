@@ -1,7 +1,7 @@
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
-  name: {{ include "autogpt-market.fullname" . }}
+  name: {{ include "autogpt-market.fullname" . }}-backend-config
 spec:
   customRequestHeaders:
     headers:
