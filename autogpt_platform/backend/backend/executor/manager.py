@@ -81,6 +81,7 @@ class LogMetadata:
 
     def error(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
+        print("huehuehuehue")
         logger.error(msg, extra={"json_fields": {**self.metadata, **extra}})
 
     def debug(self, msg: str, **extra):
