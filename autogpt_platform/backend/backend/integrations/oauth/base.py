@@ -22,6 +22,11 @@ class BaseOAuthHandler(ABC):
         ...
 
     @abstractmethod
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> None:
+        """Revokes the given tokens"""
+        ...
+
+    @abstractmethod
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         """Implements the token refresh mechanism"""
         ...

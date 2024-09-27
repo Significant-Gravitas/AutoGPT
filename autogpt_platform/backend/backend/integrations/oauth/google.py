@@ -17,6 +17,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
     PROVIDER_NAME = "google"
     EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
+    REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -58,6 +59,15 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             refresh_token_expires_at=None,
             scopes=google_creds.scopes,
         )
+
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> None:
+        session = AuthorizedSession(credentials)
+        response = session.post(
+            self.REVOKE_ENDPOINT,
+            params={"token": credentials.access_token.get_secret_value()},
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+        response.raise_for_status()
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials

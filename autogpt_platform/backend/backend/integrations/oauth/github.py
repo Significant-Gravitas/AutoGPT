@@ -24,6 +24,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
 
     PROVIDER_NAME = "github"
     EMAIL_ENDPOINT = "https://api.github.com/user/emails"
+    REVOKE_ENDPOINT = "https://api.github.com/applications/{client_id}/grant"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -43,6 +44,23 @@ class GitHubOAuthHandler(BaseOAuthHandler):
 
     def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
         return self._request_tokens({"code": code, "redirect_uri": self.redirect_uri})
+
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> None:
+        if not credentials.access_token:
+            raise ValueError("No access token to revoke")
+
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        response = requests.delete(
+            url=self.REVOKE_ENDPOINT.format(client_id=self.client_id),
+            auth=(self.client_id, self.client_secret),
+            headers=headers,
+            data={"access_token": credentials.access_token.get_secret_value()},
+        )
+        response.raise_for_status()
 
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         if not credentials.refresh_token:

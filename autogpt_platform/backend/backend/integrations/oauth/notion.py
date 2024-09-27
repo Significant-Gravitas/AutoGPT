@@ -75,6 +75,10 @@ class NotionOAuthHandler(BaseOAuthHandler):
             },
         )
 
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> None:
+        # Notion doesn't support token revocation
+        return
+
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         # Notion doesn't support token refresh
         return credentials
