@@ -35,7 +35,7 @@ jobs:
     services:
       redis:
         image: redis:6.2
-        command: ["redis-server", "--requirepass", "ci-test-password"]
+        command: ["redis-server", "--requirepass", "password4ci"]
         ports:
           - 6379:6379
 
@@ -116,7 +116,7 @@ jobs:
           SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
           REDIS_HOST: 'localhost'
           REDIS_PORT: '6379'
-          REDIS_PASSWORD: 'ci-test-password'
+          REDIS_PASSWORD: 'password4ci'
     env:
       CI: true
       PLAIN_OUTPUT: True
