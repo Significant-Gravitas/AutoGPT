@@ -34,7 +34,7 @@ export default function RootLayout({
         >
           <div className="flex min-h-screen flex-col">
             <NavBar />
-            <main className="flex-1 overflow-hidden p-4">{children}</main>
+            <main className="flex-1 p-4">{children}</main>
             <TallyPopupSimple />
           </div>
           <Toaster />
