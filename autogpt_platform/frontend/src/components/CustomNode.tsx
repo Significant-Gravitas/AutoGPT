@@ -641,7 +641,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           <>
             <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
 
-            <div className="flex items-start justify-end pr-2 rounded-b-xl">
+            <div className="flex items-start justify-end pr-2 rounded-b-xl mt-2">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
@@ -656,50 +656,47 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       </div>
       {/* End Body */}
       {/* Footer */}
-      <div className="flex rounded-b-xl ">
+      <div className="flex rounded-b-xl">
         {/* Display Outputs  */}
         {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
           <div
             data-id="latest-output"
-            className={cn("rounded-b-xl nodrag break-words w-full", statusBackgroundClass)}
+            className={cn("nodrag break-words w-full overflow-hidden", statusBackgroundClass)}
           >
             {(data.executionResults?.length ?? 0) > 0 ? (
-              <div className="rounded-b-xl bg-gray-100 mt-0">
+              <div className="mt-0 bg-gray-100 rounded-b-xl">
                 <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
                 <DataTable
                   title="Latest Output"
                   truncateLongData
                   data={data.executionResults!.at(-1)?.data || {}}
                 />
-                <div className="flex justify-end bg-gray-100 rounded-b-xl">
+                <div className="flex justify-end">
                   <Button variant="ghost" onClick={handleOutputClick}>
                     View More
                   </Button>
                 </div>
-    
-
               </div>
             ) : (
-              <div className="rounded-b-xl min-h-4 mt-0 bg-white"></div>
+              <div className="min-h-4 mt-0 bg-white rounded-b-xl"></div>
             )}
-            <div className={cn("flex justify-end items-center min-h-12 rounded-b-xl", statusBackgroundClass)} z-index={2}>
-                  <Badge
-                    variant="default"
-                    className={cn(
-                      "text-xs font-semibold min-w-[114px] mr-4 rounded-3xl text-center flex items-center justify-center",
-                      data.status === "COMPLETED" && "bg-green-500 border-green-500 text-white",
-                      data.status === "RUNNING" && "bg-yellow-500 border-yellow-500 text-white",
-                      data.status === "FAILED" && "bg-red-500 border-red-500 text-white",
-                      data.status === "QUEUED" && "bg-blue-500 border-blue-500 text-white",
-                      data.status === "INCOMPLETE" && "bg-gray-500 border-gray-500 font-black"
-                    )}
-                  >
-                    {data.status ? beautifyString(data.status) : "Not Run"}
-                  </Badge>
-                </div>
+            <div className={cn("flex justify-end items-center min-h-12", statusBackgroundClass)}>
+              <Badge
+                variant="default"
+                className={cn(
+                  "text-xs font-semibold min-w-[114px] mr-4 rounded-3xl text-center flex items-center justify-center",
+                  data.status === "COMPLETED" && "bg-green-500 border-green-500 text-white",
+                  data.status === "RUNNING" && "bg-yellow-500 border-yellow-500 text-white",
+                  data.status === "FAILED" && "bg-red-500 border-red-500 text-white",
+                  data.status === "QUEUED" && "bg-blue-500 border-blue-500 text-white",
+                  data.status === "INCOMPLETE" && "bg-gray-500 border-gray-500 font-black"
+                )}
+              >
+                {data.status ? beautifyString(data.status) : "Not Run"}
+              </Badge>
+            </div>
           </div>
         )}
-
       </div>
       <InputModalComponent
         title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
