@@ -465,7 +465,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
     history.push({
       type: "ADD_NODE",
-      payload: { node: newNode },
+      payload: { node: { ...newNode, ...newNode.data } as CustomNodeData },
       undo: () => deleteElements({ nodes: [{ id: newId }] }),
       redo: () => addNodes(newNode),
     });
@@ -565,7 +565,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 data.blockType?.replace(/Block$/, "") || data.title,
               )}
             </div>
-
           </div>
           {blockCost && (
             <div className="px-3 text-base font-light">
@@ -578,11 +577,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           )}
         </div>
         <Badge
-              variant="outline"
-              className={`mr-5 ${getPrimaryCategoryColor(data.categories)} rounded-xl opacity-50`}
-            >
-              {data.categories[0].category}
-            </Badge>
+          variant="outline"
+          className={`mr-5 ${getPrimaryCategoryColor(data.categories)} rounded-xl opacity-50`}
+        >
+          {data.categories[0].category}
+        </Badge>
       </div>
       {/* Body */}
       <div className="ml-5">
