@@ -607,7 +607,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               <span className="ml-auto flex items-center">
                 <IconCoin />{" "}
                 <span className="m-1 font-medium">{blockCost.cost_amount}</span>{" "}
-                per {blockCost.cost_type}
+                credits/{blockCost.cost_type}
               </span>
             </div>
           )}
