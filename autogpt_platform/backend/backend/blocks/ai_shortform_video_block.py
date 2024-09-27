@@ -133,33 +133,6 @@ class AIShortformVideoCreatorBlock(Block):
     ) -> str:
         start_time = time.time()
         while time.time() - start_time < max_wait_time:
-            # Check Webhook.site for new requests
-            webhook_url = (
-                f"https://webhook.site/token/{webhook_token}/requests?sorting=newest"
-            )
-            headers = {"Accept": "application/json"}
-            webhook_response = requests.get(webhook_url, headers=headers)
-            if webhook_response.status_code == 200:
-                requests_data = webhook_response.json().get("data", [])
-                if requests_data:
-                    latest_request = requests_data[0]
-                    content = latest_request.get("content", {})
-                    if isinstance(content, str):
-                        import json
-
-                        try:
-                            content = json.loads(content)
-                        except json.JSONDecodeError:
-                            logger.error(f"Failed to parse webhook content: {content}")
-
-                    if isinstance(content, dict) and "url" in content:
-                        return content["url"]
-                    else:
-                        logger.error(
-                            f"Webhook received but no URL found or content is not a dictionary: {content}"
-                        )
-
-            # If no webhook data, check video status directly
             status = self.check_video_status(api_key, pid)
             logger.info(f"Video status: {status}")
 
