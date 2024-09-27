@@ -1,6 +1,8 @@
 site_name: AutoGPT Documentation
 site_url: https://docs.agpt.co/
 repo_url: https://github.com/Significant-Gravitas/AutoGPT
+repo_name: AutoGPT
+edit_uri: edit/master/docs/content
 docs_dir: content
 nav:
   - Home: index.md
@@ -10,7 +12,7 @@ nav:
     - Setup: server/setup.md
     - Advanced Setup: server/advanced_setup.md
     - Using Ollama: server/ollama.md
-    - Using D-ID: serveer/d_id.md
+    - Using D-ID: server/d_id.md
 
   - AutoGPT Agent:
       - Introduction: AutoGPT/index.md
@@ -69,14 +71,27 @@ nav:
 theme:
   name: material
   custom_dir: overrides
+  language: en
   icon:
+    repo: fontawesome/brands/github
     logo: material/book-open-variant
-  favicon: favicon.png
+    edit: material/pencil
+    view: material/eye
+  favicon: assets/favicon.png
   features:
     - navigation.sections
-    - toc.follow
+    - navigation.footer
     - navigation.top
+    - navigation.tracking
+    - navigation.tabs
+    # - navigation.path
+    - toc.follow
+    - toc.integrate
+    - content.action.edit
+    - content.action.view
     - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
   palette:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
@@ -137,6 +152,20 @@ markdown_extensions:
 plugins:
   - table-reader
   - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Significant-Gravitas/AutoGPT
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/Auto_GPT
+    - icon: fontawesome/brands/instagram
+      link: https://www.instagram.com/autogpt/
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/autogpt
 
 extra_javascript:
   - https://unpkg.com/tablesort@5.3.0/dist/tablesort.min.js
