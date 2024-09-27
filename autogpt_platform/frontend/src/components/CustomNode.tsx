@@ -21,18 +21,15 @@ import {
 import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
   NodeGenericInputField,
   NodeTextBoxInput,
 } from "./node-input-components";
-import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
-import DataTable from "./DataTable";
 import NodeOutputs from "./NodeOutputs";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
@@ -711,11 +708,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                   truncateLongData
                   data={data.executionResults!.at(-1)?.data || {}}
                 />
-                {/* <DataTable
-                  title="Latest Output"
-                  truncateLongData
-                  data={data.executionResults!.at(-1)?.data || {}}
-                /> */}
                 <div className="flex justify-end">
                   <Button variant="ghost" onClick={handleOutputClick}>
                     View More
