@@ -42,7 +42,6 @@ class AgentServer(AppService):
     def __init__(self, event_queue: AsyncEventQueue | None = None):
         super().__init__(port=Config().agent_server_port)
         self.event_queue = event_queue or AsyncRedisEventQueue()
-        self.integration_creds_manager = IntegrationCredentialsManager()
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
@@ -96,6 +95,7 @@ class AgentServer(AppService):
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
         )
+        self.integration_creds_manager = IntegrationCredentialsManager()
 
         api_router.include_router(
             backend.server.routers.analytics.router,
