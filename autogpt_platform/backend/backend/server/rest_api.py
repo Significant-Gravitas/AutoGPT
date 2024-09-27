@@ -84,11 +84,11 @@ class AgentServer(AppService):
         api_router.dependencies.append(Depends(auth_middleware))
 
         # Import & Attach sub-routers
+        import backend.server.integrations.router
         import backend.server.routers.analytics
-        import backend.server.routers.integrations
 
         api_router.include_router(
-            backend.server.routers.integrations.router,
+            backend.server.integrations.router.router,
             prefix="/integrations",
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
