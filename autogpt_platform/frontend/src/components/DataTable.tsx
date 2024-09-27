@@ -51,7 +51,7 @@ export default function DataTable({
                 {beautifyString(key)}
               </TableCell>
               <TableCell className="cursor-text">
-                <div className="flex min-h-9 items-center">
+                <div className="flex min-h-9 items-center whitespace-pre-wrap">
                   <Button
                     className="absolute right-1 top-auto m-1 hidden p-2 group-hover:block"
                     variant="outline"
@@ -62,7 +62,7 @@ export default function DataTable({
                         value
                           .map((i) =>
                             typeof i === "object"
-                              ? JSON.stringify(i)
+                              ? JSON.stringify(i, null, 2)
                               : String(i),
                           )
                           .join(", "),
@@ -75,7 +75,9 @@ export default function DataTable({
                   {value
                     .map((i) => {
                       const text =
-                        typeof i === "object" ? JSON.stringify(i) : String(i);
+                        typeof i === "object"
+                          ? JSON.stringify(i, null, 2)
+                          : String(i);
                       return truncateLongData && text.length > maxChars
                         ? text.slice(0, maxChars) + "..."
                         : text;

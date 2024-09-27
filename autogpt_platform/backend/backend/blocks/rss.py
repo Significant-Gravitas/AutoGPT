@@ -46,6 +46,7 @@ class ReadRSSFeedBlock(Block):
             id="c6731acb-4105-4zp1-bc9b-03d0036h370g",
             input_schema=ReadRSSFeedBlock.Input,
             output_schema=ReadRSSFeedBlock.Output,
+            description="Reads RSS feed entries from a given URL.",
             categories={BlockCategory.INPUT},
             test_input={
                 "rss_url": "https://example.com/rss",
@@ -86,7 +87,7 @@ class ReadRSSFeedBlock(Block):
     def parse_feed(url: str) -> dict[str, Any]:
         return feedparser.parse(url)  # type: ignore
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         keep_going = True
         start_time = datetime.now(timezone.utc) - timedelta(
             minutes=input_data.time_period

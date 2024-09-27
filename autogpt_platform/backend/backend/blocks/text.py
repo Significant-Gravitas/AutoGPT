@@ -25,9 +25,7 @@ class MatchTextPatternBlock(Block):
     def __init__(self):
         super().__init__(
             id="3060088f-6ed9-4928-9ba7-9c92823a7ccd",
-            description="This block matches the given text with the pattern (regex) and"
-            " forwards the provided data to positive (if matching) or"
-            " negative (if not matching) output.",
+            description="Matches text against a regex pattern and forwards data to positive or negative output based on the match.",
             categories={BlockCategory.TEXT},
             input_schema=MatchTextPatternBlock.Input,
             output_schema=MatchTextPatternBlock.Output,
@@ -45,7 +43,7 @@ class MatchTextPatternBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         output = input_data.data or input_data.text
         flags = 0
         if not input_data.case_sensitive:
@@ -97,7 +95,7 @@ class ExtractTextInformationBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -147,7 +145,7 @@ class FillTextTemplateBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         # For python.format compatibility: replace all {...} with {{..}}.
         # But avoid replacing {{...}} to {{{...}}}.
         fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
@@ -180,6 +178,6 @@ class CombineTextsBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         combined_text = input_data.delimiter.join(input_data.input)
         yield "output", combined_text

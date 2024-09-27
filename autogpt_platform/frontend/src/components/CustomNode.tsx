@@ -255,13 +255,19 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} onMouseOver={() => {}}>
-                <NodeHandle
-                  keyName={propKey}
-                  isConnected={isConnected}
-                  isRequired={isRequired}
-                  schema={propSchema}
-                  side="left"
-                />
+                {"credentials_provider" in propSchema ? (
+                  <span className="text-m green -mb-1 text-gray-900">
+                    Credentials
+                  </span>
+                ) : (
+                  <NodeHandle
+                    keyName={propKey}
+                    isConnected={isConnected}
+                    isRequired={isRequired}
+                    schema={propSchema}
+                    side="left"
+                  />
+                )}
                 {!isConnected && (
                   <NodeGenericInputField
                     className="mb-2 mt-1"
@@ -534,7 +540,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           value === inputValues[key] || (!value && !inputValues[key]),
       ),
     );
-  console.debug(`Block cost ${inputValues}|${data.blockCosts}=${blockCost}`);
 
   return (
     <div
