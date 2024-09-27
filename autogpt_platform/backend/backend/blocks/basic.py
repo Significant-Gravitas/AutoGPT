@@ -25,6 +25,7 @@ class StoreValueBlock(Block):
         value: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
+            default=None,
         )
 
     class Output(BlockSchema):
@@ -38,9 +39,11 @@ class StoreValueBlock(Block):
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,
             test_input=[
-                {"input": "Hello, World!", "value": "Existing Data"},
+                {"trigger": "Hello, World!"},
+                {"trigger": "Hello, World!", "value": "Existing Data"},
             ],
             test_output=[
+                ("output", None),
                 ("output", "Existing Data"),
             ],
             static_output=True,
