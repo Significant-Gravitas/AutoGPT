@@ -1,0 +1,109 @@
+# prod values, overwrite base values as needed.
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-market-prod/agpt-market-prod
+  pullPolicy: Always
+  tag: "latest"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "prod-agpt-market-sa@agpt-prod.iam.gserviceaccount.com"
+  name: "prod-agpt-market-sa"
+
+service:
+  type: ClusterIP
+  port: 8015
+  targetPort: 8015
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-market-backend-config"}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-market-ip"
+    networking.gke.io/managed-certificates: "autogpt-market-cert"
+    networking.gke.io/v1beta1.FrontendConfig: "autogpt-market-frontend-config"
+  hosts:
+    - host: platform.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-market
+          port: 8015
+  defaultBackend:
+    service:
+      name: autogpt-market
+      port:
+        number: 8015
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 1Gi
+  limits:
+    cpu: 2
+    memory: 2Gi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8015
+  initialDelaySeconds: 60
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 12
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8015
+  initialDelaySeconds: 60
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 12
+
+domain: "market.agpt.co"
+
+cloudSqlProxy:
+  image:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: 2.11.4
+  instanceConnectionName: "agpt-prod:us-central1:agpt-server-prod"
+  port: 5432
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+
+cors:
+  allowOrigin: "https://platform.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
+env:
+  APP_ENV: "prod"
+  PYRO_HOST: "0.0.0.0"
+  ENABLE_AUTH: "true"
+  SUPABASE_JWT_SECRET: "QEQOmahxsbLJ1v3OFGtwStWWezer04J4HK7Jn3LMWF8OrYyF/U1YSIE9ZVypAAZ/bdilEC0muSzX6DOTOckxQA=="
+  DATABASE_URL: "postgresql://postgres.bgwpwdsxblryihinutbx:9e9GZpN@@qxV^Y@aws-0-us-east-2.pooler.supabase.com:5432/postgres?schema=market"
+  SENTRY_DSN: "https://11d0640fef35640e0eb9f022eb7d7626@o4505260022104064.ingest.us.sentry.io/4507890252447744"
+  SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnd3B3ZHN4YmxyeWloaW51dGJ4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNzM4NTgwMywiZXhwIjoyMDQyOTYxODAzfQ.Pg_yVF3pJaK41MjrAus1qhZfVW2KEgae8rWJwCUDJuY"
+  GITHUB_CLIENT_ID: ""
+  GITHUB_CLIENT_SECRET: ""
+  FRONTEND_BASE_URL: "https://platform.agpt.co/"
+  SUPABASE_URL: "https://bgwpwdsxblryihinutbx.supabase.co"
+  BACKEND_CORS_ALLOW_ORIGINS: "https://platform.agpt.co"
+
