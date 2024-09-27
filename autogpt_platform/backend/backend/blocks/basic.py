@@ -19,12 +19,12 @@ class StoreValueBlock(Block):
     """
 
     class Input(BlockSchema):
-        trigger: Any = SchemaField(
-            description="Trigger the block to produce the output. Passed value is never used."
-        )
         input: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
+        )
+        trigger: Any = SchemaField(
+            description="Trigger the block to produce the output. Passed value is never used.",
             default=None,
         )
 
