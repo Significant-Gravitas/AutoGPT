@@ -105,160 +105,46 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
-  displayName ||= propSchema.title || beautifyString(propKey);
+    displayName ||= propSchema.title || beautifyString(propKey);
 
-  if ("allOf" in propSchema) {
-    // If this happens, that is because Pydantic wraps $refs in an allOf if the
-    // $ref has sibling schema properties (which isn't technically allowed),
-    // so there will only be one item in allOf[].
-    // AFAIK this should NEVER happen though, as $refs are resolved server-side.
-    propSchema = propSchema.allOf[0];
-    console.warn(`Unsupported 'allOf' in schema for '${propKey}'!`, propSchema);
-  }
+    if ("allOf" in propSchema) {
+      // If this happens, that is because Pydantic wraps $refs in an allOf if the
+      // $ref has sibling schema properties (which isn't technically allowed),
+      // so there will only be one item in allOf[].
+      // AFAIK this should NEVER happen though, as $refs are resolved server-side.
+      propSchema = propSchema.allOf[0];
+      console.warn(`Unsupported 'allOf' in schema for '${propKey}'!`, propSchema);
+    }
 
-  if ("credentials_provider" in propSchema) {
-    return (
-      <NodeCredentialsInput
-        selfKey={propKey}
-        value={currentValue}
-        errors={errors}
-        className={className}
-        handleInputChange={handleInputChange}
-      />
-    );
-  }
-
-  if ("properties" in propSchema) {
-    return (
-      <NodeObjectInputTree
-        selfKey={propKey}
-        schema={propSchema}
-        object={currentValue}
-        errors={errors}
-        className={cn("border-l border-gray-500 pl-2", className)} // visual indent
-        displayName={displayName}
-        connections={connections}
-        handleInputClick={handleInputClick}
-        handleInputChange={handleInputChange}
-      />
-    );
-  }
-
-  if ("additionalProperties" in propSchema) {
-    return (
-      <NodeKeyValueInput
-        selfKey={propKey}
-        schema={propSchema}
-        entries={currentValue}
-        errors={errors}
-        className={className}
-        displayName={displayName}
-        connections={connections}
-        handleInputChange={handleInputChange}
-      />
-    );
-  }
-
-  if ("anyOf" in propSchema) {
-    // optional items
-    const types = propSchema.anyOf.map((s) =>
-      "type" in s ? s.type : undefined,
-    );
-    if (types.includes("string") && types.includes("null")) {
-      // optional string
+    if ("credentials_provider" in propSchema) {
       return (
-        <NodeStringInput
+        <NodeCredentialsInput
           selfKey={propKey}
-          schema={{ ...propSchema, type: "string" } as BlockIOStringSubSchema}
           value={currentValue}
-          error={errors[propKey]}
+          errors={errors}
           className={className}
-          displayName={displayName}
           handleInputChange={handleInputChange}
-          handleInputClick={handleInputClick}
         />
       );
     }
-  }
 
-  if ("oneOf" in propSchema) {
-    // At the time of writing, this isn't used in the backend -> no impl. needed
-    console.error(
-      `Unsupported 'oneOf' in schema for '${propKey}'!`,
-      propSchema,
-    );
-    return null;
-  }
-
-  if (!("type" in propSchema)) {
-    return (
-      <NodeFallbackInput
-        selfKey={propKey}
-        schema={propSchema}
-        value={currentValue}
-        error={errors[propKey]}
-        className={className}
-        displayName={displayName}
-        handleInputChange={handleInputChange}
-        handleInputClick={handleInputClick}
-      />
-    );
-  }
-
-  switch (propSchema.type) {
-    case "string":
+    if ("properties" in propSchema) {
       return (
-        <NodeStringInput
+        <NodeObjectInputTree
           selfKey={propKey}
           schema={propSchema}
-          value={currentValue}
-          error={errors[propKey]}
-          className={className}
-          displayName={displayName}
-          handleInputChange={handleInputChange}
-          handleInputClick={handleInputClick}
-        />
-      );
-    case "boolean":
-      return (
-        <NodeBooleanInput
-          selfKey={propKey}
-          schema={propSchema}
-          value={currentValue}
-          error={errors[propKey]}
-          className={className}
-          displayName={displayName}
-          handleInputChange={handleInputChange}
-        />
-      );
-    case "number":
-    case "integer":
-      return (
-        <NodeNumberInput
-          selfKey={propKey}
-          schema={propSchema}
-          value={currentValue}
-          error={errors[propKey]}
-          className={className}
-          displayName={displayName}
-          handleInputChange={handleInputChange}
-        />
-      );
-    case "array":
-      return (
-        <NodeArrayInput
-          selfKey={propKey}
-          schema={propSchema}
-          entries={currentValue}
+          object={currentValue}
           errors={errors}
-          className={className}
+          className={cn("border-l border-gray-500 pl-2", className)} // visual indent
           displayName={displayName}
           connections={connections}
-          handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
+          handleInputChange={handleInputChange}
         />
       );
-    case "object":
+    }
+
+    if ("additionalProperties" in propSchema) {
       return (
         <NodeKeyValueInput
           selfKey={propKey}
@@ -271,11 +157,40 @@ export const NodeGenericInputField: FC<{
           handleInputChange={handleInputChange}
         />
       );
-    default:
-      console.warn(
-        `Schema for '${propKey}' specifies unknown type:`,
+    }
+
+    if ("anyOf" in propSchema) {
+      // optional items
+      const types = propSchema.anyOf.map((s) =>
+        "type" in s ? s.type : undefined,
+      );
+      if (types.includes("string") && types.includes("null")) {
+        // optional string
+        return (
+          <NodeStringInput
+            selfKey={propKey}
+            schema={{ ...propSchema, type: "string" } as BlockIOStringSubSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+            handleInputClick={handleInputClick}
+          />
+        );
+      }
+    }
+
+    if ("oneOf" in propSchema) {
+      // At the time of writing, this isn't used in the backend -> no impl. needed
+      console.error(
+        `Unsupported 'oneOf' in schema for '${propKey}'!`,
         propSchema,
       );
+      return null;
+    }
+
+    if (!("type" in propSchema)) {
       return (
         <NodeFallbackInput
           selfKey={propKey}
@@ -288,8 +203,93 @@ export const NodeGenericInputField: FC<{
           handleInputClick={handleInputClick}
         />
       );
-  }
-};
+    }
+
+    switch (propSchema.type) {
+      case "string":
+        return (
+          <NodeStringInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+            handleInputClick={handleInputClick}
+          />
+        );
+      case "boolean":
+        return (
+          <NodeBooleanInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      case "number":
+      case "integer":
+        return (
+          <NodeNumberInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      case "array":
+        return (
+          <NodeArrayInput
+            selfKey={propKey}
+            schema={propSchema}
+            entries={currentValue}
+            errors={errors}
+            className={className}
+            displayName={displayName}
+            connections={connections}
+            handleInputChange={handleInputChange}
+            handleInputClick={handleInputClick}
+          />
+        );
+      case "object":
+        return (
+          <NodeKeyValueInput
+            selfKey={propKey}
+            schema={propSchema}
+            entries={currentValue}
+            errors={errors}
+            className={className}
+            displayName={displayName}
+            connections={connections}
+            handleInputChange={handleInputChange}
+          />
+        );
+      default:
+        console.warn(
+          `Schema for '${propKey}' specifies unknown type:`,
+          propSchema,
+        );
+        return (
+          <NodeFallbackInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+            handleInputClick={handleInputClick}
+          />
+        );
+    }
+  };
 
 const NodeCredentialsInput: FC<{
   selfKey: string;
@@ -332,134 +332,134 @@ const NodeKeyValueInput: FC<{
   className,
   displayName,
 }) => {
-  const getPairValues = useCallback(() => {
-    let defaultEntries = new Map<string, any>();
+    const getPairValues = useCallback(() => {
+      let defaultEntries = new Map<string, any>();
 
-    connections
-      .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
-      .forEach((c) => {
-        const key = c.targetHandle.slice(`${selfKey}_#_`.length);
-        defaultEntries.set(key, "");
+      connections
+        .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
+        .forEach((c) => {
+          const key = c.targetHandle.slice(`${selfKey}_#_`.length);
+          defaultEntries.set(key, "");
+        });
+
+      Object.entries(entries ?? schema.default ?? {}).forEach(([key, value]) => {
+        defaultEntries.set(key, value);
       });
 
-    Object.entries(entries ?? schema.default ?? {}).forEach(([key, value]) => {
-      defaultEntries.set(key, value);
-    });
+      return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
+    }, [connections, entries, schema.default, selfKey]);
 
-    return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
-  }, [connections, entries, schema.default, selfKey]);
+    const [keyValuePairs, setKeyValuePairs] = useState<
+      { key: string; value: string | number | null }[]
+    >([]);
 
-  const [keyValuePairs, setKeyValuePairs] = useState<
-    { key: string; value: string | number | null }[]
-  >([]);
-
-  useEffect(
-    () => setKeyValuePairs(getPairValues()),
-    [connections, entries, schema.default, getPairValues],
-  );
-
-  function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
-    setKeyValuePairs(newPairs);
-    handleInputChange(
-      selfKey,
-      newPairs.reduce((obj, { key, value }) => ({ ...obj, [key]: value }), {}),
+    useEffect(
+      () => setKeyValuePairs(getPairValues()),
+      [connections, entries, schema.default, getPairValues],
     );
-  }
 
-  function convertValueType(value: string): string | number | null {
-    if (
-      !schema.additionalProperties ||
-      schema.additionalProperties.type == "string"
-    )
-      return value;
-    if (!value) return null;
-    return Number(value);
-  }
+    function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
+      setKeyValuePairs(newPairs);
+      handleInputChange(
+        selfKey,
+        newPairs.reduce((obj, { key, value }) => ({ ...obj, [key]: value }), {}),
+      );
+    }
 
-  function getEntryKey(key: string): string {
-    return `${selfKey}_#_${key}`;
-  }
-  function isConnected(key: string): boolean {
-    return connections.some((c) => c.targetHandle === getEntryKey(key));
-  }
+    function convertValueType(value: string): string | number | null {
+      if (
+        !schema.additionalProperties ||
+        schema.additionalProperties.type == "string"
+      )
+        return value;
+      if (!value) return null;
+      return Number(value);
+    }
 
-  return (
-    <div
-      className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}
-    >
-      <div>
-        {keyValuePairs.map(({ key, value }, index) => (
-          <div key={index}>
-            {key && (
-              <NodeHandle
-                keyName={key}
-                schema={{ type: "string" }}
-                isConnected={isConnected(key)}
-                isRequired={false}
-                side="left"
-              />
-            )}
-            {!isConnected(key) && (
-              <div className="nodrag mb-2 flex items-center space-x-2">
-                <Input
-                  type="text"
-                  placeholder="Key"
-                  value={key}
-                  onChange={(e) =>
-                    updateKeyValuePairs(
-                      keyValuePairs.toSpliced(index, 1, {
-                        key: e.target.value,
-                        value: value,
-                      }),
-                    )
-                  }
+    function getEntryKey(key: string): string {
+      return `${selfKey}_#_${key}`;
+    }
+    function isConnected(key: string): boolean {
+      return connections.some((c) => c.targetHandle === getEntryKey(key));
+    }
+
+    return (
+      <div
+        className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}
+      >
+        <div>
+          {keyValuePairs.map(({ key, value }, index) => (
+            <div key={index}>
+              {key && (
+                <NodeHandle
+                  keyName={key}
+                  schema={{ type: "string" }}
+                  isConnected={isConnected(key)}
+                  isRequired={false}
+                  side="left"
                 />
-                <Input
-                  type="text"
-                  placeholder="Value"
-                  defaultValue={value ?? ""}
-                  onBlur={(e) =>
-                    updateKeyValuePairs(
-                      keyValuePairs.toSpliced(index, 1, {
-                        key: key,
-                        value: convertValueType(e.target.value),
-                      }),
-                    )
-                  }
-                />
-                <Button
-                  variant="ghost"
-                  className="px-2"
-                  onClick={() =>
-                    updateKeyValuePairs(keyValuePairs.toSpliced(index, 1))
-                  }
-                >
-                  <Cross2Icon />
-                </Button>
-              </div>
-            )}
-            {errors[`${selfKey}.${key}`] && (
-              <span className="error-message">
-                {errors[`${selfKey}.${key}`]}
-              </span>
-            )}
-          </div>
-        ))}
-        <Button
-          className="w-[183p] rounded-xl bg-gray-200 font-normal text-black"
-          onClick={() =>
-            updateKeyValuePairs(keyValuePairs.concat({ key: "", value: "" }))
-          }
-        >
-          <PlusIcon className="mr-2" /> Add Property
-        </Button>
+              )}
+              {!isConnected(key) && (
+                <div className="nodrag mb-2 flex items-center space-x-2">
+                  <Input
+                    type="text"
+                    placeholder="Key"
+                    value={key}
+                    onChange={(e) =>
+                      updateKeyValuePairs(
+                        keyValuePairs.toSpliced(index, 1, {
+                          key: e.target.value,
+                          value: value,
+                        }),
+                      )
+                    }
+                  />
+                  <Input
+                    type="text"
+                    placeholder="Value"
+                    defaultValue={value ?? ""}
+                    onBlur={(e) =>
+                      updateKeyValuePairs(
+                        keyValuePairs.toSpliced(index, 1, {
+                          key: key,
+                          value: convertValueType(e.target.value),
+                        }),
+                      )
+                    }
+                  />
+                  <Button
+                    variant="ghost"
+                    className="px-2"
+                    onClick={() =>
+                      updateKeyValuePairs(keyValuePairs.toSpliced(index, 1))
+                    }
+                  >
+                    <Cross2Icon />
+                  </Button>
+                </div>
+              )}
+              {errors[`${selfKey}.${key}`] && (
+                <span className="error-message">
+                  {errors[`${selfKey}.${key}`]}
+                </span>
+              )}
+            </div>
+          ))}
+          <Button
+            className="w-[183p] rounded-xl bg-gray-200 font-normal text-black hover:text-white"
+            onClick={() =>
+              updateKeyValuePairs(keyValuePairs.concat({ key: "", value: "" }))
+            }
+          >
+            <PlusIcon className="mr-2" /> Add Property
+          </Button>
+        </div>
+        {errors[selfKey] && (
+          <span className="error-message">{errors[selfKey]}</span>
+        )}
       </div>
-      {errors[selfKey] && (
-        <span className="error-message">{errors[selfKey]}</span>
-      )}
-    </div>
-  );
-};
+    );
+  };
 
 const NodeArrayInput: FC<{
   selfKey: string;
@@ -482,78 +482,79 @@ const NodeArrayInput: FC<{
   className,
   displayName,
 }) => {
-  entries ??= schema.default ?? [];
-  const isItemObject = "items" in schema && "properties" in schema.items!;
-  const error =
-    typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
-  return (
-    <div className={cn(className, "flex flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
-      {entries.map((entry: any, index: number) => {
-        const entryKey = `${selfKey}_$_${index}`;
-        const isConnected =
-          connections && connections.some((c) => c.targetHandle === entryKey);
-        return (
-          <div key={entryKey} className="self-start">
-            <div className="mb-2 flex space-x-2">
-              <NodeHandle
-                keyName={entryKey}
-                schema={schema.items!}
-                isConnected={isConnected}
-                isRequired={false}
-                side="left"
-              />
-              {!isConnected &&
-                (schema.items ? (
-                  <NodeGenericInputField
-                    propKey={entryKey}
-                    propSchema={schema.items}
-                    currentValue={entry}
-                    errors={errors}
-                    connections={connections}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                  />
-                ) : (
-                  <NodeFallbackInput
-                    selfKey={entryKey}
-                    schema={schema.items}
-                    value={entry}
-                    error={errors[entryKey]}
-                    displayName={displayName || beautifyString(selfKey)}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                  />
-                ))}
-              {!isConnected && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() =>
-                    handleInputChange(selfKey, entries.toSpliced(index, 1))
-                  }
-                >
-                  <Cross2Icon />
-                </Button>
+    entries ??= schema.default ?? [];
+    const isItemObject = "items" in schema && "properties" in schema.items!;
+    const error =
+      typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
+    return (
+      <div className={cn(className, "flex flex-col")}>
+        {displayName && <strong>{displayName}</strong>}
+        {entries.map((entry: any, index: number) => {
+          const entryKey = `${selfKey}_$_${index}`;
+          const isConnected =
+            connections && connections.some((c) => c.targetHandle === entryKey);
+          return (
+            <div key={entryKey} className="self-start">
+              <div className="mb-2 flex space-x-2">
+                <NodeHandle
+                  keyName={entryKey}
+                  schema={schema.items!}
+                  isConnected={isConnected}
+                  isRequired={false}
+                  side="left"
+                />
+                {!isConnected &&
+                  (schema.items ? (
+                    <NodeGenericInputField
+                      propKey={entryKey}
+                      propSchema={schema.items}
+                      currentValue={entry}
+                      errors={errors}
+                      connections={connections}
+                      handleInputChange={handleInputChange}
+                      handleInputClick={handleInputClick}
+                    />
+                  ) : (
+                    <NodeFallbackInput
+                      selfKey={entryKey}
+                      schema={schema.items}
+                      value={entry}
+                      error={errors[entryKey]}
+                      displayName={displayName || beautifyString(selfKey)}
+                      handleInputChange={handleInputChange}
+                      handleInputClick={handleInputClick}
+                    />
+                  ))}
+                {!isConnected && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      handleInputChange(selfKey, entries.toSpliced(index, 1))
+                    }
+                  >
+                    <Cross2Icon />
+                  </Button>
+                )}
+              </div>
+              {errors[entryKey] && typeof errors[entryKey] === "string" && (
+                <span className="error-message">{errors[entryKey]}</span>
               )}
             </div>
-            {errors[entryKey] && typeof errors[entryKey] === "string" && (
-              <span className="error-message">{errors[entryKey]}</span>
-            )}
-          </div>
-        );
-      })}
-      <Button
-        onClick={() =>
-          handleInputChange(selfKey, [...entries, isItemObject ? {} : ""])
-        }
-      >
-        <PlusIcon className="mr-2" /> Add Item
-      </Button>
-      {error && <span className="error-message">{error}</span>}
-    </div>
-  );
-};
+          );
+        })}
+        <Button
+          className="w-[183p] rounded-xl bg-gray-200 font-normal text-black hover:text-white"
+          onClick={() =>
+            handleInputChange(selfKey, [...entries, isItemObject ? {} : ""])
+          }
+        >
+          <PlusIcon className="mr-2" /> Add Item
+        </Button>
+        {error && <span className="error-message">{error}</span>}
+      </div>
+    );
+  };
 
 const NodeStringInput: FC<{
   selfKey: string;
@@ -574,56 +575,56 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= schema.default || "";
-  return (
-    <div className={className}>
-      {schema.enum ? (
-        <Select
-          defaultValue={value}
-          onValueChange={(newValue) => handleInputChange(selfKey, newValue)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={schema.placeholder || displayName} />
-          </SelectTrigger>
-          <SelectContent className="nodrag">
-            {schema.enum.map((option, index) => (
-              <SelectItem key={index} value={option}>
-                {beautifyString(option)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <div
-          className="nodrag relative"
-          onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
-        >
-          <Input
-            type="text"
-            id={selfKey}
-            defaultValue={schema.secret && value ? "********" : value}
-            readOnly={schema.secret}
-            placeholder={
-              schema?.placeholder || `Enter ${beautifyString(displayName)}`
-            }
-            onBlur={(e) => handleInputChange(selfKey, e.target.value)}
-            className="rounded-xl pr-8 read-only:cursor-pointer read-only:text-gray-500"
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute inset-1 left-auto h-7 w-7 rounded-[0.25rem]"
-            onClick={() => handleInputClick(selfKey)}
-            title="Open a larger textbox input"
+    value ||= schema.default || "";
+    return (
+      <div className={className}>
+        {schema.enum ? (
+          <Select
+            defaultValue={value}
+            onValueChange={(newValue) => handleInputChange(selfKey, newValue)}
           >
-            <Pencil2Icon className="m-0 p-0" />
-          </Button>
-        </div>
-      )}
-      {error && <span className="error-message">{error}</span>}
-    </div>
-  );
-};
+            <SelectTrigger>
+              <SelectValue placeholder={schema.placeholder || displayName} />
+            </SelectTrigger>
+            <SelectContent className="nodrag">
+              {schema.enum.map((option, index) => (
+                <SelectItem key={index} value={option}>
+                  {beautifyString(option)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div
+            className="nodrag relative"
+            onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
+          >
+            <Input
+              type="text"
+              id={selfKey}
+              defaultValue={schema.secret && value ? "********" : value}
+              readOnly={schema.secret}
+              placeholder={
+                schema?.placeholder || `Enter ${beautifyString(displayName)}`
+              }
+              onBlur={(e) => handleInputChange(selfKey, e.target.value)}
+              className="rounded-xl pr-8 read-only:cursor-pointer read-only:text-gray-500"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute inset-1 left-auto h-7 w-7 rounded-[0.25rem]"
+              onClick={() => handleInputClick(selfKey)}
+              title="Open a larger textbox input"
+            >
+              <Pencil2Icon className="m-0 p-0" />
+            </Button>
+          </div>
+        )}
+        {error && <span className="error-message">{error}</span>}
+      </div>
+    );
+  };
 
 export const NodeTextBoxInput: FC<{
   selfKey: string;
@@ -644,33 +645,33 @@ export const NodeTextBoxInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= schema.default || "";
-  return (
-    <div className={className}>
-      <div
-        className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4"
-        onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
-      >
-        <textarea
-          id={selfKey}
-          value={schema.secret && value ? "********" : value}
-          readOnly={schema.secret}
-          placeholder={
-            schema?.placeholder || `Enter ${beautifyString(displayName)}`
-          }
-          onChange={(e) => handleInputChange(selfKey, e.target.value)}
-          onBlur={(e) => handleInputChange(selfKey, e.target.value)}
-          className="h-full w-full resize-none overflow-hidden rounded-xl border-none bg-transparent text-lg text-black outline-none"
-          style={{
-            fontSize: "min(1em, 16px)",
-            lineHeight: "1.2",
-          }}
-        />
+    value ||= schema.default || "";
+    return (
+      <div className={className}>
+        <div
+          className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4"
+          onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
+        >
+          <textarea
+            id={selfKey}
+            value={schema.secret && value ? "********" : value}
+            readOnly={schema.secret}
+            placeholder={
+              schema?.placeholder || `Enter ${beautifyString(displayName)}`
+            }
+            onChange={(e) => handleInputChange(selfKey, e.target.value)}
+            onBlur={(e) => handleInputChange(selfKey, e.target.value)}
+            className="h-full w-full resize-none overflow-hidden rounded-xl border-none bg-transparent text-lg text-black outline-none"
+            style={{
+              fontSize: "min(1em, 16px)",
+              lineHeight: "1.2",
+            }}
+          />
+        </div>
+        {error && <span className="error-message">{error}</span>}
       </div>
-      {error && <span className="error-message">{error}</span>}
-    </div>
-  );
-};
+    );
+  };
 
 const NodeNumberInput: FC<{
   selfKey: string;
@@ -689,25 +690,25 @@ const NodeNumberInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= schema.default;
-  displayName ||= schema.title || beautifyString(selfKey);
-  return (
-    <div className={className}>
-      <div className="nodrag flex items-center justify-between space-x-3">
-        <Input
-          type="number"
-          id={selfKey}
-          defaultValue={value}
-          onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
-          placeholder={
-            schema.placeholder || `Enter ${beautifyString(displayName)}`
-          }
-        />
+    value ||= schema.default;
+    displayName ||= schema.title || beautifyString(selfKey);
+    return (
+      <div className={className}>
+        <div className="nodrag flex items-center justify-between space-x-3">
+          <Input
+            type="number"
+            id={selfKey}
+            defaultValue={value}
+            onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
+            placeholder={
+              schema.placeholder || `Enter ${beautifyString(displayName)}`
+            }
+          />
+        </div>
+        {error && <span className="error-message">{error}</span>}
       </div>
-      {error && <span className="error-message">{error}</span>}
-    </div>
-  );
-};
+    );
+  };
 
 const NodeBooleanInput: FC<{
   selfKey: string;
@@ -726,20 +727,20 @@ const NodeBooleanInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= schema.default ?? false;
-  return (
-    <div className={className}>
-      <div className="nodrag flex items-center">
-        <Switch
-          checked={value}
-          onCheckedChange={(v) => handleInputChange(selfKey, v)}
-        />
-        <span className="ml-3">{displayName}</span>
+    value ||= schema.default ?? false;
+    return (
+      <div className={className}>
+        <div className="nodrag flex items-center">
+          <Switch
+            checked={value}
+            onCheckedChange={(v) => handleInputChange(selfKey, v)}
+          />
+          <span className="ml-3">{displayName}</span>
+        </div>
+        {error && <span className="error-message">{error}</span>}
       </div>
-      {error && <span className="error-message">{error}</span>}
-    </div>
-  );
-};
+    );
+  };
 
 const NodeFallbackInput: FC<{
   selfKey: string;
@@ -760,17 +761,17 @@ const NodeFallbackInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= (schema as BlockIOStringSubSchema)?.default;
-  return (
-    <NodeStringInput
-      selfKey={selfKey}
-      schema={{ type: "string", ...schema } as BlockIOStringSubSchema}
-      value={value}
-      error={error}
-      handleInputChange={handleInputChange}
-      handleInputClick={handleInputClick}
-      className={className}
-      displayName={displayName}
-    />
-  );
-};
+    value ||= (schema as BlockIOStringSubSchema)?.default;
+    return (
+      <NodeStringInput
+        selfKey={selfKey}
+        schema={{ type: "string", ...schema } as BlockIOStringSubSchema}
+        value={value}
+        error={error}
+        handleInputChange={handleInputChange}
+        handleInputClick={handleInputClick}
+        className={className}
+        displayName={displayName}
+      />
+    );
+  };
