@@ -96,9 +96,9 @@ jobs:
       - name: Run pytest with coverage
         run: |
           if [[ "${{ runner.debug }}" == "1" ]]; then
-            poetry run pytest -vv -o log_cli=true -o log_cli_level=DEBUG test
+            poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG test
           else
-            poetry run pytest -vv test
+            poetry run pytest -s -vv test
           fi
         if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
