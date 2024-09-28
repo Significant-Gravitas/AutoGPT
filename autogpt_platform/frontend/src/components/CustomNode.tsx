@@ -572,9 +572,13 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       ),
     );
 
+  const LineSeparator = () => (
+    <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
+  );
+
   return (
     <div
-      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} border-1 ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
+      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
       data-id={`custom-node-${id}`}
@@ -662,7 +666,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         {/* Advanced Settings */}
         {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
           <>
-            <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
+            <LineSeparator />
             <div className="mt-2.5 flex items-center justify-between pb-4">
               <span className="">Advanced</span>
               <Switch
@@ -673,9 +677,9 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           </>
         )}
         {/* Output Handles */}
-        {data.uiType !== BlockUIType.NOTE ? (
+        {data.uiType !== BlockUIType.NOTE && (
           <>
-            <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
+            <LineSeparator />
 
             <div className="mt-2 flex items-start justify-end rounded-b-xl pr-2">
               <div className="flex-none">
@@ -684,8 +688,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               </div>
             </div>
           </>
-        ) : (
-          <></>
         )}
       </div>
       {/* End Body */}
@@ -702,7 +704,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           >
             {(data.executionResults?.length ?? 0) > 0 ? (
               <div className="mt-0 rounded-b-xl bg-gray-100">
-                <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
+                <LineSeparator />
                 <NodeOutputs
                   title="Latest Output"
                   truncateLongData

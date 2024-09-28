@@ -42,17 +42,16 @@ const NodeHandle: FC<HandleProps> = ({
     </div>
   );
 
-  const left_dot = (
-    <div
-      className={`m-1 -ml-2 mr-2 h-4 w-4 border-2 bg-white ${isConnected ? getTypeBgColor(schema.type || "any") : "border-gray-300"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
-    />
-  );
-
-  const right_dot = (
-    <div
-      className={`m-1 h-4 w-4 border-2 bg-white ${isConnected ? getTypeBgColor(schema.type || "any") : "border-gray-300"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
-    />
-  );
+  const Dot = ({ className = "" }) => {
+    const color = isConnected
+      ? getTypeBgColor(schema.type || "any")
+      : "border-gray-300";
+    return (
+      <div
+        className={`${className} ${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
+      />
+    );
+  };
 
   if (side === "left") {
     return (
@@ -61,10 +60,10 @@ const NodeHandle: FC<HandleProps> = ({
           type="target"
           position={Position.Left}
           id={keyName}
-          className="background-color: white; border: 2px solid black; width: 15px; height: 15px; border-radius: 50%; bottom: 0px; left: 20%; group -ml-[26px]"
+          className="-ml-[26px]"
         >
           <div className="pointer-events-none flex items-center">
-            {left_dot}
+            <Dot className={`-ml-2 mr-2`} />
             {label}
           </div>
         </Handle>
@@ -82,7 +81,7 @@ const NodeHandle: FC<HandleProps> = ({
         >
           <div className="pointer-events-none flex items-center">
             {label}
-            {right_dot}
+            <Dot />
           </div>
         </Handle>
       </div>

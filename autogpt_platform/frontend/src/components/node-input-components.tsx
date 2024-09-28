@@ -446,7 +446,7 @@ const NodeKeyValueInput: FC<{
           </div>
         ))}
         <Button
-          className="w-[183p] rounded-xl bg-gray-200 font-normal text-black hover:text-white"
+          className="rounded-xl bg-gray-200 font-normal text-black hover:text-white"
           onClick={() =>
             updateKeyValuePairs(keyValuePairs.concat({ key: "", value: "" }))
           }
