@@ -41,7 +41,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
@@ -53,15 +53,6 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        - name: cloud-sql-proxy
-          image: "{{ .Values.cloudSqlProxy.image.repository }}:{{ .Values.cloudSqlProxy.image.tag }}"
-          args:
-            - "--structured-logs"
-            {{- if .Values.cloudSqlProxy.usePrivateIp }}
-            - "--private-ip"
-            {{- end }}
-            - "--port={{ .Values.cloudSqlProxy.port }}"
-            - "{{ .Values.cloudSqlProxy.instanceConnectionName }}"
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
