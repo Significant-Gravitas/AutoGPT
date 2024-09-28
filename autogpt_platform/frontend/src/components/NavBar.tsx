@@ -19,11 +19,13 @@ import { BsBoxes } from "react-icons/bs";
 import { LuLaptop } from "react-icons/lu";
 import { LuShoppingCart } from "react-icons/lu";
 import { getBehaveAs } from "@/lib/utils";
+import { MarketPopup } from "./nav/MarketPopup";
+
 
 export async function NavBar() {
   const isAvailable = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   );
   const { user } = await getServerUser();
 
@@ -43,18 +45,16 @@ export async function NavBar() {
           </SheetTrigger>
           <SheetContent side="left">
             <nav className="grid gap-6 text-lg font-medium">
-              <Link
-                href={
-                  getBehaveAs() === "CLOUD"
-                    ? "/marketplace"
-                    : "http://dev-builder.agpt.co/marketplace"
-                }
-                // open in new tab if not local
-                target={getBehaveAs() === "CLOUD" ? "_self" : "_blank"}
-                className="mt-4 flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <LuShoppingCart /> Marketplace
-              </Link>
+              {getBehaveAs() === "CLOUD" ? (
+                <Link
+                  href="/marketplace"
+                  className="mt-4 flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
+                >
+                  <LuShoppingCart /> Marketplace
+                </Link>
+              ) : (
+                <MarketPopup />
+              )}
               <Link
                 href="/"
                 className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
@@ -82,17 +82,16 @@ export async function NavBar() {
               />
             </a>
           </div>
-          <Link
-            href={
-              getBehaveAs() === "CLOUD"
-                ? "/marketplace"
-                : "http://dev-builder.agpt.co/marketplace"
-            }
-            className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground"
-            target={getBehaveAs() === "CLOUD" ? "_self" : "_blank"}
-          >
-            <LuShoppingCart /> Marketplace
-          </Link>
+          {getBehaveAs() === "CLOUD" ? (
+            <Link
+              href="/marketplace"
+              className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground"
+            >
+              <LuShoppingCart /> Marketplace
+            </Link>
+          ) :
+            <MarketPopup />
+          }
           <Link
             href="/"
             className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground"
