@@ -180,21 +180,22 @@ export function removeEmptyStringsAndNulls(obj: any): any {
 }
 
 export const categoryColorMap: Record<string, string> = {
-  AI: "bg-orange-300/[.7]",
-  SOCIAL: "bg-yellow-300/[.7]",
-  TEXT: "bg-green-300/[.7]",
-  SEARCH: "bg-blue-300/[.7]",
-  BASIC: "bg-purple-300/[.7]",
-  INPUT: "bg-cyan-300/[.7]",
-  OUTPUT: "bg-red-300/[.7]",
-  LOGIC: "bg-teal-300/[.7]",
+  AI: "bg-orange-300",
+  SOCIAL: "bg-yellow-300",
+  TEXT: "bg-green-300",
+  SEARCH: "bg-blue-300",
+  BASIC: "bg-purple-300",
+  INPUT: "bg-cyan-300",
+  OUTPUT: "bg-red-300",
+  LOGIC: "bg-teal-300",
+  DEVELOPER_TOOLS: "bg-fuchsia-300",
 };
 
 export function getPrimaryCategoryColor(categories: Category[]): string {
   if (categories.length === 0) {
-    return "bg-gray-300/[.7]";
+    return "bg-gray-300";
   }
-  return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
+  return categoryColorMap[categories[0].category] || "bg-gray-300";
 }
 
 export function filterBlocksByType<T>(
