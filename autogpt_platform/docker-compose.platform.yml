@@ -207,6 +207,7 @@ services:
 #      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
 #      - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
 #      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
+#      - NEXT_PUBLIC_BEHAVE_AS=LOCAL
 #    ports:
 #      - "3000:3000"
 #    networks:
