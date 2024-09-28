@@ -21,11 +21,10 @@ import { LuShoppingCart } from "react-icons/lu";
 import { getBehaveAs } from "@/lib/utils";
 import { MarketPopup } from "./nav/MarketPopup";
 
-
 export async function NavBar() {
   const isAvailable = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   );
   const { user } = await getServerUser();
 
@@ -53,7 +52,7 @@ export async function NavBar() {
                   <LuShoppingCart /> Marketplace
                 </Link>
               ) : (
-                <MarketPopup />
+                <MarketPopup className="mt-4 flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground" />
               )}
               <Link
                 href="/"
@@ -89,9 +88,9 @@ export async function NavBar() {
             >
               <LuShoppingCart /> Marketplace
             </Link>
-          ) :
-            <MarketPopup />
-          }
+          ) : (
+            <MarketPopup className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground" />
+          )}
           <Link
             href="/"
             className="text-basehover:text-foreground flex flex-row items-center gap-2 font-semibold text-foreground"
