@@ -2,3 +2,4 @@ mkdocs
 mkdocs-material
 mkdocs-table-reader-plugin
 pymdown-extensions
+mkdocs-git-revision-date-localized-plugin
