@@ -63,7 +63,7 @@ export function NavBarButtons({ className }: { className?: string }) {
         <MarketPopup
           className={cn(
             className,
-            "flex items-center gap-2 rounded-xl p-3 text-muted-foreground hover:text-foreground"
+            "flex items-center gap-2 rounded-xl p-3 text-muted-foreground hover:text-foreground",
           )}
         >
           <LuShoppingCart /> Marketplace
