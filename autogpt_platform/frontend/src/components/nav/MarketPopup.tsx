@@ -1,15 +1,14 @@
-"use client";
-import React from "react";
-import { LuShoppingCart } from "react-icons/lu";
 import { ButtonHTMLAttributes } from "react";
+import React from "react";
 
 interface MarketPopupProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   marketplaceUrl?: string;
 }
 
-export function MarketPopup({
+export default function MarketPopup({
   className = "",
   marketplaceUrl = "http://platform.agpt.co/marketplace",
+  children,
   ...props
 }: MarketPopupProps) {
   const openMarketplacePopup = () => {
@@ -22,7 +21,7 @@ export function MarketPopup({
 
   return (
     <button onClick={openMarketplacePopup} className={className} {...props}>
-      <LuShoppingCart /> Marketplace
+      {children}
     </button>
   );
 }
