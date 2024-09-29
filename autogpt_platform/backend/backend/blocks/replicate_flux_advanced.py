@@ -40,6 +40,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
             description="The name of the Image Generation Model, i.e Flux Schnell",
             default=ReplicateFluxModelName.FLUX_SCHNELL,
             title="Image Generation Model",
+            advanced=False,
         )
         prompt: str = SchemaField(
             description="Text prompt for image generation",
