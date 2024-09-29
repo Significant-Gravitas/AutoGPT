@@ -21,12 +21,14 @@ class ReplicateFluxModelName(str, Enum):
             ReplicateFluxModelName.FLUX_DEV: "black-forest-labs/flux-dev",
         }
         return api_names[self]
-    
+
+
 # Image type Enum
 class ImageType(str, Enum):
     WEBP = "webp"
     JPG = "jpg"
     PNG = "png"
+
 
 class ReplicateFluxAdvancedModelBlock(Block):
     class Input(BlockSchema):
@@ -48,7 +50,6 @@ class ReplicateFluxAdvancedModelBlock(Block):
             description="Random seed. Set for reproducible generation",
             default=None,
             title="Seed",
-            default=None,
         )
         steps: int = SchemaField(
             description="Number of diffusion steps",
