@@ -33,31 +33,32 @@ class AudioTrack(str, Enum):
     TOURIST = ("Tourist",)
     TWIN_TYCHES = ("Twin Tyches",)
 
-
-AUDIO_TRACK_URLS = {
-    AudioTrack.OBSERVER: "https://cdn.tfrv.xyz/audio/observer.mp3",
-    AudioTrack.FUTURISTIC_BEAT: "https://cdn.tfrv.xyz/audio/_futuristic-beat.mp3",
-    AudioTrack.SCIENCE_DOCUMENTARY: "https://cdn.tfrv.xyz/audio/_science-documentary.mp3",
-    AudioTrack.HOTLINE: "https://cdn.tfrv.xyz/audio/_hotline.mp3",
-    AudioTrack.BLADERUNNER_2049: "https://cdn.tfrv.xyz/audio/_bladerunner-2049.mp3",
-    AudioTrack.A_FUTURE: "https://cdn.tfrv.xyz/audio/a-future.mp3",
-    AudioTrack.ELYSIAN_EMBERS: "https://cdn.tfrv.xyz/audio/elysian-embers.mp3",
-    AudioTrack.INSPIRING_CINEMATIC: "https://cdn.tfrv.xyz/audio/inspiring-cinematic-ambient.mp3",
-    AudioTrack.BLADERUNNER_REMIX: "https://cdn.tfrv.xyz/audio/bladerunner-remix.mp3",
-    AudioTrack.IZZAMUZZIC: "https://cdn.tfrv.xyz/audio/_izzamuzzic.mp3",
-    AudioTrack.NAS: "https://cdn.tfrv.xyz/audio/_nas.mp3",
-    AudioTrack.PARIS_ELSE: "https://cdn.tfrv.xyz/audio/_paris-else.mp3",
-    AudioTrack.SNOWFALL: "https://cdn.tfrv.xyz/audio/_snowfall.mp3",
-    AudioTrack.BURLESQUE: "https://cdn.tfrv.xyz/audio/burlesque.mp3",
-    AudioTrack.CORNY_CANDY: "https://cdn.tfrv.xyz/audio/corny-candy.mp3",
-    AudioTrack.HIGHWAY_NOCTURNE: "https://cdn.tfrv.xyz/audio/highway-nocturne.mp3",
-    AudioTrack.I_DONT_THINK_SO: "https://cdn.tfrv.xyz/audio/i-dont-think-so.mp3",
-    AudioTrack.LOSING_YOUR_MARBLES: "https://cdn.tfrv.xyz/audio/losing-your-marbles.mp3",
-    AudioTrack.REFRESHER: "https://cdn.tfrv.xyz/audio/refresher.mp3",
-    AudioTrack.TOURIST: "https://cdn.tfrv.xyz/audio/tourist.mp3",
-    AudioTrack.TWIN_TYCHES: "https://cdn.tfrv.xyz/audio/twin-tynches.mp3",
-}
-
+    @property
+    def audio_url(self):
+        audio_urls = {
+            AudioTrack.OBSERVER: "https://cdn.tfrv.xyz/audio/observer.mp3",
+            AudioTrack.FUTURISTIC_BEAT: "https://cdn.tfrv.xyz/audio/_futuristic-beat.mp3",
+            AudioTrack.SCIENCE_DOCUMENTARY: "https://cdn.tfrv.xyz/audio/_science-documentary.mp3",
+            AudioTrack.HOTLINE: "https://cdn.tfrv.xyz/audio/_hotline.mp3",
+            AudioTrack.BLADERUNNER_2049: "https://cdn.tfrv.xyz/audio/_bladerunner-2049.mp3",
+            AudioTrack.A_FUTURE: "https://cdn.tfrv.xyz/audio/a-future.mp3",
+            AudioTrack.ELYSIAN_EMBERS: "https://cdn.tfrv.xyz/audio/elysian-embers.mp3",
+            AudioTrack.INSPIRING_CINEMATIC: "https://cdn.tfrv.xyz/audio/inspiring-cinematic-ambient.mp3",
+            AudioTrack.BLADERUNNER_REMIX: "https://cdn.tfrv.xyz/audio/bladerunner-remix.mp3",
+            AudioTrack.IZZAMUZZIC: "https://cdn.tfrv.xyz/audio/_izzamuzzic.mp3",
+            AudioTrack.NAS: "https://cdn.tfrv.xyz/audio/_nas.mp3",
+            AudioTrack.PARIS_ELSE: "https://cdn.tfrv.xyz/audio/_paris-else.mp3",
+            AudioTrack.SNOWFALL: "https://cdn.tfrv.xyz/audio/_snowfall.mp3",
+            AudioTrack.BURLESQUE: "https://cdn.tfrv.xyz/audio/burlesque.mp3",
+            AudioTrack.CORNY_CANDY: "https://cdn.tfrv.xyz/audio/corny-candy.mp3",
+            AudioTrack.HIGHWAY_NOCTURNE: "https://cdn.tfrv.xyz/audio/highway-nocturne.mp3",
+            AudioTrack.I_DONT_THINK_SO: "https://cdn.tfrv.xyz/audio/i-dont-think-so.mp3",
+            AudioTrack.LOSING_YOUR_MARBLES: "https://cdn.tfrv.xyz/audio/losing-your-marbles.mp3",
+            AudioTrack.REFRESHER: "https://cdn.tfrv.xyz/audio/refresher.mp3",
+            AudioTrack.TOURIST: "https://cdn.tfrv.xyz/audio/tourist.mp3",
+            AudioTrack.TWIN_TYCHES: "https://cdn.tfrv.xyz/audio/twin-tynches.mp3",
+        }
+        return audio_urls[self]
 
 class GenerationPreset(str, Enum):
     LEONARDO = ("Default",)
@@ -227,7 +228,7 @@ class AIShortformVideoCreatorBlock(Block):
             webhook_token, webhook_url = self.create_webhook()
             logger.info(f"Webhook URL: {webhook_url}")
 
-            audio_url = AUDIO_TRACK_URLS[input_data.background_music]
+            audio_url = input_data.background_music.audio_url
 
             payload = {
                 "frameRate": input_data.frame_rate,
