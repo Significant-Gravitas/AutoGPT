@@ -165,15 +165,26 @@ class AIShortformVideoCreatorBlock(Block):
             categories={BlockCategory.SOCIAL, BlockCategory.AI},
             input_schema=AIShortformVideoCreatorBlock.Input,
             output_schema=AIShortformVideoCreatorBlock.Output,
-            test_input={
-                "api_key": "test_api_key",
-                "script": "This is a test script for a shortform video.",
-            },
-            test_output=("video_url", "https://example.com/test_video.mp4"),
-            test_mock={
-                "create_video": lambda *args, **kwargs: {"id": "test_video_id"},
-                "wait_for_video": lambda *args, **kwargs: "https://example.com/test_video.mp4",
-            },
+        test_input={
+            "api_key": "test_api_key",
+            "script": "[close-up of a cat] Meow!",
+            "ratio": "9 / 16",
+            "resolution": "720p",
+            "frame_rate": 60,
+            "generation_preset": GenerationPreset.LEONARDO,
+            "background_music": AudioTrack.HIGHWAY_NOCTURNE,
+            "voice": Voice.LILY,
+            "video_style": VisualMediaType.STOCK_VIDEOS,
+        },
+        test_output=(
+            "video_url",
+            "https://example.com/video.mp4",
+        ),
+        test_mock={
+            "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
+            "create_video": lambda api_key, payload: {"pid": "test_pid"},
+            "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/video.mp4",
+        },
         )
 
     def create_webhook(self):
