@@ -36,16 +36,16 @@ class ReplicateFluxAdvancedModelBlock(Block):
             key="replicate_api_key",
             description="Replicate API Key",
         )
+        prompt: str = SchemaField(
+            description="Text prompt for image generation",
+            placeholder="e.g., 'A futuristic cityscape at sunset'",
+            title="Prompt",
+        )
         replicate_model_name: ReplicateFluxModelName = SchemaField(
             description="The name of the Image Generation Model, i.e Flux Schnell",
             default=ReplicateFluxModelName.FLUX_SCHNELL,
             title="Image Generation Model",
             advanced=False,
-        )
-        prompt: str = SchemaField(
-            description="Text prompt for image generation",
-            placeholder="e.g., 'A futuristic cityscape at sunset'",
-            title="Prompt",
         )
         seed: int | None = SchemaField(
             description="Random seed. Set for reproducible generation",
