@@ -1,6 +1,8 @@
 import replicate
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
+
 
 class ReplicateFluxBasicModelBlock(Block):
     class Input(BlockSchema):
@@ -67,7 +69,7 @@ class ReplicateFluxBasicModelBlock(Block):
         # Run the model
         output = client.run(
             f"{model_name}",
-            input={"prompt": prompt,"output_format": "png"},
+            input={"prompt": prompt, "output_format": "png"},
         )
 
         # Check if output is a list or a string and extract accordingly; otherwise, assign a default message
@@ -76,5 +78,7 @@ class ReplicateFluxBasicModelBlock(Block):
         elif isinstance(output, str):
             result_url = output  # If output is a string, use it directly
         else:
-            result_url = "No output received"  # Fallback message if output is not as expected
+            result_url = (
+                "No output received"  # Fallback message if output is not as expected
+            )
         return result_url
