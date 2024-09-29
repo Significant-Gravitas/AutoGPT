@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 import replicate
@@ -43,9 +44,10 @@ class ReplicateFluxAdvancedModelBlock(Block):
             placeholder="e.g., 'A futuristic cityscape at sunset'",
             title="Prompt",
         )
-        seed: int = SchemaField(
+        seed: int | None = SchemaField(
             description="Random seed. Set for reproducible generation",
             title="Seed",
+            default=None,
         )
         steps: int = SchemaField(
             description="Number of diffusion steps",
@@ -132,13 +134,18 @@ class ReplicateFluxAdvancedModelBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # If the seed is not provided, generate a random seed
+        seed = input_data.seed
+        if seed is None:
+            seed = int.from_bytes(os.urandom(4), "big")
+
         try:
             # Run the model using the provided inputs
             result = self.run_model(
-                input_data.api_key.get_secret_value(),
-                input_data.replicate_model_name,
-                input_data.prompt,
-                seed=input_data.seed,
+                api_key=input_data.api_key.get_secret_value(),
+                model_name=input_data.replicate_model_name.api_name,
+                prompt=input_data.prompt,
+                seed=seed,
                 steps=input_data.steps,
                 guidance=input_data.guidance,
                 interval=input_data.interval,
@@ -190,6 +197,8 @@ class ReplicateFluxAdvancedModelBlock(Block):
         elif isinstance(output, str):
             result_url = output  # If output is a string, use it directly
         else:
-            result_url = "No output received"  # Fallback message if output is not as expected
+            result_url = (
+                "No output received"  # Fallback message if output is not as expected
+            )
 
         return result_url
