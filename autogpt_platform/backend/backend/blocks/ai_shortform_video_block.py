@@ -11,27 +11,27 @@ from backend.data.model import BlockSecret, SchemaField, SecretField
 
 
 class AudioTrack(str, Enum):
-    OBSERVER = "Observer",
-    FUTURISTIC_BEAT = "Futuristic Beat",
-    SCIENCE_DOCUMENTARY = "Science Documentary",
-    HOTLINE = "Hotline",
-    BLADERUNNER_2049 = "Bladerunner 2049",
-    A_FUTURE = "A Future",
-    ELYSIAN_EMBERS = "Elysian Embers",
-    INSPIRING_CINEMATIC = "Inspiring Cinematic",
-    BLADERUNNER_REMIX = "Bladerunner Remix",
-    IZZAMUZZIC = "Izzamuzzic",
-    NAS = "Nas",
-    PARIS_ELSE = "Paris - Else",
-    SNOWFALL = "Snowfall",
-    BURLESQUE = "Burlesque",
-    CORNY_CANDY = "Corny Candy",
-    HIGHWAY_NOCTURNE = "Highway Nocturne",
-    I_DONT_THINK_SO = "I Don't Think So",
-    LOSING_YOUR_MARBLES = "Losing Your Marbles",
-    REFRESHER = "Refresher",
-    TOURIST = "Tourist",
-    TWIN_TYCHES = "Twin Tyches",
+    OBSERVER = ("Observer",)
+    FUTURISTIC_BEAT = ("Futuristic Beat",)
+    SCIENCE_DOCUMENTARY = ("Science Documentary",)
+    HOTLINE = ("Hotline",)
+    BLADERUNNER_2049 = ("Bladerunner 2049",)
+    A_FUTURE = ("A Future",)
+    ELYSIAN_EMBERS = ("Elysian Embers",)
+    INSPIRING_CINEMATIC = ("Inspiring Cinematic",)
+    BLADERUNNER_REMIX = ("Bladerunner Remix",)
+    IZZAMUZZIC = ("Izzamuzzic",)
+    NAS = ("Nas",)
+    PARIS_ELSE = ("Paris - Else",)
+    SNOWFALL = ("Snowfall",)
+    BURLESQUE = ("Burlesque",)
+    CORNY_CANDY = ("Corny Candy",)
+    HIGHWAY_NOCTURNE = ("Highway Nocturne",)
+    I_DONT_THINK_SO = ("I Don't Think So",)
+    LOSING_YOUR_MARBLES = ("Losing Your Marbles",)
+    REFRESHER = ("Refresher",)
+    TOURIST = ("Tourist",)
+    TWIN_TYCHES = ("Twin Tyches",)
 
 
 AUDIO_TRACK_URLS = {
