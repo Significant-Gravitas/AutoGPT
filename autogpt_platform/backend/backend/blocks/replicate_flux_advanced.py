@@ -19,7 +19,12 @@ class ReplicateFluxModelName(str, Enum):
             ReplicateFluxModelName.FLUX_PRO: "black-forest-labs/flux-pro",
         }
         return api_names[self]
-
+    
+# Image type Enum
+class ImageType(str, Enum):
+    WEBP = "webp"
+    JPG = "jpg"
+    PNG = "png"
 
 # Image type Enum
 class ImageType(str, Enum):
