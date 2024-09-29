@@ -60,6 +60,7 @@ class AudioTrack(str, Enum):
         }
         return audio_urls[self]
 
+
 class GenerationPreset(str, Enum):
     LEONARDO = ("Default",)
     ANIME = ("Anime",)
