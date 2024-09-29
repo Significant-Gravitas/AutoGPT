@@ -112,7 +112,6 @@ class VisualMediaType(str, Enum):
     STOCK_VIDEOS = ("stockVideo",)
     MOVING_AI_IMAGES = ("movingImage",)
     AI_VIDEO = ("aiVideo",)
-    AI_MORPHING_VIDEO = ("morpher",)
 
 
 logger = logging.getLogger(__name__)
@@ -200,7 +199,7 @@ class AIShortformVideoCreatorBlock(Block):
         return response.json()
 
     def wait_for_video(
-        self, api_key: str, pid: str, webhook_token: str, max_wait_time: int = 600
+        self, api_key: str, pid: str, webhook_token: str, max_wait_time: int = 1000
     ) -> str:
         start_time = time.time()
         while time.time() - start_time < max_wait_time:
