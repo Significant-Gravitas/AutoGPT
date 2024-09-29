@@ -20,7 +20,12 @@ class ReplicateFluxModelName(str, Enum):
             ReplicateFluxModelName.FLUX_DEV: "black-forest-labs/flux-dev",
         }
         return api_names[self]
-
+    
+# Image type Enum
+class ImageType(str, Enum):
+    WEBP = "webp"
+    JPG = "jpg"
+    PNG = "png"
 
 class ReplicateFluxAdvancedModelBlock(Block):
     class Input(BlockSchema):
@@ -69,11 +74,10 @@ class ReplicateFluxAdvancedModelBlock(Block):
             title="Aspect Ratio",
             placeholder="Choose from: 1:1, 16:9, 2:3, 3:2, 4:5, 5:4, 9:16",
         )
-        output_format: str = SchemaField(
-            description="Format of the output images",
-            default="webp",
+        output_format: ImageType = SchemaField(
+            description="File format of the output image",
+            default=ImageType.WEBP,
             title="Output Format",
-            placeholder="Choose from: webp, jpg, png",
         )
         output_quality: int = SchemaField(
             description=(
