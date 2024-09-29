@@ -57,6 +57,33 @@ AUDIO_TRACK_URLS = {
     AudioTrack.TOURIST: "https://cdn.tfrv.xyz/audio/tourist.mp3",
     AudioTrack.TWIN_TYCHES: "https://cdn.tfrv.xyz/audio/twin-tynches.mp3",
 }
+
+
+class GenerationPreset(str, Enum):
+    LEONARDO = ("Default",)
+    ANIME = ("Anime",)
+    REALISM = ("Realist",)
+    ILLUSTRATION = ("Illustration",)
+    SKETCH_COLOR = ("Sketch Color",)
+    SKETCH_BW = ("Sketch B&W",)
+    PIXAR = ("Pixar",)
+    INK = ("Japanese Ink",)
+    RENDER_3D = ("3D Render",)
+    LEGO = ("Lego",)
+    SCIFI = ("Sci-Fi",)
+    RECRO_CARTOON = ("Retro Cartoon",)
+    PIXEL_ART = ("Pixel Art",)
+    CREATIVE = ("Creative",)
+    PHOTOGRAPHY = ("Photography",)
+    RAYTRACED = ("Raytraced",)
+    ENVIRONMENT = ("Environment",)
+    FANTASY = ("Fantasy",)
+    ANIME_SR = ("Anime Realism",)
+    MOVIE = ("Movie",)
+    STYLIZED_ILLUSTRATION = ("Stylized Illustration",)
+    MANGA = ("Manga",)
+
+
 class Voice(str, Enum):
     LILY = "Lily"
     DANIEL = "Daniel"
@@ -81,6 +108,13 @@ class Voice(str, Enum):
         return self.value
 
 
+class VisualMediaType(str, Enum):
+    STOCK_VIDEOS = ("stockVideo",)
+    MOVING_AI_IMAGES = ("movingImage",)
+    AI_VIDEO = ("aiVideo",)
+    AI_MORPHING_VIDEO = ("morpher",)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,8 +132,13 @@ class AIShortformVideoCreatorBlock(Block):
         ratio: str = Field(description="Aspect ratio of the video", default="9 / 16")
         resolution: str = Field(description="Resolution of the video", default="720p")
         frame_rate: int = Field(description="Frame rate of the video", default=60)
-        background_music: AudioTrack = Field(
-            description="Background music track", 
+        generation_preset: GenerationPreset = SchemaField(
+            description="Generation preset for visual style - only effects AI generated visuals",
+            default=GenerationPreset.LEONARDO,
+            placeholder=GenerationPreset.LEONARDO,
+        )
+        background_music: AudioTrack = SchemaField(
+            description="Background music track",
             default=AudioTrack.HIGHWAY_NOCTURNE,
             placeholder=AudioTrack.HIGHWAY_NOCTURNE,
         )
@@ -109,6 +148,9 @@ class AIShortformVideoCreatorBlock(Block):
             placeholder=Voice.LILY,
         )
         video_style: VisualMediaType = SchemaField(
+            description="Type of visual media to use for the video",
+            default=VisualMediaType.STOCK_VIDEOS,
+            placeholder=VisualMediaType.STOCK_VIDEOS,
         )
 
     class Output(BlockSchema):
@@ -194,11 +236,11 @@ class AIShortformVideoCreatorBlock(Block):
                 "frameDurationMultiplier": 18,
                 "webhook": webhook_url,
                 "creationParams": {
-                    "mediaType": "stockVideo",
+                    "mediaType": input_data.video_style,
                     "captionPresetName": "Wrap 1",
                     "selectedVoice": input_data.voice.voice_id,
                     "hasEnhancedGeneration": True,
-                    "generationPreset": "LEONARDO",
+                    "generationPreset": input_data.generation_preset.name,
                     "selectedAudio": input_data.background_music,
                     "origin": "/create",
                     "inputText": input_data.script,
@@ -213,7 +255,8 @@ class AIShortformVideoCreatorBlock(Block):
                     "ratio": input_data.ratio,
                     "sourceType": "contentScraping",
                     "selectedStoryStyle": {"value": "custom", "label": "Custom"},
-                    "hasToGenerateVideos": False,
+                    "hasToGenerateVideos": input_data.video_style
+                    != VisualMediaType.STOCK_VIDEOS,
                     "audioUrl": audio_url,
                 },
             }
