@@ -57,6 +57,29 @@ AUDIO_TRACK_URLS = {
     AudioTrack.TOURIST: "https://cdn.tfrv.xyz/audio/tourist.mp3",
     AudioTrack.TWIN_TYCHES: "https://cdn.tfrv.xyz/audio/twin-tynches.mp3",
 }
+class Voice(str, Enum):
+    LILY = "Lily"
+    DANIEL = "Daniel"
+    BRIAN = "Brian"
+    JESSICA = "Jessica"
+    CHARLOTTE = "Charlotte"
+    CALLUM = "Callum"
+
+    @property
+    def voice_id(self):
+        voice_id_map = {
+            Voice.LILY: "pFZP5JQG7iQjIQuC4Bku",
+            Voice.DANIEL: "onwK4e9ZLuTAKqWW03F9",
+            Voice.BRIAN: "nPczCjzI2devNBz1zQrb",
+            Voice.JESSICA: "cgSgspJ2msm6clMCkdW9",
+            Voice.CHARLOTTE: "XB0fDUnXU5powFXDhCwa",
+            Voice.CALLUM: "N2lVS1w4EtoT3dr4eOWO",
+        }
+        return voice_id_map[self]
+
+    def __str__(self):
+        return self.value
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +103,12 @@ class AIShortformVideoCreatorBlock(Block):
             default=AudioTrack.HIGHWAY_NOCTURNE,
             placeholder=AudioTrack.HIGHWAY_NOCTURNE,
         )
-        voice: Optional[str] = Field(
-            description="Voice ID for text-to-speech", default="nPczCjzI2devNBz1zQrb"
+        voice: Voice = SchemaField(
+            description="AI voice to use for narration",
+            default=Voice.LILY,
+            placeholder=Voice.LILY,
+        )
+        video_style: VisualMediaType = SchemaField(
         )
 
     class Output(BlockSchema):
@@ -169,7 +196,7 @@ class AIShortformVideoCreatorBlock(Block):
                 "creationParams": {
                     "mediaType": "stockVideo",
                     "captionPresetName": "Wrap 1",
-                    "selectedVoice": input_data.voice,
+                    "selectedVoice": input_data.voice.voice_id,
                     "hasEnhancedGeneration": True,
                     "generationPreset": "LEONARDO",
                     "selectedAudio": input_data.background_music,
