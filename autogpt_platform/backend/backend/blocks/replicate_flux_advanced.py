@@ -46,6 +46,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         )
         seed: int | None = SchemaField(
             description="Random seed. Set for reproducible generation",
+            default=None,
             title="Seed",
             default=None,
         )
