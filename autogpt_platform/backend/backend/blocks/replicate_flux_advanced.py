@@ -1,6 +1,33 @@
+import os
+from enum import Enum
+
 import replicate
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
+
+
+# Model name enum
+class ReplicateFluxModelName(str, Enum):
+    FLUX_SCHNELL = ("Flux Schnell",)
+    FLUX_PRO = ("Flux Pro",)
+    FLUX_DEV = ("Flux Dev",)
+
+    @property
+    def api_name(self):
+        api_names = {
+            ReplicateFluxModelName.FLUX_SCHNELL: "black-forest-labs/flux-schnell",
+            ReplicateFluxModelName.FLUX_PRO: "black-forest-labs/flux-pro",
+            ReplicateFluxModelName.FLUX_DEV: "black-forest-labs/flux-dev",
+        }
+        return api_names[self]
+
+
+# Image type Enum
+class ImageType(str, Enum):
+    WEBP = "webp"
+    JPG = "jpg"
+    PNG = "png"
 
 
 class ReplicateFluxAdvancedModelBlock(Block):
@@ -9,18 +36,20 @@ class ReplicateFluxAdvancedModelBlock(Block):
             key="replicate_api_key",
             description="Replicate API Key",
         )
-        replicate_model_name: str = SchemaField(
-            description="The name of the model on Replicate (e.g., 'black-forest-labs/flux-schnell')",
-            placeholder="e.g., 'black-forest-labs/flux-schnell'",
-            title="Replicate Model Name",
-        )
         prompt: str = SchemaField(
             description="Text prompt for image generation",
             placeholder="e.g., 'A futuristic cityscape at sunset'",
             title="Prompt",
         )
-        seed: int = SchemaField(
+        replicate_model_name: ReplicateFluxModelName = SchemaField(
+            description="The name of the Image Generation Model, i.e Flux Schnell",
+            default=ReplicateFluxModelName.FLUX_SCHNELL,
+            title="Image Generation Model",
+            advanced=False,
+        )
+        seed: int | None = SchemaField(
             description="Random seed. Set for reproducible generation",
+            default=None,
             title="Seed",
         )
         steps: int = SchemaField(
@@ -50,11 +79,10 @@ class ReplicateFluxAdvancedModelBlock(Block):
             title="Aspect Ratio",
             placeholder="Choose from: 1:1, 16:9, 2:3, 3:2, 4:5, 5:4, 9:16",
         )
-        output_format: str = SchemaField(
-            description="Format of the output images",
-            default="webp",
+        output_format: ImageType = SchemaField(
+            description="File format of the output image",
+            default=ImageType.WEBP,
             title="Output Format",
-            placeholder="Choose from: webp, jpg, png",
         )
         output_quality: int = SchemaField(
             description=(
@@ -82,40 +110,42 @@ class ReplicateFluxAdvancedModelBlock(Block):
             input_schema=ReplicateFluxAdvancedModelBlock.Input,
             output_schema=ReplicateFluxAdvancedModelBlock.Output,
             test_input={
-                "api_key": "your_test_api_key",
-                "replicate_model_name": "black-forest-labs/flux-schnell",
+                "api_key": "test_api_key",
+                "replicate_model_name": ReplicateFluxModelName.FLUX_SCHNELL,
                 "prompt": "A beautiful landscape painting of a serene lake at sunrise",
+                "seed": None,
                 "steps": 25,
                 "guidance": 3.0,
                 "interval": 2.0,
                 "aspect_ratio": "1:1",
-                "output_format": "png",
+                "output_format": ImageType.PNG,
                 "output_quality": 80,
                 "safety_tolerance": 2,
             },
             test_output=[
                 (
                     "result",
-                    {
-                        "result_url": "https://replicate.com/output/generated-image-url.jpg",
-                    },
+                    "https://replicate.com/output/generated-image-url.jpg",
                 ),
             ],
             test_mock={
-                "run_model": lambda *args, **kwargs: {
-                    "result_url": "https://replicate.com/output/generated-image-url.jpg",
-                }
+                "run_model": lambda api_key, model_name, prompt, seed, steps, guidance, interval, aspect_ratio, output_format, output_quality, safety_tolerance: "https://replicate.com/output/generated-image-url.jpg",
             },
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # If the seed is not provided, generate a random seed
+        seed = input_data.seed
+        if seed is None:
+            seed = int.from_bytes(os.urandom(4), "big")
+
         try:
             # Run the model using the provided inputs
             result = self.run_model(
-                input_data.api_key.get_secret_value(),
-                input_data.replicate_model_name,
-                input_data.prompt,
-                seed=input_data.seed,
+                api_key=input_data.api_key.get_secret_value(),
+                model_name=input_data.replicate_model_name.api_name,
+                prompt=input_data.prompt,
+                seed=seed,
                 steps=input_data.steps,
                 guidance=input_data.guidance,
                 interval=input_data.interval,
@@ -167,6 +197,8 @@ class ReplicateFluxAdvancedModelBlock(Block):
         elif isinstance(output, str):
             result_url = output  # If output is a string, use it directly
         else:
-            result_url = "No output received"  # Fallback message if output is not as expected
+            result_url = (
+                "No output received"  # Fallback message if output is not as expected
+            )
 
         return result_url
