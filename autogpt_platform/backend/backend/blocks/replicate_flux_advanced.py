@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 import replicate
@@ -42,9 +43,10 @@ class ReplicateFluxAdvancedModelBlock(Block):
             description="Text prompt for image generation",
             placeholder="e.g., 'A futuristic cityscape at sunset'",
             title="Prompt",
-        )
+        seed: int | None = SchemaField(
         seed: int = SchemaField(
             description="Random seed. Set for reproducible generation",
+            default=None,
             title="Seed",
         )
         steps: int = SchemaField(
@@ -132,13 +134,18 @@ class ReplicateFluxAdvancedModelBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # If the seed is not provided, generate a random seed
+        seed = input_data.seed
+        if seed is None:
+            seed = int.from_bytes(os.urandom(4), "big")
+
         try:
             # Run the model using the provided inputs
             result = self.run_model(
                 input_data.api_key.get_secret_value(),
-                input_data.replicate_model_name,
-                input_data.prompt,
-                seed=input_data.seed,
+                model_name=input_data.replicate_model_name.api_name,
+                prompt=input_data.prompt,
+                seed=seed,
                 steps=input_data.steps,
                 guidance=input_data.guidance,
                 interval=input_data.interval,
