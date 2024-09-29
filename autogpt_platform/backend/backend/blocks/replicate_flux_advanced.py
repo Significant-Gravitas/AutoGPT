@@ -54,6 +54,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
             description="Random seed. Set for reproducible generation",
             default=None,
             title="Seed",
+            default=None,
         )
         steps: int = SchemaField(
             description="Number of diffusion steps",
