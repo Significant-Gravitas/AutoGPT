@@ -54,7 +54,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   // Extract unique categories from blocks
   const categories = Array.from(
     new Set([
-      "",
+      null,
       ...blocks.flatMap((block) => block.categories.map((cat) => cat.category)),
     ]),
   );
@@ -96,7 +96,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         side="right"
         sideOffset={22}
         align="start"
-        className="w-[17rem] p-0 md:w-[30rem] rounded-xl"
+        className="w-[17rem] rounded-xl p-0 md:w-[30rem]"
         data-id="blocks-control-popover-content"
       >
         <Card className="border-none p-3 pb-0 shadow-md">
@@ -125,7 +125,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
             <div className="mt-2 flex flex-wrap gap-2">
               {categories.map((category) => {
                 const color = getPrimaryCategoryColor([
-                  { category, description: "" },
+                  { category: category || "All", description: "" },
                 ]);
                 const colorClass =
                   selectedCategory === category ? `${color}` : "";
@@ -140,7 +140,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                     }
                   >
                     {beautifyString(
-                      category.length > 3
+                      category && category.length > 3
                         ? category.toLowerCase()
                         : category || "All",
                     )}
@@ -157,7 +157,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               {filteredBlocks.map((block) => (
                 <Card
                   key={block.id}
-                  className="m-2 my-4 flex h-20 cursor-pointer border hover:shadow-lg shadow-none"
+                  className="m-2 my-4 flex h-20 cursor-pointer border shadow-none hover:shadow-lg"
                   data-id={`block-card-${block.id}`}
                   onClick={() => addBlock(block.id, block.name)}
                 >
