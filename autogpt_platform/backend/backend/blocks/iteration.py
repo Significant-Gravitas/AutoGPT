@@ -4,7 +4,7 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
-class ListIteratorBlock(Block):
+class StepThroughItemsBlock(Block):
     class Input(BlockSchema):
         items: list | dict = SchemaField(
             description="The list or dictionary of items to iterate over",
@@ -20,8 +20,8 @@ class ListIteratorBlock(Block):
     def __init__(self):
         super().__init__(
             id="f8e7d6c5-b4a3-2c1d-0e9f-8g7h6i5j4k3l",
-            input_schema=ListIteratorBlock.Input,
-            output_schema=ListIteratorBlock.Output,
+            input_schema=StepThroughItemsBlock.Input,
+            output_schema=StepThroughItemsBlock.Output,
             categories={BlockCategory.LOGIC},
             description="Iterates over a list or dictionary and outputs each item.",
             test_input={"items": [1, 2, 3, {"key1": "value1", "key2": "value2"}]},
