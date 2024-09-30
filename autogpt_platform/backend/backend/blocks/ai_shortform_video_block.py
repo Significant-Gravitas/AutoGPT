@@ -202,7 +202,9 @@ class AIShortformVideoCreatorBlock(Block):
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key}
         response = requests.post(url, json=payload, headers=headers)
-        logger.debug(f"API Response Status Code: {response.status_code}, Content: {response.text}")
+        logger.debug(
+            f"API Response Status Code: {response.status_code}, Content: {response.text}"
+        )
         response.raise_for_status()
         return response.json()
 
