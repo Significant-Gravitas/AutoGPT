@@ -6,7 +6,7 @@ from backend.data.model import SchemaField
 
 class ListIteratorBlock(Block):
     class Input(BlockSchema):
-        items: Union[List[Any], Dict[Any, Any]] = SchemaField(
+        items: list | dict = SchemaField(
             description="The list or dictionary of items to iterate over",
             placeholder="[1, 2, 3, 4, 5] or {'key1': 'value1', 'key2': 'value2'}",
         )
