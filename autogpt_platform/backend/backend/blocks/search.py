@@ -4,7 +4,7 @@ from urllib.parse import quote
 import requests
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SecretField
+from backend.data.model import BlockSecret, SchemaField, SecretField
 
 
 class GetRequest:
@@ -96,6 +96,12 @@ class SearchTheWebBlock(Block, GetRequest):
 class ExtractWebsiteContentBlock(Block, GetRequest):
     class Input(BlockSchema):
         url: str  # The URL to scrape
+        raw_content: bool = SchemaField(
+            default=False,
+            title="Raw Content",
+            description="Whether to do a raw scrape of the content or use Jina-ai Reader to scrape the content",
+            advanced=True,
+        )
 
     class Output(BlockSchema):
         content: str  # The scraped content from the URL
@@ -114,21 +120,18 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        if input_data.raw_content:
+            url = input_data.url
+        else:
+            url = f"https://r.jina.ai/{input_data.url}"
+
         try:
-            # Prepend the Jina-ai Reader URL to the input URL
-            jina_url = f"https://r.jina.ai/{input_data.url}"
-
-            # Make the request to Jina-ai Reader
-            response = self.get_request(jina_url, json=False)
-
-            # Output the scraped content
-            yield "content", response
-
+            content = self.get_request(url, json=False)
+            yield "content", content
         except requests.exceptions.HTTPError as http_err:
             yield "error", f"HTTP error occurred: {http_err}"
-
         except requests.RequestException as e:
-            yield "error", f"Request to Jina-ai Reader failed: {e}"
+            yield "error", f"Request to URL failed: {e}"
 
 
 class GetWeatherInformationBlock(Block, GetRequest):
