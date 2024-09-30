@@ -63,7 +63,7 @@ export const SaveControl = ({
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" data-id="save-control-popover-trigger">
               <IconSave />
             </Button>
           </PopoverTrigger>
@@ -81,6 +81,7 @@ export const SaveControl = ({
                 className="col-span-3"
                 value={agentName}
                 onChange={(e) => onNameChange(e.target.value)}
+                data-id="save-control-name-input"
               />
               <Label htmlFor="description">Description</Label>
               <Input
@@ -89,6 +90,7 @@ export const SaveControl = ({
                 className="col-span-3"
                 value={agentDescription}
                 onChange={(e) => onDescriptionChange(e.target.value)}
+                data-id="save-control-description-input"
               />
               {agentMeta?.version && (
                 <>
@@ -112,6 +114,7 @@ export const SaveControl = ({
               <Button
                 variant="secondary"
                 className="w-full"
+                data-id="save-control-template-button"
                 onClick={() => {
                   isTemplate = true;
                   handleSave();

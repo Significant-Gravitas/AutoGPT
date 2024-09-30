@@ -21,7 +21,7 @@ export const startTutorial = (
   // Helper function to disable all blocks except the target block
   const disableOtherBlocks = (targetBlockSelector: string) => {
     document
-      .querySelectorAll('[data-id^="add-block-button"]')
+      .querySelectorAll('[data-id^="block-card-"]')
       .forEach((block) => {
         block.classList.toggle(
           disableClass,
@@ -33,11 +33,11 @@ export const startTutorial = (
         );
       });
   };
-
+  
   // Helper function to enable all blocks
   const enableAllBlocks = () => {
     document
-      .querySelectorAll('[data-id^="add-block-button"]')
+      .querySelectorAll('[data-id^="block-card-"]')
       .forEach((block) => {
         block.classList.remove(disableClass, highlightClass);
       });
@@ -182,7 +182,7 @@ export const startTutorial = (
   tour.addStep({
     id: "scroll-block-menu",
     title: "Scroll Down or Search",
-    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and press the "+" to add the block.',
+    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and click on it to add it to your flow.',
     attachTo: {
       element: '[data-id="blocks-control-popover-content"]',
       on: "right",
@@ -191,12 +191,12 @@ export const startTutorial = (
     beforeShowPromise: () =>
       waitForElement('[data-id="blocks-control-popover-content"]').then(() => {
         disableOtherBlocks(
-          '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+          '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]'
         );
       }),
     advanceOn: {
       selector:
-        '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+        '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
       event: "click",
     },
     when: {
@@ -310,6 +310,87 @@ export const startTutorial = (
       {
         text: "Next",
         action: tour.next,
+      },
+    ],
+  });
+
+  tour.addStep({
+    id: "press-initial-save-button",
+    title: "Press Save",
+    text: "First we need to save the flow before we can run it!",
+    attachTo: { 
+      element: '[data-id="save-control-popover-trigger"]', 
+      on: "left" 
+    },
+    advanceOn: { 
+      selector: '[data-id="save-control-popover-trigger"]', 
+      event: "click" 
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: tour.back,
+      },
+    ],
+  });
+
+  tour.addStep({
+    id: "enter-agent-name",
+    title: "Enter Agent Name",
+    text: 'Please enter any agent name, here we can just call it "Tutorial" if you\'d like.',
+    attachTo: { 
+      element: '[data-id="save-control-name-input"]', 
+      on: "bottom" 
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: tour.back,
+      },
+      {
+        text: "Next",
+        action: tour.next,
+      },
+    ],
+    beforeShowPromise: () => waitForElement('[data-id="save-control-name-input"]'),
+  });
+  
+  tour.addStep({
+    id: "enter-agent-description",
+    title: "Enter Agent Description",
+    text: "This is where you can add a description if you'd like, but that is optional.",
+    attachTo: { 
+      element: '[data-id="save-control-description-input"]', 
+      on: "bottom" 
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: tour.back,
+      },
+      {
+        text: "Next",
+        action: tour.next,
+      },
+    ],
+  });
+  
+  tour.addStep({
+    id: "save-agent",
+    title: "Save the Agent",
+    text: "Now, let's save the agent by clicking the 'Save agent' button.",
+    attachTo: { 
+      element: '[data-id="save-control-popover-trigger"]', 
+      on: "top" 
+    },
+    advanceOn: { 
+      selector: '[data-id="save-control-popover-trigger"]', 
+      event: "click" 
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: tour.back,
       },
     ],
   });
