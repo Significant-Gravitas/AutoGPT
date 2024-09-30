@@ -14,7 +14,6 @@ import { Block } from "@/lib/autogpt-server-api";
 import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
 import { IconToyBrick } from "@/components/ui/icons";
 import { getPrimaryCategoryColor } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -96,7 +95,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         side="right"
         sideOffset={22}
         align="start"
-        className="w-[17rem] rounded-xl p-0 md:w-[30rem]"
+        className="w-[17rem] rounded-xl p-0 md:w-[30rem] absolute -top-3"
         data-id="blocks-control-popover-content"
       >
         <Card className="border-none p-3 pb-0 shadow-md">
