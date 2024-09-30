@@ -654,7 +654,7 @@ class AIListGeneratorBlock(Block):
         )
 
     class Output(BlockSchema):
-        generated_list: List[Any] = SchemaField(description="The generated list.")
+        generated_list: List[str] = SchemaField(description="The generated list.")
         error: str = SchemaField(
             description="Error message if the list generation failed."
         )
