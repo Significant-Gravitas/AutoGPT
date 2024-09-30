@@ -6,14 +6,14 @@ import Image from "next/image";
 import getServerUser from "@/hooks/getServerUser";
 import ProfileDropdown from "./ProfileDropdown";
 import { IconCircleUser, IconMenu } from "@/components/ui/icons";
-import CreditButton from "@/components/CreditButton";
+import CreditButton from "@/components/nav/CreditButton";
 
 import { NavBarButtons } from "./nav/NavBarButtons";
 
 export async function NavBar() {
   const isAvailable = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   );
   const { user } = await getServerUser();
 
