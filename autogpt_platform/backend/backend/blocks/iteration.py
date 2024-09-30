@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -13,6 +13,9 @@ class ListIteratorBlock(Block):
 
     class Output(BlockSchema):
         item: Any = SchemaField(description="The current item in the iteration")
+        key: Any = SchemaField(
+            description="The key or index of the current item in the iteration",
+        )
 
     def __init__(self):
         super().__init__(
@@ -21,12 +24,16 @@ class ListIteratorBlock(Block):
             output_schema=ListIteratorBlock.Output,
             categories={BlockCategory.LOGIC},
             description="Iterates over a list or dictionary and outputs each item.",
-            test_input={"items": [1, 2, 3, {"key": "value", "key2": "value2"}]},
+            test_input={"items": [1, 2, 3, {"key1": "value1", "key2": "value2"}]},
             test_output=[
                 ("item", 1),
+                ("key", 0),
                 ("item", 2),
+                ("key", 1),
                 ("item", 3),
-                ("item", {"key": "value", "key2": "value2"}),
+                ("key", 2),
+                ("item", {"key1": "value1", "key2": "value2"}),
+                ("key", 3),
             ],
             test_mock={},
         )
@@ -37,7 +44,9 @@ class ListIteratorBlock(Block):
             # If items is a dictionary, iterate over its values
             for item in items.values():
                 yield "item", item
+                yield "key", item
         else:
             # If items is a list, iterate over the list
-            for item in items:
+            for index, item in enumerate(items):
                 yield "item", item
+                yield "key", index
