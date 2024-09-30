@@ -202,8 +202,7 @@ class AIShortformVideoCreatorBlock(Block):
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key}
         response = requests.post(url, json=payload, headers=headers)
-        logger.info(f"API Response Status Code: {response.status_code}")
-        logger.info(f"API Response Content: {response.text}")
+        logger.debug(f"API Response Status Code: {response.status_code}, Content: {response.text}")
         response.raise_for_status()
         return response.json()
 
@@ -220,7 +219,7 @@ class AIShortformVideoCreatorBlock(Block):
         start_time = time.time()
         while time.time() - start_time < max_wait_time:
             status = self.check_video_status(api_key, pid)
-            logger.info(f"Video status: {status}")
+            logger.debug(f"Video status: {status}")
 
             if status.get("status") == "ready" and "videoUrl" in status:
                 return status["videoUrl"]
@@ -241,7 +240,7 @@ class AIShortformVideoCreatorBlock(Block):
         try:
             # Create a new Webhook.site URL
             webhook_token, webhook_url = self.create_webhook()
-            logger.info(f"Webhook URL: {webhook_url}")
+            logger.debug(f"Webhook URL: {webhook_url}")
 
             audio_url = input_data.background_music.audio_url
 
@@ -276,7 +275,7 @@ class AIShortformVideoCreatorBlock(Block):
                 },
             }
 
-            logger.info("Creating video...")
+            logger.debug("Creating video...")
             response = self.create_video(input_data.api_key.get_secret_value(), payload)
             pid = response.get("pid")
 
@@ -286,13 +285,13 @@ class AIShortformVideoCreatorBlock(Block):
                 )
                 yield "error", "Failed to create video: No project ID returned"
             else:
-                logger.info(
+                logger.debug(
                     f"Video created with project ID: {pid}. Waiting for completion..."
                 )
                 video_url = self.wait_for_video(
                     input_data.api_key.get_secret_value(), pid, webhook_token
                 )
-                logger.info(f"Video ready: {video_url}")
+                logger.debug(f"Video ready: {video_url}")
                 yield "video_url", video_url
 
         except requests.RequestException as e:
