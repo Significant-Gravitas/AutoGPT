@@ -210,6 +210,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = []
 
         def trim_prompt(s: str) -> str:
@@ -688,13 +689,10 @@ class AIListGeneratorBlock(Block):
     def llm_call(
         input_data: AIStructuredResponseGeneratorBlock.Input,
     ) -> dict[str, str]:
-        logger.info("Calling LLM with input data")
         llm_block = AIStructuredResponseGeneratorBlock()
-        logger.info(f"LLM input data: {input_data}")
         for output_name, output_data in llm_block.run(input_data):
             if output_name == "response":
-                logger.info("Received response from LLM")
-                logger.info(f"LLM response: {output_data}")
+                logger.debug(f"Received response from LLM: {output_data}")
                 return output_data
         raise ValueError("Failed to get a response from the LLM.")
 
@@ -703,14 +701,12 @@ class AIListGeneratorBlock(Block):
         """
         Converts a string representation of a list into an actual Python list object.
         """
-        logger.info("Converting string to list")
-        logger.info(f"Input string: {string}")
+        logger.debug(f"Converting string to list. Input string: {string}")
         try:
             # Use ast.literal_eval to safely evaluate the string
             python_list = ast.literal_eval(string)
             if isinstance(python_list, list):
-                logger.info("Successfully converted string to list")
-                logger.info(f"Converted list: {python_list}")
+                logger.debug(f"Successfully converted string to list: {python_list}")
                 return python_list
             else:
                 logger.error(f"The provided string '{string}' is not a valid list")
@@ -720,8 +716,7 @@ class AIListGeneratorBlock(Block):
             raise ValueError("Invalid list format. Could not convert to list.")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        logger.info("Starting AIListGeneratorBlock.run")
-        logger.info(f"Input data: {input_data}")
+        logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 
         # Check for API key
         api_key_check = (
@@ -788,7 +783,7 @@ class AIListGeneratorBlock(Block):
 
         for attempt in range(input_data.max_retries):
             try:
-                logger.info("Calling LLM")
+                logger.debug("Calling LLM")
                 llm_response = self.llm_call(
                     AIStructuredResponseGeneratorBlock.Input(
                         sys_prompt=sys_prompt,
@@ -799,19 +794,19 @@ class AIListGeneratorBlock(Block):
                     )
                 )
 
-                logger.info(f"LLM response: {llm_response}")
+                logger.debug(f"LLM response: {llm_response}")
 
                 # Extract Response string
                 response_string = llm_response["response"]
-                logger.info(f"Response string: {response_string}")
+                logger.debug(f"Response string: {response_string}")
 
                 # Convert the string to a Python list
-                logger.info("Converting string to Python list")
+                logger.debug("Converting string to Python list")
                 parsed_list = self.string_to_list(response_string)
-                logger.info(f"Parsed list: {parsed_list}")
+                logger.debug(f"Parsed list: {parsed_list}")
 
                 # If we reach here, we have a valid Python list
-                logger.info("Successfully generated a valid Python list")
+                logger.debug("Successfully generated a valid Python list")
                 yield "generated_list", parsed_list
                 return
 
@@ -824,7 +819,7 @@ class AIListGeneratorBlock(Block):
                     yield "error", f"Failed to generate a valid Python list after {input_data.max_retries} attempts. Last error: {str(e)}"
                 else:
                     # Add a retry prompt
-                    logger.info("Preparing retry prompt")
+                    logger.debug("Preparing retry prompt")
                     prompt = f"""
                     The previous attempt failed due to `{e}`
                     Generate a valid Python list based on the original prompt.
@@ -834,6 +829,6 @@ class AIListGeneratorBlock(Block):
                     
                     Respond only with the list in the format specified with no commentary or apologies.
                     """
-                    logger.info(f"Retry prompt: {prompt}")
+                    logger.debug(f"Retry prompt: {prompt}")
 
-        logger.info("AIListGeneratorBlock.run completed")
+        logger.debug("AIListGeneratorBlock.run completed")
