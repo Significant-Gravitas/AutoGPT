@@ -17,7 +17,9 @@ class BaseOAuthHandler(ABC):
         ...
 
     @abstractmethod
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
         """Exchanges the acquired authorization code from login for a set of tokens"""
         ...
 

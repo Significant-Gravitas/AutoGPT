@@ -35,8 +35,10 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
         return authorization_url
 
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
-        flow = self._setup_oauth_flow(None)
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
+        flow = self._setup_oauth_flow(scopes)
         flow.redirect_uri = self.redirect_uri
         flow.fetch_token(code=code)
 
@@ -99,7 +101,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             scopes=google_creds.scopes,
         )
 
-    def _setup_oauth_flow(self, scopes: list[str] | None) -> Flow:
+    def _setup_oauth_flow(self, scopes: list[str]) -> Flow:
         return Flow.from_client_config(
             {
                 "web": {
