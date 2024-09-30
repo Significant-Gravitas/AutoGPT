@@ -73,7 +73,13 @@ export type CustomNodeData = {
 
 export type CustomNode = Node<CustomNodeData, "custom">;
 
-export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
+export function CustomNode({
+  data,
+  id,
+  width,
+  height,
+  selected,
+}: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -510,6 +516,9 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     "rounded-xl",
     "bg-white/[.9]",
     "shadow-md",
+    data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
+    data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
+    selected ? "shadow-2xl" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -576,9 +585,38 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
   );
 
-  return (
+  const ContextMenuContent = () => (
+    <ContextMenu.Content className="rounded-xl bg-white p-1 shadow-md">
+      <ContextMenu.Item
+        onSelect={copyNode}
+        className="cursor-pointer rounded-md px-3 py-2 hover:bg-gray-100"
+      >
+        Copy
+      </ContextMenu.Item>
+      <ContextMenu.Separator className="my-1 h-px bg-gray-200" />
+      <ContextMenu.Item
+        onSelect={deleteNode}
+        className="cursor-pointer rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
+      >
+        Delete
+      </ContextMenu.Item>
+    </ContextMenu.Content>
+  );
+
+  const onContextButtonClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+    });
+    e.currentTarget.dispatchEvent(event);
+  };
+
+  const NodeContent = () => (
     <div
-      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
+      className={`${blockClasses} ${errorClass} ${statusClass}`}
       onMouseEnter={handleHovered}
       onMouseLeave={handleMouseLeave}
       data-id={`custom-node-${id}`}
@@ -617,34 +655,15 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         >
           {data.categories[0].category}
         </Badge>
+        <button
+          aria-label="Options"
+          className="mr-2 cursor-pointer border-none bg-transparent p-1"
+          onClick={onContextButtonClick}
+        >
+          <DotsVerticalIcon className="h-5 w-5" />
+        </button>
 
-        {/* Context Menu Trigger */}
-        <ContextMenu.Root>
-          <ContextMenu.Trigger>
-            <button
-              aria-label="Options"
-              className="mr-2 cursor-pointer border-none bg-transparent p-1"
-            >
-              <DotsVerticalIcon className="h-5 w-5" />
-            </button>
-          </ContextMenu.Trigger>
-
-          <ContextMenu.Content className="rounded-xl bg-white p-1 shadow-md">
-            <ContextMenu.Item
-              onSelect={copyNode}
-              className="cursor-pointer rounded-md px-3 py-2 hover:bg-gray-100"
-            >
-              Copy
-            </ContextMenu.Item>
-            <ContextMenu.Separator className="my-1 h-px bg-gray-200" />
-            <ContextMenu.Item
-              onSelect={deleteNode}
-              className="cursor-pointer rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
-            >
-              Delete
-            </ContextMenu.Item>
-          </ContextMenu.Content>
-        </ContextMenu.Root>
+        <ContextMenuContent />
       </div>
       {/* Body */}
       <div className="ml-5 rounded-b-xl">
@@ -769,5 +788,13 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         executionResults={data.executionResults?.toReversed() || []}
       />
     </div>
+  );
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger>
+        <NodeContent />
+      </ContextMenu.Trigger>
+    </ContextMenu.Root>
   );
 }
