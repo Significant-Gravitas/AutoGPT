@@ -96,7 +96,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         side="right"
         sideOffset={22}
         align="start"
-        className="w-[30rem] p-0"
+        className="p-0 md:w-[30rem] w-[17rem]"
         data-id="blocks-control-popover-content"
       >
         <Card className="border-none p-3 pb-0 shadow-md">
@@ -149,9 +149,9 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               })}
             </div>
           </CardHeader>
-          <CardContent className="border-t p-0">
+          <CardContent className="border-t p-0 overflow-scroll">
             <ScrollArea
-              className="h-[60vh]"
+              className="h-[60vh] w-fit"
               data-id="blocks-control-scroll-area"
             >
               {filteredBlocks.map((block) => (
