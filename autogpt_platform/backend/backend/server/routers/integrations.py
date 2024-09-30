@@ -54,10 +54,11 @@ async def login(
 ) -> LoginResponse:
     handler = _get_provider_oauth_handler(request, provider)
 
-    # Generate and store a secure random state token
-    state_token = await store.store_state_token(user_id, provider)
-
     requested_scopes = scopes.split(",") if scopes else []
+
+    # Generate and store a secure random state token along with the scopes
+    state_token = await store.store_state_token(user_id, provider, requested_scopes)
+
     login_url = handler.get_login_url(requested_scopes, state_token)
 
     return LoginResponse(login_url=login_url, state_token=state_token)
@@ -80,20 +81,51 @@ async def callback(
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
 ) -> CredentialsMetaResponse:
-    handler = _get_provider_oauth_handler(request, provider)
+    logger.info(f"Received callback for provider: {provider}")
+    try:
+        handler = _get_provider_oauth_handler(request, provider)
+    except Exception as e:
+        logger.error(f"Error getting OAuth handler for provider {provider}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
     # Verify the state token
-    if not await store.verify_state_token(user_id, state_token, provider):
-        raise HTTPException(status_code=400, detail="Invalid or expired state token")
+    try:
+        if not await store.verify_state_token(user_id, state_token, provider):
+            logger.warning(f"Invalid or expired state token for user {user_id}")
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired state token"
+            )
+    except Exception as e:
+        logger.error(f"Error verifying state token: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error verifying state token: {str(e)}"
+        )
 
     try:
-        credentials = handler.exchange_code_for_tokens(code)
+        # Retrieve the scopes from the state token or use a default set
+        scopes = (
+            await store.get_scopes_from_state_token(user_id, state_token, provider)
+            or []
+        )
+        credentials = handler.exchange_code_for_tokens(code, scopes)
     except Exception as e:
-        logger.warning(f"Code->Token exchange failed for provider {provider}: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Code->Token exchange failed for provider {provider}: {str(e)}")
+        raise HTTPException(
+            status_code=400, detail=f"Failed to exchange code for tokens: {str(e)}"
+        )
 
-    # TODO: Allow specifying `title` to set on `credentials`
-    store.add_creds(user_id, credentials)
+    try:
+        # TODO: Allow specifying `title` to set on `credentials`
+        store.add_creds(user_id, credentials)
+    except Exception as e:
+        logger.error(f"Failed to store credentials for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to store credentials: {str(e)}"
+        )
+
+    logger.info(
+        f"Successfully processed OAuth callback for user {user_id} and provider {provider}"
+    )
     return CredentialsMetaResponse(
         id=credentials.id,
         type=credentials.type,
