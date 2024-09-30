@@ -15,7 +15,7 @@ async function downloadAgent(id: string): Promise<void> {
   const api = new MarketplaceAPI();
   try {
     const file = await api.downloadAgentFile(id);
-    console.log(`Agent file downloaded:`, file);
+    console.debug(`Agent file downloaded:`, file);
 
     // Create a Blob from the file content
     const blob = new Blob([file], { type: "application/json" });
@@ -50,9 +50,9 @@ async function installGraph(id: string): Promise<void> {
   const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
   const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
   try {
-    console.log(`Installing agent with id: ${id}`);
+    console.debug(`Installing agent with id: ${id}`);
     let agent = await api.downloadAgent(id);
-    console.log(`Agent downloaded:`, agent);
+    console.debug(`Agent downloaded:`, agent);
     const data: GraphCreatable = {
       id: agent.id,
       version: agent.version,
@@ -72,7 +72,7 @@ async function installGraph(id: string): Promise<void> {
         installation_location: InstallationLocation.CLOUD,
       },
     });
-    console.log(`Agent installed successfully`, result);
+    console.debug(`Agent installed successfully`, result);
   } catch (error) {
     console.error(`Error installing agent:`, error);
     throw error;

@@ -204,6 +204,13 @@ export function filterBlocksByType<T>(
   return blocks.filter(predicate);
 }
 
-export function getBehaveAs(): "CLOUD" | "LOCAL" {
-  return process.env.NEXT_PUBLIC_BEHAVE_AS || "LOCAL";
+export enum BehaveAs {
+  CLOUD = "CLOUD",
+  LOCAL = "LOCAL",
+}
+
+export function getBehaveAs(): BehaveAs {
+  return process.env.NEXT_PUBLIC_BEHAVE_AS === "CLOUD"
+    ? BehaveAs.CLOUD
+    : BehaveAs.LOCAL;
 }

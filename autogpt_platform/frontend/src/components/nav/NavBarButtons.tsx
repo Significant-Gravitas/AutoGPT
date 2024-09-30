@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { BsBoxes } from "react-icons/bs";
 import { LuLaptop, LuShoppingCart } from "react-icons/lu";
-import { cn } from "@/lib/utils";
+import { BehaveAs, cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { getBehaveAs } from "@/lib/utils";
 import MarketPopup from "./MarketPopup";
@@ -24,7 +24,7 @@ export function NavBarButtons({ className }: { className?: string }) {
     },
   ];
 
-  const isCloud = getBehaveAs() === "CLOUD";
+  const isCloud = getBehaveAs() === BehaveAs.CLOUD;
 
   return (
     <>
