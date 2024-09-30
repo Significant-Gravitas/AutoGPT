@@ -515,7 +515,8 @@ export function CustomNode({
     "dark-theme",
     "rounded-xl",
     "bg-white/[.9]",
-    "shadow-md",
+    "border",
+    "pb-2",
     data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
     data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
     selected ? "shadow-2xl" : "",
@@ -582,7 +583,7 @@ export function CustomNode({
     );
 
   const LineSeparator = () => (
-    <Separator.Root className="h-[2px] w-full bg-gray-200"></Separator.Root>
+    <Separator.Root className="my-6 h-[1px] w-full bg-gray-200"></Separator.Root>
   );
 
   const ContextMenuContent = () => (
@@ -603,7 +604,7 @@ export function CustomNode({
     </ContextMenu.Content>
   );
 
-  const onContextButtonClick = (e: React.MouseEvent) => {
+  const onContextButtonTrigger = (e: React.MouseEvent) => {
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const event = new MouseEvent("contextmenu", {
@@ -613,6 +614,8 @@ export function CustomNode({
     });
     e.currentTarget.dispatchEvent(event);
   };
+
+  const stripeColor = getPrimaryCategoryColor(data.categories);
 
   const NodeContent = () => (
     <div
@@ -624,12 +627,10 @@ export function CustomNode({
     >
       {/* Header */}
       <div
-        className={`mb-2 flex h-20 border-b-2 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} rounded-t-xl`}
+        className={`flex h-24 border-b ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} items-center rounded-t-xl`}
       >
         {/* Color Stripe */}
-        <div
-          className={`z-20 flex h-20 min-w-2 flex-shrink-0 rounded-tl-xl border ${getPrimaryCategoryColor(data.categories)}`}
-        ></div>
+        <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
 
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
@@ -657,8 +658,8 @@ export function CustomNode({
         </Badge>
         <button
           aria-label="Options"
-          className="mr-2 cursor-pointer border-none bg-transparent p-1"
-          onClick={onContextButtonClick}
+          className="mr-2 cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
+          onClick={onContextButtonTrigger}
         >
           <DotsVerticalIcon className="h-5 w-5" />
         </button>
@@ -666,7 +667,7 @@ export function CustomNode({
         <ContextMenuContent />
       </div>
       {/* Body */}
-      <div className="ml-5 rounded-b-xl">
+      <div className="ml-5 mt-6 rounded-b-xl">
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
           <div className="flex items-start justify-between">
@@ -686,10 +687,11 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
           <>
             <LineSeparator />
-            <div className="mt-2.5 flex items-center justify-between pb-4">
-              <span className="">Advanced</span>
+            <div className="flex items-center justify-between">
+              Advanced
               <Switch
                 onCheckedChange={toggleAdvancedSettings}
+                checked={isAdvancedOpen}
                 className="mr-5"
               />
             </div>
@@ -700,7 +702,7 @@ export function CustomNode({
           <>
             <LineSeparator />
 
-            <div className="mt-2 flex items-start justify-end rounded-b-xl pr-2">
+            <div className="flex items-start justify-end rounded-b-xl pr-2">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
