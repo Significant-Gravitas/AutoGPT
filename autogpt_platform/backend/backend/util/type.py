@@ -1,5 +1,5 @@
 import json
-from typing import Any, Type, TypeVar, get_origin, get_args
+from typing import Any, Type, TypeVar, get_args, get_origin
 
 
 class ConversionError(Exception):
@@ -126,7 +126,9 @@ def convert(value: Any, target_type: Type):
                     return tuple(convert(v, t) for v, t in zip(value, args))
             elif origin is dict:
                 key_type, val_type = args
-                return {convert(k, key_type): convert(v, val_type) for k, v in value.items()}
+                return {
+                    convert(k, key_type): convert(v, val_type) for k, v in value.items()
+                }
             elif origin is set:
                 return {convert(v, args[0]) for v in value}
             else:
@@ -143,7 +145,9 @@ def convert(value: Any, target_type: Type):
             value = __convert_dict(value)
             if args:
                 key_type, val_type = args
-                return {convert(k, key_type): convert(v, val_type) for k, v in value.items()}
+                return {
+                    convert(k, key_type): convert(v, val_type) for k, v in value.items()
+                }
             else:
                 return value
         elif origin is tuple:
