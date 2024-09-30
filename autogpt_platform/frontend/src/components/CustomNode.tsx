@@ -427,7 +427,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   };
 
   const deleteNode = useCallback(() => {
-    console.log("Deleting node:", id);
+    console.debug("Deleting node:", id);
 
     // Remove the node
     deleteElements({ nodes: [{ id }] });

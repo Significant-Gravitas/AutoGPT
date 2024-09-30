@@ -314,9 +314,13 @@ const NodeCredentialsInput: FC<{
 
 const InputRef = (value: any): React.RefObject<HTMLInputElement> => {
   const inputRef = React.useRef<HTMLInputElement>(null);
-  if (inputRef.current && value && inputRef.current.value !== value) {
-    inputRef.current.value = value;
-  }
+
+  useEffect(() => {
+    if (inputRef.current && value && inputRef.current.value !== value) {
+      inputRef.current.value = value;
+    }
+  }, [value]);
+
   return inputRef;
 };
 
