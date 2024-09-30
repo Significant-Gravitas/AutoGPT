@@ -656,6 +656,9 @@ class AIListGeneratorBlock(Block):
 
     class Output(BlockSchema):
         generated_list: List[str] = SchemaField(description="The generated list.")
+        list_item: str = SchemaField(
+            description="Each individual item in the list.",
+        )
         error: str = SchemaField(
             description="Error message if the list generation failed."
         )
@@ -669,15 +672,29 @@ class AIListGeneratorBlock(Block):
             output_schema=AIListGeneratorBlock.Output,
             test_input={
                 "focus": "planets",
-                "source_data": "Zylora Prime is a glowing jungle world with bioluminescent plants, while Kharon-9 is a harsh desert planet with underground cities. Vortexia’s constant storms power floating cities, and Oceara is a water-covered world home to intelligent marine life. On icy Draknos, ancient ruins lie buried beneath its frozen landscape, drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of fictional worlds.",
+                "source_data": (
+                    "Zylora Prime is a glowing jungle world with bioluminescent plants, "
+                    "while Kharon-9 is a harsh desert planet with underground cities. "
+                    "Vortexia's constant storms power floating cities, and Oceara is a water-covered world home to "
+                    "intelligent marine life. On icy Draknos, ancient ruins lie buried beneath its frozen landscape, "
+                    "drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of "
+                    "fictional worlds."
+                ),
                 "model": LlmModel.GPT4_TURBO,
                 "api_key": "test_api_key",
                 "max_retries": 3,
             },
-            test_output=(
-                "generated_list",
-                ["Zylora Prime", "Kharon-9", "Vortexia", "Oceara", "Draknos"],
-            ),
+            test_output=[
+                (
+                    "generated_list",
+                    ["Zylora Prime", "Kharon-9", "Vortexia", "Oceara", "Draknos"],
+                ),
+                ("list_item", "Zylora Prime"),
+                ("list_item", "Kharon-9"),
+                ("list_item", "Vortexia"),
+                ("list_item", "Oceara"),
+                ("list_item", "Draknos"),
+            ],
             test_mock={
                 "llm_call": lambda input_data: {
                     "response": "['Zylora Prime', 'Kharon-9', 'Vortexia', 'Oceara', 'Draknos']"
@@ -808,6 +825,10 @@ class AIListGeneratorBlock(Block):
                 # If we reach here, we have a valid Python list
                 logger.debug("Successfully generated a valid Python list")
                 yield "generated_list", parsed_list
+
+                # Yield each item in the list
+                for item in parsed_list:
+                    yield "list_item", item
                 return
 
             except Exception as e:
