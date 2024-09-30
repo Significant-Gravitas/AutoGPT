@@ -312,7 +312,7 @@ const NodeCredentialsInput: FC<{
   );
 };
 
-const getInputRef = (value: any): React.RefObject<HTMLInputElement> => {
+const InputRef = (value: any): React.RefObject<HTMLInputElement> => {
   const inputRef = React.useRef<HTMLInputElement>(null);
   if (inputRef.current && value && inputRef.current.value !== value) {
     inputRef.current.value = value;
@@ -423,7 +423,7 @@ const NodeKeyValueInput: FC<{
                 <Input
                   type="text"
                   placeholder="Value"
-                  ref={getInputRef(value ?? "")}
+                  ref={InputRef(value ?? "")}
                   onBlur={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
@@ -607,7 +607,7 @@ const NodeStringInput: FC<{
           <Input
             type="text"
             id={selfKey}
-            ref={getInputRef(
+            ref={InputRef(
               schema.secret && value ? "*".repeat(value.length) : value,
             )}
             readOnly={schema.secret}
@@ -704,7 +704,7 @@ const NodeNumberInput: FC<{
         <Input
           type="number"
           id={selfKey}
-          ref={getInputRef(value)}
+          ref={InputRef(value)}
           onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
