@@ -266,7 +266,7 @@ export default class BaseAutoGPTServerAPI {
       if (
         response.status === 403 &&
         response.statusText === "Not authenticated" &&
-        typeof window !== 'undefined' // Check if in browser environment
+        typeof window !== "undefined" // Check if in browser environment
       ) {
         window.location.href = "/login";
       }
@@ -283,7 +283,10 @@ export default class BaseAutoGPTServerAPI {
     }
 
     // Handle responses with no content (like DELETE requests)
-    if (response.status === 204 || response.headers.get("Content-Length") === "0") {
+    if (
+      response.status === 204 ||
+      response.headers.get("Content-Length") === "0"
+    ) {
       return null;
     }
 
