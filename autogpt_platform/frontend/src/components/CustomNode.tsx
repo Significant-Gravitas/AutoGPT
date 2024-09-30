@@ -587,7 +587,7 @@ export function CustomNode({
   );
 
   const ContextMenuContent = () => (
-    <ContextMenu.Content className="rounded-xl bg-white p-1 shadow-md">
+    <ContextMenu.Content className="rounded-xl bg-white p-1 shadow-md border">
       <ContextMenu.Item
         onSelect={copyNode}
         className="cursor-pointer rounded-md px-3 py-2 hover:bg-gray-100"
