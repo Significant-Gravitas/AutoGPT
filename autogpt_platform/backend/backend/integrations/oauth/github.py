@@ -23,8 +23,6 @@ class GitHubOAuthHandler(BaseOAuthHandler):
     """  # noqa
 
     PROVIDER_NAME = "github"
-    EMAIL_ENDPOINT = "https://api.github.com/user/emails"
-    REVOKE_ENDPOINT = "https://api.github.com/applications/{client_id}/grant"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -32,6 +30,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         self.redirect_uri = redirect_uri
         self.auth_base_url = "https://github.com/login/oauth/authorize"
         self.token_url = "https://github.com/login/oauth/access_token"
+        self.revoke_url = "https://api.github.com/applications/{client_id}/token"
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
         params = {
@@ -55,10 +54,10 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         }
 
         response = requests.delete(
-            url=self.REVOKE_ENDPOINT.format(client_id=self.client_id),
+            url=self.revoke_url.format(client_id=self.client_id),
             auth=(self.client_id, self.client_secret),
             headers=headers,
-            data={"access_token": credentials.access_token.get_secret_value()},
+            json={"access_token": credentials.access_token.get_secret_value()},
         )
         response.raise_for_status()
 

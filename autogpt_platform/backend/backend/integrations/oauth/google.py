@@ -16,14 +16,14 @@ class GoogleOAuthHandler(BaseOAuthHandler):
     """  # noqa
 
     PROVIDER_NAME = "google"
-    EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
-    REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.token_uri = "https://oauth2.googleapis.com/token"
+        self.email_uri = "https://www.googleapis.com/oauth2/v2/userinfo"
+        self.revoke_uri = "https://oauth2.googleapis.com/revoke"
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
         flow = self._setup_oauth_flow(scopes)
@@ -63,7 +63,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
     def revoke_tokens(self, credentials: OAuth2Credentials) -> None:
         session = AuthorizedSession(credentials)
         response = session.post(
-            self.REVOKE_ENDPOINT,
+            self.revoke_uri,
             params={"token": credentials.access_token.get_secret_value()},
             headers={"content-type": "application/x-www-form-urlencoded"},
         )
@@ -73,7 +73,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self, creds: Credentials | ExternalAccountCredentials
     ) -> str | None:
         session = AuthorizedSession(creds)
-        response = session.get(self.EMAIL_ENDPOINT)
+        response = session.get(self.email_uri)
         if not response.ok:
             return None
         return response.json()["email"]

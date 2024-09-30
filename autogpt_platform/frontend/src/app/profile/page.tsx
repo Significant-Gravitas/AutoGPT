@@ -56,12 +56,16 @@ export default function PrivatePage() {
     return null;
   }
 
+  //TODO: Remove this once we have more providers
+  delete providers["notion"];
+  delete providers["google"];
+
   return (
     <div>
       <p>Hello {user.email}</p>
       <Button onClick={() => supabase.auth.signOut()}>Log out</Button>
       <div>
-        <Alert className="mb-2 mt-2">
+        {/* <Alert className="mb-2 mt-2">
           <AlertDescription>Heads up!</AlertDescription>
           <AlertDescription>
             <p>
@@ -72,7 +76,7 @@ export default function PrivatePage() {
               Notion documentation
             </a>
           </AlertDescription>
-        </Alert>
+        </Alert> */}
         {Object.entries(providers).map(([providerName, provider]) => {
           return (
             <div key={provider.provider} className="mh-2">
