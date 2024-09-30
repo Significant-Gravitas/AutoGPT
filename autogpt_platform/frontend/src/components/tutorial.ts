@@ -182,7 +182,7 @@ export const startTutorial = (
   tour.addStep({
     id: "scroll-block-menu",
     title: "Scroll Down or Search",
-    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and click on it to add it to your flow.',
+    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and press the block to add it.',
     attachTo: {
       element: '[data-id="blocks-control-popover-content"]',
       on: "right",
