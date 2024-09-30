@@ -11,14 +11,12 @@ from backend.data.model import BlockSecret, SchemaField, SecretField
 class ReplicateFluxModelName(str, Enum):
     FLUX_SCHNELL = ("Flux Schnell",)
     FLUX_PRO = ("Flux Pro",)
-    FLUX_DEV = ("Flux Dev",)
 
     @property
     def api_name(self):
         api_names = {
             ReplicateFluxModelName.FLUX_SCHNELL: "black-forest-labs/flux-schnell",
             ReplicateFluxModelName.FLUX_PRO: "black-forest-labs/flux-pro",
-            ReplicateFluxModelName.FLUX_DEV: "black-forest-labs/flux-dev",
         }
         return api_names[self]
 
