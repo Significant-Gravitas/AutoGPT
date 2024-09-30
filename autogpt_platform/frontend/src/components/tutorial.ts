@@ -182,7 +182,7 @@ export const startTutorial = (
   tour.addStep({
     id: "scroll-block-menu",
     title: "Scroll Down or Search",
-    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and press the "+" to add the block.',
+    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and press the block to add it.',
     attachTo: {
       element: '[data-id="blocks-control-popover-content"]',
       on: "right",
@@ -191,12 +191,11 @@ export const startTutorial = (
     beforeShowPromise: () =>
       waitForElement('[data-id="blocks-control-popover-content"]').then(() => {
         disableOtherBlocks(
-          '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+          '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
         );
       }),
     advanceOn: {
-      selector:
-        '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+      selector: '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
       event: "click",
     },
     when: {

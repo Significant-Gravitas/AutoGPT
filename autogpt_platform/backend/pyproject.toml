@@ -45,6 +45,7 @@ uvicorn = { extras = ["standard"], version = "^0.30.1" }
 websockets = "^12.0"
 youtube-transcript-api = "^0.6.2"
 googlemaps = "^4.10.0"
+replicate = "^0.34.1"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.26.1"
