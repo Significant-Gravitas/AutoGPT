@@ -48,8 +48,8 @@ export default function LoginPage() {
   });
 
   if (user) {
-    console.log("User exists, redirecting to profile");
-    router.push("/profile");
+    console.log("User exists, redirecting to home");
+    router.push("/");
   }
 
   if (isUserLoading || isSupabaseLoading || user) {

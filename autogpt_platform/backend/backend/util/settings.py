@@ -216,6 +216,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     sentry_dsn: str = Field(default="", description="Sentry DSN")
 
+    google_maps_api_key: str = Field(default="", description="Google Maps API Key")
+
+    replicate_api_key: str = Field(default="", description="Replicate API Key")
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
