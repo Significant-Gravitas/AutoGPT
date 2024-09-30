@@ -96,7 +96,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         side="right"
         sideOffset={22}
         align="start"
-        className="p-0 md:w-[30rem] w-[17rem]"
+        className="w-[17rem] p-0 md:w-[30rem] rounded-xl"
         data-id="blocks-control-popover-content"
       >
         <Card className="border-none p-3 pb-0 shadow-md">
@@ -149,7 +149,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               })}
             </div>
           </CardHeader>
-          <CardContent className="border-t p-0 overflow-scroll">
+          <CardContent className="overflow-scroll border-t p-0">
             <ScrollArea
               className="h-[60vh] w-fit"
               data-id="blocks-control-scroll-area"
@@ -157,14 +157,12 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               {filteredBlocks.map((block) => (
                 <Card
                   key={block.id}
-                  // add hover effect to the card
-                  className="m-2 my-4 flex h-20 cursor-pointer border hover:shadow-lg"
+                  className="m-2 my-4 flex h-20 cursor-pointer border hover:shadow-lg shadow-none"
                   data-id={`block-card-${block.id}`}
                   onClick={() => addBlock(block.id, block.name)}
                 >
-                  {/* This div needs to be 10px wide and the same height as the card and be the primary color showing up on top of the card with matching rounded corners */}
                   <div
-                    className={`z-20 flex min-w-4 flex-shrink-0 rounded-l-xl border ${getPrimaryCategoryColor(block.categories)}`}
+                    className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(block.categories)}`}
                   ></div>
 
                   <div className="mx-3 flex flex-1 items-center justify-between">
