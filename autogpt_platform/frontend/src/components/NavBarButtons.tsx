@@ -31,8 +31,6 @@ export function NavBarButtons({ className }: { className?: string }) {
 
   const activeButton = buttons.find((button) => button.href === pathname);
 
-  console.log(">>>> ", activeButton);
-
   return buttons.map((button) => (
     <Link
       key={button.href}
