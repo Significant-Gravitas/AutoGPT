@@ -22,6 +22,11 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
     PROVIDER_NAME = "google"
     EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
+    DEFAULT_SCOPES = [
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "openid",
+    ]
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -29,9 +34,10 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self.redirect_uri = redirect_uri
         self.token_uri = "https://oauth2.googleapis.com/token"
 
-    def get_login_url(self, scopes: List[str], state: str) -> str:
-        logger.info(f"Getting login URL with scopes: {scopes}")
-        flow = self._setup_oauth_flow(scopes)
+    def get_login_url(self, scopes: list[str], state: str) -> str:
+        all_scopes = list(set(scopes + self.DEFAULT_SCOPES))
+        logger.info(f"Setting up OAuth flow with scopes: {all_scopes}")
+        flow = self._setup_oauth_flow(all_scopes)
         flow.redirect_uri = self.redirect_uri
         authorization_url, _ = flow.authorization_url(
             access_type="offline",
@@ -45,39 +51,37 @@ class GoogleOAuthHandler(BaseOAuthHandler):
     def exchange_code_for_tokens(
         self, code: str, scopes: list[str]
     ) -> OAuth2Credentials:
-        logger.info("Starting code exchange for tokens")
-        try:
-            flow = self._setup_oauth_flow(scopes)
-            flow.redirect_uri = self.redirect_uri
-            logger.debug(f"OAuth flow set up with redirect URI: {self.redirect_uri}")
+        logger.info(f"Exchanging code for tokens with scopes: {scopes}")
+        
+        # Use the scopes from the initial request
+        flow = self._setup_oauth_flow(scopes)
+        flow.redirect_uri = self.redirect_uri
 
-            logger.info("Fetching token from Google")
-            flow.fetch_token(code=code)
+        logger.info("Fetching token from Google")
+
+        try:
+            # Disable scope check in fetch_token
+            flow.oauth2session.scope = None
+            token = flow.fetch_token(code=code)
             logger.info("Token fetched successfully")
+
+            # Get the actual scopes granted by Google
+            granted_scopes = token.get('scope', [])
+            if isinstance(granted_scopes, str):
+                granted_scopes = granted_scopes.split()
+            logger.info(f"Scopes granted by Google: {granted_scopes}")
 
             google_creds = flow.credentials
             logger.debug(f"Received credentials: {google_creds}")
-            logger.info(f"Scopes received: {google_creds.scopes}")
 
             logger.info("Requesting user email")
             username = self._request_email(google_creds)
             logger.info(f"User email retrieved: {username}")
 
-            # Google's OAuth library is poorly typed so we need some of these:
-            if not google_creds.token:
-                logger.error("No access token received from Google")
-                raise ValueError("No access token received from Google")
-            if not google_creds.refresh_token:
-                logger.warning("No refresh token received from Google")
-            if not google_creds.expiry:
-                logger.warning("No expiry time received from Google")
-            if not google_creds.scopes:
-                logger.warning("No scopes received from Google")
-
-            logger.info("Creating OAuth2Credentials object")
+            # Create OAuth2Credentials with the granted scopes
             credentials = OAuth2Credentials(
                 provider=self.PROVIDER_NAME,
-                title="test",
+                title="Google Account",
                 username=username,
                 access_token=SecretStr(google_creds.token),
                 refresh_token=(
@@ -91,7 +95,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                     else None
                 ),
                 refresh_token_expires_at=None,
-                scopes=google_creds.scopes or [],
+                scopes=granted_scopes,
             )
             logger.info(
                 f"OAuth2Credentials object created successfully with scopes: {credentials.scopes}"
