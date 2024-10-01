@@ -7,6 +7,7 @@ from autogpt_libs.supabase_integration_credentials_store import OAuth2Credential
 
 class BaseOAuthHandler(ABC):
     PROVIDER_NAME: ClassVar[str]
+    DEFAULT_SCOPES: ClassVar[list[str]] = []
 
     @abstractmethod
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str): ...
