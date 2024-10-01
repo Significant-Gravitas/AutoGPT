@@ -86,7 +86,6 @@ export function CustomNode({
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [inputModalValue, setInputModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
     CustomNode,
     Edge
@@ -176,7 +175,7 @@ export function CustomNode({
                 <span className="text-m green mb-0 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
-                <div key={propKey} onMouseOver={() => {}}>
+                <div key={propKey}>
                   {!isConnected && (
                     <NodeGenericInputField
                       className="mb-2 mt-1"
@@ -222,7 +221,7 @@ export function CustomNode({
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey}>
                 {propKey !== "value" ? (
                   <span className="text-m green mb-0 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
@@ -261,7 +260,7 @@ export function CustomNode({
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey}>
                 {"credentials_provider" in propSchema ? (
                   <span className="text-m green mb-0 text-gray-900">
                     Credentials
@@ -425,14 +424,6 @@ export function CustomNode({
     setIsOutputModalOpen(true);
   };
 
-  const handleHovered = () => {
-    setIsHovered(true);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-  };
-
   const deleteNode = useCallback(() => {
     console.debug("Deleting node:", id);
 
@@ -588,20 +579,20 @@ export function CustomNode({
   );
 
   const ContextMenuContent = () => (
-    <ContextMenu.Content className="rounded-xl z-10 bg-white p-1 shadow-md border">
+    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md">
       <ContextMenu.Item
         onSelect={copyNode}
-        className="cursor-pointer flex rounded-md px-3 py-2 hover:bg-gray-100 items-center"
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
       >
-        <CopyIcon className="h-5 w-5 mr-2" />
+        <CopyIcon className="mr-2 h-5 w-5" />
         <span>Copy</span>
       </ContextMenu.Item>
       <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
       <ContextMenu.Item
         onSelect={deleteNode}
-        className="cursor-pointer flex rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 items-center"
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
       >
-        <TrashIcon className="h-5 w-5 mr-2 text-red-500" />
+        <TrashIcon className="mr-2 h-5 w-5 text-red-500" />
         <span>Delete</span>
       </ContextMenu.Item>
     </ContextMenu.Content>
@@ -623,8 +614,6 @@ export function CustomNode({
   const NodeContent = () => (
     <div
       className={`${blockClasses} ${errorClass} ${statusClass}`}
-      onMouseEnter={handleHovered}
-      onMouseLeave={handleMouseLeave}
       data-id={`custom-node-${id}`}
       z-index={1}
     >
@@ -704,7 +693,7 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && (
           <>
             <LineSeparator />
-            <div className="flex items-start justify-end rounded-b-xl pr-2 pt-6 pb-2">
+            <div className="flex items-start justify-end rounded-b-xl pb-2 pr-2 pt-6">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
@@ -734,7 +723,11 @@ export function CustomNode({
                   data={data.executionResults!.at(-1)?.data || {}}
                 />
                 <div className="flex justify-end">
-                  <Button variant="ghost" onClick={handleOutputClick} className="border border-gray-300">
+                  <Button
+                    variant="ghost"
+                    onClick={handleOutputClick}
+                    className="border border-gray-300"
+                  >
                     View More
                   </Button>
                 </div>

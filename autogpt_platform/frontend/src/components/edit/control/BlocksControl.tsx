@@ -95,7 +95,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         side="right"
         sideOffset={22}
         align="start"
-        className="w-[17rem] rounded-xl p-0 md:w-[30rem] absolute -top-3"
+        className="absolute -top-3 w-[17rem] rounded-xl p-0 md:w-[30rem]"
         data-id="blocks-control-popover-content"
       >
         <Card className="border-none p-3 pb-0 shadow-md">
