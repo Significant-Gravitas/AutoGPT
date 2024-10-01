@@ -14,6 +14,7 @@ from ._auth import (
     GoogleCredentialsInput,
 )
 
+
 class GoogleSheetsReadBlock(Block):
     class Input(BlockSchema):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
@@ -96,12 +97,11 @@ class GoogleSheetsReadBlock(Block):
         )
         return build("sheets", "v4", credentials=creds)
 
-    def _read_sheet(
-        self, service, spreadsheet_id: str, range: str
-    ) -> List[List[str]]:
+    def _read_sheet(self, service, spreadsheet_id: str, range: str) -> List[List[str]]:
         sheet = service.spreadsheets()
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range).execute()
         return result.get("values", [])
+
 
 class GoogleSheetsWriteBlock(Block):
     class Input(BlockSchema):
