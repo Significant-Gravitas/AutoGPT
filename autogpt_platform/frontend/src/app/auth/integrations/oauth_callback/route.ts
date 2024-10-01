@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     <html>
       <body>
         <script>
-          window.opener.postMessage(${JSON.stringify(message)});
+          window.postMessage(${JSON.stringify(message)});
           window.close();
         </script>
       </body>
