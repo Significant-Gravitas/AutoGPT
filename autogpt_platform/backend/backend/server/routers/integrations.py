@@ -81,7 +81,7 @@ async def callback(
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
 ) -> CredentialsMetaResponse:
-    logger.info(f"Received callback for provider: {provider}")
+    logger.debug(f"Received callback for provider: {provider}")
     try:
         handler = _get_provider_oauth_handler(request, provider)
     except Exception as e:
@@ -103,15 +103,15 @@ async def callback(
 
     try:
         scopes = await store.get_scopes_from_state_token(user_id, state_token, provider)
-        logger.info(f"Retrieved scopes from state token: {scopes}")
+        logger.debug(f"Retrieved scopes from state token: {scopes}")
 
         # If scopes are empty, use the default scopes for the provider
         if not scopes and provider == "google":
-            logger.info(f"Using default scopes for provider {provider}")
+            logger.debug(f"Using default scopes for provider {provider}")
             scopes = handler.DEFAULT_SCOPES
 
         credentials = handler.exchange_code_for_tokens(code, scopes)
-        logger.info(f"Received credentials with final scopes: {credentials.scopes}")
+        logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
 
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
@@ -135,7 +135,7 @@ async def callback(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
         )
 
-    logger.info(
+    logger.debug(
         f"Successfully processed OAuth callback for user {user_id} and provider {provider}"
     )
     return CredentialsMetaResponse(

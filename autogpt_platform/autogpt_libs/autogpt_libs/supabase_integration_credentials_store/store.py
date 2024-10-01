@@ -126,7 +126,7 @@ class SupabaseIntegrationCredentialsStore:
         if valid_state:
             return valid_state.get("scopes", [])
 
-        return []  # Return an empty list if no valid state is found
+        return []
 
     async def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
         user_metadata = self._get_user_metadata(user_id)

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class GoogleOAuthHandler(BaseOAuthHandler):
     """
     Based on the documentation at https://developers.google.com/identity/protocols/oauth2/web-server
-    """  # noqa
+    """
 
     PROVIDER_NAME = "google"
     EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -36,7 +36,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
         all_scopes = list(set(scopes + self.DEFAULT_SCOPES))
-        logger.info(f"Setting up OAuth flow with scopes: {all_scopes}")
+        logger.debug(f"Setting up OAuth flow with scopes: {all_scopes}")
         flow = self._setup_oauth_flow(all_scopes)
         flow.redirect_uri = self.redirect_uri
         authorization_url, _ = flow.authorization_url(
@@ -45,38 +45,37 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             state=state,
             prompt="consent",
         )
-        logger.info(f"Generated authorization URL: {authorization_url}")
         return authorization_url
 
     def exchange_code_for_tokens(
         self, code: str, scopes: list[str]
     ) -> OAuth2Credentials:
-        logger.info(f"Exchanging code for tokens with scopes: {scopes}")
+        logger.debug(f"Exchanging code for tokens with scopes: {scopes}")
 
         # Use the scopes from the initial request
         flow = self._setup_oauth_flow(scopes)
         flow.redirect_uri = self.redirect_uri
 
-        logger.info("Fetching token from Google")
+        logger.debug("Fetching token from Google")
 
         try:
             # Disable scope check in fetch_token
             flow.oauth2session.scope = None
             token = flow.fetch_token(code=code)
-            logger.info("Token fetched successfully")
+            logger.debug("Token fetched successfully")
 
             # Get the actual scopes granted by Google
             granted_scopes = token.get("scope", [])
             if isinstance(granted_scopes, str):
                 granted_scopes = granted_scopes.split()
-            logger.info(f"Scopes granted by Google: {granted_scopes}")
+            logger.debug(f"Scopes granted by Google: {granted_scopes}")
 
             google_creds = flow.credentials
             logger.debug(f"Received credentials: {google_creds}")
 
-            logger.info("Requesting user email")
+            logger.debug("Requesting user email")
             username = self._request_email(google_creds)
-            logger.info(f"User email retrieved: {username}")
+            logger.debug(f"User email retrieved: {username}")
 
             # Create OAuth2Credentials with the granted scopes
             credentials = OAuth2Credentials(
@@ -97,7 +96,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                 refresh_token_expires_at=None,
                 scopes=granted_scopes,
             )
-            logger.info(
+            logger.debug(
                 f"OAuth2Credentials object created successfully with scopes: {credentials.scopes}"
             )
 
@@ -151,8 +150,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
 
     def _setup_oauth_flow(self, scopes: List[str]) -> Flow:
-        logger.info(f"Setting up OAuth flow with scopes: {scopes}")
-        flow = Flow.from_client_config(
+        return Flow.from_client_config(
             {
                 "web": {
                     "client_id": self.client_id,
@@ -163,5 +161,3 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             },
             scopes=scopes,
         )
-        logger.info(f"OAuth flow created with scopes: {flow.oauth2session.scope}")
-        return flow
