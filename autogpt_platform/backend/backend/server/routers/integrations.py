@@ -107,6 +107,7 @@ async def callback(
 
         # If scopes are empty, use the default scopes for the provider
         if not scopes and provider == "google":
+            logger.info(f"Using default scopes for provider {provider}")
             scopes = handler.DEFAULT_SCOPES
 
         credentials = handler.exchange_code_for_tokens(code, scopes)
