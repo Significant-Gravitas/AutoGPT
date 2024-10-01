@@ -81,7 +81,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                 raise ValueError("No refresh token received")
             if not google_creds.expiry:
                 raise ValueError("No expiry time received")
-            if not google_creds.scopes:
+            if not granted_scopes:
                 raise ValueError("No scopes received")
 
             # Create OAuth2Credentials with the granted scopes
