@@ -1,81 +1,44 @@
 "use client";
-
-import { useState } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Download,
-  Calendar,
-  Tag,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { ArrowLeft, Download, Calendar, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AgentDetailResponse,
   InstallationLocation,
 } from "@/lib/marketplace-api";
-import dynamic from "next/dynamic";
-import { Node, Edge } from "@xyflow/react";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
-
-const ReactFlow = dynamic(
-  () => import("@xyflow/react").then((mod) => mod.ReactFlow),
-  { ssr: false },
-);
-const Controls = dynamic(
-  () => import("@xyflow/react").then((mod) => mod.Controls),
-  { ssr: false },
-);
-const Background = dynamic(
-  () => import("@xyflow/react").then((mod) => mod.Background),
-  { ssr: false },
-);
-
 import "@xyflow/react/dist/style.css";
-import { beautifyString } from "@/lib/utils";
 import { makeAnalyticsEvent } from "./actions";
 
-function convertGraphToReactFlow(graph: any): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = graph.nodes.map((node: any) => {
-    let label = node.block_id || "Unknown";
-    try {
-      label = beautifyString(label);
-    } catch (error) {
-      console.error("Error beautifying node label:", error);
-    }
+async function downloadAgent(id: string): Promise<void> {
+  const api = new MarketplaceAPI();
+  try {
+    const file = await api.downloadAgentFile(id);
+    console.debug(`Agent file downloaded:`, file);
 
-    return {
-      id: node.id,
-      position: node.metadata.position || { x: 0, y: 0 },
-      data: {
-        label,
-        blockId: node.block_id,
-        inputDefault: node.input_default || {},
-        ...node, // Include all other node data
-      },
-      type: "custom",
-    };
-  });
+    // Create a Blob from the file content
+    const blob = new Blob([file], { type: "application/json" });
 
-  const edges: Edge[] = graph.links.map((link: any) => ({
-    id: `${link.source_id}-${link.sink_id}`,
-    source: link.source_id,
-    target: link.sink_id,
-    sourceHandle: link.source_name,
-    targetHandle: link.sink_name,
-    type: "custom",
-    data: {
-      sourceId: link.source_id,
-      targetId: link.sink_id,
-      sourceName: link.source_name,
-      targetName: link.sink_name,
-      isStatic: link.is_static,
-    },
-  }));
+    // Create a temporary URL for the Blob
+    const url = window.URL.createObjectURL(blob);
 
-  return { nodes, edges };
+    // Create a temporary anchor element
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `agent_${id}.json`; // Set the filename
+
+    // Append the anchor to the body, click it, and remove it
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Revoke the temporary URL
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error(`Error downloading agent:`, error);
+    throw error;
+  }
 }
 
 async function installGraph(id: string): Promise<void> {
@@ -84,12 +47,12 @@ async function installGraph(id: string): Promise<void> {
     "http://localhost:8015/api/v1/market";
   const api = new MarketplaceAPI(apiUrl);
 
-  const serverAPIUrl = process.env.AGPT_SERVER_API_URL;
+  const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
   const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
   try {
-    console.log(`Installing agent with id: ${id}`);
+    console.debug(`Installing agent with id: ${id}`);
     let agent = await api.downloadAgent(id);
-    console.log(`Agent downloaded:`, agent);
+    console.debug(`Agent downloaded:`, agent);
     const data: GraphCreatable = {
       id: agent.id,
       version: agent.version,
@@ -109,7 +72,7 @@ async function installGraph(id: string): Promise<void> {
         installation_location: InstallationLocation.CLOUD,
       },
     });
-    console.log(`Agent installed successfully`, result);
+    console.debug(`Agent installed successfully`, result);
   } catch (error) {
     console.error(`Error installing agent:`, error);
     throw error;
@@ -117,9 +80,6 @@ async function installGraph(id: string): Promise<void> {
 }
 
 function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
-  const [isGraphExpanded, setIsGraphExpanded] = useState(false);
-  const { nodes, edges } = convertGraphToReactFlow(agent.graph);
-
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
       <div className="mb-4 flex items-center justify-between">
@@ -130,13 +90,22 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
           <ArrowLeft className="mr-2" size={20} />
           Back to Marketplace
         </Link>
-        <Button
-          onClick={() => installGraph(agent.id)}
-          className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        >
-          <Download className="mr-2" size={16} />
-          Download Agent
-        </Button>
+        <div className="flex space-x-4">
+          <Button
+            onClick={() => installGraph(agent.id)}
+            className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            <Download className="mr-2" size={16} />
+            Save to Templates
+          </Button>
+          <Button
+            onClick={() => downloadAgent(agent.id)}
+            className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            <Download className="mr-2" size={16} />
+            Download Agent
+          </Button>
+        </div>
       </div>
       <div className="overflow-hidden bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">
