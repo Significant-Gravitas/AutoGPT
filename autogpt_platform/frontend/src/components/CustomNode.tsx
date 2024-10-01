@@ -515,7 +515,7 @@ export function CustomNode({
     "dark-theme",
     "rounded-xl",
     "bg-white/[.9]",
-    "border",
+    "border border-gray-300",
     data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
     data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
     selected ? "shadow-2xl" : "",
@@ -583,7 +583,7 @@ export function CustomNode({
 
   const LineSeparator = () => (
     <div className="bg-white pt-6">
-      <Separator.Root className="h-[1px] w-full bg-gray-200"></Separator.Root>
+      <Separator.Root className="h-[1px] w-full bg-gray-300"></Separator.Root>
     </div>
   );
 
@@ -596,7 +596,7 @@ export function CustomNode({
         <CopyIcon className="h-5 w-5 mr-2" />
         <span>Copy</span>
       </ContextMenu.Item>
-      <ContextMenu.Separator className="my-1 h-px bg-gray-200" />
+      <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
       <ContextMenu.Item
         onSelect={deleteNode}
         className="cursor-pointer flex rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 items-center"

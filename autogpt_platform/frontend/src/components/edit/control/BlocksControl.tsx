@@ -179,8 +179,9 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                     <div
                       className="flex flex-shrink-0 items-center gap-1"
                       data-id={`block-tooltip-${block.id}`}
-                    ></div>
-                    <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1" />
+                    >
+                      <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1" />
+                    </div>
                   </div>
                 </Card>
               ))}

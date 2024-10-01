@@ -23,7 +23,7 @@ export default function NodeOutputs({
             <strong className="mr-2">Pin:</strong>
             <span>{beautifyString(pin)}</span>
           </div>
-          <Separator.Root className="my-4 h-[1px] bg-gray-200" />
+          <Separator.Root className="my-4 h-[1px] bg-gray-300" />
           <div className="mt-2">
             <strong className="mr-2">Data:</strong>
             <div className="mt-1">
