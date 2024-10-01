@@ -170,7 +170,19 @@ class GmailSendBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailSendBlock.Input,
             output_schema=GmailSendBlock.Output,
-            # ... add test_input, test_output, and test_mock ...
+            test_input={
+                "to": "recipient@example.com",
+                "subject": "Test Email",
+                "body": "This is a test email sent from GmailSendBlock.",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("result", {"id": "1", "status": "sent"}),
+            ],
+            test_mock={
+                "_send_email": lambda *args, **kwargs: {"id": "1", "status": "sent"},
+            },
         )
 
     def run(
@@ -226,7 +238,25 @@ class GmailListLabelsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailListLabelsBlock.Input,
             output_schema=GmailListLabelsBlock.Output,
-            # ... add test_input, test_output, and test_mock ...
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "result",
+                    [
+                        {"id": "Label_1", "name": "Important"},
+                        {"id": "Label_2", "name": "Work"},
+                    ],
+                ),
+            ],
+            test_mock={
+                "_list_labels": lambda *args, **kwargs: [
+                    {"id": "Label_1", "name": "Important"},
+                    {"id": "Label_2", "name": "Work"},
+                ],
+            },
         )
 
     def run(
@@ -272,7 +302,24 @@ class GmailAddLabelBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailAddLabelBlock.Input,
             output_schema=GmailAddLabelBlock.Output,
-            # ... add test_input, test_output, and test_mock ...
+            test_input={
+                "message_id": "12345",
+                "label_name": "Important",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "result",
+                    {"status": "Label added successfully", "label_id": "Label_1"},
+                ),
+            ],
+            test_mock={
+                "_add_label": lambda *args, **kwargs: {
+                    "status": "Label added successfully",
+                    "label_id": "Label_1",
+                },
+            },
         )
 
     def run(
@@ -342,7 +389,24 @@ class GmailRemoveLabelBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailRemoveLabelBlock.Input,
             output_schema=GmailRemoveLabelBlock.Output,
-            # ... add test_input, test_output, and test_mock ...
+            test_input={
+                "message_id": "12345",
+                "label_name": "Important",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "result",
+                    {"status": "Label removed successfully", "label_id": "Label_1"},
+                ),
+            ],
+            test_mock={
+                "_remove_label": lambda *args, **kwargs: {
+                    "status": "Label removed successfully",
+                    "label_id": "Label_1",
+                },
+            },
         )
 
     def run(

@@ -83,7 +83,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                 provider=self.PROVIDER_NAME,
                 title="Google Account",
                 username=username,
-                access_token=SecretStr(google_creds.token),
+                access_token=SecretStr(google_creds.token or ""),
                 refresh_token=(
                     SecretStr(google_creds.refresh_token)
                     if google_creds.refresh_token
