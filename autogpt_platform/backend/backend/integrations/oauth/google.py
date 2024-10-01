@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
 from google.auth.external_account_authorized_user import (
