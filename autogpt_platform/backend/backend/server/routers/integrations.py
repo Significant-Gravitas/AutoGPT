@@ -104,20 +104,22 @@ async def callback(
     try:
         scopes = await store.get_scopes_from_state_token(user_id, state_token, provider)
         logger.info(f"Retrieved scopes from state token: {scopes}")
-        
+
         # If scopes are empty, use the default scopes for the provider
         if not scopes and provider == "google":
             scopes = handler.DEFAULT_SCOPES
-        
+
         credentials = handler.exchange_code_for_tokens(code, scopes)
         logger.info(f"Received credentials with final scopes: {credentials.scopes}")
-        
+
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
-            logger.warning(f"Granted scopes {credentials.scopes} do not include all requested scopes {scopes}")
+            logger.warning(
+                f"Granted scopes {credentials.scopes} do not include all requested scopes {scopes}"
+            )
             # You can choose to raise an exception here or handle it in another way
             # For now, we'll just log the warning and continue
-        
+
     except Exception as e:
         logger.error(f"Code->Token exchange failed for provider {provider}: {str(e)}")
         raise HTTPException(

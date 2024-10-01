@@ -107,7 +107,9 @@ export const CredentialsInput: FC<{
       const popup = window.open(login_url, "_blank", "popup=true");
 
       if (!popup) {
-        throw new Error("Failed to open popup window. Please allow popups for this site.");
+        throw new Error(
+          "Failed to open popup window. Please allow popups for this site.",
+        );
       }
 
       const controller = new AbortController();
@@ -118,7 +120,9 @@ export const CredentialsInput: FC<{
         popup.close();
       };
 
-      const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
+      const handleMessage = async (
+        e: MessageEvent<OAuthPopupResultMessage>,
+      ) => {
         console.log("Message received:", e.data);
         if (
           typeof e.data != "object" ||
@@ -155,7 +159,9 @@ export const CredentialsInput: FC<{
           });
         } catch (error) {
           console.error("Error in OAuth callback:", error);
-          setOAuthError(`Error in OAuth callback: ${error instanceof Error ? error.message : String(error)}`);
+          setOAuthError(
+            `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)}`,
+          );
         } finally {
           console.log("Finalizing OAuth flow");
           setOAuth2FlowInProgress(false);
@@ -164,7 +170,9 @@ export const CredentialsInput: FC<{
       };
 
       console.log("Adding message event listener");
-      window.addEventListener("message", handleMessage, { signal: controller.signal });
+      window.addEventListener("message", handleMessage, {
+        signal: controller.signal,
+      });
 
       setTimeout(
         () => {
@@ -177,7 +185,9 @@ export const CredentialsInput: FC<{
       );
     } catch (error) {
       console.error("Error initiating OAuth flow:", error);
-      setOAuthError(`Error initiating OAuth flow: ${error instanceof Error ? error.message : String(error)}`);
+      setOAuthError(
+        `Error initiating OAuth flow: ${error instanceof Error ? error.message : String(error)}`,
+      );
       setOAuth2FlowInProgress(false);
     }
   }
@@ -225,9 +235,7 @@ export const CredentialsInput: FC<{
         </div>
         {modals}
         {oAuthError && (
-          <div className="text-red-500 mt-2">
-            Error: {oAuthError}
-          </div>
+          <div className="mt-2 text-red-500">Error: {oAuthError}</div>
         )}
       </>
     );
@@ -292,9 +300,7 @@ export const CredentialsInput: FC<{
       </Select>
       {modals}
       {oAuthError && (
-        <div className="text-red-500 mt-2">
-          Error: {oAuthError}
-        </div>
+        <div className="mt-2 text-red-500">Error: {oAuthError}</div>
       )}
     </>
   );

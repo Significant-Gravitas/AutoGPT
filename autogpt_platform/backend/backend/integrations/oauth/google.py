@@ -52,7 +52,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self, code: str, scopes: list[str]
     ) -> OAuth2Credentials:
         logger.info(f"Exchanging code for tokens with scopes: {scopes}")
-        
+
         # Use the scopes from the initial request
         flow = self._setup_oauth_flow(scopes)
         flow.redirect_uri = self.redirect_uri
@@ -66,7 +66,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             logger.info("Token fetched successfully")
 
             # Get the actual scopes granted by Google
-            granted_scopes = token.get('scope', [])
+            granted_scopes = token.get("scope", [])
             if isinstance(granted_scopes, str):
                 granted_scopes = granted_scopes.split()
             logger.info(f"Scopes granted by Google: {granted_scopes}")

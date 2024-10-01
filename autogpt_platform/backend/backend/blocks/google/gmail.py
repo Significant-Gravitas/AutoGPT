@@ -1,8 +1,7 @@
 from typing import List, Optional
-from pydantic import Field
-from googleapiclient.discovery import build
+
 from google.oauth2.credentials import Credentials
-from enum import Enum
+from googleapiclient.discovery import build
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -196,8 +195,8 @@ class GmailSendBlock(Block):
         return {"id": sent_message["id"], "status": "sent"}
 
     def _create_message(self, to: str, subject: str, body: str) -> dict:
-        from email.mime.text import MIMEText
         import base64
+        from email.mime.text import MIMEText
 
         message = MIMEText(body)
         message["to"] = to

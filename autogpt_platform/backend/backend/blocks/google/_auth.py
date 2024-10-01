@@ -12,10 +12,7 @@ GOOGLE_OAUTH_IS_CONFIGURED = bool(
 )
 
 GoogleCredentials = OAuth2Credentials
-GoogleCredentialsInput = CredentialsMetaInput[
-    Literal["google"],
-    Literal["oauth2"]
-]
+GoogleCredentialsInput = CredentialsMetaInput[Literal["google"], Literal["oauth2"]]
 
 
 def GoogleCredentialsField(scopes: list[str]) -> GoogleCredentialsInput:
