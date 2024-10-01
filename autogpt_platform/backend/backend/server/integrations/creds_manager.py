@@ -37,30 +37,32 @@ class IntegrationCredentialsManager:
             return None
 
         # Refresh OAuth credentials if needed
-        if credentials.type == "oauth2":
-            oauth_handler = _get_provider_oauth_handler(credentials.provider)
-            if credentials.access_token_expires_at:
-                logger.debug(
-                    f"Credentials #{credentials.id} expire at "
-                    f"{datetime.fromtimestamp(credentials.access_token_expires_at)}; "
-                    f"current time is {datetime.now()}"
-                )
-            else:
-                logger.debug(f"Credentials #{credentials.id} never expire")
-            if oauth_handler.needs_refresh(credentials):
-                logger.debug(
-                    f"Refreshing '{credentials.provider}' credentials #{credentials.id}"
-                )
-                if lock:
-                    # Wait until the credentials are no longer in use anywhere
-                    self._lock(user_id, credentials_id)
+        if credentials.type == "oauth2" and credentials.access_token_expires_at:
+            logger.debug(
+                f"Credentials #{credentials.id} expire at "
+                f"{datetime.fromtimestamp(credentials.access_token_expires_at)}; "
+                f"current time is {datetime.now()}"
+            )
 
-                fresh_credentials = oauth_handler.refresh_tokens(credentials)
-                self.store.update_creds(user_id, fresh_credentials)
-                if lock:
-                    self._unlock(user_id, credentials_id)
+            with self._locked(user_id, credentials_id, "refresh"):
+                oauth_handler = _get_provider_oauth_handler(credentials.provider)
+                if oauth_handler.needs_refresh(credentials):
+                    logger.debug(
+                        f"Refreshing '{credentials.provider}' "
+                        f"credentials #{credentials.id}"
+                    )
+                    if lock:
+                        # Wait until the credentials are no longer in use anywhere
+                        self._lock(user_id, credentials_id)
 
-                credentials = fresh_credentials
+                    fresh_credentials = oauth_handler.refresh_tokens(credentials)
+                    self.store.update_creds(user_id, fresh_credentials)
+                    if lock:
+                        self._unlock(user_id, credentials_id)
+
+                    credentials = fresh_credentials
+        else:
+            logger.debug(f"Credentials #{credentials.id} never expire")
 
         return credentials
 
