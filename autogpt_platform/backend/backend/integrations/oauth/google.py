@@ -76,10 +76,14 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             username = self._request_email(google_creds)
             logger.debug(f"User email retrieved: {username}")
 
-            assert google_creds.token
-            assert google_creds.refresh_token
-            assert google_creds.expiry
-            assert google_creds.scopes
+            if not google_creds.token:
+                raise ValueError("No access token received")
+            if not google_creds.refresh_token:
+                raise ValueError("No refresh token received")
+            if not google_creds.expiry:
+                raise ValueError("No expiry time received")
+            if not google_creds.scopes:
+                raise ValueError("No scopes received")
 
             # Create OAuth2Credentials with the granted scopes
             credentials = OAuth2Credentials(
