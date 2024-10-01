@@ -82,24 +82,12 @@ async def callback(
     request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
-    try:
-        handler = _get_provider_oauth_handler(request, provider)
-    except Exception as e:
-        logger.error(f"Error getting OAuth handler for provider {provider}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    handler = _get_provider_oauth_handler(request, provider)
 
     # Verify the state token
-    try:
-        if not await store.verify_state_token(user_id, state_token, provider):
-            logger.warning(f"Invalid or expired state token for user {user_id}")
-            raise HTTPException(
-                status_code=400, detail="Invalid or expired state token"
-            )
-    except Exception as e:
-        logger.error(f"Error verifying state token: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error verifying state token: {str(e)}"
-        )
+    if not await store.verify_state_token(user_id, state_token, provider):
+        logger.warning(f"Invalid or expired state token for user {user_id}")
+        raise HTTPException(status_code=400, detail="Invalid or expired state token")
 
     try:
         scopes = await store.get_scopes_from_state_token(user_id, state_token, provider)
@@ -127,13 +115,7 @@ async def callback(
             status_code=400, detail=f"Failed to exchange code for tokens: {str(e)}"
         )
 
-    try:
-        store.add_creds(user_id, credentials)
-    except Exception as e:
-        logger.error(f"Failed to store credentials for user {user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to store credentials: {str(e)}"
-        )
+    store.add_creds(user_id, credentials)
 
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} and provider {provider}"
