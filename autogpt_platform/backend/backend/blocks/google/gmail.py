@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -30,10 +28,10 @@ class GmailReadBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: List[dict] = SchemaField(
+        result: list[dict] = SchemaField(
             description="List of email data",
         )
-        error: Optional[str] = SchemaField(
+        error: str | None = SchemaField(
             description="Error message if any",
         )
 
@@ -107,8 +105,8 @@ class GmailReadBlock(Block):
         return build("gmail", "v1", credentials=creds)
 
     def _read_emails(
-        self, service, query: Optional[str], max_results: Optional[int]
-    ) -> List[dict]:
+        self, service, query: str | None, max_results: int | None
+    ) -> list[dict]:
         results = (
             service.users()
             .messages()
@@ -159,7 +157,7 @@ class GmailSendBlock(Block):
         result: dict = SchemaField(
             description="Send confirmation",
         )
-        error: Optional[str] = SchemaField(
+        error: str | None = SchemaField(
             description="Error message if any",
         )
 
@@ -224,10 +222,10 @@ class GmailListLabelsBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: List[dict] = SchemaField(
+        result: list[dict] = SchemaField(
             description="List of labels",
         )
-        error: Optional[str] = SchemaField(
+        error: str | None = SchemaField(
             description="Error message if any",
         )
 
@@ -269,7 +267,7 @@ class GmailListLabelsBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
-    def _list_labels(self, service) -> List[dict]:
+    def _list_labels(self, service) -> list[dict]:
         results = service.users().labels().list(userId="me").execute()
         labels = results.get("labels", [])
         return [{"id": label["id"], "name": label["name"]} for label in labels]
@@ -291,7 +289,7 @@ class GmailAddLabelBlock(Block):
         result: dict = SchemaField(
             description="Label addition result",
         )
-        error: Optional[str] = SchemaField(
+        error: str | None = SchemaField(
             description="Error message if any",
         )
 
@@ -353,7 +351,7 @@ class GmailAddLabelBlock(Block):
             label_id = label["id"]
         return label_id
 
-    def _get_label_id(self, service, label_name: str) -> Optional[str]:
+    def _get_label_id(self, service, label_name: str) -> str | None:
         results = service.users().labels().list(userId="me").execute()
         labels = results.get("labels", [])
         for label in labels:
@@ -378,7 +376,7 @@ class GmailRemoveLabelBlock(Block):
         result: dict = SchemaField(
             description="Label removal result",
         )
-        error: Optional[str] = SchemaField(
+        error: str | None = SchemaField(
             description="Error message if any",
         )
 
@@ -431,7 +429,7 @@ class GmailRemoveLabelBlock(Block):
         else:
             return {"status": "Label not found", "label_name": label_name}
 
-    def _get_label_id(self, service, label_name: str) -> Optional[str]:
+    def _get_label_id(self, service, label_name: str) -> str | None:
         results = service.users().labels().list(userId="me").execute()
         labels = results.get("labels", [])
         for label in labels:
