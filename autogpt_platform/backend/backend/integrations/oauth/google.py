@@ -64,11 +64,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             logger.debug("Token fetched successfully")
 
             # Get the actual scopes granted by Google
-            granted_scopes: str | list[str] = token.get("scope", [])
+            granted_scopes: list[str] = s.split() if (s := token.get("scope")) else []
 
-            # handle when we actually get scopes back (string rather than list as default from the get)
-            if isinstance(granted_scopes, str):
-                granted_scopes = granted_scopes.split()
             logger.debug(f"Scopes granted by Google: {granted_scopes}")
 
             google_creds = flow.credentials
