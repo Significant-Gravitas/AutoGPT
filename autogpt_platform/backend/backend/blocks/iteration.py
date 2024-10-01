@@ -19,7 +19,7 @@ class StepThroughItemsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f8e7d6c5-b4a3-2c1d-0e9f-8g7h6i5j4k3l",
+            id="f66a3543-28d3-4ab5-8945-9b336371e2ce",
             input_schema=StepThroughItemsBlock.Input,
             output_schema=StepThroughItemsBlock.Output,
             categories={BlockCategory.LOGIC},

@@ -25,7 +25,7 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
 
     def __init__(self):
         super().__init__(
-            id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m",
+            id="f5b0f5d0-1862-4d61-94be-3ad0fa772760",
             description="This block fetches the summary of a given topic from Wikipedia.",
             categories={BlockCategory.SEARCH},
             input_schema=GetWikipediaSummaryBlock.Input,
@@ -62,7 +62,7 @@ class SearchTheWebBlock(Block, GetRequest):
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
+            id="87840993-2053-44b7-8da4-187ad4ee518c",
             description="This block searches the internet for the given search query.",
             categories={BlockCategory.SEARCH},
             input_schema=SearchTheWebBlock.Input,
@@ -109,7 +109,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",  # Unique ID for the block
+            id="436c3984-57fd-4b85-8e9a-459b356883bd",
             description="This block scrapes the content from the given web URL.",
             categories={BlockCategory.SEARCH},
             input_schema=ExtractWebsiteContentBlock.Input,
