@@ -116,7 +116,7 @@ async def callback(
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
             logger.warning(
-                f"Granted scopes {credentials.scopes} do not include all requested scopes {scopes}"
+                f"Granted scopes {credentials.scopes} for {provider}do not include all requested scopes {scopes}"
             )
             # You can choose to raise an exception here or handle it in another way
             # For now, we'll just log the warning and continue
