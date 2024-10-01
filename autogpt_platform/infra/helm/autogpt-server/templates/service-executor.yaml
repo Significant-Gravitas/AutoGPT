@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autogpt-server.fullname" . }}-executor
+  labels:
+    app.kubernetes.io/component: executor
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.serviceExecutor.type }}
+  ports:
+    - port: {{ .Values.serviceExecutor.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/component: executor
