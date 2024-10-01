@@ -32,7 +32,7 @@ class GoogleSheetsReadBlock(Block):
         result: List[List[str]] = SchemaField(
             description="The data read from the spreadsheet",
         )
-        error: Optional[str] = SchemaField(
+        error: str = SchemaField(
             description="Error message if any",
         )
 
@@ -124,7 +124,7 @@ class GoogleSheetsWriteBlock(Block):
         result: dict = SchemaField(
             description="The result of the write operation",
         )
-        error: Optional[str] = SchemaField(
+        error: str = SchemaField(
             description="Error message if any",
         )
 

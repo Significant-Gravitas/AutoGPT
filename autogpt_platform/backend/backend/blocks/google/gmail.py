@@ -32,7 +32,7 @@ class GmailReadBlock(Block):
         result: list[dict] = SchemaField(
             description="List of email data",
         )
-        error: str | None = SchemaField(
+        error: str = SchemaField(
             description="Error message if any",
         )
 
@@ -159,7 +159,7 @@ class GmailSendBlock(Block):
         result: dict = SchemaField(
             description="Send confirmation",
         )
-        error: str | None = SchemaField(
+        error: str = SchemaField(
             description="Error message if any",
         )
 
@@ -228,7 +228,7 @@ class GmailListLabelsBlock(Block):
         result: list[dict] = SchemaField(
             description="List of labels",
         )
-        error: str | None = SchemaField(
+        error: str = SchemaField(
             description="Error message if any",
         )
 
@@ -293,7 +293,7 @@ class GmailAddLabelBlock(Block):
         result: dict = SchemaField(
             description="Label addition result",
         )
-        error: str | None = SchemaField(
+        error: str = SchemaField(
             description="Error message if any",
         )
 
@@ -381,7 +381,7 @@ class GmailRemoveLabelBlock(Block):
         result: dict = SchemaField(
             description="Label removal result",
         )
-        error: str | None = SchemaField(
+        error: str = SchemaField(
             description="Error message if any",
         )
 
