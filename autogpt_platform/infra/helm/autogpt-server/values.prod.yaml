@@ -1,14 +1,14 @@
-# dev values, overwrite base values as needed.
+# prod values, overwrite base values as needed.
 
 image:
-  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-backend-prod/agpt-backend-prod
   pullPolicy: Always
   tag: "latest"
 
 serviceAccount:
   annotations:
-    iam.gke.io/gcp-service-account: "dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com"
-  name: "dev-agpt-server-sa"
+    iam.gke.io/gcp-service-account: "prod-agpt-server-sa@agpt-prod.iam.gserviceaccount.com"
+  name: "prod-agpt-server-sa"
 
 service:
   type: ClusterIP
@@ -30,11 +30,11 @@ ingress:
   className: "gce"
   annotations:
     kubernetes.io/ingress.class: gce
-    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-server-ip"
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-backend-ip"
     networking.gke.io/managed-certificates: "autogpt-server-cert"
     networking.gke.io/v1beta1.FrontendConfig: "autogpt-server-frontend-config"
   hosts:
-    - host: dev-server.agpt.co
+    - host: backend.agpt.co
       paths:
         - path: /
           pathType: Prefix
@@ -56,6 +56,20 @@ resources:
     cpu: 2
     memory: 10Gi
 
+cors:
+  allowOrigin: "https://platform.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
 livenessProbe:
   httpGet:
     path: /docs
@@ -73,41 +87,27 @@ readinessProbe:
   timeoutSeconds: 5
   failureThreshold: 6
 
-domain: "dev-server.agpt.co"
-
-cors:
-  allowOrigin: "https://dev-builder.agpt.co"
-  allowMethods:
-    - "GET"
-    - "POST"
-    - "PUT"
-    - "DELETE"
-    - "OPTIONS"
-  allowHeaders:
-    - "Content-Type"
-    - "Authorization"
-  maxAge: 3600
-  allowCredentials: true
+domain: "backend.agpt.co"
 
 env:
-  APP_ENV: "dev"
+  APP_ENV: "prod"
   PYRO_HOST: "0.0.0.0"
   ENABLE_AUTH: "true"
-  REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
+  REDIS_HOST: "redis-prod-master.redis-prod.svc.cluster.local"
   REDIS_PORT: "6379"
   OPENAI_API_KEY: ""
-  SUPABASE_JWT_SECRET: ""
-  REDIS_PASSWORD: "password"
+  REDIS_PASSWORD: ""
   NUM_GRAPH_WORKERS: 10
   NUM_NODE_WORKERS: 5
+  ENABLE_CREDIT: "true"
+  BACKEND_CORS_ALLOW_ORIGINS: '["https://platform.agpt.co"]'
+  SUPABASE_JWT_SECRET: ""
   DATABASE_URL: ""
   SENTRY_DSN: ""
-  ENABLE_CREDIT: "true"
-  BACKEND_CORS_ALLOW_ORIGINS: '["https://dev-builder.agpt.co"]'
   SUPABASE_SERVICE_ROLE_KEY: ""
+  FRONTEND_BASE_URL: "https://platform.agpt.co/"
+  SUPABASE_URL: "https://bgwpwdsxblryihinutbx.supabase.co"
+  AGENTSERVER_HOST: "autogpt-server.prod-agpt.svc.cluster.local"
+  EXECUTIONMANAGER_HOST: "autogpt-server-executor.prod-agpt.svc.cluster.local"
   GITHUB_CLIENT_ID: ""
   GITHUB_CLIENT_SECRET: ""
-  FRONTEND_BASE_URL: "https://dev-builder.agpt.co/"
-  SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co"
-  AGENTSERVER_HOST: "autogpt-server.dev-agpt.svc.cluster.local"
-  EXECUTIONMANAGER_HOST: "autogpt-server-executor.dev-agpt.svc.cluster.local"
