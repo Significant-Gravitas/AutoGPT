@@ -65,6 +65,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
             # Get the actual scopes granted by Google
             granted_scopes = token.get("scope", [])
+            
+            # handle when we actually get scopes back (string rather than list as default from the get)
             if isinstance(granted_scopes, str):
                 granted_scopes = granted_scopes.split()
             logger.debug(f"Scopes granted by Google: {granted_scopes}")
