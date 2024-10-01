@@ -24,7 +24,7 @@ def GoogleCredentialsField(scopes: list[str]) -> GoogleCredentialsInput:
     """
     return CredentialsField(
         provider="google",
-        supported_credential_types={"oauth2"} if GOOGLE_OAUTH_IS_CONFIGURED else set(),
+        supported_credential_types={"oauth2"},
         required_scopes=set(scopes),
         description="The Google integration requires OAuth2 authentication.",
     )

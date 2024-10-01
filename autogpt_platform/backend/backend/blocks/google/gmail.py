@@ -5,6 +5,7 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 from ._auth import (
+    GOOGLE_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     GoogleCredentials,
@@ -40,6 +41,7 @@ class GmailReadBlock(Block):
             id="25310c70-b89b-43ba-b25c-4dfa7e2a481c",
             description="This block reads emails from Gmail.",
             categories={BlockCategory.COMMUNICATION},
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             input_schema=GmailReadBlock.Input,
             output_schema=GmailReadBlock.Output,
             test_input={
@@ -168,6 +170,7 @@ class GmailSendBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailSendBlock.Input,
             output_schema=GmailSendBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "to": "recipient@example.com",
                 "subject": "Test Email",
@@ -236,6 +239,7 @@ class GmailListLabelsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailListLabelsBlock.Input,
             output_schema=GmailListLabelsBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
@@ -300,6 +304,7 @@ class GmailAddLabelBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailAddLabelBlock.Input,
             output_schema=GmailAddLabelBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "message_id": "12345",
                 "label_name": "Important",
@@ -387,6 +392,7 @@ class GmailRemoveLabelBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailRemoveLabelBlock.Input,
             output_schema=GmailRemoveLabelBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "message_id": "12345",
                 "label_name": "Important",

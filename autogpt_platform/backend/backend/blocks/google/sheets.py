@@ -7,6 +7,7 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 from ._auth import (
+    GOOGLE_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     GoogleCredentials,
@@ -42,6 +43,7 @@ class GoogleSheetsReadBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsReadBlock.Input,
             output_schema=GoogleSheetsReadBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "Sheet1!A1:B2",
@@ -133,6 +135,7 @@ class GoogleSheetsWriteBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsWriteBlock.Input,
             output_schema=GoogleSheetsWriteBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "Sheet1!A1:B2",
