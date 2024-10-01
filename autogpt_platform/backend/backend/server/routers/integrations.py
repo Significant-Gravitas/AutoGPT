@@ -81,7 +81,7 @@ async def callback(
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
 ) -> CredentialsMetaResponse:
-    logger.debug(f"Received callback for provider: {provider}")
+    logger.debug(f"Received OAuth callback for provider: {provider}")
     try:
         handler = _get_provider_oauth_handler(request, provider)
     except Exception as e:
