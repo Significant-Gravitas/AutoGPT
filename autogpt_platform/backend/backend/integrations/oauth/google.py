@@ -14,6 +14,7 @@ from .base import BaseOAuthHandler
 logger = logging.getLogger(__name__)
 
 
+# --8<-- [start:GoogleOAuthHandler]
 class GoogleOAuthHandler(BaseOAuthHandler):
     """
     Based on the documentation at https://developers.google.com/identity/protocols/oauth2/web-server
@@ -26,6 +27,8 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         "https://www.googleapis.com/auth/userinfo.profile",
         "openid",
     ]
+
+    # --8<-- [end: GoogleOAuthHandler]
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id

@@ -136,8 +136,8 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
-      auto_append:
-        - includes/abbreviations.md
+      base_path: ['.','../']
+      check_paths: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid

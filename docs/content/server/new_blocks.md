@@ -115,6 +115,7 @@ for a service that we already have OAuth2 support for.
 
 Implementing the block itself is relatively simple. On top of the instructions above,
 you're going to add a `credentials` parameter to the `Input` model and the `run` method:
+
 ```python
 from autogpt_libs.supabase_integration_credentials_store.types import (
     APIKeyCredentials,
@@ -191,10 +192,12 @@ class BlockWithAPIKeyAndOAuth(Block):
     ) -> BlockOutput:
         ...
 ```
+
 The credentials will be automagically injected by the executor in the back end.
 
 The `APIKeyCredentials` and `OAuth2Credentials` models are defined [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/rnd/autogpt_libs/autogpt_libs/supabase_integration_credentials_store/types.py).
 To use them in e.g. an API request, you can either access the token directly:
+
 ```python
 # credentials: APIKeyCredentials
 response = requests.post(
@@ -212,7 +215,9 @@ response = requests.post(
     },
 )
 ```
+
 or use the shortcut `credentials.bearer()`:
+
 ```python
 # credentials: APIKeyCredentials | OAuth2Credentials
 response = requests.post(
@@ -227,24 +232,63 @@ To add support for a new OAuth2-authenticated service, you'll need to add an `OA
 All our existing handlers and the base class can be found [here][OAuth2 handlers].
 
 Every handler must implement the following parts of the [`BaseOAuthHandler`] interface:
-- `PROVIDER_NAME`
-- `__init__(client_id, client_secret, redirect_uri)`
-- `get_login_url(scopes, state)`
-- `exchange_code_for_tokens(code)`
-- `_refresh_tokens(credentials)`
+
+```python
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler1"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler2"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler3"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler4"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler5"
+```
 
 As you can see, this is modeled after the standard OAuth2 flow.
 
 Aside from implementing the `OAuthHandler` itself, adding a handler into the system requires two more things:
-- Adding the handler class to `HANDLERS_BY_NAME` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/__init__.py)
-- Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` [here](https://github.com/Significant-Gravitas/AutoGPT/blob/e3f35d79c7e9fc6ee0cabefcb73e0fad15a0ce2d/autogpt_platform/backend/backend/util/settings.py#L132)
+
+- Adding the handler class to `HANDLERS_BY_NAME` under [`integrations/oauth/__init__.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/__init__.py)
+
+```python title="autogpt_platform/backend/backend/integrations/oauth/__init__.py"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/__init__.py:HANDLERS_BY_NAMEExample"
+```
+
+- Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` under [`util/settings.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/util/settings.py)
+
+```python title="autogpt_platform/backend/backend/util/settings.py"
+--8<-- "autogpt_platform/backend/backend/util/settings.py:OAuthServerCredentialsExample"
+```
 
 [OAuth2 handlers]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/integrations/oauth
 [`BaseOAuthHandler`]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/base.py
 
 #### Example: GitHub integration
+
 - GitHub blocks with API key + OAuth2 support: [`blocks/github`](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/blocks/github/)
+
+```python title="blocks/github/issues.py"
+--8<-- "autogpt_platform/backend/backend/blocks/github/issues.py:GithubCommentBlock"
+```
+
 - GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
+
+```python title="blocks/github/github.py"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/github.py:GithubOAuthHandler"
+```
+
+#### Example: Google integration
+
+- Google OAuth2 handler: [`integrations/oauth/google.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/google.py)
+
+```python title="integrations/oauth/google.py"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/google.py:GoogleOAuthHandler"
+```
+
+You can see that google has defined a `DEFAULT_SCOPES` variable, this is used to set the scopes that are requested no matter what the user asks for.
+
+```python title="blocks/google/_auth.py"
+--8<-- "autogpt_platform/backend/backend/blocks/google/_auth.py:GoogleOAuthIsConfigured"
+```
+
+You can also see that `GOOGLE_OAUTH_IS_CONFIGURED` is used to disable the blocks that require OAuth if the oauth is not configured. This is in the `__init__` method of each block. This is because there is no api key fallback for google blocks so we need to make sure that the oauth is configured before we allow the user to use the blocks.
 
 ## Key Points to Remember
 
