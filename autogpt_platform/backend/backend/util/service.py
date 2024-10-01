@@ -11,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Coroutine,
+    Iterator,
     Type,
     TypeVar,
     cast,
@@ -54,38 +55,21 @@ def expose(func: C) -> C:
 
     # Register custom serializers and deserializers for annotated Pydantic models
     for name, annotation in func.__annotations__.items():
-        # Peel Annotated parameters
-        if (origin := get_origin(annotation)) and origin is Annotated:
-            annotation = get_args(annotation)[0]
-
-        if origin := get_origin(annotation):
-            if origin is UnionType:
-                types = get_args(annotation)
-            else:
-                types = [origin]
-        else:
-            types = [annotation]
-
-        for annotype in types:
-            if (
-                annotype is not None
-                and not hasattr(typing, annotype.__name__)  # avoid generics and aliases
-                and issubclass(annotype, BaseModel)
-            ):
-                logger.debug(
-                    f"Registering Pyro (de)serializers for {func.__name__} annotation "
-                    f"'{name}': {annotype.__qualname__}"
-                )
-                pyro.register_class_to_dict(
-                    annotype,
-                    lambda obj: {
-                        "__class__": obj.__class__.__qualname__,
-                        **obj.model_dump(),
-                    },
-                )
-                pyro.register_dict_to_class(
-                    annotype.__qualname__, _make_pyrodantic_parser(annotype)
-                )
+        for model in _pydantic_models_from_type_annotation(annotation):
+            logger.debug(
+                f"Registering Pyro (de)serializers for {func.__name__} annotation "
+                f"'{name}': {model.__qualname__}"
+            )
+            pyro.register_class_to_dict(
+                model,
+                lambda obj: {
+                    "__class__": obj.__class__.__qualname__,
+                    **obj.model_dump(),
+                },
+            )
+            pyro.register_dict_to_class(
+                model.__qualname__, _make_pyrodantic_parser(model)
+            )
 
     return pyro.expose(wrapper)  # type: ignore
 
@@ -194,3 +178,28 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
             return getattr(self.proxy, name)
 
     return cast(AS, DynamicClient())
+
+
+# --------- UTILITIES --------- #
+
+
+def _pydantic_models_from_type_annotation(annotation) -> Iterator[type[BaseModel]]:
+    # Peel Annotated parameters
+    if (origin := get_origin(annotation)) and origin is Annotated:
+        annotation = get_args(annotation)[0]
+
+    if origin := get_origin(annotation):
+        if origin is UnionType:
+            types = get_args(annotation)
+        else:
+            types = [origin]
+    else:
+        types = [annotation]
+
+    for annotype in types:
+        if (
+            annotype is not None
+            and not hasattr(typing, annotype.__name__)  # avoid generics and aliases
+            and issubclass(annotype, BaseModel)
+        ):
+            yield annotype
