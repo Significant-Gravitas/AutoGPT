@@ -9,7 +9,6 @@ import {
   BlockIOStringSubSchema,
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
-  BlockIOCredentialsSubSchema,
 } from "@/lib/autogpt-server-api/types";
 import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
@@ -313,6 +312,18 @@ const NodeCredentialsInput: FC<{
   );
 };
 
+const InputRef = (value: any): React.RefObject<HTMLInputElement> => {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (inputRef.current && value && inputRef.current.value !== value) {
+      inputRef.current.value = value;
+    }
+  }, [value]);
+
+  return inputRef;
+};
+
 const NodeKeyValueInput: FC<{
   selfKey: string;
   schema: BlockIOKVSubSchema;
@@ -417,7 +428,7 @@ const NodeKeyValueInput: FC<{
                 <Input
                   type="text"
                   placeholder="Value"
-                  defaultValue={value ?? ""}
+                  ref={InputRef(value ?? "")}
                   onBlur={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
@@ -602,7 +613,9 @@ const NodeStringInput: FC<{
           <Input
             type="text"
             id={selfKey}
-            defaultValue={schema.secret && value ? "********" : value}
+            ref={InputRef(
+              schema.secret && value ? "*".repeat(value.length) : value,
+            )}
             readOnly={schema.secret}
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
@@ -660,7 +673,6 @@ export const NodeTextBoxInput: FC<{
             schema?.placeholder || `Enter ${beautifyString(displayName)}`
           }
           onChange={(e) => handleInputChange(selfKey, e.target.value)}
-          onBlur={(e) => handleInputChange(selfKey, e.target.value)}
           className="h-full w-full resize-none overflow-hidden rounded-xl border-none bg-transparent text-lg text-black outline-none"
           style={{
             fontSize: "min(1em, 16px)",
@@ -698,7 +710,7 @@ const NodeNumberInput: FC<{
         <Input
           type="number"
           id={selfKey}
-          defaultValue={value}
+          ref={InputRef(value)}
           onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`

@@ -399,7 +399,7 @@ export function CustomNode({
   };
 
   const handleInputClick = (key: string) => {
-    console.log(`Opening modal for key: ${key}`);
+    console.debug(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
     setInputModalValue(
@@ -434,7 +434,7 @@ export function CustomNode({
   };
 
   const deleteNode = useCallback(() => {
-    console.log("Deleting node:", id);
+    console.debug("Deleting node:", id);
 
     // Remove the node
     deleteElements({ nodes: [{ id }] });

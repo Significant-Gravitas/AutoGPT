@@ -26,13 +26,10 @@ export function deepEquals(x: any, y: any): boolean {
     ty = typeof y;
 
   const res =
-    x &&
-    y &&
-    tx === ty &&
-    (tx === "object"
+    x && y && tx === ty && tx === "object"
       ? ok(x).length === ok(y).length &&
         ok(x).every((key) => deepEquals(x[key], y[key]))
-      : x === y);
+      : x === y;
   return res;
 }
 
