@@ -43,7 +43,7 @@ class ReadRSSFeedBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c6731acb-4105-4zp1-bc9b-03d0036h370g",
+            id="5ebe6768-8e5d-41e3-9134-1c7bd89a8d52",
             input_schema=ReadRSSFeedBlock.Input,
             output_schema=ReadRSSFeedBlock.Output,
             description="Reads RSS feed entries from a given URL.",
