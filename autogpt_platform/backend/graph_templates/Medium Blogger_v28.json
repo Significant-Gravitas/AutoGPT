@@ -8,7 +8,7 @@
   "nodes": [
     {
       "id": "382efac9-3def-4baf-b16a-d6d2512a5c8b",
-      "block_id": "b2c3d4e5-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
+      "block_id": "87840993-2053-44b7-8da4-187ad4ee518c",
       "input_default": {
         "query": "19th July 2024 Microsoft Blackout"
       },
@@ -44,7 +44,7 @@
     },
     {
       "id": "0cd8f670-8956-4942-ba28-aee732ec783f",
-      "block_id": "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
       "input_default": {
         "key": "TITLE"
       },
@@ -57,7 +57,7 @@
     },
     {
       "id": "4a15b6b9-036d-43d3-915a-7e931fbc6522",
-      "block_id": "b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
       "input_default": {
         "key": "CONTENT"
       },
