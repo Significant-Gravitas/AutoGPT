@@ -159,7 +159,7 @@ export const CredentialsInput: FC<{
         } catch (error) {
           console.error("Error in OAuth callback:", error);
           setOAuthError(
-            `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)}`,
+            `Error in OAuth callback: ${error instanceof Error ? error.message : error.toString()}`,
           );
         } finally {
           console.debug("Finalizing OAuth flow");
