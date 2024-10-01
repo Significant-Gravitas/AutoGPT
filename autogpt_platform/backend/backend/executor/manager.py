@@ -455,8 +455,9 @@ class Executor:
             return  # already shutting down
 
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
-        redis.disconnect()
         cls.loop.run_until_complete(db.disconnect())
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
         logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
 
     @classmethod
