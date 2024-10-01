@@ -34,7 +34,7 @@ import NodeOutputs from "./NodeOutputs";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { DotsVerticalIcon } from "@radix-ui/react-icons";
+import { DotsVerticalIcon, TrashIcon, CopyIcon } from "@radix-ui/react-icons";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -516,7 +516,6 @@ export function CustomNode({
     "rounded-xl",
     "bg-white/[.9]",
     "border",
-    "pb-2",
     data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
     data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
     selected ? "shadow-2xl" : "",
@@ -583,23 +582,27 @@ export function CustomNode({
     );
 
   const LineSeparator = () => (
-    <Separator.Root className="my-6 h-[1px] w-full bg-gray-200"></Separator.Root>
+    <div className="bg-white pt-6">
+      <Separator.Root className="h-[1px] w-full bg-gray-200"></Separator.Root>
+    </div>
   );
 
   const ContextMenuContent = () => (
-    <ContextMenu.Content className="rounded-xl bg-white p-1 shadow-md border">
+    <ContextMenu.Content className="rounded-xl z-10 bg-white p-1 shadow-md border">
       <ContextMenu.Item
         onSelect={copyNode}
-        className="cursor-pointer rounded-md px-3 py-2 hover:bg-gray-100"
+        className="cursor-pointer flex rounded-md px-3 py-2 hover:bg-gray-100 items-center"
       >
-        Copy
+        <CopyIcon className="h-5 w-5 mr-2" />
+        <span>Copy</span>
       </ContextMenu.Item>
       <ContextMenu.Separator className="my-1 h-px bg-gray-200" />
       <ContextMenu.Item
         onSelect={deleteNode}
-        className="cursor-pointer rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
+        className="cursor-pointer flex rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 items-center"
       >
-        Delete
+        <TrashIcon className="h-5 w-5 mr-2 text-red-500" />
+        <span>Delete</span>
       </ContextMenu.Item>
     </ContextMenu.Content>
   );
@@ -687,7 +690,7 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
           <>
             <LineSeparator />
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pt-6">
               Advanced
               <Switch
                 onCheckedChange={toggleAdvancedSettings}
@@ -701,8 +704,7 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && (
           <>
             <LineSeparator />
-
-            <div className="flex items-start justify-end rounded-b-xl pr-2">
+            <div className="flex items-start justify-end rounded-b-xl pr-2 pt-6 pb-2">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
@@ -724,7 +726,7 @@ export function CustomNode({
             )}
           >
             {(data.executionResults?.length ?? 0) > 0 ? (
-              <div className="mt-0 rounded-b-xl bg-gray-100">
+              <div className="mt-0 rounded-b-xl bg-gray-50">
                 <LineSeparator />
                 <NodeOutputs
                   title="Latest Output"
@@ -732,7 +734,7 @@ export function CustomNode({
                   data={data.executionResults!.at(-1)?.data || {}}
                 />
                 <div className="flex justify-end">
-                  <Button variant="ghost" onClick={handleOutputClick}>
+                  <Button variant="ghost" onClick={handleOutputClick} className="border">
                     View More
                   </Button>
                 </div>
