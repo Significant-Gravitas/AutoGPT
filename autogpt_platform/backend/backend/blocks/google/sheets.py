@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -29,7 +27,7 @@ class GoogleSheetsReadBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: List[List[str]] = SchemaField(
+        result: list[list[str]] = SchemaField(
             description="The data read from the spreadsheet",
         )
         error: str = SchemaField(
@@ -99,7 +97,7 @@ class GoogleSheetsReadBlock(Block):
         )
         return build("sheets", "v4", credentials=creds)
 
-    def _read_sheet(self, service, spreadsheet_id: str, range: str) -> List[List[str]]:
+    def _read_sheet(self, service, spreadsheet_id: str, range: str) -> list[list[str]]:
         sheet = service.spreadsheets()
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range).execute()
         return result.get("values", [])
@@ -116,7 +114,7 @@ class GoogleSheetsWriteBlock(Block):
         range: str = SchemaField(
             description="The A1 notation of the range to write",
         )
-        values: List[List[str]] = SchemaField(
+        values: list[list[str]] = SchemaField(
             description="The data to write to the spreadsheet",
         )
 
@@ -177,7 +175,7 @@ class GoogleSheetsWriteBlock(Block):
             yield "error", str(e)
 
     def _write_sheet(
-        self, service, spreadsheet_id: str, range: str, values: List[List[str]]
+        self, service, spreadsheet_id: str, range: str, values: list[list[str]]
     ) -> dict:
         body = {"values": values}
         result = (
