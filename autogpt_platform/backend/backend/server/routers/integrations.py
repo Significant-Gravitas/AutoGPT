@@ -106,7 +106,7 @@ async def callback(
         logger.debug(f"Retrieved scopes from state token: {scopes}")
 
         # If scopes are empty, use the default scopes for the provider
-        if not scopes and provider == "google":
+        if not scopes:
             logger.debug(f"Using default scopes for provider {provider}")
             scopes = handler.DEFAULT_SCOPES
 
