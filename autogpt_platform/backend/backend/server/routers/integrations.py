@@ -103,11 +103,10 @@ async def callback(
 
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
+            # For now, we'll just log the warning and continue
             logger.warning(
                 f"Granted scopes {credentials.scopes} for {provider}do not include all requested scopes {scopes}"
             )
-            # You can choose to raise an exception here or handle it in another way
-            # For now, we'll just log the warning and continue
 
     except Exception as e:
         logger.error(f"Code->Token exchange failed for provider {provider}: {str(e)}")
@@ -115,6 +114,7 @@ async def callback(
             status_code=400, detail=f"Failed to exchange code for tokens: {str(e)}"
         )
 
+    # TODO: Allow specifying `title` to set on `credentials`
     store.add_creds(user_id, credentials)
 
     logger.debug(
