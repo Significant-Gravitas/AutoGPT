@@ -106,7 +106,7 @@ class AppService(AppProcess):
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
             self.event_queue.close()
 
-    @conn_retry
+    @conn_retry("Pyro", f"Starting {service_name}")
     def __start_pyro(self):
         host = Config().pyro_host
         daemon = Pyro5.api.Daemon(host=host, port=self.port)
@@ -125,7 +125,7 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
-        @conn_retry
+        @conn_retry("Pyro", f"Connecting to {service_name}")
         def __init__(self):
             host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
             uri = f"PYRO:{service_type.service_name}@{host}:{port}"

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 connection: Redis | None = None
 
 
-@conn_retry
+@conn_retry("Redis", "Acquiring connection")
 def connect() -> Redis:
     global connection
     if connection:
@@ -34,7 +34,7 @@ def connect() -> Redis:
     return connection
 
 
-@conn_retry
+@conn_retry("Redis", "Releasing connection")
 def disconnect():
     global connection
     if connection:
