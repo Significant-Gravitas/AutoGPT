@@ -149,7 +149,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             scopes=google_creds.scopes,
         )
 
-    def _setup_oauth_flow(self, scopes: List[str]) -> Flow:
+    def _setup_oauth_flow(self, scopes: list[str]) -> Flow:
         return Flow.from_client_config(
             {
                 "web": {
