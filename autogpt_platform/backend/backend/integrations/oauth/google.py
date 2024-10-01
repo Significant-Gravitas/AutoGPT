@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class GoogleOAuthHandler(BaseOAuthHandler):
     """
     Based on the documentation at https://developers.google.com/identity/protocols/oauth2/web-server
-    """
+    """  # noqa
 
     PROVIDER_NAME = "google"
     EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
