@@ -66,7 +66,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.47.1",
-    "@types/node": "^20",
+    "@types/node": "^22.7.3",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/react-modal": "^3.16.3",
