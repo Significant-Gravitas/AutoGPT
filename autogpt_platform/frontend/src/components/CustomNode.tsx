@@ -630,7 +630,7 @@ export function CustomNode({
     >
       {/* Header */}
       <div
-        className={`flex h-24 border-b ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} items-center rounded-t-xl`}
+        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} items-center rounded-t-xl`}
       >
         {/* Color Stripe */}
         <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
@@ -734,7 +734,7 @@ export function CustomNode({
                   data={data.executionResults!.at(-1)?.data || {}}
                 />
                 <div className="flex justify-end">
-                  <Button variant="ghost" onClick={handleOutputClick} className="border">
+                  <Button variant="ghost" onClick={handleOutputClick} className="border border-gray-300">
                     View More
                   </Button>
                 </div>
