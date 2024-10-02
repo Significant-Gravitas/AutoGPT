@@ -11,6 +11,7 @@ import {
 } from "react";
 
 // --8<-- [start:CredentialsProviderNames]
+const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
 
 type CredentialsProviderName = (typeof CREDENTIALS_PROVIDER_NAMES)[number];
 

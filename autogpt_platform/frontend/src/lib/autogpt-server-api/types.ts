@@ -102,7 +102,6 @@ export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
 };
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
-
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
 };
