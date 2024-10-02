@@ -494,8 +494,11 @@ export const startTutorial = (
   tour.addStep({
     id: "connect-blocks-output",
     title: "Connect the Blocks: Output",
-    text: "Now, let’s connect the output of the first Calculator Block to the input of the second Calculator Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
-    attachTo: { element: '[data-id^="1-"][data-id$="-result-source"]', on: "bottom" },
+    text: "Now, let's connect the output of the first Calculator Block to the input of the second Calculator Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
+    attachTo: { 
+      element: '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])', 
+      on: "bottom" 
+    },
     
     buttons: [
       {
@@ -504,7 +507,7 @@ export const startTutorial = (
       },
     ],
     beforeShowPromise: () => {
-      return waitForElement('[data-id$="-result-source"]').then(() => {
+      return waitForElement('[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])').then(() => {
       });
     },
     when: {
@@ -512,13 +515,13 @@ export const startTutorial = (
         fitViewToScreen();
         resetConnectionState(); // Reset state when revisiting this step
         tour.modal.show();
-        const outputPin = document.querySelector('[data-id$="-result-source"][data-handlepos="right"]');
+        const outputPin = document.querySelector('[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])');
         if (outputPin) {
           outputPin.addEventListener("mousedown", handleMouseDown);
         }
       },
       hide: () => {
-        const outputPin = document.querySelector('[data-id$="-result-source"][data-handlepos="right"]');
+        const outputPin = document.querySelector('[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])');
         if (outputPin) {
           outputPin.removeEventListener("mousedown", handleMouseDown);
         }
