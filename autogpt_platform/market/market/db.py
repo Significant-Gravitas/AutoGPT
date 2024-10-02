@@ -630,24 +630,20 @@ async def get_all_categories() -> market.model.CategoriesResponse:
         CategoriesResponse: A list of unique categories.
     """
     try:
-        categories = await prisma.client.get_client().query_first(
-            query="""
-SELECT ARRAY_AGG(DISTINCT category ORDER BY category) AS unique_categories
-FROM (
-  SELECT UNNEST(categories) AS category
-  FROM "Agents"
-) subquery;
-""",
-            model=market.model.CategoriesResponse,
-        )
-        if not categories:
-            return market.model.CategoriesResponse(unique_categories=[])
+        agents = await prisma.models.Agents.prisma().find_many(distinct=["categories"])
 
-        return categories
+        # Aggregate categories on the Python side
+        all_categories = set()
+        for agent in agents:
+            all_categories.update(agent.categories)
+
+        unique_categories = sorted(list(all_categories))
+
+        return market.model.CategoriesResponse(unique_categories=unique_categories)
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
-        # raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+        # Return an empty list of categories in case of unexpected errors
         return market.model.CategoriesResponse(unique_categories=[])
 
 
