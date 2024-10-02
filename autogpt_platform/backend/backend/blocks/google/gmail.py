@@ -1,5 +1,9 @@
+import base64
+from email import message_from_bytes
+from email.utils import parseaddr
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -12,6 +16,17 @@ from ._auth import (
     GoogleCredentialsField,
     GoogleCredentialsInput,
 )
+
+
+class Email(BaseModel):
+    id: str
+    subject: str
+    snippet: str
+    from_: str
+    to: str
+    date: str
+    body: str
+    sizeEstimate: int
 
 
 class GmailReadBlock(Block):
@@ -29,7 +44,10 @@ class GmailReadBlock(Block):
         )
 
     class Output(BlockSchema):
-        result: list[dict] = SchemaField(
+        email: Email = SchemaField(
+            description="Email data",
+        )
+        emails: list[Email] = SchemaField(
             description="List of email data",
         )
         error: str = SchemaField(
@@ -82,7 +100,9 @@ class GmailReadBlock(Block):
             messages = self._read_emails(
                 service, input_data.query, input_data.max_results
             )
-            yield "result", messages
+            for email in messages:
+                yield "email", email
+            yield "emails", messages
         except Exception as e:
             yield "error", str(e)
 
@@ -108,36 +128,37 @@ class GmailReadBlock(Block):
 
     def _read_emails(
         self, service, query: str | None, max_results: int | None
-    ) -> list[dict]:
-        results = (
-            service.users()
-            .messages()
-            .list(userId="me", q=query or "", maxResults=max_results or 10)
-            .execute()
-        )
+    ) -> list[Email]:
+        results = service.users().messages().list(userId="me", q=query or "", maxResults=max_results or 10).execute()
         messages = results.get("messages", [])
 
         email_data = []
         for message in messages:
-            msg = (
-                service.users().messages().get(userId="me", id=message["id"]).execute()
+            msg = service.users().messages().get(userId="me", id=message["id"], format="raw").execute()
+            email_msg = message_from_bytes(base64.urlsafe_b64decode(msg['raw']))
+
+            email = Email(
+                id=msg["id"],
+                subject=email_msg['subject'] or "No Subject",
+                snippet=msg["snippet"],
+                from_=parseaddr(email_msg['from'])[1],
+                to=parseaddr(email_msg['to'])[1],
+                date=email_msg['date'],
+                body=self._get_email_body(email_msg),
+                sizeEstimate=msg["sizeEstimate"],
             )
-            email_data.append(
-                {
-                    "id": msg["id"],
-                    "subject": next(
-                        (
-                            header["value"]
-                            for header in msg["payload"]["headers"]
-                            if header["name"] == "Subject"
-                        ),
-                        "No Subject",
-                    ),
-                    "snippet": msg["snippet"],
-                }
-            )
+            email_data.append(email)
 
         return email_data
+
+    def _get_email_body(self, email_msg):
+        if email_msg.is_multipart():
+            for part in email_msg.walk():
+                if part.get_content_type() == "text/plain":
+                    return part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8')
+        else:
+            return email_msg.get_payload(decode=True).decode(email_msg.get_content_charset() or 'utf-8')
+        return ""  # Return empty string if no text/plain part found
 
 
 class GmailSendBlock(Block):
