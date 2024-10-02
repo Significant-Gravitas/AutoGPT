@@ -57,53 +57,46 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
         logger.debug("Fetching token from Google")
 
-        try:
-            # Disable scope check in fetch_token
-            flow.oauth2session.scope = None
-            token = flow.fetch_token(code=code)
-            logger.debug("Token fetched successfully")
+        # Disable scope check in fetch_token
+        flow.oauth2session.scope = None
+        token = flow.fetch_token(code=code)
+        logger.debug("Token fetched successfully")
 
-            # Get the actual scopes granted by Google
-            granted_scopes: list[str] = token.get("scope", [])
+        # Get the actual scopes granted by Google
+        granted_scopes: list[str] = token.get("scope", [])
 
-            logger.debug(f"Scopes granted by Google: {granted_scopes}")
+        logger.debug(f"Scopes granted by Google: {granted_scopes}")
 
-            google_creds = flow.credentials
-            logger.debug(f"Received credentials: {google_creds}")
+        google_creds = flow.credentials
+        logger.debug(f"Received credentials: {google_creds}")
 
-            logger.debug("Requesting user email")
-            username = self._request_email(google_creds)
-            logger.debug(f"User email retrieved: {username}")
+        logger.debug("Requesting user email")
+        username = self._request_email(google_creds)
+        logger.debug(f"User email retrieved: {username}")
 
-            assert google_creds.token
-            assert google_creds.refresh_token
-            assert google_creds.expiry
-            assert granted_scopes
+        assert google_creds.token
+        assert google_creds.refresh_token
+        assert google_creds.expiry
+        assert granted_scopes
 
-            # Create OAuth2Credentials with the granted scopes
-            credentials = OAuth2Credentials(
-                provider=self.PROVIDER_NAME,
-                title=None,
-                username=username,
-                access_token=SecretStr(google_creds.token),
-                refresh_token=(SecretStr(google_creds.refresh_token)),
-                access_token_expires_at=(
-                    int(google_creds.expiry.timestamp())
-                    if google_creds.expiry
-                    else None
-                ),
-                refresh_token_expires_at=None,
-                scopes=granted_scopes,
-            )
-            logger.debug(
-                f"OAuth2Credentials object created successfully with scopes: {credentials.scopes}"
-            )
+        # Create OAuth2Credentials with the granted scopes
+        credentials = OAuth2Credentials(
+            provider=self.PROVIDER_NAME,
+            title=None,
+            username=username,
+            access_token=SecretStr(google_creds.token),
+            refresh_token=(SecretStr(google_creds.refresh_token)),
+            access_token_expires_at=(
+                int(google_creds.expiry.timestamp()) if google_creds.expiry else None
+            ),
+            refresh_token_expires_at=None,
+            scopes=granted_scopes,
+        )
+        logger.debug(
+            f"OAuth2Credentials object created successfully with scopes: {credentials.scopes}"
+        )
 
-            return credentials
-
-        except Exception as e:
-            logger.error(f"Error during code exchange: {str(e)}", exc_info=True)
-            raise
+        return credentials
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials
