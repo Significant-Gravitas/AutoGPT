@@ -133,7 +133,6 @@ class BlockWithAPIKeyAuth(Block):
         credentials = CredentialsField(
             provider="github",
             supported_credential_types={"api_key"},
-            required_scopes={"repo"},
             description="The GitHub integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
         )
@@ -259,6 +258,26 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 
 [OAuth2 handlers]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/integrations/oauth
 [`BaseOAuthHandler`]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/base.py
+
+#### Adding to the frontend
+
+You will need to add the provider (api or oauth) to the `CredentialsInput` component in [`frontend/src/components/integrations/credentials-input.tsx`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/credentials-input.tsx).
+
+```ts title="frontend/src/components/integrations/credentials-input.tsx"
+--8<-- "autogpt_platform/frontend/src/components/integrations/credentials-input.tsx:ProviderIconsEmbed"
+```
+
+You will also need to add the provider to the `CredentialsProvider` component in [`frontend/src/components/integrations/credentials-provider.tsx`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/credentials-provider.tsx).
+
+```ts title="frontend/src/components/integrations/credentials-provider.tsx"
+--8<-- "autogpt_platform/frontend/src/components/integrations/credentials-provider.tsx:CredentialsProviderNames"
+```
+
+Finally you will need to add the provider to the `CredentialsType` enum in [`frontend/src/lib/autogpt-server-api/types.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts).
+
+```ts title="frontend/src/lib/autogpt-server-api/types.ts"
+--8<-- "autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts:BlockIOCredentialsSubSchema"
+```
 
 #### Example: GitHub integration
 

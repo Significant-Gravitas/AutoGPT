@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
+// --8<-- [start:CredentialsProviderNames]
 
 type CredentialsProviderName = (typeof CREDENTIALS_PROVIDER_NAMES)[number];
 
@@ -19,6 +19,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   google: "Google",
   notion: "Notion",
 };
+// --8<-- [end:CredentialsProviderNames]
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
