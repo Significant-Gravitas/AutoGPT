@@ -593,24 +593,24 @@ async def get_not_featured_agents(
         agents = await prisma.client.get_client().query_raw(
             query=f"""
             SELECT 
-                "Agents".id, 
-                "Agents"."createdAt", 
-                "Agents"."updatedAt", 
-                "Agents".version, 
-                "Agents".name, 
-                LEFT("Agents".description, 500) AS description, 
-                "Agents".author, 
-                "Agents".keywords, 
-                "Agents".categories, 
-                "Agents".graph,
-                "Agents"."submissionStatus",
-                "Agents"."submissionDate",
-                "Agents".search::text AS search
-            FROM "Agents"
-            LEFT JOIN "FeaturedAgent" ON "Agents"."id" = "FeaturedAgent"."agentId"
-            WHERE ("FeaturedAgent"."agentId" IS NULL OR "FeaturedAgent"."featuredCategories" = '{{}}')
-                AND "Agents"."submissionStatus" = 'APPROVED'
-            ORDER BY "Agents"."createdAt" DESC
+                "market"."Agents".id, 
+                "market"."Agents"."createdAt", 
+                "market"."Agents"."updatedAt", 
+                "market"."Agents".version, 
+                "market"."Agents".name, 
+                LEFT("market"."Agents".description, 500) AS description, 
+                "market"."Agents".author, 
+                "market"."Agents".keywords, 
+                "market"."Agents".categories, 
+                "market"."Agents".graph,
+                "market"."Agents"."submissionStatus",
+                "market"."Agents"."submissionDate",
+                "market"."Agents".search::text AS search
+            FROM "market"."Agents"
+            LEFT JOIN "market"."FeaturedAgent" ON "market"."Agents"."id" = "market"."FeaturedAgent"."agentId"
+            WHERE ("market"."FeaturedAgent"."agentId" IS NULL OR "market"."FeaturedAgent"."featuredCategories" = '{{}}')
+                AND "market"."Agents"."submissionStatus" = 'APPROVED'
+            ORDER BY "market"."Agents"."createdAt" DESC
             LIMIT {page_size} OFFSET {page_size * (page - 1)}
             """,
             model=prisma.models.Agents,
