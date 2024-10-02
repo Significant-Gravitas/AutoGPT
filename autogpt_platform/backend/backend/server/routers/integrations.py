@@ -106,7 +106,7 @@ async def callback(
             )
 
     except Exception as e:
-        logger.error(f"Code->Token exchange failed for provider {provider}: {str(e)}")
+        logger.error(f"Code->Token exchange failed for provider {provider}: {e}")
         raise HTTPException(
             status_code=400, detail=f"Failed to exchange code for tokens: {str(e)}"
         )
