@@ -49,13 +49,15 @@ Follow these steps to create and test a new block:
 
 4. **Implement the `__init__` method, including test data and mocks:**
 
+    !!! important
+        Use UUID generator (e.g. https://www.uuidgenerator.net/) for every new block `id` and *do not* make up your own. Alternatively, you can run this python code to generate an uuid: `print(__import__('uuid').uuid4())`
+
    ```python
    def __init__(self):
        super().__init__(
            # Unique ID for the block, used across users for templates
-           # you can generate this with this python one liner
-           # print(__import__('uuid').uuid4())
-           id="h5e7f8g9-1b2c-3d4e-5f6g-7h8i9j0k1l2m",
+           # If you are an AI leave it as is or change to "generate-proper-uuid"
+           id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
            input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
            output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
 

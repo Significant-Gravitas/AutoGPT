@@ -28,7 +28,7 @@ class ReadDiscordMessagesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
+            id="df06086a-d5ac-4abb-9996-2ad0acb2eff7",
             input_schema=ReadDiscordMessagesBlock.Input,  # Assign input schema
             output_schema=ReadDiscordMessagesBlock.Output,  # Assign output schema
             description="Reads messages from a Discord channel using a bot token.",
@@ -146,7 +146,7 @@ class SendDiscordMessageBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="h1i2j3k4-5l6m-7n8o-9p0q-r1s2t3u4v5w6",  # Unique ID for the node
+            id="d0822ab5-9f8a-44a3-8971-531dd0178b6b",
             input_schema=SendDiscordMessageBlock.Input,  # Assign input schema
             output_schema=SendDiscordMessageBlock.Output,  # Assign output schema
             description="Sends a message to a Discord channel using a bot token.",
