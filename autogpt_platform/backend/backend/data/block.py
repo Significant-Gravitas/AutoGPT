@@ -286,7 +286,9 @@ def get_blocks() -> dict[str, Block]:
 
 async def initialize_blocks() -> None:
     for block in get_blocks().values():
-        existing_block = await AgentBlock.prisma().find_unique(where={"id": block.id})
+        existing_block = await AgentBlock.prisma().find_first(
+            where={"OR": [{"id": block.id}, {"name": block.name}]}
+        )
         if not existing_block:
             await AgentBlock.prisma().create(
                 data={
@@ -301,13 +303,15 @@ async def initialize_blocks() -> None:
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
         if (
-            block.name != existing_block.name
+            block.id != existing_block.id
+            or block.name != existing_block.name
             or input_schema != existing_block.inputSchema
             or output_schema != existing_block.outputSchema
         ):
             await AgentBlock.prisma().update(
-                where={"id": block.id},
+                where={"id": existing_block.id},
                 data={
+                    "id": block.id,
                     "name": block.name,
                     "inputSchema": input_schema,
                     "outputSchema": output_schema,
