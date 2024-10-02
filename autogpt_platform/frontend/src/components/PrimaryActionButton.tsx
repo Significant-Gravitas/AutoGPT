@@ -62,6 +62,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
                 background: isRunning ? "#FFB3BA" : "#7544DF",
                 opacity: isDisabled ? 0.5 : 1,
               }}
+              data-id="primary-action-run-agent"
             >
               {runButtonIcon}
               <span className="text-sm font-medium md:text-lg">

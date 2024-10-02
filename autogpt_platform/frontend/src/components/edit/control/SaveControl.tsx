@@ -23,6 +23,7 @@ interface SaveControlProps {
   onSave: (isTemplate: boolean | undefined) => void;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
+  pinSavePopover: boolean; 
 }
 
 /**
@@ -41,6 +42,7 @@ export const SaveControl = ({
   onNameChange,
   agentDescription,
   onDescriptionChange,
+  pinSavePopover,
 }: SaveControlProps) => {
   /**
    * Note for improvement:
@@ -59,7 +61,7 @@ export const SaveControl = ({
   };
 
   return (
-    <Popover>
+    <Popover open={pinSavePopover ? true : undefined}>
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -107,7 +109,11 @@ export const SaveControl = ({
             </div>
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
-            <Button className="w-full" onClick={handleSave}>
+            <Button 
+              className="w-full" 
+              onClick={handleSave}
+              data-id="save-control-save-agent"
+            >
               Save {getType()}
             </Button>
             {!agentMeta && (
