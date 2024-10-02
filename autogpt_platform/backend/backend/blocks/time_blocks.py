@@ -77,7 +77,7 @@ class GetCurrentDateAndTimeBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0h2",
+            id="716a67b3-6760-42e7-86dc-18645c6e00fc",
             description="This block outputs the current date and time.",
             categories={BlockCategory.TEXT},
             input_schema=GetCurrentDateAndTimeBlock.Input,
