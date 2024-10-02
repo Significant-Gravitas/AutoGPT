@@ -567,6 +567,7 @@ export const startTutorial = (
       hide: () => {
         setTimeout(() => {
           fitViewToScreen();
+        }, 500);
       }
     }
   });
