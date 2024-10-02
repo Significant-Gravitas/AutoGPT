@@ -54,11 +54,6 @@ class AppService(AppProcess):
         self.port = port
         self.uri = None
 
-    @classmethod
-    @property
-    def service_name(cls) -> str:
-        return cls.__name__
-
     @abstractmethod
     def run_service(self):
         while True:
