@@ -108,8 +108,13 @@ class SupabaseIntegrationCredentialsStore:
     async def get_scopes_from_state_token(
         self, user_id: str, token: str, provider: str
     ) -> list[str]:
+        """
+        Get the valid scopes from the OAuth state token.
+        """
         user_metadata = self._get_user_metadata(user_id)
-        oauth_states = user_metadata.get("integration_oauth_states", [])
+        oauth_states = user_metadata.get("integration_oauth_states")
+        if not oauth_states:
+            raise ValueError(f"No OAuth states found for user with ID {user_id}")
 
         now = datetime.now(timezone.utc)
         valid_state = next(
