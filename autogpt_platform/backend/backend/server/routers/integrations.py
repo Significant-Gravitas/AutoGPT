@@ -93,10 +93,7 @@ async def callback(
         scopes = await store.get_scopes_from_state_token(user_id, state_token, provider)
         logger.debug(f"Retrieved scopes from state token: {scopes}")
 
-        # If scopes are empty, use the default scopes for the provider
-        if not scopes:
-            logger.debug(f"Using default scopes for provider {provider}")
-            scopes = handler.DEFAULT_SCOPES
+        scopes = handler.handle_default_scopes(scopes)
 
         credentials = handler.exchange_code_for_tokens(code, scopes)
         logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
