@@ -392,7 +392,7 @@ class AITextSummarizerBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-7g8h-9i0j-1k2l-m3n4o5p6q7r8",
+            id="a0a69be1-4528-491c-a85a-a4ab6873e3f0",
             description="Utilize a Large Language Model (LLM) to summarize a long text.",
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AITextSummarizerBlock.Input,
@@ -535,7 +535,7 @@ class AIConversationBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-g7h8-i9j0-k1l2-m3n4o5p6q7r8",
+            id="32a87eab-381e-4dd4-bdb8-4c47151be35a",
             description="Advanced LLM call that takes a list of messages and sends them to the language model.",
             categories={BlockCategory.AI},
             input_schema=AIConversationBlock.Input,
