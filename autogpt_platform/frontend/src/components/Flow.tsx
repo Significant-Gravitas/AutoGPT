@@ -99,7 +99,7 @@ const FlowEditor: React.FC<{
 
   // State to control if blocks menu should be pinned open
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
-  // State to control if save popover should be pinned open 
+  // State to control if save popover should be pinned open
   const [pinSavePopover, setPinSavePopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);

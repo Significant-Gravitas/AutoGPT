@@ -21,27 +21,20 @@ export const startTutorial = (
 
   // Helper function to disable all blocks except the target block
   const disableOtherBlocks = (targetBlockSelector: string) => {
-    document
-      .querySelectorAll('[data-id^="block-card-"]')
-      .forEach((block) => {
-        block.classList.toggle(
-          disableClass,
-          !block.matches(targetBlockSelector),
-        );
-        block.classList.toggle(
-          highlightClass,
-          block.matches(targetBlockSelector),
-        );
-      });
+    document.querySelectorAll('[data-id^="block-card-"]').forEach((block) => {
+      block.classList.toggle(disableClass, !block.matches(targetBlockSelector));
+      block.classList.toggle(
+        highlightClass,
+        block.matches(targetBlockSelector),
+      );
+    });
   };
-  
+
   // Helper function to enable all blocks
   const enableAllBlocks = () => {
-    document
-      .querySelectorAll('[data-id^="block-card-"]')
-      .forEach((block) => {
-        block.classList.remove(disableClass, highlightClass);
-      });
+    document.querySelectorAll('[data-id^="block-card-"]').forEach((block) => {
+      block.classList.remove(disableClass, highlightClass);
+    });
   };
 
   // Inject CSS for disabling and highlighting blocks
@@ -79,7 +72,7 @@ export const startTutorial = (
   const detectConnection = () => {
     const checkForConnection = () => {
       const correctConnection = document.querySelector(
-        '[data-testid^="rf__edge-"]'
+        '[data-testid^="rf__edge-"]',
       );
       if (correctConnection) {
         tour.show("press-run-again");
@@ -118,7 +111,7 @@ export const startTutorial = (
   function handleMouseUp(event: { target: any }) {
     const target = event.target;
     const validConnectionPoint = document.querySelector(
-      '[data-id="custom-node-2"] [data-handlepos="left"]'
+      '[data-id="custom-node-2"] [data-handlepos="left"]',
     );
 
     if (validConnectionPoint && !validConnectionPoint.contains(target)) {
@@ -192,12 +185,11 @@ export const startTutorial = (
     beforeShowPromise: () =>
       waitForElement('[data-id="blocks-control-popover-content"]').then(() => {
         disableOtherBlocks(
-          '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]'
+          '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
         );
       }),
     advanceOn: {
-      selector:
-        '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+      selector: '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
       event: "click",
     },
     when: {
@@ -319,13 +311,13 @@ export const startTutorial = (
     id: "press-initial-save-button",
     title: "Press Save",
     text: "First we need to save the flow before we can run it!",
-    attachTo: { 
-      element: '[data-id="save-control-popover-trigger"]', 
-      on: "left" 
+    attachTo: {
+      element: '[data-id="save-control-popover-trigger"]',
+      on: "left",
     },
-    advanceOn: { 
-      selector: '[data-id="save-control-popover-trigger"]', 
-      event: "click" 
+    advanceOn: {
+      selector: '[data-id="save-control-popover-trigger"]',
+      event: "click",
     },
     buttons: [
       {
@@ -342,9 +334,9 @@ export const startTutorial = (
     id: "enter-agent-name",
     title: "Enter Agent Name",
     text: 'Please enter any agent name, here we can just call it "Tutorial" if you\'d like.',
-    attachTo: { 
-      element: '[data-id="save-control-name-input"]', 
-      on: "bottom" 
+    attachTo: {
+      element: '[data-id="save-control-name-input"]',
+      on: "bottom",
     },
     buttons: [
       {
@@ -356,16 +348,17 @@ export const startTutorial = (
         action: tour.next,
       },
     ],
-    beforeShowPromise: () => waitForElement('[data-id="save-control-name-input"]'),
+    beforeShowPromise: () =>
+      waitForElement('[data-id="save-control-name-input"]'),
   });
-  
+
   tour.addStep({
     id: "enter-agent-description",
     title: "Enter Agent Description",
     text: "This is where you can add a description if you'd like, but that is optional.",
-    attachTo: { 
-      element: '[data-id="save-control-description-input"]', 
-      on: "bottom" 
+    attachTo: {
+      element: '[data-id="save-control-description-input"]',
+      on: "bottom",
     },
     buttons: [
       {
@@ -378,18 +371,18 @@ export const startTutorial = (
       },
     ],
   });
-  
+
   tour.addStep({
     id: "save-agent",
     title: "Save the Agent",
     text: "Now, let's save the agent by clicking the 'Save agent' button.",
-    attachTo: { 
-      element: '[data-id="save-control-save-agent"]', 
-      on: "top" 
+    attachTo: {
+      element: '[data-id="save-control-save-agent"]',
+      on: "top",
     },
-    advanceOn: { 
-      selector: '[data-id="save-control-save-agent"]', 
-      event: "click" 
+    advanceOn: {
+      selector: '[data-id="save-control-save-agent"]',
+      event: "click",
     },
     buttons: [],
     when: {
@@ -402,19 +395,20 @@ export const startTutorial = (
     title: "Press Run",
     text: "Start your first flow by pressing the Run button!",
     attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
-    advanceOn: { 
-      selector: '[data-id="primary-action-run-agent"]', 
-      event: "click" 
+    advanceOn: {
+      selector: '[data-id="primary-action-run-agent"]',
+      event: "click",
     },
     buttons: [],
-    beforeShowPromise: () => waitForElement('[data-id="primary-action-run-agent"]'),
+    beforeShowPromise: () =>
+      waitForElement('[data-id="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {
           fitViewToScreen();
         }, 500);
-      }
-    }
+      },
+    },
   });
 
   tour.addStep({
@@ -482,7 +476,8 @@ export const startTutorial = (
     title: "Focus on the New Block",
     text: "This is your copied Calculator Block. Now, let’s move it to the side of the first block.",
     attachTo: { element: `[data-id^="custom-node-"][data-id$="2"]`, on: "top" },
-    beforeShowPromise: () => waitForElement('[data-id^="custom-node-"][data-id$="2"]'),
+    beforeShowPromise: () =>
+      waitForElement('[data-id^="custom-node-"][data-id$="2"]'),
     buttons: [
       {
         text: "Next",
@@ -495,11 +490,12 @@ export const startTutorial = (
     id: "connect-blocks-output",
     title: "Connect the Blocks: Output",
     text: "Now, let's connect the output of the first Calculator Block to the input of the second Calculator Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
-    attachTo: { 
-      element: '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])', 
-      on: "bottom" 
+    attachTo: {
+      element:
+        '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
+      on: "bottom",
     },
-    
+
     buttons: [
       {
         text: "Back",
@@ -507,21 +503,26 @@ export const startTutorial = (
       },
     ],
     beforeShowPromise: () => {
-      return waitForElement('[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])').then(() => {
-      });
+      return waitForElement(
+        '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
+      ).then(() => {});
     },
     when: {
       show: () => {
         fitViewToScreen();
         resetConnectionState(); // Reset state when revisiting this step
         tour.modal.show();
-        const outputPin = document.querySelector('[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])');
+        const outputPin = document.querySelector(
+          '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
+        );
         if (outputPin) {
           outputPin.addEventListener("mousedown", handleMouseDown);
         }
       },
       hide: () => {
-        const outputPin = document.querySelector('[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])');
+        const outputPin = document.querySelector(
+          '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
+        );
         if (outputPin) {
           outputPin.removeEventListener("mousedown", handleMouseDown);
         }
@@ -533,9 +534,9 @@ export const startTutorial = (
     id: "connect-blocks-input",
     title: "Connect the Blocks: Input",
     text: "Now, connect the output to the input pin of the second block (A).",
-    attachTo: { 
-      element: '[data-id="1-2-a-target"]', 
-      on: "top" 
+    attachTo: {
+      element: '[data-id="1-2-a-target"]',
+      on: "top",
     },
     buttons: [],
     beforeShowPromise: () => {
@@ -560,19 +561,20 @@ export const startTutorial = (
     title: "Press Run Again",
     text: "Now, press the Run button again to execute the flow with the new Calculator Block added!",
     attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
-    advanceOn: { 
-      selector: '[data-id="primary-action-run-agent"]', 
-      event: "click" 
+    advanceOn: {
+      selector: '[data-id="primary-action-run-agent"]',
+      event: "click",
     },
     buttons: [],
-    beforeShowPromise: () => waitForElement('[data-id="primary-action-run-agent"]'),
+    beforeShowPromise: () =>
+      waitForElement('[data-id="primary-action-run-agent"]'),
     when: {
       hide: () => {
         setTimeout(() => {
           fitViewToScreen();
         }, 500);
-      }
-    }
+      },
+    },
   });
 
   tour.addStep({
