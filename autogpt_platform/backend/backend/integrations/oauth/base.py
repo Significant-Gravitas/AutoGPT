@@ -17,12 +17,13 @@ class BaseOAuthHandler(ABC):
     @abstractmethod
     # --8<-- [start: BaseOAuthHandler2]
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str): ...
+
     # --8<-- [end: BaseOAuthHandler2]
 
     @abstractmethod
     # --8<-- [start: BaseOAuthHandler3]
     def get_login_url(self, scopes: list[str], state: str) -> str:
-    # --8<-- [end: BaseOAuthHandler3]
+        # --8<-- [end: BaseOAuthHandler3]
         """Constructs a login URL that the user can be redirected to"""
         ...
 
@@ -31,14 +32,14 @@ class BaseOAuthHandler(ABC):
     def exchange_code_for_tokens(
         self, code: str, scopes: list[str]
     ) -> OAuth2Credentials:
-    # --8<-- [end: BaseOAuthHandler4]
+        # --8<-- [end: BaseOAuthHandler4]
         """Exchanges the acquired authorization code from login for a set of tokens"""
         ...
 
     @abstractmethod
     # --8<-- [start: BaseOAuthHandler5]
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
-    # --8<-- [end: BaseOAuthHandler5]
+        # --8<-- [end: BaseOAuthHandler5]
         """Implements the token refresh mechanism"""
         ...
 
