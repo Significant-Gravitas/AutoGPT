@@ -1,10 +1,10 @@
 import base64
-from email import message_from_bytes
 from email.utils import parseaddr
+from typing import List
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel
-from typing import List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -138,61 +138,83 @@ class GmailReadBlock(Block):
     def _read_emails(
         self, service, query: str | None, max_results: int | None
     ) -> list[Email]:
-        results = service.users().messages().list(userId="me", q=query or "", maxResults=max_results or 10).execute()
+        results = (
+            service.users()
+            .messages()
+            .list(userId="me", q=query or "", maxResults=max_results or 10)
+            .execute()
+        )
         messages = results.get("messages", [])
 
         email_data = []
         for message in messages:
-            msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
-            
-            headers = {header['name'].lower(): header['value'] for header in msg['payload']['headers']}
+            msg = (
+                service.users()
+                .messages()
+                .get(userId="me", id=message["id"], format="full")
+                .execute()
+            )
+
+            headers = {
+                header["name"].lower(): header["value"]
+                for header in msg["payload"]["headers"]
+            }
 
             attachments = self._get_attachments(service, msg)
 
             email = Email(
                 id=msg["id"],
-                subject=headers.get('subject', 'No Subject'),
+                subject=headers.get("subject", "No Subject"),
                 snippet=msg["snippet"],
-                from_=parseaddr(headers.get('from', ''))[1],
-                to=parseaddr(headers.get('to', ''))[1],
-                date=headers.get('date', ''),
+                from_=parseaddr(headers.get("from", ""))[1],
+                to=parseaddr(headers.get("to", ""))[1],
+                date=headers.get("date", ""),
                 body=self._get_email_body(msg),
                 sizeEstimate=msg["sizeEstimate"],
-                attachments=attachments
+                attachments=attachments,
             )
             email_data.append(email)
 
         return email_data
 
     def _get_email_body(self, msg):
-        if 'parts' in msg['payload']:
-            for part in msg['payload']['parts']:
-                if part['mimeType'] == 'text/plain':
-                    return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-        elif msg['payload']['mimeType'] == 'text/plain':
-            return base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
-        
+        if "parts" in msg["payload"]:
+            for part in msg["payload"]["parts"]:
+                if part["mimeType"] == "text/plain":
+                    return base64.urlsafe_b64decode(part["body"]["data"]).decode(
+                        "utf-8"
+                    )
+        elif msg["payload"]["mimeType"] == "text/plain":
+            return base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode(
+                "utf-8"
+            )
+
         return "This email does not contain a text body."
 
     def _get_attachments(self, service, message):
         attachments = []
-        if 'parts' in message['payload']:
-            for part in message['payload']['parts']:
-                if part['filename']:
+        if "parts" in message["payload"]:
+            for part in message["payload"]["parts"]:
+                if part["filename"]:
                     attachment = Attachment(
-                        filename=part['filename'],
-                        content_type=part['mimeType'],
-                        size=int(part['body'].get('size', 0)),
-                        attachment_id=part['body']['attachmentId']
+                        filename=part["filename"],
+                        content_type=part["mimeType"],
+                        size=int(part["body"].get("size", 0)),
+                        attachment_id=part["body"]["attachmentId"],
                     )
                     attachments.append(attachment)
         return attachments
 
     # Add a new method to download attachment content
     def download_attachment(self, service, message_id: str, attachment_id: str):
-        attachment = service.users().messages().attachments().get(
-            userId='me', messageId=message_id, id=attachment_id).execute()
-        file_data = base64.urlsafe_b64decode(attachment['data'].encode('UTF-8'))
+        attachment = (
+            service.users()
+            .messages()
+            .attachments()
+            .get(userId="me", messageId=message_id, id=attachment_id)
+            .execute()
+        )
+        file_data = base64.urlsafe_b64decode(attachment["data"].encode("UTF-8"))
         return file_data
 
 
