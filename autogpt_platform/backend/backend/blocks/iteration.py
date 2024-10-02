@@ -1,37 +1,52 @@
-from typing import Any, List, Tuple
+from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
-class ListIteratorBlock(Block):
+class StepThroughItemsBlock(Block):
     class Input(BlockSchema):
-        items: List[Any] = SchemaField(
-            description="The list of items to iterate over",
-            placeholder="[1, 2, 3, 4, 5]",
+        items: list | dict = SchemaField(
+            description="The list or dictionary of items to iterate over",
+            placeholder="[1, 2, 3, 4, 5] or {'key1': 'value1', 'key2': 'value2'}",
         )
 
     class Output(BlockSchema):
-        item: Tuple[int, Any] = SchemaField(
-            description="A tuple with the index and current item in the iteration"
+        item: Any = SchemaField(description="The current item in the iteration")
+        key: Any = SchemaField(
+            description="The key or index of the current item in the iteration",
         )
 
     def __init__(self):
         super().__init__(
-            id="f8e7d6c5-b4a3-2c1d-0e9f-8g7h6i5j4k3l",
-            input_schema=ListIteratorBlock.Input,
-            output_schema=ListIteratorBlock.Output,
-            description="Iterates over a list of items and outputs each item with its index.",
+            id="f66a3543-28d3-4ab5-8945-9b336371e2ce",
+            input_schema=StepThroughItemsBlock.Input,
+            output_schema=StepThroughItemsBlock.Output,
             categories={BlockCategory.LOGIC},
-            test_input={"items": [1, "two", {"three": 3}, [4, 5]]},
+            description="Iterates over a list or dictionary and outputs each item.",
+            test_input={"items": [1, 2, 3, {"key1": "value1", "key2": "value2"}]},
             test_output=[
-                ("item", (0, 1)),
-                ("item", (1, "two")),
-                ("item", (2, {"three": 3})),
-                ("item", (3, [4, 5])),
+                ("item", 1),
+                ("key", 0),
+                ("item", 2),
+                ("key", 1),
+                ("item", 3),
+                ("key", 2),
+                ("item", {"key1": "value1", "key2": "value2"}),
+                ("key", 3),
             ],
+            test_mock={},
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        for index, item in enumerate(input_data.items):
-            yield "item", (index, item)
+        items = input_data.items
+        if isinstance(items, dict):
+            # If items is a dictionary, iterate over its values
+            for item in items.values():
+                yield "item", item
+                yield "key", item
+        else:
+            # If items is a list, iterate over the list
+            for index, item in enumerate(items):
+                yield "item", item
+                yield "key", index

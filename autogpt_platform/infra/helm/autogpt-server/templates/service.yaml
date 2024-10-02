@@ -15,5 +15,11 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if .Values.service.pyroDaemonPort }}
+    - port: {{ .Values.service.pyroDaemonPort }}
+      targetPort: pyro
+      protocol: TCP
+      name: pyro
+    {{- end }}
   selector:
     {{- include "autogpt-server.selectorLabels" . | nindent 4 }}
