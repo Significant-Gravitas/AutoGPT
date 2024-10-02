@@ -4,16 +4,12 @@ import { useSupabase } from "@/components/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useCallback, useContext, useMemo } from "react";
 import { FaSpinner } from "react-icons/fa";
-import {
-  CredentialsProviderData,
-  CredentialsProvidersContext,
-} from "@/components/integrations/credentials-provider";
+import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import { Separator } from "@/components/ui/separator";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { useToast } from "@/components/ui/use-toast";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function PrivatePage() {
   const { user, isLoading, error } = useUser();
@@ -32,7 +28,16 @@ export default function PrivatePage() {
           title: "Credentials deleted",
           duration: 2000,
         });
-      } catch (error) {
+      } catch (error: any) {
+        if (error.response && error.response.status === 501) {
+          toast({
+            title: "Credentials deleted from AutoGPT",
+            description: `You may also manually remove the connection to AutoGPT at ${provider}!`,
+            duration: 3000,
+          });
+          return;
+        }
+
         toast({
           title: "Something went wrong when deleting credentials " + error,
           variant: "destructive",
@@ -56,27 +61,11 @@ export default function PrivatePage() {
     return null;
   }
 
-  //TODO: Remove this once we have more providers
-  delete providers["notion"];
-  delete providers["google"];
-
   return (
     <div>
       <p>Hello {user.email}</p>
       <Button onClick={() => supabase.auth.signOut()}>Log out</Button>
       <div>
-        {/* <Alert className="mb-2 mt-2">
-          <AlertDescription>Heads up!</AlertDescription>
-          <AlertDescription>
-            <p>
-              You need to manually remove credentials from the Notion after
-              deleting them here, see{" "}
-            </p>
-            <a href="https://www.notion.so/help/add-and-manage-connections-with-the-api#manage-connections-in-your-workspace">
-              Notion documentation
-            </a>
-          </AlertDescription>
-        </Alert> */}
         {Object.entries(providers).map(([providerName, provider]) => {
           return (
             <div key={provider.provider} className="mh-2">

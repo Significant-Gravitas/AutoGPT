@@ -44,7 +44,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
     def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
         return self._request_tokens({"code": code, "redirect_uri": self.redirect_uri})
 
-    def revoke_tokens(self, credentials: OAuth2Credentials) -> None:
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         if not credentials.access_token:
             raise ValueError("No access token to revoke")
 
@@ -60,6 +60,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             json={"access_token": credentials.access_token.get_secret_value()},
         )
         response.raise_for_status()
+        return True
 
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         if not credentials.refresh_token:

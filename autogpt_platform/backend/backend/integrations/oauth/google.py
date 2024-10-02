@@ -60,7 +60,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             scopes=google_creds.scopes,
         )
 
-    def revoke_tokens(self, credentials: OAuth2Credentials) -> None:
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         session = AuthorizedSession(credentials)
         response = session.post(
             self.revoke_uri,
@@ -68,6 +68,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             headers={"content-type": "application/x-www-form-urlencoded"},
         )
         response.raise_for_status()
+        return True
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials

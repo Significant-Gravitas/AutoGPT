@@ -166,7 +166,7 @@ async def create_api_key_credentials(
     return new_credentials
 
 
-@router.delete("/{provider}/credentials/{cred_id}", status_code=204)
+@router.delete("/{provider}/credentials/{cred_id}")
 async def delete_credential(
     request: Request,
     provider: Annotated[str, Path(title="The provider to delete credentials for")],
@@ -182,11 +182,15 @@ async def delete_credential(
             status_code=404, detail="Credentials do not match the specified provider"
         )
 
+    store.delete_creds_by_id(user_id, cred_id)
+
     if isinstance(creds, OAuth2Credentials):
         handler = _get_provider_oauth_handler(request, provider)
-        handler.revoke_tokens(creds)
+        if not handler.revoke_tokens(creds):
+            return Response(
+                status_code=501, content="Token revocation not supported by provider"
+            )
 
-    store.delete_creds_by_id(user_id, cred_id)
     return Response(status_code=204)
 
 
