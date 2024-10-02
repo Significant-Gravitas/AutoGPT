@@ -4,6 +4,7 @@ from email.utils import parseaddr
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel
+from typing import List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -18,6 +19,13 @@ from ._auth import (
 )
 
 
+class Attachment(BaseModel):
+    filename: str
+    content_type: str
+    size: int
+    attachment_id: str
+
+
 class Email(BaseModel):
     id: str
     subject: str
@@ -25,8 +33,9 @@ class Email(BaseModel):
     from_: str
     to: str
     date: str
-    body: str
+    body: str = ""  # Default to an empty string
     sizeEstimate: int
+    attachments: List[Attachment]
 
 
 class GmailReadBlock(Block):
@@ -134,31 +143,57 @@ class GmailReadBlock(Block):
 
         email_data = []
         for message in messages:
-            msg = service.users().messages().get(userId="me", id=message["id"], format="raw").execute()
-            email_msg = message_from_bytes(base64.urlsafe_b64decode(msg['raw']))
+            msg = service.users().messages().get(userId="me", id=message["id"], format="full").execute()
+            
+            headers = {header['name'].lower(): header['value'] for header in msg['payload']['headers']}
+
+            attachments = self._get_attachments(service, msg)
 
             email = Email(
                 id=msg["id"],
-                subject=email_msg['subject'] or "No Subject",
+                subject=headers.get('subject', 'No Subject'),
                 snippet=msg["snippet"],
-                from_=parseaddr(email_msg['from'])[1],
-                to=parseaddr(email_msg['to'])[1],
-                date=email_msg['date'],
-                body=self._get_email_body(email_msg),
+                from_=parseaddr(headers.get('from', ''))[1],
+                to=parseaddr(headers.get('to', ''))[1],
+                date=headers.get('date', ''),
+                body=self._get_email_body(msg),
                 sizeEstimate=msg["sizeEstimate"],
+                attachments=attachments
             )
             email_data.append(email)
 
         return email_data
 
-    def _get_email_body(self, email_msg):
-        if email_msg.is_multipart():
-            for part in email_msg.walk():
-                if part.get_content_type() == "text/plain":
-                    return part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8')
-        else:
-            return email_msg.get_payload(decode=True).decode(email_msg.get_content_charset() or 'utf-8')
-        return ""  # Return empty string if no text/plain part found
+    def _get_email_body(self, msg):
+        if 'parts' in msg['payload']:
+            for part in msg['payload']['parts']:
+                if part['mimeType'] == 'text/plain':
+                    return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+        elif msg['payload']['mimeType'] == 'text/plain':
+            return base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
+        
+        return "This email does not contain a text body."
+
+    def _get_attachments(self, service, message):
+        attachments = []
+        if 'parts' in message['payload']:
+            for part in message['payload']['parts']:
+                if part['filename']:
+                    attachment = Attachment(
+                        filename=part['filename'],
+                        content_type=part['mimeType'],
+                        size=int(part['body'].get('size', 0)),
+                        attachment_id=part['body']['attachmentId']
+                    )
+                    attachments.append(attachment)
+        return attachments
+
+    # Add a new method to download attachment content
+    def download_attachment(self, service, message_id: str, attachment_id: str):
+        attachment = service.users().messages().attachments().get(
+            userId='me', messageId=message_id, id=attachment_id).execute()
+        file_data = base64.urlsafe_b64decode(attachment['data'].encode('UTF-8'))
+        return file_data
 
 
 class GmailSendBlock(Block):
