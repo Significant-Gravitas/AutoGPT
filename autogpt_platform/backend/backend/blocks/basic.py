@@ -88,7 +88,7 @@ class FindInDictionaryBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id="0e50422c-6dee-4145-83d6-3a5a392f65de",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
             input_schema=FindInDictionaryBlock.Input,
             output_schema=FindInDictionaryBlock.Output,
@@ -429,7 +429,7 @@ class NoteBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="31d1064e-7446-4693-o7d4-65e5ca9110d1",
+            id="cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
             description="This block is used to display a sticky note with the given text.",
             categories={BlockCategory.BASIC},
             input_schema=NoteBlock.Input,

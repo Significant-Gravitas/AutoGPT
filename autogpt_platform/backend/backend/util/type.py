@@ -1,5 +1,5 @@
 import json
-from typing import Any, Type, TypeVar, get_origin
+from typing import Any, Type, TypeVar, get_args, get_origin
 
 
 class ConversionError(Exception):
@@ -103,26 +103,75 @@ def __convert_bool(value: Any) -> bool:
 
 
 def convert(value: Any, target_type: Type):
-    target_type = get_origin(target_type) or target_type
-    if target_type not in [list, dict, tuple, str, set, int, float, bool]:
+    origin = get_origin(target_type)
+    args = get_args(target_type)
+    if origin is None:
+        origin = target_type
+    if origin not in [list, dict, tuple, str, set, int, float, bool]:
         return value
-    if isinstance(value, target_type):
-        return value
-    if target_type is list:
-        return __convert_list(value)
-    elif target_type is dict:
-        return __convert_dict(value)
-    elif target_type is tuple:
-        return __convert_tuple(value)
-    elif target_type is str:
-        return __convert_str(value)
-    elif target_type is set:
-        return __convert_set(value)
-    elif target_type is int:
-        return __convert_num(value, int)
-    elif target_type is float:
-        return __convert_num(value, float)
-    elif target_type is bool:
-        return __convert_bool(value)
+
+    # Handle the case when value is already of the target type
+    if isinstance(value, origin):
+        if not args:
+            return value
+        else:
+            # Need to convert elements
+            if origin is list:
+                return [convert(v, args[0]) for v in value]
+            elif origin is tuple:
+                # Tuples can have multiple types
+                if len(args) == 1:
+                    return tuple(convert(v, args[0]) for v in value)
+                else:
+                    return tuple(convert(v, t) for v, t in zip(value, args))
+            elif origin is dict:
+                key_type, val_type = args
+                return {
+                    convert(k, key_type): convert(v, val_type) for k, v in value.items()
+                }
+            elif origin is set:
+                return {convert(v, args[0]) for v in value}
+            else:
+                return value
     else:
-        return value
+        # Need to convert value to the origin type
+        if origin is list:
+            value = __convert_list(value)
+            if args:
+                return [convert(v, args[0]) for v in value]
+            else:
+                return value
+        elif origin is dict:
+            value = __convert_dict(value)
+            if args:
+                key_type, val_type = args
+                return {
+                    convert(k, key_type): convert(v, val_type) for k, v in value.items()
+                }
+            else:
+                return value
+        elif origin is tuple:
+            value = __convert_tuple(value)
+            if args:
+                if len(args) == 1:
+                    return tuple(convert(v, args[0]) for v in value)
+                else:
+                    return tuple(convert(v, t) for v, t in zip(value, args))
+            else:
+                return value
+        elif origin is str:
+            return __convert_str(value)
+        elif origin is set:
+            value = __convert_set(value)
+            if args:
+                return {convert(v, args[0]) for v in value}
+            else:
+                return value
+        elif origin is int:
+            return __convert_num(value, int)
+        elif origin is float:
+            return __convert_num(value, float)
+        elif origin is bool:
+            return __convert_bool(value)
+        else:
+            return value

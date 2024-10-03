@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
@@ -16,7 +17,17 @@ from backend.util.settings import Config, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await event_queue.connect()
+    manager = get_connection_manager()
+    asyncio.create_task(event_broadcaster(manager))
+    yield
+    await event_queue.close()
+
+
+app = FastAPI(lifespan=lifespan)
 event_queue = AsyncRedisEventQueue()
 _connection_manager = None
 
@@ -35,18 +46,6 @@ def get_connection_manager():
     if _connection_manager is None:
         _connection_manager = ConnectionManager()
     return _connection_manager
-
-
-@app.on_event("startup")
-async def startup_event():
-    await event_queue.connect()
-    manager = get_connection_manager()
-    asyncio.create_task(event_broadcaster(manager))
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await event_queue.close()
 
 
 async def event_broadcaster(manager: ConnectionManager):
