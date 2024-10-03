@@ -743,6 +743,7 @@ export function CustomNode({
             >
               <Badge
                 variant="default"
+                data-id={`badge-${id}-${data.status}`}
                 className={cn(
                   "mr-4 flex min-w-[114px] items-center justify-center rounded-3xl text-center text-xs font-semibold",
                   hasConfigErrors || hasOutputError
