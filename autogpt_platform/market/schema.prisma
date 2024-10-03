@@ -38,7 +38,7 @@ model Agents {
   search     Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
 
   graph            Json
-  AnalyticsTracker AnalyticsTracker[]
+  AnalyticsTracker AnalyticsTracker[] @relation("AgentAnalytics", onDelete: Cascade)
   FeaturedAgent    FeaturedAgent?
   InstallTracker   InstallTracker[]
 
@@ -47,8 +47,8 @@ model Agents {
 
 model AnalyticsTracker {
   id        String @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agentId   String @unique @db.Uuid
-  agent     Agents @relation(fields: [agentId], references: [id])
+  agentId   String @db.Uuid
+  agent     Agents @relation("AgentAnalytics", fields: [agentId], references: [id], onDelete: Cascade)
   views     Int
   downloads Int
 }
