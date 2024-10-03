@@ -1,12 +1,16 @@
+import logging
 import time
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
 
+logger = logging.getLogger(__name__)
+
 
 class BaseOAuthHandler(ABC):
     PROVIDER_NAME: ClassVar[str]
+    DEFAULT_SCOPES: ClassVar[list[str]] = []
 
     @abstractmethod
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str): ...
@@ -17,7 +21,9 @@ class BaseOAuthHandler(ABC):
         ...
 
     @abstractmethod
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
         """Exchanges the acquired authorization code from login for a set of tokens"""
         ...
 
@@ -46,3 +52,11 @@ class BaseOAuthHandler(ABC):
             credentials.access_token_expires_at is not None
             and credentials.access_token_expires_at < int(time.time()) + 300
         )
+
+    def handle_default_scopes(self, scopes: list[str]) -> list[str]:
+        """Handles the default scopes for the provider"""
+        # If scopes are empty, use the default scopes for the provider
+        if not scopes:
+            logger.debug(f"Using default scopes for provider {self.PROVIDER_NAME}")
+            scopes = self.DEFAULT_SCOPES
+        return scopes

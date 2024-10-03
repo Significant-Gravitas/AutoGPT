@@ -1,3 +1,5 @@
+import logging
+
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
@@ -9,6 +11,8 @@ from pydantic import SecretStr
 
 from .base import BaseOAuthHandler
 
+logger = logging.getLogger(__name__)
+
 
 class GoogleOAuthHandler(BaseOAuthHandler):
     """
@@ -17,6 +21,11 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
     PROVIDER_NAME = "google"
     EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
+    DEFAULT_SCOPES = [
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "openid",
+    ]
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -25,7 +34,9 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self.token_uri = "https://oauth2.googleapis.com/token"
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
-        flow = self._setup_oauth_flow(scopes)
+        all_scopes = list(set(scopes + self.DEFAULT_SCOPES))
+        logger.debug(f"Setting up OAuth flow with scopes: {all_scopes}")
+        flow = self._setup_oauth_flow(all_scopes)
         flow.redirect_uri = self.redirect_uri
         authorization_url, _ = flow.authorization_url(
             access_type="offline",
@@ -35,29 +46,57 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
         return authorization_url
 
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
-        flow = self._setup_oauth_flow(None)
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
+        logger.debug(f"Exchanging code for tokens with scopes: {scopes}")
+
+        # Use the scopes from the initial request
+        flow = self._setup_oauth_flow(scopes)
         flow.redirect_uri = self.redirect_uri
-        flow.fetch_token(code=code)
+
+        logger.debug("Fetching token from Google")
+
+        # Disable scope check in fetch_token
+        flow.oauth2session.scope = None
+        token = flow.fetch_token(code=code)
+        logger.debug("Token fetched successfully")
+
+        # Get the actual scopes granted by Google
+        granted_scopes: list[str] = token.get("scope", [])
+
+        logger.debug(f"Scopes granted by Google: {granted_scopes}")
 
         google_creds = flow.credentials
-        username = self._request_email(google_creds)
+        logger.debug(f"Received credentials: {google_creds}")
 
-        # Google's OAuth library is poorly typed so we need some of these:
+        logger.debug("Requesting user email")
+        username = self._request_email(google_creds)
+        logger.debug(f"User email retrieved: {username}")
+
         assert google_creds.token
         assert google_creds.refresh_token
         assert google_creds.expiry
-        assert google_creds.scopes
-        return OAuth2Credentials(
+        assert granted_scopes
+
+        # Create OAuth2Credentials with the granted scopes
+        credentials = OAuth2Credentials(
             provider=self.PROVIDER_NAME,
             title=None,
             username=username,
             access_token=SecretStr(google_creds.token),
-            refresh_token=SecretStr(google_creds.refresh_token),
-            access_token_expires_at=int(google_creds.expiry.timestamp()),
+            refresh_token=(SecretStr(google_creds.refresh_token)),
+            access_token_expires_at=(
+                int(google_creds.expiry.timestamp()) if google_creds.expiry else None
+            ),
             refresh_token_expires_at=None,
-            scopes=google_creds.scopes,
+            scopes=granted_scopes,
         )
+        logger.debug(
+            f"OAuth2Credentials object created successfully with scopes: {credentials.scopes}"
+        )
+
+        return credentials
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials
@@ -65,6 +104,9 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         session = AuthorizedSession(creds)
         response = session.get(self.EMAIL_ENDPOINT)
         if not response.ok:
+            logger.error(
+                f"Failed to get user email. Status code: {response.status_code}"
+            )
             return None
         return response.json()["email"]
 
@@ -99,7 +141,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             scopes=google_creds.scopes,
         )
 
-    def _setup_oauth_flow(self, scopes: list[str] | None) -> Flow:
+    def _setup_oauth_flow(self, scopes: list[str]) -> Flow:
         return Flow.from_client_config(
             {
                 "web": {
