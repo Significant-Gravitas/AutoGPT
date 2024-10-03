@@ -55,6 +55,11 @@ class AspectRatio(str, Enum):
     ASPECT_3_1 = "ASPECT_3_1"
 
 
+class UpscaleOption(str, Enum):
+    AI_UPSCALE = "AI Upscale"
+    NO_UPSCALE = "No Upscale"
+
+
 class IdeogramModelBlock(Block):
     class Input(BlockSchema):
         api_key: BlockSecret = SecretField(
@@ -78,6 +83,13 @@ class IdeogramModelBlock(Block):
             default=AspectRatio.ASPECT_1_1,
             title="Aspect Ratio",
             enum=AspectRatio,
+            advanced=False,
+        )
+        upscale: UpscaleOption = SchemaField(
+            description="Upscale the generated image",
+            default=UpscaleOption.NO_UPSCALE,
+            title="Upscale Image",
+            enum=UpscaleOption,
             advanced=False,
         )
         magic_prompt_option: MagicPromptOption = SchemaField(
@@ -116,7 +128,9 @@ class IdeogramModelBlock(Block):
 
     class Output(BlockSchema):
         result: str = SchemaField(description="Generated image URL")
-        error: str = SchemaField(description="Error message if the model run failed")
+        error: Optional[str] = SchemaField(
+            description="Error message if the model run failed"
+        )
 
     def __init__(self):
         super().__init__(
@@ -130,6 +144,7 @@ class IdeogramModelBlock(Block):
                 "ideogram_model_name": IdeogramModelName.V2,
                 "prompt": "A futuristic cityscape at sunset",
                 "aspect_ratio": AspectRatio.ASPECT_1_1,
+                "upscale": UpscaleOption.NO_UPSCALE,
                 "magic_prompt_option": MagicPromptOption.AUTO,
                 "seed": None,
                 "style_type": StyleType.AUTO,
@@ -144,6 +159,7 @@ class IdeogramModelBlock(Block):
             ],
             test_mock={
                 "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name: "https://ideogram.ai/api/images/test-generated-image-url.png",
+                "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
             },
         )
 
@@ -151,6 +167,7 @@ class IdeogramModelBlock(Block):
         seed = input_data.seed
 
         try:
+            # Step 1: Generate the image
             result = self.run_model(
                 api_key=input_data.api_key.get_secret_value(),
                 model_name=input_data.ideogram_model_name.value,
@@ -162,6 +179,14 @@ class IdeogramModelBlock(Block):
                 negative_prompt=input_data.negative_prompt,
                 color_palette_name=input_data.color_palette_name.value,
             )
+
+            # Step 2: Upscale the image if requested
+            if input_data.upscale == UpscaleOption.AI_UPSCALE:
+                result = self.upscale_image(
+                    api_key=input_data.api_key.get_secret_value(),
+                    image_url=result,
+                )
+
             yield "result", result
         except Exception as e:
             yield "error", str(e)
@@ -206,3 +231,34 @@ class IdeogramModelBlock(Block):
             return response.json()["data"][0]["url"]
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to fetch image: {str(e)}")
+
+    def upscale_image(self, api_key: str, image_url: str):
+        url = "https://api.ideogram.ai/upscale"
+        headers = {
+            "Api-Key": api_key,
+        }
+
+        try:
+            # Step 1: Download the image from the provided URL
+            image_response = requests.get(image_url)
+            image_response.raise_for_status()
+
+            # Step 2: Send the downloaded image to the upscale API
+            files = {
+                "image_file": ("image.png", image_response.content, "image/png"),
+            }
+
+            response = requests.post(
+                url,
+                headers=headers,
+                data={
+                    "image_request": "{}",  # Empty JSON object
+                },
+                files=files,
+            )
+
+            response.raise_for_status()
+            return response.json()["data"][0]["url"]
+
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to upscale image: {str(e)}")
