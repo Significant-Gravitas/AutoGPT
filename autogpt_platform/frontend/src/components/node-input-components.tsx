@@ -9,7 +9,6 @@ import {
   BlockIOStringSubSchema,
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
-  BlockIOCredentialsSubSchema,
 } from "@/lib/autogpt-server-api/types";
 import React, { FC, useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
@@ -313,6 +312,10 @@ const NodeCredentialsInput: FC<{
   );
 };
 
+const InputRef = (value: any): ((el: HTMLInputElement | null) => void) => {
+  return (el) => el && (el.value = value);
+};
+
 const NodeKeyValueInput: FC<{
   selfKey: string;
   schema: BlockIOKVSubSchema;
@@ -384,14 +387,15 @@ const NodeKeyValueInput: FC<{
   }
 
   return (
-    <div className={cn(className, "flex flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
+    <div
+      className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}
+    >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
             {key && (
               <NodeHandle
-                keyName={getEntryKey(key)}
+                keyName={key}
                 schema={{ type: "string" }}
                 isConnected={isConnected(key)}
                 isRequired={false}
@@ -416,7 +420,7 @@ const NodeKeyValueInput: FC<{
                 <Input
                   type="text"
                   placeholder="Value"
-                  defaultValue={value ?? ""}
+                  ref={InputRef(value ?? "")}
                   onBlur={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
@@ -445,7 +449,7 @@ const NodeKeyValueInput: FC<{
           </div>
         ))}
         <Button
-          className="w-full"
+          className="rounded-xl bg-gray-200 font-normal text-black hover:text-white"
           onClick={() =>
             updateKeyValuePairs(keyValuePairs.concat({ key: "", value: "" }))
           }
@@ -543,6 +547,7 @@ const NodeArrayInput: FC<{
         );
       })}
       <Button
+        className="w-[183p] rounded-xl bg-gray-200 font-normal text-black hover:text-white"
         onClick={() =>
           handleInputChange(selfKey, [...entries, isItemObject ? {} : ""])
         }
@@ -600,13 +605,15 @@ const NodeStringInput: FC<{
           <Input
             type="text"
             id={selfKey}
-            defaultValue={schema.secret && value ? "********" : value}
+            ref={InputRef(
+              schema.secret && value ? "*".repeat(value.length) : value,
+            )}
             readOnly={schema.secret}
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
             onBlur={(e) => handleInputChange(selfKey, e.target.value)}
-            className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
+            className="rounded-xl pr-8 read-only:cursor-pointer read-only:text-gray-500"
           />
           <Button
             variant="ghost"
@@ -658,8 +665,7 @@ export const NodeTextBoxInput: FC<{
             schema?.placeholder || `Enter ${beautifyString(displayName)}`
           }
           onChange={(e) => handleInputChange(selfKey, e.target.value)}
-          onBlur={(e) => handleInputChange(selfKey, e.target.value)}
-          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none"
+          className="h-full w-full resize-none overflow-hidden rounded-xl border-none bg-transparent text-lg text-black outline-none"
           style={{
             fontSize: "min(1em, 16px)",
             lineHeight: "1.2",
@@ -696,7 +702,7 @@ const NodeNumberInput: FC<{
         <Input
           type="number"
           id={selfKey}
-          defaultValue={value}
+          ref={InputRef(value)}
           onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
