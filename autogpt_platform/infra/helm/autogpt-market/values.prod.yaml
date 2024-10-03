@@ -68,17 +68,6 @@ readinessProbe:
 
 domain: "market.agpt.co"
 
-cloudSqlProxy:
-  image:
-    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
-    tag: 2.11.4
-  instanceConnectionName: "agpt-prod:us-central1:agpt-server-prod"
-  port: 5432
-  resources:
-    requests:
-      memory: "2Gi"
-      cpu: "1"
-
 cors:
   allowOrigin: "https://platform.agpt.co"
   allowMethods:
