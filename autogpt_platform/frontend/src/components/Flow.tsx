@@ -421,7 +421,7 @@ const FlowEditor: React.FC<{
 
       history.push({
         type: "ADD_NODE",
-        payload: { node: { ...newNode, ...newNode.data } },
+        payload: { node: newNode.data },
         undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
         redo: () => addNodes(newNode),
       });
