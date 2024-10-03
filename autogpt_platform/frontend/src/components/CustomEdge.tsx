@@ -48,9 +48,9 @@ export function CustomEdge({
   }>({ beads: [], created: 0, destroyed: 0 });
   const { svgPath, length, getPointForT, getTForDistance } = useBezierPath(
     sourceX - 5,
-    sourceY,
-    targetX + 3,
-    targetY,
+    sourceY - 5,
+    targetX - 9,
+    targetY - 5,
   );
   const { deleteElements } = useReactFlow<Node, CustomEdge>();
   const { visualizeBeads } = useContext(FlowContext) ?? {
