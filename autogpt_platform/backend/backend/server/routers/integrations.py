@@ -90,7 +90,9 @@ async def callback(
         raise HTTPException(status_code=400, detail="Invalid or expired state token")
 
     try:
-        scopes = await store.get_scopes_from_state_token(user_id, state_token, provider)
+        scopes = await store.get_any_valid_scopes_from_state_token(
+            user_id, state_token, provider
+        )
         logger.debug(f"Retrieved scopes from state token: {scopes}")
 
         scopes = handler.handle_default_scopes(scopes)

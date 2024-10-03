@@ -105,16 +105,18 @@ class SupabaseIntegrationCredentialsStore:
 
         return token
 
-    async def get_scopes_from_state_token(
+    async def get_any_valid_scopes_from_state_token(
         self, user_id: str, token: str, provider: str
     ) -> list[str]:
         """
-        Get the valid scopes from the OAuth state token.
+        Get the valid scopes from the OAuth state token. This will return any valid scopes
+        from any OAuth state token for the given provider. If no valid scopes are found,
+        an empty list is returned. DO NOT RELY ON THIS TOKEN TO AUTHENTICATE A USER, AS IT
+        IS TO CHECK IF THE USER HAS GIVEN PERMISSIONS TO THE APPLICATION BEFORE EXCHANGING
+        THE CODE FOR TOKENS.
         """
         user_metadata = self._get_user_metadata(user_id)
-        oauth_states = user_metadata.get("integration_oauth_states")
-        if not oauth_states:
-            raise ValueError(f"No OAuth states found for user with ID {user_id}")
+        oauth_states = user_metadata.get("integration_oauth_states", [])
 
         now = datetime.now(timezone.utc)
         valid_state = next(
