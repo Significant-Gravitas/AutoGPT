@@ -45,7 +45,9 @@ class BlockCategory(Enum):
     INPUT = "Block that interacts with input of the graph."
     OUTPUT = "Block that interacts with output of the graph."
     LOGIC = "Programming logic to control the flow of your agent"
+    COMMUNICATION = "Block that interacts with communication platforms."
     DEVELOPER_TOOLS = "Developer tools such as GitHub blocks."
+    DATA = "Block that interacts with structured data."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
