@@ -415,14 +415,20 @@ export const startTutorial = (
     id: "wait-for-processing",
     title: "Processing",
     text: "Let's wait for the block to finish being processed...",
-    attachTo: { element: '[data-id^="badge-"][data-id$="-QUEUED"]', on: "bottom" },
+    attachTo: {
+      element: '[data-id^="badge-"][data-id$="-QUEUED"]',
+      on: "bottom",
+    },
     buttons: [],
-    beforeShowPromise: () => waitForElement('[data-id^="badge-"][data-id$="-QUEUED"]'),
+    beforeShowPromise: () =>
+      waitForElement('[data-id^="badge-"][data-id$="-QUEUED"]'),
     when: {
       show: () => {
-        waitForElement('[data-id^="badge-"][data-id$="-COMPLETED"]').then(() => {
-          tour.next();
-        });
+        waitForElement('[data-id^="badge-"][data-id$="-COMPLETED"]').then(
+          () => {
+            tour.next();
+          },
+        );
       },
     },
   });
