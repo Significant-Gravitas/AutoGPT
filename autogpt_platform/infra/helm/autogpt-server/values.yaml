@@ -82,13 +82,3 @@ cors:
   maxAge: 3600
   allowCredentials: true
 
-cloudSqlProxy:
-  image:
-    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
-    tag: 2.11.4
-  instanceConnectionName: ""
-  port: 5432
-  resources:
-    requests:
-      memory: "2Gi"
-      cpu: "1"

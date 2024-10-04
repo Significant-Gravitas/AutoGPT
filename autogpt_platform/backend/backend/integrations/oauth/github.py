@@ -41,7 +41,9 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         }
         return f"{self.auth_base_url}?{urlencode(params)}"
 
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
         return self._request_tokens({"code": code, "redirect_uri": self.redirect_uri})
 
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
