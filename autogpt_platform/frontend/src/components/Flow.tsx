@@ -99,6 +99,8 @@ const FlowEditor: React.FC<{
 
   // State to control if blocks menu should be pinned open
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
+  // State to control if save popover should be pinned open
+  const [pinSavePopover, setPinSavePopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
 
@@ -111,7 +113,7 @@ const FlowEditor: React.FC<{
       localStorage.removeItem(TUTORIAL_STORAGE_KEY);
       router.push(pathname);
     } else if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
-      startTutorial(setPinBlocksPopover);
+      startTutorial(setPinBlocksPopover, setPinSavePopover);
       localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
     }
   }, [availableNodes, router, pathname, params]);
@@ -586,6 +588,7 @@ const FlowEditor: React.FC<{
                 onDescriptionChange={setAgentDescription}
                 agentName={agentName}
                 onNameChange={setAgentName}
+                pinSavePopover={pinSavePopover}
               />
             }
           ></ControlPanel>
