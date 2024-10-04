@@ -27,7 +27,7 @@ const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
   password: z.string().min(6).max(64),
   agreeToTerms: z.boolean().refine((value) => value === true, {
-    message: "You must agree to the Terms of Service and Privacy Policy",
+    message: "You must agree to the Terms of Use and Privacy Policy",
   }),
 });
 
@@ -191,8 +191,11 @@ export default function LoginPage() {
                   <div className="space-y-1 leading-none">
                     <FormLabel>
                       I agree to the{" "}
-                      <Link href="/terms-of-service" className="underline">
-                        Terms of Service
+                      <Link
+                        href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                        className="underline"
+                      >
+                        Terms of Use
                       </Link>{" "}
                       and{" "}
                       <Link
