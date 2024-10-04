@@ -1,0 +1,6 @@
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: {{ include "autogpt-websocket-server.fullname" . }}-frontend-config
+spec:
+  timeoutSec: 1800
