@@ -27,7 +27,6 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         "https://www.googleapis.com/auth/userinfo.profile",
         "openid",
     ]
-
     # --8<-- [end: GoogleOAuthHandler]
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):

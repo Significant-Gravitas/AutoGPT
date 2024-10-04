@@ -47,8 +47,8 @@ model Agents {
 
 model AnalyticsTracker {
   id        String @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agentId   String @unique @db.Uuid
-  agent     Agents @relation(fields: [agentId], references: [id])
+  agentId   String @db.Uuid
+  agent     Agents @relation(fields: [agentId], references: [id], onDelete: Cascade)
   views     Int
   downloads Int
 }
@@ -61,7 +61,7 @@ enum InstallationLocation {
 model InstallTracker {
   id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   marketplaceAgentId   String               @db.Uuid
-  marketplaceAgent     Agents               @relation(fields: [marketplaceAgentId], references: [id])
+  marketplaceAgent     Agents               @relation(fields: [marketplaceAgentId], references: [id], onDelete: Cascade)
   installedAgentId     String               @db.Uuid
   installationLocation InstallationLocation
   createdAt            DateTime             @default(now())
@@ -72,7 +72,7 @@ model InstallTracker {
 model FeaturedAgent {
   id                 String   @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   agentId            String   @unique @db.Uuid
-  agent              Agents   @relation(fields: [agentId], references: [id])
+  agent              Agents   @relation(fields: [agentId], references: [id], onDelete: Cascade)
   isActive           Boolean  @default(false)
   featuredCategories String[]
   createdAt          DateTime @default(now())
