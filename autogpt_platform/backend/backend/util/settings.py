@@ -121,6 +121,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
 
+    app_env: str = Field(
+        default="local",
+        description="The name of the app environment.",
+    )
+
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
 
     @field_validator("backend_cors_allow_origins")
