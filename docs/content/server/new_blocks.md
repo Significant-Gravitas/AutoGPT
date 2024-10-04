@@ -293,7 +293,7 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 - GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
 
 ```python title="blocks/github/github.py"
---8<-- "autogpt_platform/backend/backend/integrations/oauth/github.py:GithubOAuthHandler"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/github.py:GithubOAuthHandlerExample"
 ```
 
 #### Example: Google integration
@@ -301,7 +301,7 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 - Google OAuth2 handler: [`integrations/oauth/google.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/google.py)
 
 ```python title="integrations/oauth/google.py"
---8<-- "autogpt_platform/backend/backend/integrations/oauth/google.py:GoogleOAuthHandler"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/google.py:GoogleOAuthHandlerExample"
 ```
 
 You can see that google has defined a `DEFAULT_SCOPES` variable, this is used to set the scopes that are requested no matter what the user asks for.

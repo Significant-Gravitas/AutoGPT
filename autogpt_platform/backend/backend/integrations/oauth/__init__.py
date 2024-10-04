@@ -12,6 +12,6 @@ HANDLERS_BY_NAME: dict[str, type[BaseOAuthHandler]] = {
         NotionOAuthHandler,
     ]
 }
-# --8<-- [end: HANDLERS_BY_NAMEExample]
+# --8<-- [end:HANDLERS_BY_NAMEExample]
 
 __all__ = ["HANDLERS_BY_NAME"]
