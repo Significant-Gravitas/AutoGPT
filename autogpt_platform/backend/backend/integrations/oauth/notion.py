@@ -35,7 +35,9 @@ class NotionOAuthHandler(BaseOAuthHandler):
         }
         return f"{self.auth_base_url}?{urlencode(params)}"
 
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
         request_body = {
             "grant_type": "authorization_code",
             "code": code,

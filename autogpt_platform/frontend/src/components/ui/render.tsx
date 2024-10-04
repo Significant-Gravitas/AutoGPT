@@ -18,7 +18,8 @@ const isValidVideoUrl = (url: string): boolean => {
 
 const isValidImageUrl = (url: string): boolean => {
   const imageExtensions = /\.(jpeg|jpg|gif|png|svg|webp)$/i;
-  return imageExtensions.test(url);
+  const cleanedUrl = url.split("?")[0];
+  return imageExtensions.test(cleanedUrl);
 };
 
 const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {

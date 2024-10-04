@@ -54,10 +54,11 @@ async def login(
 ) -> LoginResponse:
     handler = _get_provider_oauth_handler(request, provider)
 
-    # Generate and store a secure random state token
-    state_token = await store.store_state_token(user_id, provider)
-
     requested_scopes = scopes.split(",") if scopes else []
+
+    # Generate and store a secure random state token along with the scopes
+    state_token = await store.store_state_token(user_id, provider, requested_scopes)
+
     login_url = handler.get_login_url(requested_scopes, state_token)
 
     return LoginResponse(login_url=login_url, state_token=state_token)
@@ -80,20 +81,44 @@ async def callback(
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
 ) -> CredentialsMetaResponse:
+    logger.debug(f"Received OAuth callback for provider: {provider}")
     handler = _get_provider_oauth_handler(request, provider)
 
     # Verify the state token
     if not await store.verify_state_token(user_id, state_token, provider):
+        logger.warning(f"Invalid or expired state token for user {user_id}")
         raise HTTPException(status_code=400, detail="Invalid or expired state token")
 
     try:
-        credentials = handler.exchange_code_for_tokens(code)
+        scopes = await store.get_any_valid_scopes_from_state_token(
+            user_id, state_token, provider
+        )
+        logger.debug(f"Retrieved scopes from state token: {scopes}")
+
+        scopes = handler.handle_default_scopes(scopes)
+
+        credentials = handler.exchange_code_for_tokens(code, scopes)
+        logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
+
+        # Check if the granted scopes are sufficient for the requested scopes
+        if not set(scopes).issubset(set(credentials.scopes)):
+            # For now, we'll just log the warning and continue
+            logger.warning(
+                f"Granted scopes {credentials.scopes} for {provider}do not include all requested scopes {scopes}"
+            )
+
     except Exception as e:
-        logger.warning(f"Code->Token exchange failed for provider {provider}: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Code->Token exchange failed for provider {provider}: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Failed to exchange code for tokens: {str(e)}"
+        )
 
     # TODO: Allow specifying `title` to set on `credentials`
     store.add_creds(user_id, credentials)
+
+    logger.debug(
+        f"Successfully processed OAuth callback for user {user_id} and provider {provider}"
+    )
     return CredentialsMetaResponse(
         id=credentials.id,
         type=credentials.type,

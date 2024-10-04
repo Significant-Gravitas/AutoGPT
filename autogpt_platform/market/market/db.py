@@ -55,6 +55,29 @@ class FeaturedAgentResponse(pydantic.BaseModel):
     page_size: int
     total_pages: int
 
+async def delete_agent(agent_id: str) -> prisma.models.Agents | None:
+    """
+    Delete an agent from the database.
+
+    Args:
+        agent_id (str): The ID of the agent to delete.
+
+    Returns:
+        prisma.models.Agents | None: The deleted agent if found, None otherwise.
+
+    Raises:
+        AgentQueryError: If there is an error deleting the agent from the database.
+    """
+    try:
+        deleted_agent = await prisma.models.Agents.prisma().delete(
+            where={"id": agent_id}
+        )
+        return deleted_agent
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
 
 async def create_agent_entry(
     name: str,
