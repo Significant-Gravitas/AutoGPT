@@ -13,7 +13,7 @@ from ._auth import (
 )
 
 
-# --8<-- [start:GithubCommentBlock]
+# --8<-- [start:GithubCommentBlockExample]
 class GithubCommentBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -103,7 +103,7 @@ class GithubCommentBlock(Block):
             yield "url", url
         except Exception as e:
             yield "error", f"Failed to post comment: {str(e)}"
-# --8<-- [end:GithubCommentBlock]
+# --8<-- [end:GithubCommentBlockExample]
 
 
 class GithubMakeIssueBlock(Block):

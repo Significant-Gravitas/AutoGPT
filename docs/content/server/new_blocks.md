@@ -14,22 +14,22 @@ Follow these steps to create and test a new block:
 
 2. **Import necessary modules and create a class that inherits from `Block`**. Make sure to include all necessary imports for your block.
 
- Every block should contain the following:
+Every block should contain the following:
 
-   ```python
-   from backend.data.block import Block, BlockSchema, BlockOutput
-   ```
+```python
+from backend.data.block import Block, BlockSchema, BlockOutput
+```
 
-   Example for the Wikipedia summary block:
+Example for the Wikipedia summary block:
 
-   ```python
-   from backend.data.block import Block, BlockSchema, BlockOutput
-   from backend.utils.get_request import GetRequest
-   import requests
+```python
+from backend.data.block import Block, BlockSchema, BlockOutput
+from backend.utils.get_request import GetRequest
+import requests
 
-   class WikipediaSummaryBlock(Block, GetRequest):
-       # Block implementation will go here
-   ```
+class WikipediaSummaryBlock(Block, GetRequest):
+    # Block implementation will go here
+```
 
 3. **Define the input and output schemas** using `BlockSchema`. These schemas specify the data structure that the block expects to receive (input) and produce (output).
 
@@ -49,7 +49,7 @@ Follow these steps to create and test a new block:
 
 4. **Implement the `__init__` method, including test data and mocks:**
 
-    !!! important
+   !!! important
         Use UUID generator (e.g. https://www.uuidgenerator.net/) for every new block `id` and *do not* make up your own. Alternatively, you can run this python code to generate an uuid: `print(__import__('uuid').uuid4())`
 
    ```python
@@ -79,7 +79,7 @@ Follow these steps to create and test a new block:
 
    - `test_output`: This is the expected output when running the block with the `test_input`. It should match your Output schema. For non-deterministic outputs or when you only want to assert the type, you can use Python types instead of specific values. In this example, `("summary", str)` asserts that the output key is "summary" and its value is a string.
 
-   - `test_mock`: This is crucial for blocks that make network calls. It provides a mock function that replaces the actual network call during testing. 
+   - `test_mock`: This is crucial for blocks that make network calls. It provides a mock function that replaces the actual network call during testing.
 
      In this case, we're mocking the `get_request` method to always return a dictionary with an 'extract' key, simulating a successful API response. This allows us to test the block's logic without making actual network requests, which could be slow, unreliable, or rate-limited.
 
@@ -130,7 +130,7 @@ from backend.data.model import CredentialsField
 # API Key auth:
 class BlockWithAPIKeyAuth(Block):
     class Input(BlockSchema):
-        # Note that the type hint below is require or you will get a type error. 
+        # Note that the type hint below is require or you will get a type error.
         credentials: CredentialsMetaInput[Literal['github'], Literal['api_key']] = CredentialsField(
             provider="github",
             supported_credential_types={"api_key"},
@@ -152,7 +152,7 @@ class BlockWithAPIKeyAuth(Block):
 # OAuth:
 class BlockWithOAuth(Block):
     class Input(BlockSchema):
-        # Note that the type hint below is require or you will get a type error. 
+        # Note that the type hint below is require or you will get a type error.
         credentials: CredentialsMetaInput[Literal['github'], Literal['oauth2']] = CredentialsField(
             provider="github",
             supported_credential_types={"oauth2"},
@@ -174,7 +174,7 @@ class BlockWithOAuth(Block):
 # API Key auth + OAuth:
 class BlockWithAPIKeyAndOAuth(Block):
     class Input(BlockSchema):
-        # Note that the type hint below is require or you will get a type error. 
+        # Note that the type hint below is require or you will get a type error.
         credentials: CredentialsMetaInput[Literal['github'], Literal['api_key', 'oauth2']] = CredentialsField(
             provider="github",
             supported_credential_types={"api_key", "oauth2"},
@@ -235,7 +235,7 @@ All our existing handlers and the base class can be found [here][OAuth2 handlers
 
 Every handler must implement the following parts of the [`BaseOAuthHandler`] interface:
 
-```python
+```python title="autogpt_platform/backend/backend/integrations/oauth/base.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler1"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler2"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler3"
@@ -287,7 +287,7 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 - GitHub blocks with API key + OAuth2 support: [`blocks/github`](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/blocks/github/)
 
 ```python title="blocks/github/issues.py"
---8<-- "autogpt_platform/backend/backend/blocks/github/issues.py:GithubCommentBlock"
+--8<-- "autogpt_platform/backend/backend/blocks/github/issues.py:GithubCommentBlockExample"
 ```
 
 - GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
@@ -341,7 +341,8 @@ This approach allows us to test the block's logic comprehensively without relyin
 
 1. **Provide realistic test_input**: Ensure your test input covers typical use cases.
 
-2. **Define appropriate test_output**: 
+2. **Define appropriate test_output**:
+
    - For deterministic outputs, use specific expected values.
    - For non-deterministic outputs or when only the type matters, use Python types (e.g., `str`, `int`, `dict`).
    - You can mix specific values and types, e.g., `("key1", str), ("key2", 42)`.
@@ -412,7 +413,6 @@ If you would like to implement one of these blocks, open a pull request and we w
 
 ## Agent Templates we want to see
 
-
 ### Data/Information
 
 - Summarize top news of today, of this week, this month via Apple News or other large media outlets BBC, TechCrunch, hackernews, etc
@@ -424,9 +424,9 @@ If you would like to implement one of these blocks, open a pull request and we w
 - Get dates for specific shows across all streaming services
   - Suggest/Recommend/Get most watched shows in a given month, year, etc across all streaming platforms
 - Data analysis from xlsx data set
-   - Gather via Excel or Google Sheets data > Sample the data randomly (sample block takes top X, bottom X, randomly, etc) > pass that to LLM Block to generate a script for analysis of the full data > Python block to run the script> making a loop back through LLM Fix Block on error > create chart/visualization (potentially in the code block?) > show the image as output (this may require frontend changes to show)
+  - Gather via Excel or Google Sheets data > Sample the data randomly (sample block takes top X, bottom X, randomly, etc) > pass that to LLM Block to generate a script for analysis of the full data > Python block to run the script> making a loop back through LLM Fix Block on error > create chart/visualization (potentially in the code block?) > show the image as output (this may require frontend changes to show)
 - Tiktok video search and download
 
-### Marketing 
+### Marketing
 
 - Portfolio site design and enhancements
