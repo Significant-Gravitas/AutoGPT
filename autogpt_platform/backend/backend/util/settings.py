@@ -219,8 +219,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     google_maps_api_key: str = Field(default="", description="Google Maps API Key")
 
     replicate_api_key: str = Field(default="", description="Replicate API Key")
-
+    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
