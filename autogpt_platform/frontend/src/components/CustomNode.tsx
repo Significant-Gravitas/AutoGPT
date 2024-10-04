@@ -642,12 +642,15 @@ export function CustomNode({
             </div>
           )}
         </div>
-        <Badge
-          variant="outline"
-          className={`mr-5 ${getPrimaryCategoryColor(data.categories)} rounded-xl opacity-50`}
-        >
-          {data.categories[0].category}
-        </Badge>
+        {data.categories.map((category) => (
+          <Badge
+            key={category.category}
+            variant="outline"
+            className={`mr-5 ${getPrimaryCategoryColor([category])} rounded-xl border border-gray-300 opacity-50`}
+          >
+            {beautifyString(category.category.toLowerCase())}
+          </Badge>
+        ))}
         <button
           aria-label="Options"
           className="mr-2 cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"

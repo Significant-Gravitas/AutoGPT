@@ -138,11 +138,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                       )
                     }
                   >
-                    {beautifyString(
-                      category && category.length > 3
-                        ? category.toLowerCase()
-                        : category || "All",
-                    )}
+                    {beautifyString((category || "All").toLowerCase())}
                   </div>
                 );
               })}

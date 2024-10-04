@@ -104,6 +104,7 @@ const exceptionMap: Record<string, string> = {
   Url: "URL",
   Http: "HTTP",
   Json: "JSON",
+  Ai: "AI",
 };
 
 const applyExceptions = (str: string): string => {
