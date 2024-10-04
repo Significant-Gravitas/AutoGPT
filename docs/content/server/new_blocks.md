@@ -14,22 +14,22 @@ Follow these steps to create and test a new block:
 
 2. **Import necessary modules and create a class that inherits from `Block`**. Make sure to include all necessary imports for your block.
 
-Every block should contain the following:
+    Every block should contain the following:
 
-```python
-from backend.data.block import Block, BlockSchema, BlockOutput
-```
+    ```python
+    from backend.data.block import Block, BlockSchema, BlockOutput
+    ```
 
-Example for the Wikipedia summary block:
+    Example for the Wikipedia summary block:
 
-```python
-from backend.data.block import Block, BlockSchema, BlockOutput
-from backend.utils.get_request import GetRequest
-import requests
+    ```python
+    from backend.data.block import Block, BlockSchema, BlockOutput
+    from backend.utils.get_request import GetRequest
+    import requests
 
-class WikipediaSummaryBlock(Block, GetRequest):
-    # Block implementation will go here
-```
+    class WikipediaSummaryBlock(Block, GetRequest):
+        # Block implementation will go here
+    ```
 
 3. **Define the input and output schemas** using `BlockSchema`. These schemas specify the data structure that the block expects to receive (input) and produce (output).
 
