@@ -191,7 +191,7 @@ export default function LoginPage() {
                   <div className="space-y-1 leading-none">
                     <FormLabel>
                       I agree to the{" "}
-                      <Link 
+                      <Link
                         href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
                         className="underline"
                       >
