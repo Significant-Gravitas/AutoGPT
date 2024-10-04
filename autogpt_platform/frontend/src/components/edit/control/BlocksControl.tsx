@@ -150,13 +150,13 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           </CardHeader>
           <CardContent className="overflow-scroll border-t p-0">
             <ScrollArea
-              className="h-[60vh] w-fit"
+              className="h-[60vh] w-fit w-full"
               data-id="blocks-control-scroll-area"
             >
               {filteredBlocks.map((block) => (
                 <Card
                   key={block.id}
-                  className="m-2 my-4 flex h-20 cursor-pointer border shadow-none hover:shadow-lg"
+                  className="m-2 my-4 flex h-20 cursor-pointer shadow-none hover:shadow-lg"
                   data-id={`block-card-${block.id}`}
                   onClick={() => addBlock(block.id, block.name)}
                 >
