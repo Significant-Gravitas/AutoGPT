@@ -24,7 +24,7 @@ class ReadCsvBlock(Block):
             output_schema=ReadCsvBlock.Output,
             description="Reads a CSV file and outputs the data as a list of dictionaries and individual rows via rows.",
             contributors=[ContributorDetails(name="Nicholas Tindle")],
-            categories={BlockCategory.TEXT},
+            categories={BlockCategory.TEXT, BlockCategory.DATA},
             test_input={
                 "contents": "a, b, c\n1,2,3\n4,5,6",
             },
