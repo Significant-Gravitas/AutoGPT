@@ -5,3 +5,4 @@ metadata:
 spec:
   domains:
     - {{ .Values.domain }}
+    - {{ .Values.wwwDomain }}

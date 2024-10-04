@@ -207,7 +207,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_author_id: str = Field(default="", description="Medium author ID")
     did_api_key: str = Field(default="", description="D-ID API Key")
     revid_api_key: str = Field(default="", description="revid.ai API key")
-
     discord_bot_token: str = Field(default="", description="Discord bot token")
 
     smtp_server: str = Field(default="", description="SMTP server IP")
@@ -220,6 +219,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     google_maps_api_key: str = Field(default="", description="Google Maps API Key")
 
     replicate_api_key: str = Field(default="", description="Replicate API Key")
+    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
+    ideogram_api_key: str = Field(default="", description="Ideogram API Key")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
