@@ -49,8 +49,8 @@ class WikipediaSummaryBlock(Block, GetRequest):
 
 4. **Implement the `__init__` method, including test data and mocks:**
 
-   !!! important
-        Use UUID generator (e.g. https://www.uuidgenerator.net/) for every new block `id` and *do not* make up your own. Alternatively, you can run this python code to generate an uuid: `print(__import__('uuid').uuid4())`
+    !!! important
+         Use UUID generator (e.g. https://www.uuidgenerator.net/) for every new block `id` and *do not* make up your own. Alternatively, you can run this python code to generate an uuid: `print(__import__('uuid').uuid4())`
 
    ```python
    def __init__(self):
