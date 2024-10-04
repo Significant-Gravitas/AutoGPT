@@ -23,6 +23,7 @@ interface SaveControlProps {
   onSave: (isTemplate: boolean | undefined) => void;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
+  pinSavePopover: boolean;
 }
 
 /**
@@ -41,6 +42,7 @@ export const SaveControl = ({
   onNameChange,
   agentDescription,
   onDescriptionChange,
+  pinSavePopover,
 }: SaveControlProps) => {
   /**
    * Note for improvement:
@@ -59,11 +61,15 @@ export const SaveControl = ({
   };
 
   return (
-    <Popover>
+    <Popover open={pinSavePopover ? true : undefined}>
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button
+              variant="ghost"
+              size="icon"
+              data-id="save-control-popover-trigger"
+            >
               <IconSave />
             </Button>
           </PopoverTrigger>
@@ -81,6 +87,7 @@ export const SaveControl = ({
                 className="col-span-3"
                 value={agentName}
                 onChange={(e) => onNameChange(e.target.value)}
+                data-id="save-control-name-input"
               />
               <Label htmlFor="description">Description</Label>
               <Input
@@ -89,6 +96,7 @@ export const SaveControl = ({
                 className="col-span-3"
                 value={agentDescription}
                 onChange={(e) => onDescriptionChange(e.target.value)}
+                data-id="save-control-description-input"
               />
               {agentMeta?.version && (
                 <>
@@ -105,13 +113,18 @@ export const SaveControl = ({
             </div>
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
-            <Button className="w-full" onClick={handleSave}>
+            <Button
+              className="w-full"
+              onClick={handleSave}
+              data-id="save-control-save-agent"
+            >
               Save {getType()}
             </Button>
             {!agentMeta && (
               <Button
                 variant="secondary"
                 className="w-full"
+                data-id="save-control-template-button"
                 onClick={() => {
                   isTemplate = true;
                   handleSave();
