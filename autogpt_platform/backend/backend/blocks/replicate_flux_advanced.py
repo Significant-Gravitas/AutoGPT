@@ -11,7 +11,7 @@ from backend.data.model import BlockSecret, SchemaField, SecretField
 class ReplicateFluxModelName(str, Enum):
     FLUX_SCHNELL = ("Flux Schnell",)
     FLUX_PRO = ("Flux Pro",)
-    FLUX_PRO1_1= ("Flux Pro 1.1")
+    FLUX_PRO1_1= ("Flux Pro 1.1",)
 
     @property
     def api_name(self):
