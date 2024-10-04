@@ -213,7 +213,9 @@ export const startTutorial = (
     when: {
       show: () => {
         setPinBlocksPopover(false);
-        fitViewToScreen();
+        setTimeout(() => {
+          fitViewToScreen();
+        }, 100);
       },
     },
   });
