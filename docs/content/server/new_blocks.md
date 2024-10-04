@@ -131,6 +131,7 @@ from backend.data.model import CredentialsField
 class BlockWithAPIKeyAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
+        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[Literal['github'], Literal['api_key']] = CredentialsField(
             provider="github",
             supported_credential_types={"api_key"},
@@ -153,6 +154,7 @@ class BlockWithAPIKeyAuth(Block):
 class BlockWithOAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
+        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[Literal['github'], Literal['oauth2']] = CredentialsField(
             provider="github",
             supported_credential_types={"oauth2"},
@@ -175,6 +177,7 @@ class BlockWithOAuth(Block):
 class BlockWithAPIKeyAndOAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
+        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[Literal['github'], Literal['api_key', 'oauth2']] = CredentialsField(
             provider="github",
             supported_credential_types={"api_key", "oauth2"},
