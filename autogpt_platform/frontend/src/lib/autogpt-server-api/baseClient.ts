@@ -123,6 +123,10 @@ export default class BaseAutoGPTServerAPI {
     return await this._request("PUT", `/graphs/${id}`, graph);
   }
 
+  async deleteGraph(id: string): Promise<void> {
+    return this._request("DELETE", `/graphs/${id}`);
+  }
+
   async updateTemplate(id: string, template: GraphUpdateable): Promise<Graph> {
     return await this._request("PUT", `/templates/${id}`, template);
   }

@@ -500,6 +500,15 @@ async def get_graph_all_versions(graph_id: str, user_id: str) -> list[Graph]:
     return [Graph.from_db(graph) for graph in graph_versions]
 
 
+async def delete_graph(graph_id: str, user_id: str) -> int:
+    entries_count = await AgentGraph.prisma().delete_many(
+        where={"id": graph_id, "userId": user_id}
+    )
+    if entries_count:
+        logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
+    return entries_count
+
+
 async def create_graph(graph: Graph, user_id: str) -> Graph:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
