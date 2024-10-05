@@ -36,50 +36,50 @@ Follow these steps to create and test a new block:
    - The input schema defines the structure of the data the block will process. Each field in the schema represents a required piece of input data.
    - The output schema defines the structure of the data the block will return after processing. Each field in the schema represents a piece of output data.
 
-   Example:
+    Example:
 
-   ```python
-   class Input(BlockSchema):
-       topic: str  # The topic to get the Wikipedia summary for
+    ```python
+    class Input(BlockSchema):
+        topic: str  # The topic to get the Wikipedia summary for
 
-   class Output(BlockSchema):
-       summary: str  # The summary of the topic from Wikipedia
-       error: str  # Any error message if the request fails
-   ```
+    class Output(BlockSchema):
+        summary: str  # The summary of the topic from Wikipedia
+        error: str  # Any error message if the request fails
+    ```
 
 4. **Implement the `__init__` method, including test data and mocks:**
 
     !!! important
          Use UUID generator (e.g. https://www.uuidgenerator.net/) for every new block `id` and *do not* make up your own. Alternatively, you can run this python code to generate an uuid: `print(__import__('uuid').uuid4())`
 
-   ```python
-   def __init__(self):
-       super().__init__(
-           # Unique ID for the block, used across users for templates
-           # If you are an AI leave it as is or change to "generate-proper-uuid"
-           id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-           input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
-           output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
+    ```python
+    def __init__(self):
+        super().__init__(
+            # Unique ID for the block, used across users for templates
+            # If you are an AI leave it as is or change to "generate-proper-uuid"
+            id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
+            output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
 
-            # Provide sample input, output and test mock for testing the block
+                # Provide sample input, output and test mock for testing the block
 
-           test_input={"topic": "Artificial Intelligence"},
-           test_output=("summary", "summary content"),
-           test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
-       )
-   ```
+            test_input={"topic": "Artificial Intelligence"},
+            test_output=("summary", "summary content"),
+            test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
+        )
+    ```
 
-   - `id`: A unique identifier for the block.
+    - `id`: A unique identifier for the block.
 
-   - `input_schema` and `output_schema`: Define the structure of the input and output data.
+    - `input_schema` and `output_schema`: Define the structure of the input and output data.
 
-   Let's break down the testing components:
+    Let's break down the testing components:
 
-   - `test_input`: This is a sample input that will be used to test the block. It should be a valid input according to your Input schema.
+    - `test_input`: This is a sample input that will be used to test the block. It should be a valid input according to your Input schema.
 
-   - `test_output`: This is the expected output when running the block with the `test_input`. It should match your Output schema. For non-deterministic outputs or when you only want to assert the type, you can use Python types instead of specific values. In this example, `("summary", str)` asserts that the output key is "summary" and its value is a string.
+    - `test_output`: This is the expected output when running the block with the `test_input`. It should match your Output schema. For non-deterministic outputs or when you only want to assert the type, you can use Python types instead of specific values. In this example, `("summary", str)` asserts that the output key is "summary" and its value is a string.
 
-   - `test_mock`: This is crucial for blocks that make network calls. It provides a mock function that replaces the actual network call during testing.
+    - `test_mock`: This is crucial for blocks that make network calls. It provides a mock function that replaces the actual network call during testing.
 
      In this case, we're mocking the `get_request` method to always return a dictionary with an 'extract' key, simulating a successful API response. This allows us to test the block's logic without making actual network requests, which could be slow, unreliable, or rate-limited.
 
@@ -105,7 +105,7 @@ Follow these steps to create and test a new block:
    - **Try block**: Contains the main logic to fetch and process the Wikipedia summary.
    - **API request**: Send a GET request to the Wikipedia API.
    - **Error handling**: Handle various exceptions that might occur during the API request and data processing.
-   - **Yield**: Use `yield` to output the results.
+   - **Yield**: Use `yield` to output the results. Prefer to output one result object at a time. If you are calling a function that returns a list, you can yield each item in the list separately. You can also yield the whole list as well, but do both rather than yielding the list. For example: If you were writing a block that outputs emails, you'd yield each email as a separate result object, but you could also yield the whole list as an additional single result object.
 
 ### Blocks with authentication
 
