@@ -362,14 +362,14 @@ By following these steps, you can create new blocks that extend the functionalit
 
 ## Blocks we want to see
 
-Below is a list of blocks that we would like to see implemented in the AutoGPT Agent Server. If you're interested in contributing, feel free to pick one of these blocks or suggest your own by editing [docs/content/server/new_blocks.md](https://github.com/Significant-Gravitas/AutoGPT/edit/master/docs/content/server/new_blocks.md) and opening a pull request.
+Below is a list of blocks that we would like to see implemented in the AutoGPT Agent Server. If you're interested in contributing, feel free to pick one of these blocks or chose your own.
 
 If you would like to implement one of these blocks, open a pull request and we will start the review process.
 
 ### Consumer Services/Platforms
 
-- Google sheets - Read/Append [Read in Progress](https://github.com/Significant-Gravitas/AutoGPT/pull/7521)
-- Email - Read/Send with Gmail, Outlook, Yahoo, Proton, etc
+- Google sheets - [~~Read/Append~~](https://github.com/Significant-Gravitas/AutoGPT/pull/8236)
+- Email - Read/Send with [~~Gmail~~](https://github.com/Significant-Gravitas/AutoGPT/pull/8236), Outlook, Yahoo, Proton, etc
 - Calendar - Read/Write with Google Calendar, Outlook Calendar, etc
 - Home Assistant - Call Service, Get Status
 - Dominos - Order Pizza, Track Order
