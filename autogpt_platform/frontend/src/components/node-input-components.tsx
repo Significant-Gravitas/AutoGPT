@@ -353,11 +353,8 @@ const NodeKeyValueInput: FC<{
       .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
       .forEach((c) => {
         const key = c.targetHandle.slice(`${selfKey}_#_`.length);
-        console.log(">>> key", key);
         if (!defaultEntries.has(key)) defaultEntries.set(key, "");
       });
-
-    console.log(">>> defaultEntries", defaultEntries);
 
     return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
   }, [connections, entries, schema.default, selfKey]);
