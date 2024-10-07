@@ -10,6 +10,11 @@ from backend.util.logging import configure_logging
 from backend.util.metrics import sentry_init
 
 logger = logging.getLogger(__name__)
+_SERVICE_NAME = "MainProcess"
+
+
+def get_service_name():
+    return _SERVICE_NAME
 
 
 class AppProcess(ABC):
@@ -32,6 +37,11 @@ class AppProcess(ABC):
         """
         pass
 
+    @classmethod
+    @property
+    def service_name(cls) -> str:
+        return cls.__name__
+
     def cleanup(self):
         """
         Implement this method on a subclass to do post-execution cleanup,
@@ -52,10 +62,14 @@ class AppProcess(ABC):
             if silent:
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
-            logger.info(f"[{self.__class__.__name__}] Starting...")
+
+            global _SERVICE_NAME
+            _SERVICE_NAME = self.service_name
+
+            logger.info(f"[{self.service_name}] Starting...")
             self.run()
         except (KeyboardInterrupt, SystemExit) as e:
-            logger.warning(f"[{self.__class__.__name__}] Terminated: {e}; quitting...")
+            logger.warning(f"[{self.service_name}] Terminated: {e}; quitting...")
 
     def _self_terminate(self, signum: int, frame):
         self.cleanup()
