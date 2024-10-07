@@ -3,13 +3,14 @@ import logging
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from functools import wraps
-from typing import Annotated, Any, Dict, TypedDict
+from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from backend.data import block, db
 from backend.data import execution as execution_db
