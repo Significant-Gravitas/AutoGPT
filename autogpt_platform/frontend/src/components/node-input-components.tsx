@@ -362,28 +362,13 @@ const NodeKeyValueInput: FC<{
     [connections, entries, schema.default, getPairValues],
   );
 
-  const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(
-    null,
-  );
-
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
     setKeyValuePairs(newPairs);
 
-    if (updateTimeout) {
-      clearTimeout(updateTimeout);
-    }
-
-    const newTimeout = setTimeout(() => {
-      handleInputChange(
-        selfKey,
-        newPairs.reduce(
-          (obj, { key, value }) => ({ ...obj, [key]: value }),
-          {},
-        ),
-      );
-    }, 1000); // 500ms delay
-
-    setUpdateTimeout(newTimeout);
+    handleInputChange(
+      selfKey,
+      newPairs.reduce((obj, { key, value }) => ({ ...obj, [key]: value }), {}),
+    );
   }
 
   function convertValueType(value: string): string | number | null {
@@ -404,7 +389,9 @@ const NodeKeyValueInput: FC<{
   }
 
   return (
-    <div className={cn(className, keyValuePairs.length > 0 ? "flex" : "")}>
+    <div
+      className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}
+    >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
