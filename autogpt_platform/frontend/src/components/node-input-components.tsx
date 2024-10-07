@@ -361,12 +361,28 @@ const NodeKeyValueInput: FC<{
     [connections, entries, schema.default, getPairValues],
   );
 
+  const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(
+    null,
+  );
+
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
     setKeyValuePairs(newPairs);
-    handleInputChange(
-      selfKey,
-      newPairs.reduce((obj, { key, value }) => ({ ...obj, [key]: value }), {}),
-    );
+
+    if (updateTimeout) {
+      clearTimeout(updateTimeout);
+    }
+
+    const newTimeout = setTimeout(() => {
+      handleInputChange(
+        selfKey,
+        newPairs.reduce(
+          (obj, { key, value }) => ({ ...obj, [key]: value }),
+          {},
+        ),
+      );
+    }, 1000); // 500ms delay
+
+    setUpdateTimeout(newTimeout);
   }
 
   function convertValueType(value: string): string | number | null {
