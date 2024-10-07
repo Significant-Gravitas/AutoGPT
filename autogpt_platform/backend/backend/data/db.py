@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -8,40 +7,30 @@ from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
 
+from backend.util.retry import conn_retry
+
 load_dotenv()
 
 PRISMA_SCHEMA = os.getenv("PRISMA_SCHEMA", "schema.prisma")
 os.environ["PRISMA_SCHEMA_PATH"] = PRISMA_SCHEMA
 
-prisma, conn_id = Prisma(auto_register=True), ""
+prisma = Prisma(auto_register=True)
 
 logger = logging.getLogger(__name__)
 
 
-async def connect(call_count=0):
-    global conn_id
-    if not conn_id:
-        conn_id = str(uuid4())
-
-    try:
-        logger.info(f"[Prisma-{conn_id}] Acquiring connection..")
-        if not prisma.is_connected():
-            await prisma.connect()
-        logger.info(f"[Prisma-{conn_id}] Connection acquired!")
-    except Exception as e:
-        if call_count <= 5:
-            logger.info(f"[Prisma-{conn_id}] Connection failed: {e}. Retrying now..")
-            await asyncio.sleep(2**call_count)
-            await connect(call_count + 1)
-        else:
-            raise e
-
-
-async def disconnect():
+@conn_retry("Prisma", "Acquiring connection")
+async def connect():
     if prisma.is_connected():
-        logger.info(f"[Prisma-{conn_id}] Releasing connection.")
-        await prisma.disconnect()
-        logger.info(f"[Prisma-{conn_id}] Connection released.")
+        return
+    await prisma.connect()
+
+
+@conn_retry("Prisma", "Releasing connection")
+async def disconnect():
+    if not prisma.is_connected():
+        return
+    await prisma.disconnect()
 
 
 @asynccontextmanager
