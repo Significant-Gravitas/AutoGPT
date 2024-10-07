@@ -1,7 +1,7 @@
 replicaCount: 1 # not scaling websocket server for now
 
 image:
-  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-backend-prod/agpt-backend-prod
   tag: latest
   pullPolicy: Always
 
@@ -17,10 +17,10 @@ ingress:
   className: "gce"
   annotations:
     kubernetes.io/ingress.class: gce
-    kubernetes.io/ingress.global-static-ip-name: "agpt-dev-agpt-ws-server-ip"
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-ws-backend-ip"
     networking.gke.io/managed-certificates: "autogpt-websocket-server-cert"
   hosts:
-    - host: dev-ws-server.agpt.co
+    - host: ws-backend.agpt.co
       paths:
         - path: /ws
           pathType: Prefix
@@ -34,7 +34,7 @@ ingress:
       port:
         number: 8001
 
-domain: "dev-ws-server.agpt.co"
+domain: "ws-backend.agpt.co"
 
 resources:
   limits:
@@ -48,7 +48,7 @@ autoscaling:
   enabled: false
 
 cors:
-  allowOrigins: "https://dev-builder.agpt.co"
+  allowOrigins: "https://platform.agpt.co"
   allowMethods:
     - "GET"
     - "POST"
@@ -75,6 +75,7 @@ livenessProbe:
   periodSeconds: 10
 
 env:
-  REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
+  REDIS_HOST: "redis-prod-master.redis-prod.svc.cluster.local"
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: "password"
+  REDIS_PASSWORD: ""
+  BACKEND_CORS_ALLOW_ORIGINS: '["https://platform.agpt.co"]'

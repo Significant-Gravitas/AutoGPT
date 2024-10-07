@@ -1,0 +1,88 @@
+# prod values, overwrite base values as needed.
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-frontend-prod/agpt-frontend-prod
+  pullPolicy: Always
+  tag: "latest"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "prod-agpt-builder-sa@agpt-prod.iam.gserviceaccount.com"
+  name: "prod-agpt-builder-sa"
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 3000
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-frontend-ip"
+    networking.gke.io/managed-certificates: "autogpt-builder-cert"
+    kubernetes.io/ingress.allow-http: "true"
+    networking.gke.io/v1beta1.FrontendConfig: "autogpt-builder-frontend-config"
+  hosts:
+    - host: platform.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-builder
+          port: 8000
+    - host: www.platform.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-builder
+          port: 8000
+  defaultBackend:
+    service:
+      name: autogpt-builder
+      port:
+        number: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+livenessProbe: null
+readinessProbe: null
+
+domain: "platform.agpt.co"
+wwwDomain: "www.platform.agpt.co"
+
+volumes:
+  - name: env-config
+    configMap:
+      name: 'autogpt-builder-config'
+
+volumeMounts:
+  - name: env-config
+    mountPath: /app/.env.local
+    subPath: .env.local
+    readonly: true
+
+
+env:
+  APP_ENV: "prod"
+  NEXT_PUBLIC_AUTH_CALLBACK_URL: "https://backend.agpt.co/auth/callback"
+  NEXT_PUBLIC_AGPT_SERVER_URL: "https://backend.agpt.co/api"
+  NEXT_PUBLIC_AGPT_WS_SERVER_URL: "wss://ws-backend.agpt.co/ws"
+  NEXT_PUBLIC_AGPT_MARKETPLACE_URL: "https://market.agpt.co/api/v1/market"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
+  NEXT_PUBLIC_SUPABASE_URL: "https://bgwpwdsxblryihinutbx.supabase.co"
+  GOOGLE_CLIENT_ID: ""
+  GOOGLE_CLIENT_SECRET: ""
+  SENTRY_AUTH_TOKEN: ""

@@ -81,12 +81,17 @@ class SupabaseIntegrationCredentialsStore:
         ]
         self._set_user_integration_creds(user_id, filtered_credentials)
 
-    async def store_state_token(self, user_id: str, provider: str) -> str:
+    async def store_state_token(
+        self, user_id: str, provider: str, scopes: list[str]
+    ) -> str:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
         state = OAuthState(
-            token=token, provider=provider, expires_at=int(expires_at.timestamp())
+            token=token,
+            provider=provider,
+            expires_at=int(expires_at.timestamp()),
+            scopes=scopes,
         )
 
         user_metadata = self._get_user_metadata(user_id)
@@ -99,6 +104,36 @@ class SupabaseIntegrationCredentialsStore:
         )
 
         return token
+
+    async def get_any_valid_scopes_from_state_token(
+        self, user_id: str, token: str, provider: str
+    ) -> list[str]:
+        """
+        Get the valid scopes from the OAuth state token. This will return any valid scopes
+        from any OAuth state token for the given provider. If no valid scopes are found,
+        an empty list is returned. DO NOT RELY ON THIS TOKEN TO AUTHENTICATE A USER, AS IT
+        IS TO CHECK IF THE USER HAS GIVEN PERMISSIONS TO THE APPLICATION BEFORE EXCHANGING
+        THE CODE FOR TOKENS.
+        """
+        user_metadata = self._get_user_metadata(user_id)
+        oauth_states = user_metadata.get("integration_oauth_states", [])
+
+        now = datetime.now(timezone.utc)
+        valid_state = next(
+            (
+                state
+                for state in oauth_states
+                if state["token"] == token
+                and state["provider"] == provider
+                and state["expires_at"] > now.timestamp()
+            ),
+            None,
+        )
+
+        if valid_state:
+            return valid_state.get("scopes", [])
+
+        return []
 
     async def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
         user_metadata = self._get_user_metadata(user_id)
