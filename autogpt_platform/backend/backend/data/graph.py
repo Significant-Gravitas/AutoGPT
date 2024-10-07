@@ -384,7 +384,7 @@ async def get_node(node_id: str) -> Node:
 async def get_graphs_meta(
     include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
-    user_id: str | None = None,
+    user_id: str,
 ) -> list[GraphMeta]:
     """
     Retrieves graph metadata objects.
@@ -393,6 +393,7 @@ async def get_graphs_meta(
     Args:
         include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
+        user_id: The ID of the user that owns the graph.
 
     Returns:
         list[GraphMeta]: A list of objects representing the retrieved graph metadata.
