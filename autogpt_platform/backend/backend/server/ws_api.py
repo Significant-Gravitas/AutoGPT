@@ -7,7 +7,7 @@ from autogpt_libs.auth import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.data.queue import AsyncRedisEventQueue
+from backend.data.queue import RedisEventQueue
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
@@ -20,15 +20,16 @@ settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await event_queue.connect()
+    event_queue.connect()
     manager = get_connection_manager()
-    asyncio.create_task(event_broadcaster(manager))
+    fut = asyncio.create_task(event_broadcaster(manager))
+    fut.add_done_callback(lambda _: logger.info("Event broadcaster stopped"))
     yield
-    await event_queue.close()
+    event_queue.close()
 
 
 app = FastAPI(lifespan=lifespan)
-event_queue = AsyncRedisEventQueue()
+event_queue = RedisEventQueue()
 _connection_manager = None
 
 logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
@@ -50,9 +51,11 @@ def get_connection_manager():
 
 async def event_broadcaster(manager: ConnectionManager):
     while True:
-        event = await event_queue.get()
+        event = event_queue.get()
         if event is not None:
             await manager.send_execution_result(event)
+        else:
+            await asyncio.sleep(0.1)
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
