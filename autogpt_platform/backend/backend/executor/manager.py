@@ -17,7 +17,7 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from backend.server.rest_api import AgentServer
 
-from backend.data import db
+from backend.data import db, redis
 from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
@@ -216,12 +216,13 @@ def execute_node(
 
 
 @contextmanager
-def synchronized(api_client: "AgentServer", key: Any):
-    api_client.acquire_lock(key)
+def synchronized(key: str, timeout: int = 60):
+    lock = redis.get_redis().lock(f"lock:{key}", timeout=timeout)
     try:
+        lock.acquire()
         yield
     finally:
-        api_client.release_lock(key)
+        lock.release()
 
 
 def _enqueue_next_nodes(
@@ -268,7 +269,7 @@ def _enqueue_next_nodes(
         # Multiple node can register the same next node, we need this to be atomic
         # To avoid same execution to be enqueued multiple times,
         # Or the same input to be consumed multiple times.
-        with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
+        with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
             # Add output data to the earliest incomplete execution, or create a new one.
             next_node_exec_id, next_node_input = wait(
                 upsert_execution_input(
@@ -437,6 +438,7 @@ class Executor:
         cls.loop = asyncio.new_event_loop()
         cls.pid = os.getpid()
 
+        redis.connect()
         cls.loop.run_until_complete(db.connect())
         cls.agent_server_client = get_agent_server_client()
 
@@ -454,6 +456,8 @@ class Executor:
 
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
         cls.loop.run_until_complete(db.disconnect())
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
         logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
 
     @classmethod
