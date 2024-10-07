@@ -395,7 +395,7 @@ const NodeKeyValueInput: FC<{
           <div key={index}>
             {key && (
               <NodeHandle
-                keyName={key}
+                keyName={getEntryKey(key)}
                 schema={{ type: "string" }}
                 isConnected={isConnected(key)}
                 isRequired={false}
