@@ -344,18 +344,20 @@ const NodeKeyValueInput: FC<{
   displayName,
 }) => {
   const getPairValues = useCallback(() => {
-    let defaultEntries = new Map<string, any>();
+    // Map will preserve the order of entries.
+    const defaultEntries = new Map(
+      Object.entries(entries ?? schema.default ?? {}),
+    );
 
     connections
       .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
       .forEach((c) => {
         const key = c.targetHandle.slice(`${selfKey}_#_`.length);
-        defaultEntries.set(key, "");
+        console.log(">>> key", key);
+        if (!defaultEntries.has(key)) defaultEntries.set(key, "");
       });
 
-    Object.entries(entries ?? schema.default ?? {}).forEach(([key, value]) => {
-      defaultEntries.set(key, value);
-    });
+    console.log(">>> defaultEntries", defaultEntries);
 
     return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
   }, [connections, entries, schema.default, selfKey]);
