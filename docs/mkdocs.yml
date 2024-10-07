@@ -7,14 +7,17 @@ docs_dir: content
 nav:
   - Home: index.md
 
-  - The AutoGPT Server 🆕: 
+  - The AutoGPT Platform 🆕: 
+    - Getting Started: server/getting-started.md
     - Build your own Blocks: server/new_blocks.md
     - Setup: server/setup.md
     - Advanced Setup: server/advanced_setup.md
     - Using Ollama: server/ollama.md
     - Using D-ID: server/d_id.md
-
-  - AutoGPT Agent:
+    
+  - AutoGPT Classic: 
+    - Overview: classic/index.md
+    - AutoGPT Agent: 
       - Introduction: AutoGPT/index.md
       - Setup:
           - Setting up AutoGPT: AutoGPT/setup/index.md
@@ -30,11 +33,9 @@ nav:
           - Contribution guide: contributing.md
           - Running tests: AutoGPT/testing.md
           - Code of Conduct: code-of-conduct.md
-
-  - Benchmark:
-      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md
-
-  - Forge:
+    - Benchmark:
+         - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md
+    - Forge:
       - Introduction: forge/get-started.md
       - Components:
           - Introduction: forge/components/introduction.md
@@ -44,11 +45,10 @@ nav:
           - Commands: forge/components/commands.md
           - Built in Components: forge/components/built-in-components.md
           - Creating Components: forge/components/creating-components.md
-
-  - Frontend:
+    - Frontend:
       - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md
 
-  - Docs: docs/index.md
+  - Contribute: contribute/index.md
     
   # - Challenges:
   #     - Introduction: challenges/introduction.md
@@ -95,14 +95,14 @@ theme:
   palette:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
-      scheme: default
+      scheme: dark
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
 
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+      scheme: light
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
@@ -155,7 +155,6 @@ plugins:
   - git-revision-date-localized:
       enable_creation_date: true
 
-
 extra:
   social:
     - icon: fontawesome/brands/github
@@ -173,3 +172,6 @@ extra_javascript:
   - _javascript/mathjax.js
   - https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - stylesheets/extra.css
