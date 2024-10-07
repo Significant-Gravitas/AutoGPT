@@ -382,9 +382,9 @@ async def get_node(node_id: str) -> Node:
 
 
 async def get_graphs_meta(
+    user_id: str,
     include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
-    user_id: str,
 ) -> list[GraphMeta]:
     """
     Retrieves graph metadata objects.
