@@ -15,6 +15,38 @@ logger = logging.getLogger("marketplace")
 router = fastapi.APIRouter()
 
 
+@router.delete("/agent/{agent_id}", response_model=market.model.AgentResponse)
+async def delete_agent(
+    agent_id: str,
+    user: autogpt_libs.auth.User = fastapi.Depends(
+        autogpt_libs.auth.requires_admin_user
+    ),
+):
+    """
+    Delete an agent and all related records from the database.
+
+    Args:
+        agent_id (str): The ID of the agent to delete.
+
+    Returns:
+        market.model.AgentResponse: The deleted agent's data.
+
+    Raises:
+        fastapi.HTTPException: If the agent is not found or if there's an error during deletion.
+    """
+    try:
+        deleted_agent = await market.db.delete_agent(agent_id)
+        if deleted_agent:
+            return market.model.AgentResponse(**deleted_agent.dict())
+        else:
+            raise fastapi.HTTPException(status_code=404, detail="Agent not found")
+    except market.db.AgentQueryError as e:
+        logger.error(f"Error deleting agent: {e}")
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error deleting agent: {e}")
+        raise fastapi.HTTPException(status_code=500, detail="An unexpected error occurred")
+
 @router.post("/agent", response_model=market.model.AgentResponse)
 async def create_agent_entry(
     request: market.model.AddAgentRequest,

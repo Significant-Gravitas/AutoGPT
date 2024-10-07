@@ -45,17 +45,9 @@ resources:
     cpu: 100m
     memory: 128Mi
   limits:
-    cpu: 500m
-    memory: 512Mi
+    cpu: 1
+    memory: 1Gi
 
-livenessProbe:
-  httpGet:
-    path: /
-    port: http
-readinessProbe:
-  httpGet:
-    path: /
-    port: http
 
 autoscaling:
   enabled: false
@@ -75,13 +67,18 @@ affinity: {}
 
 domain: ""
 
-cloudSqlProxy:
-  image:
-    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
-    tag: 2.11.4
-  instanceConnectionName: ""
-  port: 5432
-  resources:
-    requests:
-      memory: "2Gi"
-      cpu: "1"
+cors:
+  allowOrigins:
+    - "https://dev-builder.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+

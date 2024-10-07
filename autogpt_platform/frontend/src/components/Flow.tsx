@@ -38,7 +38,7 @@ import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
@@ -91,41 +91,32 @@ const FlowEditor: React.FC<{
 
   const router = useRouter();
   const pathname = usePathname();
+  const params = useSearchParams();
   const initialPositionRef = useRef<{
     [key: string]: { x: number; y: number };
   }>({});
   const isDragging = useRef(false);
 
-  // State to control if tutorial has started
-  const [tutorialStarted, setTutorialStarted] = useState(false);
   // State to control if blocks menu should be pinned open
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
+  // State to control if save popover should be pinned open
+  const [pinSavePopover, setPinSavePopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
 
   const { toast } = useToast();
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+  const TUTORIAL_STORAGE_KEY = "shepherd-tour";
 
-    // If resetting tutorial
+  useEffect(() => {
     if (params.get("resetTutorial") === "true") {
-      localStorage.removeItem("shepherd-tour"); // Clear tutorial flag
+      localStorage.removeItem(TUTORIAL_STORAGE_KEY);
       router.push(pathname);
-    } else {
-      // Otherwise, start tutorial if conditions are met
-      const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
-      if (
-        shouldStartTutorial &&
-        availableNodes.length > 0 &&
-        !tutorialStarted
-      ) {
-        startTutorial(setPinBlocksPopover);
-        setTutorialStarted(true);
-        localStorage.setItem("shepherd-tour", "yes");
-      }
+    } else if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
+      startTutorial(setPinBlocksPopover, setPinSavePopover);
+      localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
     }
-  }, [availableNodes, tutorialStarted, router, pathname]);
+  }, [availableNodes, router, pathname, params]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -597,6 +588,7 @@ const FlowEditor: React.FC<{
                 onDescriptionChange={setAgentDescription}
                 agentName={agentName}
                 onNameChange={setAgentName}
+                pinSavePopover={pinSavePopover}
               />
             }
           ></ControlPanel>

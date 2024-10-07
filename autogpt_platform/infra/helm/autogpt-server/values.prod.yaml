@@ -1,0 +1,113 @@
+# prod values, overwrite base values as needed.
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-backend-prod/agpt-backend-prod
+  pullPolicy: Always
+  tag: "latest"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "prod-agpt-server-sa@agpt-prod.iam.gserviceaccount.com"
+  name: "prod-agpt-server-sa"
+
+service:
+  type: ClusterIP
+  port: 8006
+  pyroDaemonPort: 8004
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
+
+serviceExecutor:
+  type: ClusterIP
+  port: 8002
+  targetPort: 8002
+  annotations:
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-backend-ip"
+    networking.gke.io/managed-certificates: "autogpt-server-cert"
+    networking.gke.io/v1beta1.FrontendConfig: "autogpt-server-frontend-config"
+  hosts:
+    - host: backend.agpt.co
+      paths:
+        - path: /
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-server
+          port: 8006
+  defaultBackend:
+    service:
+      name: autogpt-server
+      port:
+        number: 8006
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 2
+    memory: 10Gi
+
+cors:
+  allowOrigin: "https://platform.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
+livenessProbe:
+  httpGet:
+    path: /docs
+    port: 8006
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+readinessProbe:
+  httpGet:
+    path: /docs
+    port: 8006
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+domain: "backend.agpt.co"
+
+env:
+  APP_ENV: "prod"
+  PYRO_HOST: "0.0.0.0"
+  ENABLE_AUTH: "true"
+  REDIS_HOST: "redis-prod-master.redis-prod.svc.cluster.local"
+  REDIS_PORT: "6379"
+  OPENAI_API_KEY: ""
+  REDIS_PASSWORD: ""
+  NUM_GRAPH_WORKERS: 10
+  NUM_NODE_WORKERS: 5
+  ENABLE_CREDIT: "true"
+  BACKEND_CORS_ALLOW_ORIGINS: '["https://platform.agpt.co"]'
+  SUPABASE_JWT_SECRET: ""
+  DATABASE_URL: ""
+  SENTRY_DSN: ""
+  SUPABASE_SERVICE_ROLE_KEY: ""
+  FRONTEND_BASE_URL: "https://platform.agpt.co/"
+  SUPABASE_URL: "https://bgwpwdsxblryihinutbx.supabase.co"
+  AGENTSERVER_HOST: "autogpt-server.prod-agpt.svc.cluster.local"
+  EXECUTIONMANAGER_HOST: "autogpt-server-executor.prod-agpt.svc.cluster.local"
+  GITHUB_CLIENT_ID: ""
+  GITHUB_CLIENT_SECRET: ""

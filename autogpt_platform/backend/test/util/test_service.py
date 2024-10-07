@@ -6,7 +6,6 @@ from backend.util.service import AppService, expose, get_service_client
 class TestService(AppService):
     def __init__(self):
         super().__init__(port=8005)
-        self.use_redis = False
 
     def run_service(self):
         super().run_service()

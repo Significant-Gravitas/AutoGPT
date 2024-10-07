@@ -5,4 +5,4 @@ metadata:
 spec:
   redirectToHttps:
     enabled: true
-    responseCodeName: 301
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT

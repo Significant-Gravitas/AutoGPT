@@ -17,7 +17,7 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from backend.server.rest_api import AgentServer
 
-from backend.data import db
+from backend.data import db, redis
 from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
@@ -216,12 +216,13 @@ def execute_node(
 
 
 @contextmanager
-def synchronized(api_client: "AgentServer", key: Any):
-    api_client.acquire_lock(key)
+def synchronized(key: str, timeout: int = 60):
+    lock = redis.get_redis().lock(f"lock:{key}", timeout=timeout)
     try:
+        lock.acquire()
         yield
     finally:
-        api_client.release_lock(key)
+        lock.release()
 
 
 def _enqueue_next_nodes(
@@ -268,7 +269,7 @@ def _enqueue_next_nodes(
         # Multiple node can register the same next node, we need this to be atomic
         # To avoid same execution to be enqueued multiple times,
         # Or the same input to be consumed multiple times.
-        with synchronized(api_client, ("upsert_input", next_node_id, graph_exec_id)):
+        with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
             # Add output data to the earliest incomplete execution, or create a new one.
             next_node_exec_id, next_node_input = wait(
                 upsert_execution_input(
@@ -437,6 +438,7 @@ class Executor:
         cls.loop = asyncio.new_event_loop()
         cls.pid = os.getpid()
 
+        redis.connect()
         cls.loop.run_until_complete(db.connect())
         cls.agent_server_client = get_agent_server_client()
 
@@ -454,6 +456,8 @@ class Executor:
 
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
         cls.loop.run_until_complete(db.disconnect())
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
         logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
 
     @classmethod
@@ -561,18 +565,17 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        timing_info, node_count = cls._on_graph_execution(
+        timing_info, (node_count, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
 
         cls.loop.run_until_complete(
             update_graph_execution_stats(
-                graph_exec.graph_exec_id,
-                {
-                    "walltime": timing_info.wall_time,
-                    "cputime": timing_info.cpu_time,
-                    "nodecount": node_count,
-                },
+                graph_exec_id=graph_exec.graph_exec_id,
+                error=error,
+                wall_time=timing_info.wall_time,
+                cpu_time=timing_info.cpu_time,
+                node_count=node_count,
             )
         )
 
@@ -583,9 +586,15 @@ class Executor:
         graph_exec: GraphExecution,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> int:
+    ) -> tuple[int, Exception | None]:
+        """
+        Returns:
+            The number of node executions completed.
+            The error that occurred during the execution.
+        """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         n_node_executions = 0
+        error = None
         finished = False
 
         def cancel_handler():
@@ -619,7 +628,8 @@ class Executor:
 
             while not queue.empty():
                 if cancel.is_set():
-                    return n_node_executions
+                    error = RuntimeError("Execution is cancelled")
+                    return n_node_executions, error
 
                 exec_data = queue.get()
 
@@ -653,7 +663,8 @@ class Executor:
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
-                            return n_node_executions
+                            error = RuntimeError("Execution is cancelled")
+                            return n_node_executions, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -666,12 +677,13 @@ class Executor:
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {e}"
             )
+            error = e
         finally:
             if not cancel.is_set():
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return n_node_executions
+            return n_node_executions, error
 
 
 class ExecutionManager(AppService):

@@ -53,12 +53,17 @@ livenessProbe: null
 readinessProbe: null
 
 domain: "dev-builder.agpt.co"
+wwwDomain: "www.dev-builder.agpt.co"
 
 
 env:
   APP_ENV: "dev"
-  NEXT_PUBLIC_AGPT_SERVER_URL: ["http://agpt-server:8000/api"]
+  NEXT_PUBLIC_AGPT_SERVER_URL: ""
   GOOGLE_CLIENT_ID: ""
   GOOGLE_CLIENT_SECRET: ""
   NEXT_PUBLIC_SUPABASE_URL: ""
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
+  SENTRY_AUTH_TOKEN: ""
+  NEXT_PUBLIC_AUTH_CALLBACK_URL: "https://dev-server.agpt.co/auth/callback"
+  NEXT_PUBLIC_AGPT_WS_SERVER_URL: "wss://dev-ws-server.agpt.co/ws"
+  NEXT_PUBLIC_AGPT_MARKETPLACE_URL: "https://dev-market.agpt.co/api/v1/market"

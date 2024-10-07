@@ -55,6 +55,29 @@ class FeaturedAgentResponse(pydantic.BaseModel):
     page_size: int
     total_pages: int
 
+async def delete_agent(agent_id: str) -> prisma.models.Agents | None:
+    """
+    Delete an agent from the database.
+
+    Args:
+        agent_id (str): The ID of the agent to delete.
+
+    Returns:
+        prisma.models.Agents | None: The deleted agent if found, None otherwise.
+
+    Raises:
+        AgentQueryError: If there is an error deleting the agent from the database.
+    """
+    try:
+        deleted_agent = await prisma.models.Agents.prisma().delete(
+            where={"id": agent_id}
+        )
+        return deleted_agent
+    except prisma.errors.PrismaError as e:
+        raise AgentQueryError(f"Database query failed: {str(e)}")
+    except Exception as e:
+        raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+
 
 async def create_agent_entry(
     name: str,
@@ -593,24 +616,24 @@ async def get_not_featured_agents(
         agents = await prisma.client.get_client().query_raw(
             query=f"""
             SELECT 
-                "Agents".id, 
-                "Agents"."createdAt", 
-                "Agents"."updatedAt", 
-                "Agents".version, 
-                "Agents".name, 
-                LEFT("Agents".description, 500) AS description, 
-                "Agents".author, 
-                "Agents".keywords, 
-                "Agents".categories, 
-                "Agents".graph,
-                "Agents"."submissionStatus",
-                "Agents"."submissionDate",
-                "Agents".search::text AS search
-            FROM "Agents"
-            LEFT JOIN "FeaturedAgent" ON "Agents"."id" = "FeaturedAgent"."agentId"
-            WHERE ("FeaturedAgent"."agentId" IS NULL OR "FeaturedAgent"."featuredCategories" = '{{}}')
-                AND "Agents"."submissionStatus" = 'APPROVED'
-            ORDER BY "Agents"."createdAt" DESC
+                "market"."Agents".id, 
+                "market"."Agents"."createdAt", 
+                "market"."Agents"."updatedAt", 
+                "market"."Agents".version, 
+                "market"."Agents".name, 
+                LEFT("market"."Agents".description, 500) AS description, 
+                "market"."Agents".author, 
+                "market"."Agents".keywords, 
+                "market"."Agents".categories, 
+                "market"."Agents".graph,
+                "market"."Agents"."submissionStatus",
+                "market"."Agents"."submissionDate",
+                "market"."Agents".search::text AS search
+            FROM "market"."Agents"
+            LEFT JOIN "market"."FeaturedAgent" ON "market"."Agents"."id" = "market"."FeaturedAgent"."agentId"
+            WHERE ("market"."FeaturedAgent"."agentId" IS NULL OR "market"."FeaturedAgent"."featuredCategories" = '{{}}')
+                AND "market"."Agents"."submissionStatus" = 'APPROVED'
+            ORDER BY "market"."Agents"."createdAt" DESC
             LIMIT {page_size} OFFSET {page_size * (page - 1)}
             """,
             model=prisma.models.Agents,
@@ -630,24 +653,20 @@ async def get_all_categories() -> market.model.CategoriesResponse:
         CategoriesResponse: A list of unique categories.
     """
     try:
-        categories = await prisma.client.get_client().query_first(
-            query="""
-SELECT ARRAY_AGG(DISTINCT category ORDER BY category) AS unique_categories
-FROM (
-  SELECT UNNEST(categories) AS category
-  FROM "Agents"
-) subquery;
-""",
-            model=market.model.CategoriesResponse,
-        )
-        if not categories:
-            return market.model.CategoriesResponse(unique_categories=[])
+        agents = await prisma.models.Agents.prisma().find_many(distinct=["categories"])
 
-        return categories
+        # Aggregate categories on the Python side
+        all_categories = set()
+        for agent in agents:
+            all_categories.update(agent.categories)
+
+        unique_categories = sorted(list(all_categories))
+
+        return market.model.CategoriesResponse(unique_categories=unique_categories)
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
     except Exception as e:
-        # raise AgentQueryError(f"Unexpected error occurred: {str(e)}")
+        # Return an empty list of categories in case of unexpected errors
         return market.model.CategoriesResponse(unique_categories=[])
 
 

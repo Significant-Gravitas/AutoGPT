@@ -44,6 +44,9 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            - name: pyro
+              containerPort: 8004
+              protocol: TCP
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
@@ -54,15 +57,6 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        - name: cloud-sql-proxy
-          image: "{{ .Values.cloudSqlProxy.image.repository }}:{{ .Values.cloudSqlProxy.image.tag }}"
-          args:
-            - "--structured-logs"
-            {{- if .Values.cloudSqlProxy.usePrivateIp }}
-            - "--private-ip"
-            {{- end }}
-            - "--port={{ .Values.cloudSqlProxy.port }}"
-            - "{{ .Values.cloudSqlProxy.instanceConnectionName }}"
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}

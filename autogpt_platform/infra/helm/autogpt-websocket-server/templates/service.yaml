@@ -4,6 +4,10 @@ metadata:
   name: {{ include "autogpt-websocket-server.fullname" . }}
   labels:
     {{- include "autogpt-websocket-server.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
   ports:
