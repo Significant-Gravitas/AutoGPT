@@ -178,7 +178,6 @@ export function CustomNode({
                 <div key={propKey}>
                   {!isConnected && (
                     <NodeGenericInputField
-                      className="mb-2 mt-1"
                       propKey={propKey}
                       propSchema={propSchema}
                       currentValue={getValue(propKey)}
@@ -237,7 +236,6 @@ export function CustomNode({
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
-                    className="mb-2 mt-1"
                     propKey={propKey}
                     propSchema={propSchema}
                     currentValue={getValue(propKey)}
@@ -276,7 +274,6 @@ export function CustomNode({
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
-                    className="mb-2 mt-1"
                     propKey={propKey}
                     propSchema={propSchema}
                     currentValue={getValue(propKey)}
