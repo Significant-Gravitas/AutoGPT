@@ -5,12 +5,7 @@ import AutoGPTServerAPI, {
   safeCopyGraph,
 } from "@/lib/autogpt-server-api";
 import { FlowRun } from "@/lib/types";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,7 +21,14 @@ import Link from "next/link";
 import { exportAsJSONFile } from "@/lib/utils";
 import { FlowRunsStats } from "@/components/monitor/index";
 import { Trash2Icon } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
@@ -106,7 +108,7 @@ export const FlowInfo: React.FC<
             className={buttonVariants({ variant: "outline" })}
             href={`/build?flowID=${flow.id}`}
           >
-            <Pencil2Icon/>
+            <Pencil2Icon />
           </Link>
           <Button
             variant="outline"
@@ -126,10 +128,7 @@ export const FlowInfo: React.FC<
           >
             <ExitIcon />
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setIsDeleteModalOpen(true)}
-          >
+          <Button variant="outline" onClick={() => setIsDeleteModalOpen(true)}>
             <Trash2Icon className="h-full" />
           </Button>
         </div>
@@ -147,16 +146,17 @@ export const FlowInfo: React.FC<
       <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Delete Agent
-            </DialogTitle>
+            <DialogTitle>Delete Agent</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete this agent? <br />
               This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteModalOpen(false)}
+            >
               Cancel
             </Button>
             <Button
