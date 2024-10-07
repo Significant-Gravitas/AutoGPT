@@ -44,7 +44,7 @@ model AgentGraph {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
@@ -143,7 +143,7 @@ model AgentGraphExecution {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stats String? // JSON serialized object
 }
@@ -224,7 +224,7 @@ model AnalyticsDetails {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
   type String
@@ -254,7 +254,7 @@ model AnalyticsMetrics {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum UserBlockCreditType {
@@ -267,7 +267,7 @@ model UserBlockCredit {
   createdAt      DateTime @default(now())
 
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   blockId String?
   block   AgentBlock? @relation(fields: [blockId], references: [id])
