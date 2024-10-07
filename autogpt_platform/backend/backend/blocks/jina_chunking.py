@@ -1,18 +1,27 @@
 import requests
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField, BlockSecret, SecretField
-import uuid
+from backend.data.model import BlockSecret, SchemaField, SecretField
+
 
 class JinaChunkingBlock(Block):
     class Input(BlockSchema):
         texts: list = SchemaField(description="List of texts to chunk")
-        api_key: BlockSecret = SecretField(key="jina_api_key", description="Jina API Key")
-        max_chunk_length: int = SchemaField(description="Maximum length of each chunk", default=1000)
-        return_tokens: bool = SchemaField(description="Whether to return token information", default=False)
+        api_key: BlockSecret = SecretField(
+            key="jina_api_key", description="Jina API Key"
+        )
+        max_chunk_length: int = SchemaField(
+            description="Maximum length of each chunk", default=1000
+        )
+        return_tokens: bool = SchemaField(
+            description="Whether to return token information", default=False
+        )
 
     class Output(BlockSchema):
         chunks: list = SchemaField(description="List of chunked texts")
-        tokens: list = SchemaField(description="List of token information for each chunk", optional=True)
+        tokens: list = SchemaField(
+            description="List of token information for each chunk", optional=True
+        )
 
     def __init__(self):
         super().__init__(
@@ -23,11 +32,11 @@ class JinaChunkingBlock(Block):
             output_schema=JinaChunkingBlock.Output,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
-        url = 'https://segment.jina.ai/'
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        url = "https://segment.jina.ai/"
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {input_data.api_key.get_secret_value()}'
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {input_data.api_key.get_secret_value()}",
         }
 
         all_chunks = []
@@ -35,19 +44,19 @@ class JinaChunkingBlock(Block):
 
         for text in input_data.texts:
             data = {
-                'content': text,
-                'return_tokens': str(input_data.return_tokens).lower(),
-                'return_chunks': 'true',
-                'max_chunk_length': str(input_data.max_chunk_length)
+                "content": text,
+                "return_tokens": str(input_data.return_tokens).lower(),
+                "return_chunks": "true",
+                "max_chunk_length": str(input_data.max_chunk_length),
             }
 
             response = requests.post(url, headers=headers, json=data)
             response.raise_for_status()
             result = response.json()
 
-            all_chunks.extend(result.get('chunks', []))
+            all_chunks.extend(result.get("chunks", []))
             if input_data.return_tokens:
-                all_tokens.extend(result.get('tokens', []))
+                all_tokens.extend(result.get("tokens", []))
 
         yield "chunks", all_chunks
         if input_data.return_tokens:

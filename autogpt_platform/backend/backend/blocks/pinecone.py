@@ -1,16 +1,27 @@
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField, BlockSecret, SecretField
 from pinecone import Pinecone, ServerlessSpec
-import uuid
+
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import BlockSecret, SchemaField, SecretField
+
 
 class PineconeInitBlock(Block):
     class Input(BlockSchema):
-        api_key: BlockSecret = SecretField(key="pinecone_api_key", description="Pinecone API Key")
+        api_key: BlockSecret = SecretField(
+            key="pinecone_api_key", description="Pinecone API Key"
+        )
         index_name: str = SchemaField(description="Name of the Pinecone index")
-        dimension: int = SchemaField(description="Dimension of the vectors", default=768)
-        metric: str = SchemaField(description="Distance metric for the index", default="cosine")
-        cloud: str = SchemaField(description="Cloud provider for serverless", default="aws")
-        region: str = SchemaField(description="Region for serverless", default="us-east-1")
+        dimension: int = SchemaField(
+            description="Dimension of the vectors", default=768
+        )
+        metric: str = SchemaField(
+            description="Distance metric for the index", default="cosine"
+        )
+        cloud: str = SchemaField(
+            description="Cloud provider for serverless", default="aws"
+        )
+        region: str = SchemaField(
+            description="Region for serverless", default="us-east-1"
+        )
 
     class Output(BlockSchema):
         index: str = SchemaField(description="Name of the initialized Pinecone index")
@@ -25,7 +36,7 @@ class PineconeInitBlock(Block):
             output_schema=PineconeInitBlock.Output,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         pc = Pinecone(api_key=input_data.api_key.get_secret_value())
 
         try:
@@ -35,9 +46,8 @@ class PineconeInitBlock(Block):
                     dimension=input_data.dimension,
                     metric=input_data.metric,
                     spec=ServerlessSpec(
-                        cloud=input_data.cloud,
-                        region=input_data.region
-                    )
+                        cloud=input_data.cloud, region=input_data.region
+                    ),
                 )
                 message = f"Created new index: {input_data.index_name}"
             else:

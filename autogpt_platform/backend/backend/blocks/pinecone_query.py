@@ -1,15 +1,24 @@
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-import uuid
+
 
 class PineconeQueryBlock(Block):
     class Input(BlockSchema):
         index: object = SchemaField(description="Initialized Pinecone index")
         query_vector: list = SchemaField(description="Query vector")
-        namespace: str = SchemaField(description="Namespace to query in Pinecone", default="")
-        top_k: int = SchemaField(description="Number of top results to return", default=3)
-        include_values: bool = SchemaField(description="Whether to include vector values in the response", default=False)
-        include_metadata: bool = SchemaField(description="Whether to include metadata in the response", default=True)
+        namespace: str = SchemaField(
+            description="Namespace to query in Pinecone", default=""
+        )
+        top_k: int = SchemaField(
+            description="Number of top results to return", default=3
+        )
+        include_values: bool = SchemaField(
+            description="Whether to include vector values in the response",
+            default=False,
+        )
+        include_metadata: bool = SchemaField(
+            description="Whether to include metadata in the response", default=True
+        )
 
     class Output(BlockSchema):
         results: dict = SchemaField(description="Query results from Pinecone")
@@ -23,12 +32,12 @@ class PineconeQueryBlock(Block):
             output_schema=PineconeQueryBlock.Output,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
         results = input_data.index.query(
             namespace=input_data.namespace,
             vector=input_data.query_vector,
             top_k=input_data.top_k,
             include_values=input_data.include_values,
-            include_metadata=input_data.include_metadata
+            include_metadata=input_data.include_metadata,
         )
         yield "results", results

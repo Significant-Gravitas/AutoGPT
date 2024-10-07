@@ -1,13 +1,19 @@
 import requests
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField, BlockSecret, SecretField
-import uuid
+from backend.data.model import BlockSecret, SchemaField, SecretField
+
 
 class JinaEmbeddingBlock(Block):
     class Input(BlockSchema):
         texts: list = SchemaField(description="List of texts to embed")
-        api_key: BlockSecret = SecretField(key="jina_api_key", description="Jina API Key")
-        model: str = SchemaField(description="Jina embedding model to use", default="jina-embeddings-v2-base-en")
+        api_key: BlockSecret = SecretField(
+            key="jina_api_key", description="Jina API Key"
+        )
+        model: str = SchemaField(
+            description="Jina embedding model to use",
+            default="jina-embeddings-v2-base-en",
+        )
 
     class Output(BlockSchema):
         embeddings: list = SchemaField(description="List of embeddings")
@@ -21,16 +27,13 @@ class JinaEmbeddingBlock(Block):
             output_schema=JinaEmbeddingBlock.Output,
         )
 
-    def run(self, input_data: Input) -> BlockOutput:
-        url = 'https://api.jina.ai/v1/embeddings'
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        url = "https://api.jina.ai/v1/embeddings"
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {input_data.api_key.get_secret_value()}'
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {input_data.api_key.get_secret_value()}",
         }
-        data = {
-            'input': input_data.texts,
-            'model': input_data.model
-        }
+        data = {"input": input_data.texts, "model": input_data.model}
         response = requests.post(url, headers=headers, json=data)
         embeddings = [e["embedding"] for e in response.json()["data"]]
         yield "embeddings", embeddings
