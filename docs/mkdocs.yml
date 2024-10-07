@@ -9,9 +9,8 @@ nav:
 
   - The AutoGPT Platform 🆕: 
     - Getting Started: server/getting-started.md
-    - Build your own Blocks: server/new_blocks.md
-    - Setup: server/setup.md
     - Advanced Setup: server/advanced_setup.md
+    - Build your own Blocks: server/new_blocks.md
     - Using Ollama: server/ollama.md
     - Using D-ID: server/d_id.md
     

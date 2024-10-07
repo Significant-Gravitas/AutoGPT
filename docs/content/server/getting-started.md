@@ -4,65 +4,131 @@ This tutorial will walk you through the process of setting up AutoGPT locally on
 
 <center><iframe width="560" height="315" src="https://www.youtube.com/embed/4Bycr6_YAMI?si=dXGhFeWrCK2UkKgj" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></center>
 
-## Prerequisites
-- Git
-- Visual Studio Code (VS Code)
-- Docker Desktop
-- Node.js and npm (or yarn)
+## Setting up the server
 
-## Step 1: Clone the Repository
+- [Introduction](#introduction)
+- [Prerequisites](#prerequisites)
 
-1. Go to the Auto GPT repository on GitHub.
-2. Copy the repository URL.
-3. Create a new folder on your local machine.
-4. Right-click on the folder and select "Open with Code" to open it in VS Code.
-5. In VS Code's terminal, run:
-   ```
-   git clone <paste-repository-url-here>
-   ```
+### Introduction
 
-## Step 2: Set Up Supabase
+This guide will help you setup the server and builder for the project.
 
-1. In VS Code, navigate to the `autogpt-platform` folder.
-2. Find the `supabase` folder, right-click, and select "Open in Integrated Terminal".
-3. Run the following command (note: this may take some time):
-   ```
-   # Command not provided in transcript
-   ```
+<!-- The video is listed in the root Readme.md of the repo -->
 
-## Step 3: Configure Auto GPT Platform
+We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT?tab=readme-ov-file#how-to-setup-for-self-hosting).
 
-1. Navigate back to the `autogpt-platform` folder in the terminal.
-2. Run the following command:
-   ```
-   # Command not provided in transcript
-   ```
+!!! warning
+    **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
 
-## Step 4: Set Up Docker
+### Prerequisites
 
-1. Ensure Docker Desktop is installed and running.
-2. In the `autogpt-platform` folder terminal, run:
-   ```
-   # Docker command not provided in transcript
-   ```
-3. Wait for all processes to complete.
+To setup the server, you need to have the following installed:
 
-## Step 5: Set Up the Frontend
+- [Node.js](https://nodejs.org/en/)
+- [Docker](https://docs.docker.com/get-docker/)
+- [Git](https://git-scm.com/downloads)
 
-1. Right-click on the `frontend` folder and open it in the integrated terminal.
-2. Run the following commands:
-   ```
-   # First command not provided in transcript
+### Checking if you have Node.js & NPM installed
+
+We use Node.js to run our frontend application.
+
+If you need assistance installing Node.js:
+https://nodejs.org/en/download/
+
+NPM is included with Node.js, but if you need assistance installing NPM:
+https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
+
+You can check if you have Node.js & NPM installed by running the following command:
+
+```bash
+node -v
+npm -v
+```
+
+Once you have Node.js installed, you can proceed to the next step.
+
+#### Checking if you have Docker & Docker Compose installed
+
+Docker containerizes applications, while Docker Compose orchestrates multi-container Docker applications.
+
+If you need assistance installing docker:
+https://docs.docker.com/desktop/
+
+Docker-compose is included in Docker Desktop, but if you need assistance installing docker compose: 
+https://docs.docker.com/compose/install/
+
+You can check if you have Docker installed by running the following command:
+
+```bash
+docker -v
+docker-compose -v
+```
+
+Once you have Docker and Docker Compose installed, you can proceed to the next step.
+
+### Cloning the Repository
+The first step is cloning the AutoGPT repository to your computer.
+To do this, open a terminal window in a folder on your computer and run:
+```
+git clone https://github.com/Significant-Gravitas/AutoGPT.git
+```
+If you get stuck, follow [this guide](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
+
+Once that's complete you can close this terminal window.
+
+### Running the backend services
+
+To run the backend services, follow these steps:
+
+* Within the repository, clone the submodules and navigate to the `autogpt_platform` directory:
+  ```bash
+   git submodule update --init --recursive
+   cd autogpt_platform
+  ```
+  This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
+
+* Copy the `.env.example` file available in the `supabase/docker` directory to `.env` in `autogpt_platform`:
+  ```
+   cp supabase/docker/.env.example .env
+  ```
+  This command will copy the `.env.example` file to `.env` in the `supabase/docker` directory. You can modify the `.env` file to add your own environment variables.
+
+* Run the backend services:
+  ```
+   docker compose up -d
+  ```
+  This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
+
+
+### Running the frontend application
+
+To run the frontend application, follow these steps:
+
+* Navigate to `frontend` folder within the `autogpt_platform` directory:
+  ```
+   cd frontend
+  ```
+
+* Copy the `.env.example` file available in the `frontend` directory to `.env` in the same directory:
+  ```
+   cp .env.example .env
+  ```
+  You can modify the `.env` within this folder to add your own environment variables for the frontend application.
+
+* Run the following command:
+  ```
    npm install
    npm run dev
-   ```
+  ```
+  This command will install the necessary dependencies and start the frontend application in development mode.
 
-## Step 6: Access the Application
+### Checking if the application is running
 
-1. Open your web browser and navigate to `http://localhost:3000`.
-2. Enter any username and password to sign up.
-3. You should see a page indicating that you're logged in.
+You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
-Congratulations! You've successfully set up Auto GPT locally.
+#### Notes: 
+By default the application for different services run on the following ports: 
 
-For questions or support, join the Discord server. To submit bugs, feature requests, or general feedback, use the provided button in the application.
+Frontend UI Server: 3000
+Backend Websocket Server: 8001
+Execution API Rest Server: 8006
