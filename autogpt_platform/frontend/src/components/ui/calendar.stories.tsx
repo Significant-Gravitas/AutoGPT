@@ -1,24 +1,24 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from "@storybook/react";
 
-import { Calendar } from './calendar';
+import { Calendar } from "./calendar";
 
 const meta = {
-  title: 'UI/Calendar',
+  title: "UI/Calendar",
   component: Calendar,
   parameters: {
-    layout: 'centered',
+    layout: "centered",
   },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
   argTypes: {
     mode: {
-      control: 'select',
-      options: ['single', 'multiple', 'range'],
+      control: "select",
+      options: ["single", "multiple", "range"],
     },
     selected: {
-      control: 'date',
+      control: "date",
     },
     showOutsideDays: {
-      control: 'boolean',
+      control: "boolean",
     },
   },
 } satisfies Meta<typeof Calendar>;
@@ -32,21 +32,24 @@ export const Default: Story = {
 
 export const SingleSelection: Story = {
   args: {
-    mode: 'single',
+    mode: "single",
     selected: new Date(),
   },
 };
 
 export const MultipleSelection: Story = {
   args: {
-    mode: 'multiple',
-    selected: [new Date(), new Date(new Date().setDate(new Date().getDate() + 5))],
+    mode: "multiple",
+    selected: [
+      new Date(),
+      new Date(new Date().setDate(new Date().getDate() + 5)),
+    ],
   },
 };
 
 export const RangeSelection: Story = {
   args: {
-    mode: 'range',
+    mode: "range",
     selected: {
       from: new Date(),
       to: new Date(new Date().setDate(new Date().getDate() + 7)),
@@ -62,6 +65,6 @@ export const HideOutsideDays: Story = {
 
 export const CustomClassName: Story = {
   args: {
-    className: 'border rounded-lg shadow-lg',
+    className: "border rounded-lg shadow-lg",
   },
 };

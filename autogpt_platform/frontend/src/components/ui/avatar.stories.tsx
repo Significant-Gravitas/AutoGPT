@@ -1,14 +1,14 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from "@storybook/react";
 
-import { Avatar, AvatarImage, AvatarFallback } from './avatar';
+import { Avatar, AvatarImage, AvatarFallback } from "./avatar";
 
 const meta = {
-  title: 'UI/Avatar',
+  title: "UI/Avatar",
   component: Avatar,
   parameters: {
-    layout: 'centered',
+    layout: "centered",
   },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
   argTypes: {
     // Add any specific controls for Avatar props here if needed
   },
@@ -51,7 +51,9 @@ export const CustomContent: Story = {
   args: {
     children: (
       <AvatarFallback>
-        <span role="img" aria-label="Rocket">🚀</span>
+        <span role="img" aria-label="Rocket">
+          🚀
+        </span>
       </AvatarFallback>
     ),
   },

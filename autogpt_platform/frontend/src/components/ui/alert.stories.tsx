@@ -1,18 +1,18 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from "@storybook/react";
 
-import { Alert, AlertTitle, AlertDescription } from './alert';
+import { Alert, AlertTitle, AlertDescription } from "./alert";
 
 const meta = {
-  title: 'UI/Alert',
+  title: "UI/Alert",
   component: Alert,
   parameters: {
-    layout: 'centered',
+    layout: "centered",
   },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
   argTypes: {
     variant: {
-      control: 'select',
-      options: ['default', 'destructive'],
+      control: "select",
+      options: ["default", "destructive"],
     },
   },
 } satisfies Meta<typeof Alert>;
@@ -25,7 +25,9 @@ export const Default: Story = {
     children: (
       <>
         <AlertTitle>Default Alert</AlertTitle>
-        <AlertDescription>This is a default alert description.</AlertDescription>
+        <AlertDescription>
+          This is a default alert description.
+        </AlertDescription>
       </>
     ),
   },
@@ -33,11 +35,13 @@ export const Default: Story = {
 
 export const Destructive: Story = {
   args: {
-    variant: 'destructive',
+    variant: "destructive",
     children: (
       <>
         <AlertTitle>Destructive Alert</AlertTitle>
-        <AlertDescription>This is a destructive alert description.</AlertDescription>
+        <AlertDescription>
+          This is a destructive alert description.
+        </AlertDescription>
       </>
     ),
   },
@@ -77,6 +81,10 @@ export const TitleOnly: Story = {
 
 export const DescriptionOnly: Story = {
   args: {
-    children: <AlertDescription>This is an alert with only a description.</AlertDescription>,
+    children: (
+      <AlertDescription>
+        This is an alert with only a description.
+      </AlertDescription>
+    ),
   },
 };

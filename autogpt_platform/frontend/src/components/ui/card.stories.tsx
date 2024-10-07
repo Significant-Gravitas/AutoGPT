@@ -1,14 +1,21 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from "@storybook/react";
 
-import { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from './card';
+import {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "./card";
 
 const meta = {
-  title: 'UI/Card',
+  title: "UI/Card",
   component: Card,
   parameters: {
-    layout: 'centered',
+    layout: "centered",
   },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
   argTypes: {
     // Add any specific controls for Card props here if needed
   },
@@ -75,12 +82,16 @@ export const CustomContent: Story = {
           <CardTitle>Custom Content</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center h-40 bg-gray-100 rounded-md">
-            <span role="img" aria-label="Rocket" style={{ fontSize: '3rem' }}>🚀</span>
+          <div className="flex h-40 items-center justify-center rounded-md bg-gray-100">
+            <span role="img" aria-label="Rocket" style={{ fontSize: "3rem" }}>
+              🚀
+            </span>
           </div>
         </CardContent>
         <CardFooter className="justify-between">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded">Action</button>
+          <button className="rounded bg-blue-500 px-4 py-2 text-white">
+            Action
+          </button>
           <p>Footer text</p>
         </CardFooter>
       </>
