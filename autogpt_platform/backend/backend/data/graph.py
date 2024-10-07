@@ -404,8 +404,7 @@ async def get_graphs_meta(
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    if user_id and filter_by != "template":
-        where_clause["userId"] = user_id
+    where_clause["userId"] = user_id
 
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
