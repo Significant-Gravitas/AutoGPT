@@ -585,7 +585,9 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "graph_templates"
 
 
 async def import_packaged_templates() -> None:
-    templates_in_db = await get_graphs_meta(filter_by="template")
+    templates_in_db = await get_graphs_meta(
+        user_id=DEFAULT_USER_ID, filter_by="template"
+    )
 
     logging.info("Loading templates...")
     for template_file in TEMPLATES_DIR.glob("*.json"):
