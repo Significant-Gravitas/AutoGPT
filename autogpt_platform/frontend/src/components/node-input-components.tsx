@@ -387,9 +387,7 @@ const NodeKeyValueInput: FC<{
   }
 
   return (
-    <div
-      className={cn(className, keyValuePairs.length > 0 ? "flex flex-col" : "")}
-    >
+    <div className={cn(className, keyValuePairs.length > 0 ? "flex" : "")}>
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
