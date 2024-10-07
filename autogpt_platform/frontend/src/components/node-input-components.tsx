@@ -391,7 +391,6 @@ const NodeKeyValueInput: FC<{
     return `${selfKey}_#_${key}`;
   }
   function isConnected(key: string): boolean {
-    console.log("--> connections", connections);
     return connections.some(
       (c) => c.targetHandle === getEntryKey(key) && c.target === nodeId,
     );
