@@ -104,6 +104,7 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
+  className = cn(className, "my-2");
   displayName ||= propSchema.title || beautifyString(propKey);
 
   if ("allOf" in propSchema) {
@@ -407,22 +408,20 @@ const NodeKeyValueInput: FC<{
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           <div key={index}>
-            {key && (
-              <NodeHandle
-                keyName={getEntryKey(key)}
-                schema={{ type: "string" }}
-                isConnected={isConnected(key)}
-                isRequired={false}
-                side="left"
-              />
-            )}
+            <NodeHandle
+              keyName={getEntryKey(key)}
+              schema={{ type: "string" }}
+              isConnected={isConnected(key)}
+              isRequired={false}
+              side="left"
+            />
             {!isConnected(key) && (
               <div className="nodrag mb-2 flex items-center space-x-2">
                 <Input
                   type="text"
                   placeholder="Key"
-                  value={key}
-                  onChange={(e) =>
+                  ref={InputRef(key ?? "")}
+                  onBlur={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: e.target.value,
@@ -464,6 +463,10 @@ const NodeKeyValueInput: FC<{
         ))}
         <Button
           className="rounded-xl bg-gray-200 font-normal text-black hover:text-white"
+          disabled={
+            keyValuePairs.length > 0 &&
+            !keyValuePairs[keyValuePairs.length - 1].key
+          }
           onClick={() =>
             updateKeyValuePairs(keyValuePairs.concat({ key: "", value: "" }))
           }
