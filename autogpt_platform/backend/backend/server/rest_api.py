@@ -63,7 +63,7 @@ class AgentServer(AppService):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
-            docs_url=docs_url
+            docs_url=docs_url,
         )
 
         if self._test_dependency_overrides:
