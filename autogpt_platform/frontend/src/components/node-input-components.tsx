@@ -401,7 +401,7 @@ const NodeKeyValueInput: FC<{
       {displayName && <strong>{displayName}</strong>}
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          <div key={index}>
+          <div key={getEntryKey(key)}>
             {key && (
               <NodeHandle
                 keyName={getEntryKey(key)}
