@@ -17,11 +17,10 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
-from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
+from backend.data.queue import RedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
-from backend.util.lock import KeyedMutex
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config, Settings
 
@@ -32,24 +31,23 @@ logger = logging.getLogger(__name__)
 
 
 class AgentServer(AppService):
-    mutex = KeyedMutex()
-    use_redis = True
+    use_queue = True
     _test_dependency_overrides = {}
     _user_credit_model = get_user_credit_model()
 
-    def __init__(self, event_queue: AsyncEventQueue | None = None):
+    def __init__(self):
         super().__init__(port=Config().agent_server_port)
-        self.event_queue = event_queue or AsyncRedisEventQueue()
+        self.event_queue = RedisEventQueue()
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        self.run_and_wait(self.event_queue.connect())
+        self.event_queue.connect()
         await block.initialize_blocks()
         if await user_db.create_default_user(settings.config.enable_auth):
             await graph_db.import_packaged_templates()
         yield
-        await self.event_queue.close()
+        self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
@@ -346,8 +344,10 @@ class AgentServer(AppService):
         )
 
     @classmethod
-    async def get_templates(cls) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(filter_by="template")
+    async def get_templates(
+        cls, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
 
     @classmethod
     async def get_graph(
@@ -616,15 +616,7 @@ class AgentServer(AppService):
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
         execution_result = execution_db.ExecutionResult(**execution_result_dict)
-        self.run_and_wait(self.event_queue.put(execution_result))
-
-    @expose
-    def acquire_lock(self, key: Any):
-        self.mutex.lock(key)
-
-    @expose
-    def release_lock(self, key: Any):
-        self.mutex.unlock(key)
+        self.event_queue.put(execution_result)
 
     @classmethod
     def update_configuration(
