@@ -382,9 +382,9 @@ async def get_node(node_id: str) -> Node:
 
 
 async def get_graphs_meta(
+    user_id: str,
     include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
-    user_id: str | None = None,
 ) -> list[GraphMeta]:
     """
     Retrieves graph metadata objects.
@@ -393,6 +393,7 @@ async def get_graphs_meta(
     Args:
         include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
+        user_id: The ID of the user that owns the graph.
 
     Returns:
         list[GraphMeta]: A list of objects representing the retrieved graph metadata.
@@ -404,8 +405,7 @@ async def get_graphs_meta(
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    if user_id and filter_by != "template":
-        where_clause["userId"] = user_id
+    where_clause["userId"] = user_id
 
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
@@ -585,7 +585,9 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "graph_templates"
 
 
 async def import_packaged_templates() -> None:
-    templates_in_db = await get_graphs_meta(filter_by="template")
+    templates_in_db = await get_graphs_meta(
+        user_id=DEFAULT_USER_ID, filter_by="template"
+    )
 
     logging.info("Loading templates...")
     for template_file in TEMPLATES_DIR.glob("*.json"):
