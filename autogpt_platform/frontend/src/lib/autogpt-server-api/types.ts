@@ -94,11 +94,13 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
 
 export type CredentialsType = "api_key" | "oauth2";
 
+// --8<-- [start:BlockIOCredentialsSubSchema]
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
   credentials_provider: "github" | "google" | "notion";
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
 };
+// --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
