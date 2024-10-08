@@ -53,7 +53,7 @@ model AgentGraph {
   // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
   AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
   agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version])
+  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -63,7 +63,7 @@ model AgentNode {
   id String @id @default(uuid())
 
   agentBlockId String
-  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
+  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id], onUpdate: Cascade)
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)

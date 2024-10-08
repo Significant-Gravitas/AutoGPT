@@ -189,10 +189,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     # OAuth server credentials for integrations
+    # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
     github_client_secret: str = Field(
         default="", description="GitHub OAuth client secret"
     )
+    # --8<-- [end:OAuthServerCredentialsExample]
     google_client_id: str = Field(default="", description="Google OAuth client ID")
     google_client_secret: str = Field(
         default="", description="Google OAuth client secret"
