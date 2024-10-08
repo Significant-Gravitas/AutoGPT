@@ -330,7 +330,7 @@ class Graph(GraphMeta):
         return input_schema
 
     @staticmethod
-    def from_db(graph: AgentGraph):
+    def from_db(graph: AgentGraph, hide_credentials: bool = False):
         nodes = [
             *(graph.AgentNodes or []),
             *(
@@ -341,7 +341,7 @@ class Graph(GraphMeta):
         ]
         return Graph(
             **GraphMeta.from_db(graph).model_dump(),
-            nodes=[Node.from_db(node) for node in nodes],
+            nodes=[Graph._process_node(node, hide_credentials) for node in nodes],
             links=list(
                 {
                     Link.from_db(link)
@@ -354,6 +354,26 @@ class Graph(GraphMeta):
                 for subgraph in graph.AgentSubGraphs or []
             },
         )
+
+    @staticmethod
+    def _process_node(node: AgentNode, hide_credentials: bool) -> Node:
+        node_dict = node.model_dump()
+        if hide_credentials and "constantInput" in node_dict:
+            constant_input = json.loads(node_dict["constantInput"])
+            Graph._hide_credentials_in_input(constant_input)
+            node_dict["constantInput"] = json.dumps(constant_input)
+        return Node.from_db(AgentNode(**node_dict))
+
+    @staticmethod
+    def _hide_credentials_in_input(input_data: dict[str, Any]):
+        sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
+        for key, value in input_data.items():
+            if isinstance(value, dict):
+                Graph._hide_credentials_in_input(value)
+            elif isinstance(value, str) and any(
+                sensitive_key in key.lower() for sensitive_key in sensitive_keys
+            ):
+                del input_data[key]
 
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
@@ -382,9 +402,9 @@ async def get_node(node_id: str) -> Node:
 
 
 async def get_graphs_meta(
+    user_id: str,
     include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
-    user_id: str | None = None,
 ) -> list[GraphMeta]:
     """
     Retrieves graph metadata objects.
@@ -393,6 +413,7 @@ async def get_graphs_meta(
     Args:
         include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
+        user_id: The ID of the user that owns the graph.
 
     Returns:
         list[GraphMeta]: A list of objects representing the retrieved graph metadata.
@@ -404,8 +425,7 @@ async def get_graphs_meta(
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    if user_id and filter_by != "template":
-        where_clause["userId"] = user_id
+    where_clause["userId"] = user_id
 
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
@@ -431,6 +451,7 @@ async def get_graph(
     version: int | None = None,
     template: bool = False,
     user_id: str | None = None,
+    hide_credentials: bool = False,
 ) -> Graph | None:
     """
     Retrieves a graph from the DB.
@@ -456,7 +477,7 @@ async def get_graph(
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-    return Graph.from_db(graph) if graph else None
+    return Graph.from_db(graph, hide_credentials) if graph else None
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
@@ -498,6 +519,15 @@ async def get_graph_all_versions(graph_id: str, user_id: str) -> list[Graph]:
         return []
 
     return [Graph.from_db(graph) for graph in graph_versions]
+
+
+async def delete_graph(graph_id: str, user_id: str) -> int:
+    entries_count = await AgentGraph.prisma().delete_many(
+        where={"id": graph_id, "userId": user_id}
+    )
+    if entries_count:
+        logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
+    return entries_count
 
 
 async def create_graph(graph: Graph, user_id: str) -> Graph:
@@ -585,7 +615,9 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "graph_templates"
 
 
 async def import_packaged_templates() -> None:
-    templates_in_db = await get_graphs_meta(filter_by="template")
+    templates_in_db = await get_graphs_meta(
+        user_id=DEFAULT_USER_ID, filter_by="template"
+    )
 
     logging.info("Loading templates...")
     for template_file in TEMPLATES_DIR.glob("*.json"):
