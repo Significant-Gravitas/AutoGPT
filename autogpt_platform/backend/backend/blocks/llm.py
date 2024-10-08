@@ -53,13 +53,30 @@ class LlmModel(str, Enum):
     LLAMA3_1_405B = "llama-3.1-405b-reasoning"
     LLAMA3_1_70B = "llama-3.1-70b-versatile"
     LLAMA3_1_8B = "llama-3.1-8b-instant"
+
+    @classmethod
+    def _missing_(cls, value):
+        if settings.config.app_env == AppEnvironment.LOCAL:
+            if value == "llama3":
+                return cls.OLLAMA_LLAMA3_8B
+            elif value == "llama3.1:405b":
+                return cls.OLLAMA_LLAMA3_405B
+        return None
+
+    @property
+    def metadata(self) -> "ModelMetadata":
+        return MODEL_METADATA[self]
+
+    @classmethod
+    def all_models(cls) -> List["LlmModel"]:
+        models = list(cls)
+        if settings.config.app_env == AppEnvironment.LOCAL:
+            models.extend([cls.OLLAMA_LLAMA3_8B, cls.OLLAMA_LLAMA3_405B])
+        return models
+
     # Ollama models
     OLLAMA_LLAMA3_8B = "llama3"
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
-
-    @property
-    def metadata(self) -> ModelMetadata:
-        return MODEL_METADATA[self]
 
 
 MODEL_METADATA = {
@@ -90,7 +107,7 @@ if settings.config.app_env == AppEnvironment.LOCAL:
         }
     )
 
-for model in LlmModel:
+for model in LlmModel.all_models():
     if model not in MODEL_METADATA:
         raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
