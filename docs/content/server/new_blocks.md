@@ -246,6 +246,10 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 - GitHub blocks with API key + OAuth2 support: [`blocks/github`](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/blocks/github/)
 - GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
 
+### Build a Block Using an AI Agent in AutoGPT
+
+<center><iframe width="560" height="315" src="https://www.youtube.com/embed/eq4QUPjUwD0?si=z31-_-UU_gdu6Nw7" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></center>
+
 ## Key Points to Remember
 
 - **Unique ID**: Give your block a unique ID in the **init** method.
