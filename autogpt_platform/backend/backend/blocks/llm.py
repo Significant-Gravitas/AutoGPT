@@ -1,6 +1,6 @@
 import ast
 import logging
-from enum import Enum
+from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from typing import Any, List, NamedTuple
 
@@ -29,7 +29,26 @@ class ModelMetadata(NamedTuple):
     cost_factor: int
 
 
-class LlmModel(str, Enum):
+class LlmModelMeta(EnumMeta):
+    @property
+    def __members__(cls):
+        return {
+            name: member
+            for name, member in super().__members__.items()
+            if name != "O1_PREVIEW"
+            and name != "O1_MINI"
+            and name != "GPT4O_MINI"
+            and name != "GPT4O"
+            and name != "GPT4_TURBO"
+            and name != "GPT3_5_TURBO"
+            and name != "CLAUDE_3_5_SONNET"
+            and name != "CLAUDE_3_HAIKU"
+            and name != "LLAMA3_8B"
+            and name != "LLAMA3_70B"
+        }
+
+
+class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenAI models
     O1_PREVIEW = "o1-preview"
     O1_MINI = "o1-mini"
@@ -57,6 +76,18 @@ class LlmModel(str, Enum):
     @property
     def metadata(self) -> ModelMetadata:
         return MODEL_METADATA[self]
+
+    @property
+    def provider(self) -> str:
+        return self.metadata.provider
+
+    @property
+    def context_window(self) -> int:
+        return self.metadata.context_window
+
+    @property
+    def cost_factor(self) -> int:
+        return self.metadata.cost_factor
 
 
 MODEL_METADATA = {
