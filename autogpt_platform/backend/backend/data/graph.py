@@ -373,7 +373,7 @@ class Graph(GraphMeta):
             elif isinstance(value, str) and any(
                 sensitive_key in key.lower() for sensitive_key in sensitive_keys
             ):
-                input_data[key] = "*******"
+                del input_data[key]
 
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
