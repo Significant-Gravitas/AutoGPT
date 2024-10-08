@@ -14,7 +14,8 @@
     "test-ui": "playwright test --ui",
     "gentests": "playwright codegen http://localhost:3000",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test-storybook": "test-storybook"
   },
   "browserslist": [
     "defaults"
@@ -77,6 +78,7 @@
     "@storybook/nextjs": "^8.3.5",
     "@storybook/react": "^8.3.5",
     "@storybook/test": "^8.3.5",
+    "@storybook/test-runner": "^0.19.1",
     "@types/node": "^22.7.3",
     "@types/react": "^18",
     "@types/react-dom": "^18",
