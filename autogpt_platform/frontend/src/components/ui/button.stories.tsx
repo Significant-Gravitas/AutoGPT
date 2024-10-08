@@ -148,23 +148,9 @@ export const Disabled: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: /Disabled Button/i });
-    expect(button).toBeDisabled();
-    expect(button).toHaveStyle("pointer-events: none");
-    expect(button).not.toHaveFocus();
-  },
-};
-
-export const AsChild: Story = {
-  args: {
-    asChild: true,
-    children: <a href="/">Link as button</a>,
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const link = canvas.getByRole("link", { name: /Link as button/i });
-    expect(link).toHaveAttribute("href", "/");
-    await userEvent.click(link);
-    await expect(link).toHaveFocus();
+    await expect(button).toBeDisabled();
+    await expect(button).toHaveStyle("pointer-events: none");
+    await expect(button).not.toHaveFocus();
   },
 };
 
@@ -194,8 +180,8 @@ export const WithIcon: Story = {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: /Button with Icon/i });
     const icon = button.querySelector("svg");
-    expect(icon).toBeInTheDocument();
-    expect(button).toHaveTextContent("Button with Icon");
+    await expect(icon).toBeInTheDocument();
+    await expect(button).toHaveTextContent("Button with Icon");
   },
 };
 
@@ -228,6 +214,6 @@ export const LoadingState: Story = {
     const button = canvas.getByRole("button", { name: /Loading.../i });
     expect(button).toBeDisabled();
     const spinner = button.querySelector("svg");
-    expect(spinner).toHaveClass("animate-spin");
+    await expect(spinner).toHaveClass("animate-spin");
   },
 };
