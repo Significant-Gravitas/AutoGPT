@@ -51,6 +51,7 @@ class AgentServer(AppService):
         await db.disconnect()
 
     def run_service(self):
+        docs_url = "/docs" if settings.config.app_env == "local" else None
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -60,6 +61,7 @@ class AgentServer(AppService):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
+            docs_url=docs_url,
         )
 
         if self._test_dependency_overrides:
@@ -344,8 +346,10 @@ class AgentServer(AppService):
         )
 
     @classmethod
-    async def get_templates(cls) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(filter_by="template")
+    async def get_templates(
+        cls, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
 
     @classmethod
     async def get_graph(

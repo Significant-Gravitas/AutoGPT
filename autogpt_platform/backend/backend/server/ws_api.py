@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
     event_queue.close()
 
 
+docs_url = "/docs" if settings.config.app_env == "local" else None
 app = FastAPI(lifespan=lifespan)
 event_queue = RedisEventQueue()
 _connection_manager = None
