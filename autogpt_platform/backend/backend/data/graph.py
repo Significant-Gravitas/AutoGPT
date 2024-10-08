@@ -360,20 +360,25 @@ class Graph(GraphMeta):
         node_dict = node.model_dump()
         if hide_credentials and "constantInput" in node_dict:
             constant_input = json.loads(node_dict["constantInput"])
-            Graph._hide_credentials_in_input(constant_input)
+            constant_input = Graph._hide_credentials_in_input(constant_input)
             node_dict["constantInput"] = json.dumps(constant_input)
         return Node.from_db(AgentNode(**node_dict))
 
     @staticmethod
-    def _hide_credentials_in_input(input_data: dict[str, Any]):
+    def _hide_credentials_in_input(input_data: dict[str, Any]) -> dict[str, Any]:
         sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
+        result = {}
         for key, value in input_data.items():
             if isinstance(value, dict):
-                Graph._hide_credentials_in_input(value)
+                result[key] = Graph._hide_credentials_in_input(value)
             elif isinstance(value, str) and any(
                 sensitive_key in key.lower() for sensitive_key in sensitive_keys
             ):
-                del input_data[key]
+                # Skip this key-value pair in the result
+                continue
+            else:
+                result[key] = value
+        return result
 
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
