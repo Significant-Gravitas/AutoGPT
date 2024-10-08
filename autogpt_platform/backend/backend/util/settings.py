@@ -1,5 +1,6 @@
 import json
 import os
+from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -13,6 +14,12 @@ from pydantic_settings import (
 from backend.util.data import get_config_path, get_data_path, get_secrets_path
 
 T = TypeVar("T", bound=BaseSettings)
+
+
+class AppEnvironment(str, Enum):
+    LOCAL = "local"
+    DEVELOPMENT = "dev"
+    PRODUCTION = "prod"
 
 
 class UpdateTrackingModel(BaseModel, Generic[T]):
@@ -119,6 +126,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    app_env: AppEnvironment = Field(
+        default=AppEnvironment.LOCAL,
+        description="The name of the app environment.",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
