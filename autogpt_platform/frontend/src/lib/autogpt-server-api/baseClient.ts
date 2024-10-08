@@ -75,12 +75,14 @@ export default class BaseAutoGPTServerAPI {
     version?: number,
     hide_secrets?: boolean,
   ): Promise<Graph> {
-    let query = version !== undefined ? `?version=${version}` : "";
-    if (hide_secrets !== undefined) {
-      query += query ? "&" : "?";
-      query += `hide_secrets=${hide_secrets}`;
+    let query: Record<string, any> = {};
+    if (version !== undefined) {
+      query["version"] = version;
     }
-    return this._get(`/graphs/${id}` + query);
+    if (hide_secrets !== undefined) {
+      query["hide_secrets"] = hide_secrets;
+    }
+    return this._get(`/graphs/${id}`, query);
   }
 
   getTemplate(id: string, version?: number): Promise<Graph> {
