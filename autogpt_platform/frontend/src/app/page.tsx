@@ -90,6 +90,11 @@ const Monitor = () => {
             flow={selectedFlow}
             flowRuns={flowRuns.filter((r) => r.graphID == selectedFlow.id)}
             className={column3}
+            refresh={() => {
+              fetchAgents();
+              setSelectedFlow(null);
+              setSelectedRun(null);
+            }}
           />
         )) || (
           <Card className={`p-6 ${column3}`}>
