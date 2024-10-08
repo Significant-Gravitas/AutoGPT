@@ -366,7 +366,7 @@ class Graph(GraphMeta):
 
     @staticmethod
     def _hide_secrets_in_input(input_data: Dict[str, Any]):
-        sensitive_keys = ["api_key", "password", "token", "secret"]
+        sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
         for key, value in input_data.items():
             if isinstance(value, dict):
                 Graph._hide_secrets_in_input(value)
