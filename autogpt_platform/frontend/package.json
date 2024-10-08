@@ -15,7 +15,8 @@
     "gentests": "playwright codegen http://localhost:3000",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "test-storybook": "test-storybook"
+    "test-storybook": "test-storybook",
+    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"yarn build-storybook --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && yarn test-storybook\""
   },
   "browserslist": [
     "defaults"
