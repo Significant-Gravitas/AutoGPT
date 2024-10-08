@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "./button";
-import { userEvent, within, expect } from '@storybook/test';
+import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
   title: "UI/Button",
@@ -56,7 +56,7 @@ export const Interactive: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const button = canvas.getByRole('button', { name: /Interactive Button/i });
+    const button = canvas.getByRole("button", { name: /Interactive Button/i });
     await userEvent.click(button);
     await expect(button).toHaveFocus();
   },
@@ -64,44 +64,78 @@ export const Interactive: Story = {
 
 export const Variants: Story = {
   render: (args) => (
-    <div className="flex gap-2 flex-wrap">
-      <Button {...args} variant="default">Default</Button>
-      <Button {...args} variant="destructive">Destructive</Button>
-      <Button {...args} variant="outline">Outline</Button>
-      <Button {...args} variant="secondary">Secondary</Button>
-      <Button {...args} variant="ghost">Ghost</Button>
-      <Button {...args} variant="link">Link</Button>
+    <div className="flex flex-wrap gap-2">
+      <Button {...args} variant="default">
+        Default
+      </Button>
+      <Button {...args} variant="destructive">
+        Destructive
+      </Button>
+      <Button {...args} variant="outline">
+        Outline
+      </Button>
+      <Button {...args} variant="secondary">
+        Secondary
+      </Button>
+      <Button {...args} variant="ghost">
+        Ghost
+      </Button>
+      <Button {...args} variant="link">
+        Link
+      </Button>
     </div>
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const buttons = canvas.getAllByRole('button');
+    const buttons = canvas.getAllByRole("button");
     expect(buttons).toHaveLength(6);
     for (const button of buttons) {
       await userEvent.hover(button);
-      await expect(button).toHaveAttribute('class', expect.stringContaining('hover:'));
+      await expect(button).toHaveAttribute(
+        "class",
+        expect.stringContaining("hover:"),
+      );
     }
   },
 };
 
 export const Sizes: Story = {
   render: (args) => (
-    <div className="flex gap-2 items-center flex-wrap">
-      <Button {...args} size="sm">Small</Button>
-      <Button {...args} size="default">Default</Button>
-      <Button {...args} size="lg">Large</Button>
-      <Button {...args} size="primary">Primary</Button>
-      <Button {...args} size="icon">🚀</Button>
+    <div className="flex flex-wrap items-center gap-2">
+      <Button {...args} size="sm">
+        Small
+      </Button>
+      <Button {...args} size="default">
+        Default
+      </Button>
+      <Button {...args} size="lg">
+        Large
+      </Button>
+      <Button {...args} size="primary">
+        Primary
+      </Button>
+      <Button {...args} size="icon">
+        🚀
+      </Button>
     </div>
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const buttons = canvas.getAllByRole('button');
+    const buttons = canvas.getAllByRole("button");
     expect(buttons).toHaveLength(5);
-    const sizes = ['sm', 'default', 'lg', 'primary', 'icon'];
-    const sizeClasses = ['h-8 rounded-md px-3 text-xs', 'h-9 px-4 py-2', 'h-10 rounded-md px-8', 'md:h-14 md:w-44 rounded-2xl h-10 w-28', 'h-9 w-9'];
+    const sizes = ["sm", "default", "lg", "primary", "icon"];
+    const sizeClasses = [
+      "h-8 rounded-md px-3 text-xs",
+      "h-9 px-4 py-2",
+      "h-10 rounded-md px-8",
+      "md:h-14 md:w-44 rounded-2xl h-10 w-28",
+      "h-9 w-9",
+    ];
     buttons.forEach((button, index) => {
-      expect(button).toHaveAttribute('class', expect.stringContaining(sizeClasses[index]));
+      expect(button).toHaveAttribute(
+        "class",
+        expect.stringContaining(sizeClasses[index]),
+      );
     });
   },
 };
@@ -113,9 +147,9 @@ export const Disabled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const button = canvas.getByRole('button', { name: /Disabled Button/i });
+    const button = canvas.getByRole("button", { name: /Disabled Button/i });
     expect(button).toBeDisabled();
-    expect(button).toHaveStyle('pointer-events: none');
+    expect(button).toHaveStyle("pointer-events: none");
     expect(button).not.toHaveFocus();
   },
 };
@@ -127,8 +161,8 @@ export const AsChild: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const link = canvas.getByRole('link', { name: /Link as button/i });
-    expect(link).toHaveAttribute('href', '/');
+    const link = canvas.getByRole("link", { name: /Link as button/i });
+    expect(link).toHaveAttribute("href", "/");
     await userEvent.click(link);
     await expect(link).toHaveFocus();
   },
@@ -158,10 +192,10 @@ export const WithIcon: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const button = canvas.getByRole('button', { name: /Button with Icon/i });
-    const icon = button.querySelector('svg');
+    const button = canvas.getByRole("button", { name: /Button with Icon/i });
+    const icon = button.querySelector("svg");
     expect(icon).toBeInTheDocument();
-    expect(button).toHaveTextContent('Button with Icon');
+    expect(button).toHaveTextContent("Button with Icon");
   },
 };
 
@@ -191,9 +225,9 @@ export const LoadingState: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const button = canvas.getByRole('button', { name: /Loading.../i });
+    const button = canvas.getByRole("button", { name: /Loading.../i });
     expect(button).toBeDisabled();
-    const spinner = button.querySelector('svg');
-    expect(spinner).toHaveClass('animate-spin');
+    const spinner = button.querySelector("svg");
+    expect(spinner).toHaveClass("animate-spin");
   },
 };
