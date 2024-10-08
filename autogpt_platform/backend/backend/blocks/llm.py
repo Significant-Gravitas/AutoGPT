@@ -12,6 +12,9 @@ from groq import Groq
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 from backend.util import json
+from backend.util.settings import AppEnvironment, Settings
+
+settings = Settings()
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +80,15 @@ MODEL_METADATA = {
     # Limited to 16k during preview
     LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=15),
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=13),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
 }
+
+if settings.config.app_env == AppEnvironment.LOCAL:
+    MODEL_METADATA.update(
+        {
+            LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
+            LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
+        }
+    )
 
 for model in LlmModel:
     if model not in MODEL_METADATA:
