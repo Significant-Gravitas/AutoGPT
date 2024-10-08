@@ -3,7 +3,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Literal
 
 import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
@@ -365,7 +365,7 @@ class Graph(GraphMeta):
         return Node.from_db(AgentNode(**node_dict))
 
     @staticmethod
-    def _hide_credentials_in_input(input_data: Dict[str, Any]):
+    def _hide_credentials_in_input(input_data: dict[str, Any]):
         sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
         for key, value in input_data.items():
             if isinstance(value, dict):
