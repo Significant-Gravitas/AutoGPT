@@ -51,6 +51,7 @@ class AgentServer(AppService):
         await db.disconnect()
 
     def run_service(self):
+        docs_url = "/docs" if settings.config.app_env == "local" else None
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -60,6 +61,7 @@ class AgentServer(AppService):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
+            docs_url=docs_url,
         )
 
         if self._test_dependency_overrides:
