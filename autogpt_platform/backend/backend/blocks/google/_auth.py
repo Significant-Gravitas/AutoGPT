@@ -6,11 +6,12 @@ from pydantic import SecretStr
 from backend.data.model import CredentialsField, CredentialsMetaInput
 from backend.util.settings import Secrets
 
+# --8<-- [start:GoogleOAuthIsConfigured]
 secrets = Secrets()
 GOOGLE_OAUTH_IS_CONFIGURED = bool(
     secrets.google_client_id and secrets.google_client_secret
 )
-
+# --8<-- [end:GoogleOAuthIsConfigured]
 GoogleCredentials = OAuth2Credentials
 GoogleCredentialsInput = CredentialsMetaInput[Literal["google"], Literal["oauth2"]]
 
