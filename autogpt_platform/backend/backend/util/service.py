@@ -10,7 +10,7 @@ import Pyro5.api
 from Pyro5 import api as pyro
 
 from backend.data import db
-from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
+from backend.data.queue import AbstractEventQueue, RedisEventQueue
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
@@ -45,19 +45,14 @@ def expose(func: C) -> C:
 
 class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
-    event_queue: AsyncEventQueue = AsyncRedisEventQueue()
+    event_queue: AbstractEventQueue = RedisEventQueue()
     use_db: bool = False
-    use_redis: bool = False
+    use_queue: bool = False
     use_supabase: bool = False
 
     def __init__(self, port):
         self.port = port
         self.uri = None
-
-    @classmethod
-    @property
-    def service_name(cls) -> str:
-        return cls.__name__
 
     @abstractmethod
     def run_service(self):
@@ -75,8 +70,8 @@ class AppService(AppProcess):
         self.shared_event_loop = asyncio.get_event_loop()
         if self.use_db:
             self.shared_event_loop.run_until_complete(db.connect())
-        if self.use_redis:
-            self.shared_event_loop.run_until_complete(self.event_queue.connect())
+        if self.use_queue:
+            self.event_queue.connect()
         if self.use_supabase:
             from supabase import create_client
 
@@ -102,11 +97,11 @@ class AppService(AppProcess):
         if self.use_db:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting DB...")
             self.run_and_wait(db.disconnect())
-        if self.use_redis:
+        if self.use_queue:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
-            self.run_and_wait(self.event_queue.close())
+            self.event_queue.close()
 
-    @conn_retry
+    @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
         host = Config().pyro_host
         daemon = Pyro5.api.Daemon(host=host, port=self.port)
@@ -125,7 +120,7 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
-        @conn_retry
+        @conn_retry("Pyro", f"Connecting to [{service_name}]")
         def __init__(self):
             host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
             uri = f"PYRO:{service_type.service_name}@{host}:{port}"
