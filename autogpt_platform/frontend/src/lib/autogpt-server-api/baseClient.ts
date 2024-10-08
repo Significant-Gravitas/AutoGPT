@@ -124,6 +124,10 @@ export default class BaseAutoGPTServerAPI {
     return this._request("PUT", `/templates/${id}`, template);
   }
 
+  deleteGraph(id: string): Promise<void> {
+    return this._request("DELETE", `/graphs/${id}`);
+  }
+
   setGraphActiveVersion(id: string, version: number): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}/versions/active`, {
       active_graph_version: version,

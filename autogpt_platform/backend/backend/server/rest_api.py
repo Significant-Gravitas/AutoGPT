@@ -10,6 +10,7 @@ from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from backend.data import block, db
 from backend.data import execution as execution_db
@@ -51,6 +52,7 @@ class AgentServer(AppService):
         await db.disconnect()
 
     def run_service(self):
+        docs_url = "/docs" if settings.config.app_env == "local" else None
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -60,6 +62,7 @@ class AgentServer(AppService):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
+            docs_url=docs_url,
         )
 
         if self._test_dependency_overrides:
@@ -165,6 +168,12 @@ class AgentServer(AppService):
             endpoint=self.update_graph,
             methods=["PUT"],
             tags=["templates", "graphs"],
+        )
+        api_router.add_api_route(
+            path="/graphs/{graph_id}",
+            endpoint=self.delete_graph,
+            methods=["DELETE"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions",
@@ -392,6 +401,17 @@ class AgentServer(AppService):
         cls, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
     ) -> graph_db.Graph:
         return await cls.create_graph(create_graph, is_template=True, user_id=user_id)
+
+    class DeleteGraphResponse(TypedDict):
+        version_counts: int
+
+    @classmethod
+    async def delete_graph(
+        cls, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> DeleteGraphResponse:
+        return {
+            "version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)
+        }
 
     @classmethod
     async def create_graph(
