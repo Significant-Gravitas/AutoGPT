@@ -357,10 +357,10 @@ class AgentServer(AppService):
         graph_id: str,
         user_id: Annotated[str, Depends(get_user_id)],
         version: int | None = None,
-        hide_secrets: bool = False,
+        hide_credentials: bool = False,
     ) -> graph_db.Graph:
         graph = await graph_db.get_graph(
-            graph_id, version, user_id=user_id, hide_secrets=hide_secrets
+            graph_id, version, user_id=user_id, hide_credentials=hide_credentials
         )
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")

@@ -73,14 +73,14 @@ export default class BaseAutoGPTServerAPI {
   getGraph(
     id: string,
     version?: number,
-    hide_secrets?: boolean,
+    hide_credentials?: boolean,
   ): Promise<Graph> {
     let query: Record<string, any> = {};
     if (version !== undefined) {
       query["version"] = version;
     }
-    if (hide_secrets !== undefined) {
-      query["hide_secrets"] = hide_secrets;
+    if (hide_credentials !== undefined) {
+      query["hide_credentials"] = hide_credentials;
     }
     return this._get(`/graphs/${id}`, query);
   }
