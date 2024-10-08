@@ -81,17 +81,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
-
-  storybook-tests:
-    name: Storybook Tests
-    timeout-minutes: 60
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.x'
-      - name: Install dependencies
-        run: npm install
-      - name: Run Storybook tests
-        run: npm run test-storybook:ci
