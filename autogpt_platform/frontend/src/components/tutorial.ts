@@ -3,6 +3,7 @@ import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 
 export const startTutorial = (
+  emptyNodeList: (forceEmpty: boolean) => boolean,
   setPinBlocksPopover: (value: boolean) => void,
   setPinSavePopover: (value: boolean) => void,
 ) => {
@@ -138,10 +139,14 @@ export const startTutorial = (
 
   injectStyles();
 
+  const warningText = emptyNodeList(false)
+    ? ""
+    : "<br/><br/><b>Caution: Clicking next will start a tutorial and will clear the current flow.</b>";
+
   tour.addStep({
     id: "starting-step",
     title: "Welcome to the Tutorial",
-    text: "This is the AutoGPT builder!",
+    text: `This is the AutoGPT builder! ${warningText}`,
     buttons: [
       {
         text: "Skip Tutorial",
@@ -153,7 +158,10 @@ export const startTutorial = (
       },
       {
         text: "Next",
-        action: tour.next,
+        action: () => {
+          emptyNodeList(true);
+          tour.next();
+        },
       },
     ],
   });
