@@ -70,8 +70,16 @@ export default class BaseAutoGPTServerAPI {
     return this._get("/templates");
   }
 
-  getGraph(id: string, version?: number): Promise<Graph> {
-    const query = version !== undefined ? `?version=${version}` : "";
+  getGraph(
+    id: string,
+    version?: number,
+    hide_secrets?: boolean,
+  ): Promise<Graph> {
+    let query = version !== undefined ? `?version=${version}` : "";
+    if (hide_secrets !== undefined) {
+      query += query ? "&" : "?";
+      query += `hide_secrets=${hide_secrets}`;
+    }
     return this._get(`/graphs/${id}` + query);
   }
 
