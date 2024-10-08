@@ -44,6 +44,7 @@ import RunnerUIWrapper, {
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
+import { forceLoad } from "@sentry/nextjs";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -108,12 +109,21 @@ const FlowEditor: React.FC<{
 
   const TUTORIAL_STORAGE_KEY = "shepherd-tour";
 
+  const emptyNodes = (forceRemove: boolean = false) => {
+    if (forceRemove) {
+      setNodes([]);
+      setEdges([]);
+      return true;
+    }
+    return nodes.length === 0;
+  };
+
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
       localStorage.removeItem(TUTORIAL_STORAGE_KEY);
       router.push(pathname);
     } else if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
-      startTutorial(setPinBlocksPopover, setPinSavePopover);
+      startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
       localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
     }
   }, [availableNodes, router, pathname, params]);

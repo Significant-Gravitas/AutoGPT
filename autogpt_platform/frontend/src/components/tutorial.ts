@@ -266,7 +266,7 @@ export const startTutorial = (
     id: "select-operation",
     title: "Select Operation",
     text: 'Select a mathematical operation to perform. Let’s choose "Add" for now.',
-    attachTo: { element: ".mt-1.mb-2", on: "right" },
+    attachTo: { element: '[data-id="input-handles"]', on: "right" },
     buttons: [
       {
         text: "Back",
@@ -287,7 +287,7 @@ export const startTutorial = (
     id: "enter-number-1",
     title: "Enter a Number",
     text: "Enter a number here to try the Calculator Block!",
-    attachTo: { element: "#a", on: "right" },
+    attachTo: { element: "[data-id='input-handle-a']", on: "right" },
     buttons: [
       {
         text: "Back",
@@ -304,7 +304,7 @@ export const startTutorial = (
     id: "enter-number-2",
     title: "Enter Another Number",
     text: "Enter another number here!",
-    attachTo: { element: "#b", on: "right" },
+    attachTo: { element: "[data-id='input-handle-b']", on: "right" },
     buttons: [
       {
         text: "Back",

@@ -171,7 +171,7 @@ export function CustomNode({
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey}>
+              <div key={propKey} data-id={`input-handle-${propKey}`}>
                 <span className="text-m green mb-0 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
@@ -220,7 +220,7 @@ export function CustomNode({
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey}>
+              <div key={propKey} data-id={`output-handle-${propKey}`}>
                 {propKey !== "value" ? (
                   <span className="text-m green mb-0 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
@@ -258,7 +258,7 @@ export function CustomNode({
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey}>
+              <div key={propKey} data-id={`input-handle-${propKey}`}>
                 {"credentials_provider" in propSchema ? (
                   <span className="text-m green mb-0 text-gray-900">
                     Credentials
@@ -662,7 +662,10 @@ export function CustomNode({
       <div className="ml-5 mt-6 rounded-b-xl">
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
-          <div className="flex items-start justify-between">
+          <div
+            className="flex items-start justify-between"
+            data-id="input-handles"
+          >
             <div>
               {data.inputSchema &&
                 generateInputHandles(data.inputSchema, data.uiType)}
