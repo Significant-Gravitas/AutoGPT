@@ -8,6 +8,7 @@ from autogpt_libs.supabase_integration_credentials_store import OAuth2Credential
 from .base import BaseOAuthHandler
 
 
+# --8<-- [start:GithubOAuthHandlerExample]
 class GitHubOAuthHandler(BaseOAuthHandler):
     """
     Based on the documentation at:
@@ -119,3 +120,6 @@ class GitHubOAuthHandler(BaseOAuthHandler):
 
         # Get the login (username)
         return response.json().get("login")
+
+
+# --8<-- [end:GithubOAuthHandlerExample]
