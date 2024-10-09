@@ -1,9 +1,12 @@
 import ast
 import logging
-from enum import Enum, EnumMeta, _EnumMemberT
+from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
-from typing import Any, List, NamedTuple
+from typing import TYPE_CHECKING, Any, List, NamedTuple
+
+if TYPE_CHECKING:
+    from enum import _EnumMemberT
 
 import anthropic
 import ollama
@@ -34,8 +37,8 @@ class ModelMetadata(NamedTuple):
 class LlmModelMeta(EnumMeta):
     @property
     def __members__(
-        self: type[_EnumMemberT],
-    ) -> MappingProxyType[str, _EnumMemberT]:
+        self: type["_EnumMemberT"],
+    ) -> MappingProxyType[str, "_EnumMemberT"]:
         if Settings().config.behave_as == BehaveAs.LOCAL:
             members = super().__members__
             return members
