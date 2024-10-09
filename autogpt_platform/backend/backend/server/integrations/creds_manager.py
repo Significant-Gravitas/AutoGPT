@@ -6,8 +6,9 @@ from autogpt_libs.supabase_integration_credentials_store import (
     Credentials,
     SupabaseIntegrationCredentialsStore,
 )
-from autogpt_libs.utils.synchronize import KeyedMutex
+from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
+from backend.data import redis
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
 
@@ -18,10 +19,10 @@ settings = Settings()
 
 
 class IntegrationCredentialsManager:
-    _locks = KeyedMutex()
-
     def __init__(self):
-        self.store = SupabaseIntegrationCredentialsStore(get_supabase())
+        redis_conn = redis.get_redis()
+        self._locks = RedisKeyedMutex(redis_conn)
+        self.store = SupabaseIntegrationCredentialsStore(get_supabase(), redis_conn)
 
     def create(self, user_id: str, credentials: Credentials) -> None:
         return self.store.add_creds(user_id, credentials)
