@@ -94,7 +94,12 @@ class IntegrationCredentialsManager:
     # -- Locking utilities -- #
 
     def _acquire_lock(self, user_id: str, credentials_id: str, *args: str) -> RedisLock:
-        key = (self.store.supabase.supabase_url, user_id, credentials_id, *args)
+        key = (
+            self.store.supabase.supabase_url,
+            f"user:{user_id}",
+            f"credentials:{credentials_id}",
+            *args,
+        )
         return self._locks.acquire(key)
 
     @contextmanager

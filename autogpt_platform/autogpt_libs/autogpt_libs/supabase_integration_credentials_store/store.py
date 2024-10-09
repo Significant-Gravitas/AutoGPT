@@ -191,5 +191,5 @@ class SupabaseIntegrationCredentialsStore:
         return cast(UserMetadataRaw, response.user.user_metadata)
 
     def locked_user_metadata(self, user_id: str):
-        key = (self.supabase.supabase_url, "user_metadata", user_id)
+        key = (self.supabase.supabase_url, f"user:{user_id}", "metadata")
         return self.locks.locked(key)
