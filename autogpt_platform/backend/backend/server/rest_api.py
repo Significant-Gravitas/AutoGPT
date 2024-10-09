@@ -7,8 +7,6 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.supabase_integration_credentials_store.types import Credentials
-from autogpt_libs.utils.synchronize import KeyedMutex
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -657,13 +655,3 @@ class AgentServer(AppService):
             }
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
-
-    # -------- CREDENTIALS MANAGEMENT -------- #
-
-    @expose
-    def acquire_credentials(self, user_id: str, credentials_id: str) -> Credentials:
-        return self.integration_creds_manager.acquire(user_id, credentials_id)
-
-    @expose
-    def release_credentials(self, user_id: str, credentials_id: str) -> None:
-        return self.integration_creds_manager.release(user_id, credentials_id)

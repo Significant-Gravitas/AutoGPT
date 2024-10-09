@@ -17,38 +17,40 @@ class RedisKeyedMutex:
     in case the key is not unlocked for a specified duration, to prevent memory leaks.
     """
 
-    TIMEOUT = 60
-
-    locks: dict[Any, tuple["RedisLock", int]] = ExpiringDict(
-        max_len=6000, max_age_seconds=TIMEOUT
-    )
-    locks_lock = Lock()
-
-    def __init__(self, redis: "Redis"):
+    def __init__(self, redis: "Redis", timeout: int | None = 60):
         self.redis = redis
+        self.timeout = timeout
+        self.locks: dict[Any, "RedisLock"] = ExpiringDict(
+            max_len=6000, max_age_seconds=self.timeout
+        )
+        self.locks_lock = Lock()
 
     @contextmanager
     def locked(self, key: Any):
-        self.lock(key)
+        lock = self.acquire(key)
         try:
             yield
         finally:
-            self.unlock(key)
+            lock.release()
 
-    def lock(self, key: Any):
+    def acquire(self, key: Any) -> "RedisLock":
+        """Acquires and returns a lock with the given key"""
         with self.locks_lock:
             if key not in self.locks:
-                self.locks[key] = (
-                    self.redis.lock(str(key), self.TIMEOUT, thread_local=False),
-                    0,
+                self.locks[key] = self.redis.lock(
+                    str(key), self.timeout, thread_local=False
                 )
-            lock, request_count = self.locks[key]
-            self.locks[key] = (lock, request_count + 1)
+            lock = self.locks[key]
         lock.acquire()
+        return lock
 
-    def unlock(self, key: Any):
-        with self.locks_lock:
-            lock, request_count = self.locks.pop(key)
-            if request_count > 1:
-                self.locks[key] = (lock, request_count - 1)
-        lock.release()
+    def release(self, key: Any):
+        if lock := self.locks.get(key):
+            lock.release()
+
+    def release_all_locks(self):
+        """Call this on process termination to ensure all locks are released"""
+        self.locks_lock.acquire(blocking=False)
+        for lock in self.locks.values():
+            if lock.locked() and lock.owned():
+                lock.release()

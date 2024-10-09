@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar, cast
 from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
+from backend.server.integrations.creds_manager import IntegrationCredentialsManager
+
 if TYPE_CHECKING:
     from backend.server.rest_api import AgentServer
 
@@ -103,6 +105,7 @@ ExecutionStream = Generator[NodeExecution, None, None]
 def execute_node(
     loop: asyncio.AbstractEventLoop,
     api_client: "AgentServer",
+    creds_manager: IntegrationCredentialsManager,
     data: NodeExecution,
     execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
@@ -165,10 +168,10 @@ def execute_node(
 
     extra_exec_kwargs = {}
     # Last-minute fetch credentials + acquire a lock to prevent changes during execution
-    credentials = None
+    credentials = creds_lock = None
     if CREDENTIALS_FIELD_NAME in input_data:
         credentials_meta = CredentialsMetaInput(**input_data[CREDENTIALS_FIELD_NAME])
-        credentials = api_client.acquire_credentials(user_id, credentials_meta.id)
+        credentials, creds_lock = creds_manager.acquire(user_id, credentials_meta.id)
         extra_exec_kwargs["credentials"] = credentials
 
     output_size = 0
@@ -197,9 +200,8 @@ def execute_node(
                 yield execution
 
         # Release lock on credentials ASAP
-        if credentials:
-            api_client.release_credentials(user_id, credentials.id)
-            credentials = None
+        if creds_lock:
+            creds_lock.release()
 
         r = update_execution(ExecutionStatus.COMPLETED)
         s = input_size + output_size
@@ -220,9 +222,8 @@ def execute_node(
 
     finally:
         # Ensure credentials are released even if execution fails
-        if credentials:
-            api_client.release_credentials(user_id, credentials.id)
-            credentials = None
+        if creds_lock:
+            creds_lock.release()
         if execution_stats is not None:
             execution_stats["input_size"] = input_size
             execution_stats["output_size"] = output_size
@@ -438,6 +439,7 @@ class Executor:
         redis.connect()
         cls.loop.run_until_complete(db.connect())
         cls.agent_server_client = get_agent_server_client()
+        cls.creds_manager = IntegrationCredentialsManager()
 
         # Set up shutdown handlers
         cls.shutdown_lock = threading.Lock()
@@ -451,6 +453,8 @@ class Executor:
         if not cls.shutdown_lock.acquire(blocking=False):
             return  # already shutting down
 
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Releasing locks...")
+        cls.creds_manager.release_all_locks()
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB...")
         cls.loop.run_until_complete(db.disconnect())
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
@@ -463,8 +467,12 @@ class Executor:
         if not cls.shutdown_lock.acquire(blocking=False):
             return  # already shutting down, no need to self-terminate
 
+        llprint(f"[on_node_executor_sigterm {cls.pid}] ⏳ Releasing locks...")
+        cls.creds_manager.release_all_locks()
         llprint(f"[on_node_executor_sigterm {cls.pid}] ⏳ Disconnecting DB...")
         cls.loop.run_until_complete(db.disconnect())
+        llprint(f"[on_node_executor_sigterm {cls.pid}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
         llprint(f"[on_node_executor_sigterm {cls.pid}] ✅ Finished cleanup")
         sys.exit(0)
 
@@ -507,7 +515,7 @@ class Executor:
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
             for execution in execute_node(
-                cls.loop, cls.agent_server_client, node_exec, stats
+                cls.loop, cls.agent_server_client, cls.creds_manager, node_exec, stats
             ):
                 q.add(execution)
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
@@ -681,6 +689,7 @@ class ExecutionManager(AppService):
     def __init__(self):
         super().__init__(port=settings.config.execution_manager_port)
         self.use_db = True
+        self.use_queue = True  # we only need the Redis connection
         self.use_supabase = True
         self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
@@ -691,7 +700,9 @@ class ExecutionManager(AppService):
             SupabaseIntegrationCredentialsStore,
         )
 
-        self.credentials_store = SupabaseIntegrationCredentialsStore(self.supabase)
+        self.credentials_store = SupabaseIntegrationCredentialsStore(
+            self.supabase, redis.get_redis()
+        )
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,

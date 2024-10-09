@@ -7,6 +7,7 @@ from autogpt_libs.supabase_integration_credentials_store import (
     SupabaseIntegrationCredentialsStore,
 )
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
+from redis.lock import Lock as RedisLock
 
 from backend.data import redis
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
@@ -52,14 +53,15 @@ class IntegrationCredentialsManager:
                         f"Refreshing '{credentials.provider}' "
                         f"credentials #{credentials.id}"
                     )
+                    _lock = None
                     if lock:
                         # Wait until the credentials are no longer in use anywhere
-                        self._lock(user_id, credentials_id)
+                        _lock = self._acquire_lock(user_id, credentials_id)
 
                     fresh_credentials = oauth_handler.refresh_tokens(credentials)
                     self.store.update_creds(user_id, fresh_credentials)
-                    if lock:
-                        self._unlock(user_id, credentials_id)
+                    if _lock:
+                        _lock.release()
 
                     credentials = fresh_credentials
         else:
@@ -67,20 +69,19 @@ class IntegrationCredentialsManager:
 
         return credentials
 
-    def acquire(self, user_id: str, credentials_id: str) -> Credentials:
+    def acquire(
+        self, user_id: str, credentials_id: str
+    ) -> tuple[Credentials, RedisLock]:
         # Use a low-priority (!time_sensitive) locking queue on top of the general lock
         # to allow priority access for refreshing/updating the tokens.
         with self._locked(user_id, credentials_id, "!time_sensitive"):
-            self._lock(user_id, credentials_id)
+            lock = self._acquire_lock(user_id, credentials_id)
         credentials = self.get(user_id, credentials_id, lock=False)
         if not credentials:
             raise ValueError(
                 f"Credentials #{credentials_id} for user #{user_id} not found"
             )
-        return credentials
-
-    def release(self, user_id: str, credentials_id: str) -> None:
-        self._unlock(user_id, credentials_id)
+        return credentials, lock
 
     def update(self, user_id: str, updated: Credentials) -> None:
         with self._locked(user_id, updated.id):
@@ -92,21 +93,22 @@ class IntegrationCredentialsManager:
 
     # -- Locking utilities -- #
 
-    def _lock(self, *key: str):
-        key = (self.store.supabase.supabase_url, *key)
-        self._locks.lock(key)
-
-    def _unlock(self, *key: str):
-        key = (self.store.supabase.supabase_url, *key)
-        self._locks.unlock(key)
+    def _acquire_lock(self, user_id: str, credentials_id: str, *args: str) -> RedisLock:
+        key = (self.store.supabase.supabase_url, user_id, credentials_id, *args)
+        return self._locks.acquire(key)
 
     @contextmanager
-    def _locked(self, *key: str):
-        self._lock(*key)
+    def _locked(self, user_id: str, credentials_id: str, *args: str):
+        lock = self._acquire_lock(user_id, credentials_id, *args)
         try:
             yield
         finally:
-            self._unlock(*key)
+            lock.release()
+
+    def release_all_locks(self):
+        """Call this on process termination to ensure all locks are released"""
+        self._locks.release_all_locks()
+        self.store.locks.release_all_locks()
 
 
 def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
