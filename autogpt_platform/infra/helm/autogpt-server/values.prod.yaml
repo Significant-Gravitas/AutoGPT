@@ -95,6 +95,7 @@ env:
   ENABLE_AUTH: "true"
   REDIS_HOST: "redis-prod-master.redis-prod.svc.cluster.local"
   REDIS_PORT: "6379"
+  ANTHROPIC_API_KEY: ""
   OPENAI_API_KEY: ""
   REDIS_PASSWORD: ""
   NUM_GRAPH_WORKERS: 10
