@@ -12,7 +12,7 @@ from groq import Groq
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 from backend.util import json
-from backend.util.settings import Settings, BehaveAs
+from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class ModelMetadata(NamedTuple):
 
 class LlmModelMeta(EnumMeta):
     @property
-    def __members__(cls):
+    def __members__(cls):  # type: ignore
         if Settings().config.behave_as == BehaveAs.LOCAL:
             return super().__members__
         else:
