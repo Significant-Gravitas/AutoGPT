@@ -23,7 +23,7 @@ from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.util.service import AppService, expose, get_service_client
-from backend.util.settings import Config, Settings
+from backend.util.settings import AppEnvironment, Config, Settings
 
 from .utils import get_user_id
 
@@ -52,7 +52,7 @@ class AgentServer(AppService):
         await db.disconnect()
 
     def run_service(self):
-        docs_url = "/docs" if settings.config.app_env == "local" else None
+        docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
