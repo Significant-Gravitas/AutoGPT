@@ -22,7 +22,7 @@ from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.util.service import AppService, expose, get_service_client
-from backend.util.settings import Config, Settings
+from backend.util.settings import AppEnvironment, Config, Settings
 
 from .utils import get_user_id
 
@@ -49,7 +49,7 @@ class AgentServer(AppService):
         await db.disconnect()
 
     def run_service(self):
-        docs_url = "/docs" if settings.config.app_env == "local" else None
+        docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -361,8 +361,11 @@ class AgentServer(AppService):
         graph_id: str,
         user_id: Annotated[str, Depends(get_user_id)],
         version: int | None = None,
+        hide_credentials: bool = False,
     ) -> graph_db.Graph:
-        graph = await graph_db.get_graph(graph_id, version, user_id=user_id)
+        graph = await graph_db.get_graph(
+            graph_id, version, user_id=user_id, hide_credentials=hide_credentials
+        )
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph

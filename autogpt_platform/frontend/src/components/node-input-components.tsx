@@ -27,6 +27,7 @@ import { ConnectionData } from "./CustomNode";
 import { CredentialsInput } from "./integrations/credentials-input";
 
 type NodeObjectInputTreeProps = {
+  nodeId: string;
   selfKey?: string;
   schema: BlockIORootSchema | BlockIOObjectSubSchema;
   object?: { [key: string]: any };
@@ -39,6 +40,7 @@ type NodeObjectInputTreeProps = {
 };
 
 const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
+  nodeId,
   selfKey = "",
   schema,
   object,
@@ -65,6 +67,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
               {propSchema.title || beautifyString(propKey)}
             </span>
             <NodeGenericInputField
+              nodeId={nodeId}
               key={propKey}
               propKey={childKey}
               propSchema={propSchema}
@@ -85,6 +88,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
 export default NodeObjectInputTree;
 
 export const NodeGenericInputField: FC<{
+  nodeId: string;
   propKey: string;
   propSchema: BlockIOSubSchema;
   currentValue?: any;
@@ -95,6 +99,7 @@ export const NodeGenericInputField: FC<{
   className?: string;
   displayName?: string;
 }> = ({
+  nodeId,
   propKey,
   propSchema,
   currentValue,
@@ -131,6 +136,7 @@ export const NodeGenericInputField: FC<{
   if ("properties" in propSchema) {
     return (
       <NodeObjectInputTree
+        nodeId={nodeId}
         selfKey={propKey}
         schema={propSchema}
         object={currentValue}
@@ -147,6 +153,7 @@ export const NodeGenericInputField: FC<{
   if ("additionalProperties" in propSchema) {
     return (
       <NodeKeyValueInput
+        nodeId={nodeId}
         selfKey={propKey}
         schema={propSchema}
         entries={currentValue}
@@ -247,6 +254,7 @@ export const NodeGenericInputField: FC<{
     case "array":
       return (
         <NodeArrayInput
+          nodeId={nodeId}
           selfKey={propKey}
           schema={propSchema}
           entries={currentValue}
@@ -261,6 +269,7 @@ export const NodeGenericInputField: FC<{
     case "object":
       return (
         <NodeKeyValueInput
+          nodeId={nodeId}
           selfKey={propKey}
           schema={propSchema}
           entries={currentValue}
@@ -314,6 +323,7 @@ const NodeCredentialsInput: FC<{
 };
 
 const NodeKeyValueInput: FC<{
+  nodeId: string;
   selfKey: string;
   schema: BlockIOKVSubSchema;
   entries?: { [key: string]: string } | { [key: string]: number };
@@ -323,6 +333,7 @@ const NodeKeyValueInput: FC<{
   className?: string;
   displayName?: string;
 }> = ({
+  nodeId,
   selfKey,
   entries,
   schema,
@@ -333,18 +344,15 @@ const NodeKeyValueInput: FC<{
   displayName,
 }) => {
   const getPairValues = useCallback(() => {
-    let defaultEntries = new Map<string, any>();
-
+    // Map will preserve the order of entries.
+    const defaultEntries = new Map(
+      Object.entries(entries ?? schema.default ?? {}),
+    );
+    const prefix = getEntryKey("");
     connections
-      .filter((c) => c.targetHandle.startsWith(`${selfKey}_`))
-      .forEach((c) => {
-        const key = c.targetHandle.slice(`${selfKey}_#_`.length);
-        defaultEntries.set(key, "");
-      });
-
-    Object.entries(entries ?? schema.default ?? {}).forEach(([key, value]) => {
-      defaultEntries.set(key, value);
-    });
+      .filter((c) => c.targetHandle.startsWith(prefix))
+      .map((c) => c.targetHandle.slice(prefix.length))
+      .forEach((k) => !defaultEntries.has(k) && defaultEntries.set(k, ""));
 
     return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
   }, [connections, entries, schema.default, selfKey]);
@@ -380,7 +388,9 @@ const NodeKeyValueInput: FC<{
     return `${selfKey}_#_${key}`;
   }
   function isConnected(key: string): boolean {
-    return connections.some((c) => c.targetHandle === getEntryKey(key));
+    return connections.some(
+      (c) => c.targetHandle === getEntryKey(key) && c.target === nodeId,
+    );
   }
 
   return (
@@ -388,7 +398,7 @@ const NodeKeyValueInput: FC<{
       {displayName && <strong>{displayName}</strong>}
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          <div key={index}>
+          <div key={getEntryKey(key)}>
             {key && (
               <NodeHandle
                 keyName={getEntryKey(key)}
@@ -461,6 +471,7 @@ const NodeKeyValueInput: FC<{
 };
 
 const NodeArrayInput: FC<{
+  nodeId: string;
   selfKey: string;
   schema: BlockIOArraySubSchema;
   entries?: string[];
@@ -471,6 +482,7 @@ const NodeArrayInput: FC<{
   className?: string;
   displayName?: string;
 }> = ({
+  nodeId,
   selfKey,
   schema,
   entries,
@@ -491,7 +503,10 @@ const NodeArrayInput: FC<{
       {entries.map((entry: any, index: number) => {
         const entryKey = `${selfKey}_$_${index}`;
         const isConnected =
-          connections && connections.some((c) => c.targetHandle === entryKey);
+          connections &&
+          connections.some(
+            (c) => c.targetHandle === entryKey && c.target === nodeId,
+          );
         return (
           <div key={entryKey} className="self-start">
             <div className="mb-2 flex space-x-2">
@@ -505,6 +520,7 @@ const NodeArrayInput: FC<{
               {!isConnected &&
                 (schema.items ? (
                   <NodeGenericInputField
+                    nodeId={nodeId}
                     propKey={entryKey}
                     propSchema={schema.items}
                     currentValue={entry}

@@ -129,7 +129,7 @@ const SubmitPage: React.FC = () => {
     const fetchAgentGraph = async () => {
       if (selectedAgentId) {
         const api = new AutoGPTServerAPI();
-        const graph = await api.getGraph(selectedAgentId);
+        const graph = await api.getGraph(selectedAgentId, undefined, true);
         setSelectedAgentGraph(graph);
         setValue("name", graph.name);
         setValue("description", graph.description);
