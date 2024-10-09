@@ -19,11 +19,11 @@ from fastapi import (
 )
 from pydantic import BaseModel, SecretStr
 
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
 
 from ..utils import get_user_id
-from .creds_manager import IntegrationCredentialsManager
 
 logger = logging.getLogger(__name__)
 settings = Settings()

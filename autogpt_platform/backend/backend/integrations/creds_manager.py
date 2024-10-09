@@ -13,7 +13,7 @@ from backend.data import redis
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
 
-from .utils import get_supabase
+from ..server.integrations.utils import get_supabase
 
 logger = logging.getLogger(__name__)
 settings = Settings()

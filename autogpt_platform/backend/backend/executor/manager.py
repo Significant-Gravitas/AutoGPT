@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING, Any, Coroutine, Generator, TypeVar, cast
 from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
-from backend.server.integrations.creds_manager import IntegrationCredentialsManager
-
 if TYPE_CHECKING:
     from backend.server.rest_api import AgentServer
 
@@ -42,6 +40,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import Graph, Link, Node, get_graph, get_node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging

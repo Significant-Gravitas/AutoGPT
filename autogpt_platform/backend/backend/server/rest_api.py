@@ -21,7 +21,7 @@ from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.queue import RedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
-from backend.server.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
