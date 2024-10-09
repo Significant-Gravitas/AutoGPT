@@ -330,7 +330,7 @@ class Graph(GraphMeta):
         return input_schema
 
     @staticmethod
-    def from_db(graph: AgentGraph):
+    def from_db(graph: AgentGraph, hide_credentials: bool = False):
         nodes = [
             *(graph.AgentNodes or []),
             *(
@@ -341,7 +341,7 @@ class Graph(GraphMeta):
         ]
         return Graph(
             **GraphMeta.from_db(graph).model_dump(),
-            nodes=[Node.from_db(node) for node in nodes],
+            nodes=[Graph._process_node(node, hide_credentials) for node in nodes],
             links=list(
                 {
                     Link.from_db(link)
@@ -354,6 +354,31 @@ class Graph(GraphMeta):
                 for subgraph in graph.AgentSubGraphs or []
             },
         )
+
+    @staticmethod
+    def _process_node(node: AgentNode, hide_credentials: bool) -> Node:
+        node_dict = node.model_dump()
+        if hide_credentials and "constantInput" in node_dict:
+            constant_input = json.loads(node_dict["constantInput"])
+            constant_input = Graph._hide_credentials_in_input(constant_input)
+            node_dict["constantInput"] = json.dumps(constant_input)
+        return Node.from_db(AgentNode(**node_dict))
+
+    @staticmethod
+    def _hide_credentials_in_input(input_data: dict[str, Any]) -> dict[str, Any]:
+        sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
+        result = {}
+        for key, value in input_data.items():
+            if isinstance(value, dict):
+                result[key] = Graph._hide_credentials_in_input(value)
+            elif isinstance(value, str) and any(
+                sensitive_key in key.lower() for sensitive_key in sensitive_keys
+            ):
+                # Skip this key-value pair in the result
+                continue
+            else:
+                result[key] = value
+        return result
 
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
@@ -431,6 +456,7 @@ async def get_graph(
     version: int | None = None,
     template: bool = False,
     user_id: str | None = None,
+    hide_credentials: bool = False,
 ) -> Graph | None:
     """
     Retrieves a graph from the DB.
@@ -456,7 +482,7 @@ async def get_graph(
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-    return Graph.from_db(graph) if graph else None
+    return Graph.from_db(graph, hide_credentials) if graph else None
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
