@@ -1,7 +1,8 @@
 import ast
 import logging
-from enum import Enum, EnumMeta
+from enum import Enum, EnumMeta, _EnumMemberT
 from json import JSONDecodeError
+from types import MappingProxyType
 from typing import Any, List, NamedTuple
 
 import anthropic
@@ -32,16 +33,21 @@ class ModelMetadata(NamedTuple):
 
 class LlmModelMeta(EnumMeta):
     @property
-    def __members__(cls):  # type: ignore
+    def __members__(
+        self: type[_EnumMemberT],
+    ) -> MappingProxyType[str, _EnumMemberT]:
         if Settings().config.behave_as == BehaveAs.LOCAL:
-            return super().__members__
+            members = super().__members__
+            return members
         else:
             removed_providers = ["ollama"]
-            return {
+            existing_members = super().__members__
+            members = {
                 name: member
-                for name, member in super().__members__.items()
+                for name, member in existing_members.items()
                 if LlmModel[name].provider not in removed_providers
             }
+            return MappingProxyType(members)
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
