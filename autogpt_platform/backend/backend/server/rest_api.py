@@ -15,7 +15,6 @@ from typing_extensions import TypedDict
 from backend.data import block, db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data import user as user_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.queue import RedisEventQueue
@@ -45,8 +44,6 @@ class AgentServer(AppService):
         await db.connect()
         self.event_queue.connect()
         await block.initialize_blocks()
-        if await user_db.create_default_user(settings.config.enable_auth):
-            await graph_db.import_packaged_templates()
         yield
         self.event_queue.close()
         await db.disconnect()
