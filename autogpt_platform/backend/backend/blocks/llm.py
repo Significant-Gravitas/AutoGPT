@@ -12,6 +12,7 @@ from groq import Groq
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 from backend.util import json
+from backend.util.settings import Settings, BehaveAs
 
 logger = logging.getLogger(__name__)
 
@@ -32,20 +33,15 @@ class ModelMetadata(NamedTuple):
 class LlmModelMeta(EnumMeta):
     @property
     def __members__(cls):
-        return {
-            name: member
-            for name, member in super().__members__.items()
-            if name != "O1_PREVIEW"
-            and name != "O1_MINI"
-            and name != "GPT4O_MINI"
-            and name != "GPT4O"
-            and name != "GPT4_TURBO"
-            and name != "GPT3_5_TURBO"
-            and name != "CLAUDE_3_5_SONNET"
-            and name != "CLAUDE_3_HAIKU"
-            and name != "LLAMA3_8B"
-            and name != "LLAMA3_70B"
-        }
+        if Settings().config.behave_as == BehaveAs.LOCAL:
+            return super().__members__
+        else:
+            removed_providers = ["ollama"]
+            return {
+                name: member
+                for name, member in super().__members__.items()
+                if LlmModel[name].provider not in removed_providers
+            }
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
