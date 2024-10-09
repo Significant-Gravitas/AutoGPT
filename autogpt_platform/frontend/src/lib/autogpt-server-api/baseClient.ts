@@ -70,9 +70,19 @@ export default class BaseAutoGPTServerAPI {
     return this._get("/templates");
   }
 
-  getGraph(id: string, version?: number): Promise<Graph> {
-    const query = version !== undefined ? `?version=${version}` : "";
-    return this._get(`/graphs/${id}` + query);
+  getGraph(
+    id: string,
+    version?: number,
+    hide_credentials?: boolean,
+  ): Promise<Graph> {
+    let query: Record<string, any> = {};
+    if (version !== undefined) {
+      query["version"] = version;
+    }
+    if (hide_credentials !== undefined) {
+      query["hide_credentials"] = hide_credentials;
+    }
+    return this._get(`/graphs/${id}`, query);
   }
 
   getTemplate(id: string, version?: number): Promise<Graph> {
@@ -122,6 +132,10 @@ export default class BaseAutoGPTServerAPI {
 
   updateTemplate(id: string, template: GraphUpdateable): Promise<Graph> {
     return this._request("PUT", `/templates/${id}`, template);
+  }
+
+  deleteGraph(id: string): Promise<void> {
+    return this._request("DELETE", `/graphs/${id}`);
   }
 
   setGraphActiveVersion(id: string, version: number): Promise<Graph> {
