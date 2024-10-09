@@ -22,6 +22,11 @@ class AppEnvironment(str, Enum):
     PRODUCTION = "prod"
 
 
+class BehaveAs(str, Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
+
+
 class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
@@ -130,7 +135,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     app_env: AppEnvironment = Field(
         default=AppEnvironment.LOCAL,
-        description="The name of the app environment.",
+        description="The name of the app environment: local or dev or prod",
+    )
+
+    behave_as: BehaveAs = Field(
+        default=BehaveAs.LOCAL,
+        description="What environment to behave as: local or cloud",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
