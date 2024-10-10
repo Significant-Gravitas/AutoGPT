@@ -14,7 +14,7 @@ CMD ["yarn", "run", "dev"]
 # Build stage for prod
 FROM base AS build
 COPY autogpt_platform/frontend/ .
-RUN npm run build
+RUN yarn build
 
 # Prod stage
 FROM node:21-alpine AS prod
@@ -29,4 +29,4 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/next.config.mjs ./next.config.mjs
 
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["yarn", "start"]
