@@ -240,6 +240,7 @@ Every handler must implement the following parts of the [`BaseOAuthHandler`] int
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler3"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler4"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler5"
+--8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler6"
 ```
 
 As you can see, this is modeled after the standard OAuth2 flow.
