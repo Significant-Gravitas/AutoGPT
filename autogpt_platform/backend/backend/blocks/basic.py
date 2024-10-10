@@ -19,13 +19,12 @@ class StoreValueBlock(Block):
     """
 
     class Input(BlockSchema):
-        input: Any = Field(
-            description="Trigger the block to produce the output. "
-            "The value is only used when `data` is None."
-        )
-        data: Any = Field(
+        input: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
+        )
+        trigger: Any = SchemaField(
+            description="Trigger the block to produce the output. Passed value is never used.",
             default=None,
         )
 
@@ -35,23 +34,23 @@ class StoreValueBlock(Block):
     def __init__(self):
         super().__init__(
             id="1ff065e9-88e8-4358-9d82-8dc91f622ba9",
-            description="This block forwards an input value as output, allowing reuse without change.",
+            description="This is a special block that provides a value when triggered. The value can be reused multiple times.",
             categories={BlockCategory.BASIC},
             input_schema=StoreValueBlock.Input,
             output_schema=StoreValueBlock.Output,
             test_input=[
-                {"input": "Hello, World!"},
-                {"input": "Hello, World!", "data": "Existing Data"},
+                {"trigger": "Hello, World!"},
+                {"trigger": "Hello, World!", "input": "Existing Data"},
             ],
             test_output=[
-                ("output", "Hello, World!"),  # No data provided, so trigger is returned
-                ("output", "Existing Data"),  # Data is provided, so data is returned.
+                ("output", None),
+                ("output", "Existing Data"),
             ],
             static_output=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "output", input_data.data or input_data.input
+        yield "output", input_data.input
 
 
 class PrintToConsoleBlock(Block):
