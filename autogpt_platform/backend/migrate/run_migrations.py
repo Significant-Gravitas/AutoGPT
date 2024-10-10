@@ -17,7 +17,7 @@ def run_prisma_migrations():
 
 
 def run_custom_migrations():
-    db_url = os.environ.get("DATABASE_URL")
+    db_url = os.environ.get("DIRECT_DATABASE_URL")
     conn = psycopg2.connect(db_url)
 
     try:
