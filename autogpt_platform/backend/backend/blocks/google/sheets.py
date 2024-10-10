@@ -68,14 +68,9 @@ class GoogleSheetsReadBlock(Block):
     def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            service = self._build_service(credentials, **kwargs)
-            data = self._read_sheet(
-                service, input_data.spreadsheet_id, input_data.range
-            )
-            yield "result", data
-        except Exception as e:
-            yield "error", str(e)
+        service = self._build_service(credentials, **kwargs)
+        data = self._read_sheet(service, input_data.spreadsheet_id, input_data.range)
+        yield "result", data
 
     @staticmethod
     def _build_service(credentials: GoogleCredentials, **kwargs):
@@ -162,17 +157,14 @@ class GoogleSheetsWriteBlock(Block):
     def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            service = GoogleSheetsReadBlock._build_service(credentials, **kwargs)
-            result = self._write_sheet(
-                service,
-                input_data.spreadsheet_id,
-                input_data.range,
-                input_data.values,
-            )
-            yield "result", result
-        except Exception as e:
-            yield "error", str(e)
+        service = GoogleSheetsReadBlock._build_service(credentials, **kwargs)
+        result = self._write_sheet(
+            service,
+            input_data.spreadsheet_id,
+            input_data.range,
+            input_data.values,
+        )
+        yield "result", result
 
     def _write_sheet(
         self, service, spreadsheet_id: str, range: str, values: list[list[str]]
