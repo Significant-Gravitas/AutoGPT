@@ -21,22 +21,23 @@ To setup the server, you need to have the following installed:
 - [Node.js](https://nodejs.org/en/)
 - [Docker](https://docs.docker.com/get-docker/)
 - [Git](https://git-scm.com/downloads)
+- [Yarn Classic](https://classic.yarnpkg.com/lang/en/docs/install/)
 
-### Checking if you have Node.js & NPM installed
+### Checking if you have Node.js & Yarn installed
 
 We use Node.js to run our frontend application.
 
 If you need assistance installing Node.js:
 https://nodejs.org/en/download/
 
-NPM is included with Node.js, but if you need assistance installing NPM:
-https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
+Yarn Classic can be installed easily through NPM (which is included with Node.js):
+https://classic.yarnpkg.com/lang/en/docs/install/
 
-You can check if you have Node.js & NPM installed by running the following command:
+You can check if you have Node.js & Yarn installed by running the following command:
 
 ```bash
 node -v
-npm -v
+yarn -v
 ```
 
 Once you have Node.js installed, you can proceed to the next step.
@@ -111,8 +112,8 @@ To run the frontend application, follow these steps:
 
 * Run the following command:
   ```
-   npm install
-   npm run dev
+   yarn install
+   yarn dev
   ```
   This command will install the necessary dependencies and start the frontend application in development mode.
 

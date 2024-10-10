@@ -52,13 +52,8 @@ To run the AutoGPT Platform, follow these steps:
 
 7. Run the following command:
    ```
-   npm install
-   npm run dev
-   ```
-   This command will install the necessary dependencies and start the frontend application in development mode.
-   If you are using Yarn, you can run the following commands instead:
-   ```
-   yarn install && yarn dev
+   yarn
+   yarn dev
    ```
 
 8. Open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
@@ -149,6 +144,3 @@ To persist data for PostgreSQL and Redis, you can modify the `docker-compose.yml
 3. Save the file and run `docker compose up -d` to apply the changes.
 
 This configuration will create named volumes for PostgreSQL and Redis, ensuring that your data persists across container restarts.
-
-
-

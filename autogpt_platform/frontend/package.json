@@ -8,7 +8,7 @@
     "dev:test": "export NODE_ENV=test && next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint && prettier --check .",
     "format": "prettier --write .",
     "test": "playwright test",
     "test-ui": "playwright test --ui",
@@ -16,7 +16,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
-    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"npm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && npm run test-storybook\""
+    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"yarn storybook build -- --quiet && yarn http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && yarn test-storybook\""
   },
   "browserslist": [
     "defaults"
@@ -88,6 +88,7 @@
     "eslint": "^8",
     "eslint-config-next": "14.2.4",
     "eslint-plugin-storybook": "^0.9.0",
+    "http-server": "^14.1.1",
     "postcss": "^8",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.6",
