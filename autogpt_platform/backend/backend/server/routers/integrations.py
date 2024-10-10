@@ -21,12 +21,11 @@ from fastapi import (
     Response,
 )
 from pydantic import BaseModel, SecretStr
-from supabase import Client
 
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
 
-from ..utils import get_supabase, get_user_id
+from ..utils import get_user_id
 
 logger = logging.getLogger(__name__)
 settings = Settings()
