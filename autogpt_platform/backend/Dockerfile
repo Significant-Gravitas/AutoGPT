@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update \
-    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev postgresql-client git \
+    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev libpq5 gettext libz-dev libssl-dev postgresql-client git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -71,6 +71,9 @@ WORKDIR /app/autogpt_platform/backend
 FROM server_dependencies AS server
 
 COPY autogpt_platform/backend /app/autogpt_platform/backend
+COPY autogpt_platform/backend/custom_migrations /app/autogpt_platform/backend/custom_migrations
+COPY autogpt_platform/backend/migrate /app/autogpt_platform/backend/migrate
+
 
 ENV DATABASE_URL=""
 ENV PORT=8000

@@ -21,20 +21,19 @@ from fastapi import (
     Response,
 )
 from pydantic import BaseModel, SecretStr
-from supabase import Client
 
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
 
-from ..utils import get_supabase, get_user_id
+from ..utils import get_user_id
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
 
 
-def get_store(supabase: Client = Depends(get_supabase)):
-    return SupabaseIntegrationCredentialsStore(supabase)
+def get_store():
+    return SupabaseIntegrationCredentialsStore()
 
 
 class LoginResponse(BaseModel):
@@ -114,7 +113,7 @@ async def callback(
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
-    store.add_creds(user_id, credentials)
+    await store.add_creds(user_id, credentials)
 
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} and provider {provider}"
@@ -134,7 +133,7 @@ async def list_credentials(
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
 ) -> list[CredentialsMetaResponse]:
-    credentials = store.get_creds_by_provider(user_id, provider)
+    credentials = await store.get_creds_by_provider(user_id, provider)
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -154,7 +153,7 @@ async def get_credential(
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
 ) -> Credentials:
-    credential = store.get_creds_by_id(user_id, cred_id)
+    credential = await store.get_creds_by_id(user_id, cred_id)
     if not credential:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if credential.provider != provider:
@@ -183,7 +182,7 @@ async def create_api_key_credentials(
     )
 
     try:
-        store.add_creds(user_id, new_credentials)
+        await store.add_creds(user_id, new_credentials)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
@@ -198,7 +197,7 @@ async def delete_credential(
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[SupabaseIntegrationCredentialsStore, Depends(get_store)],
 ):
-    creds = store.get_creds_by_id(user_id, cred_id)
+    creds = await store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if creds.provider != provider:
@@ -206,7 +205,7 @@ async def delete_credential(
             status_code=404, detail="Credentials do not match the specified provider"
         )
 
-    store.delete_creds_by_id(user_id, cred_id)
+    await store.delete_creds_by_id(user_id, cred_id)
     return Response(status_code=204)
 
 

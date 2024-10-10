@@ -26,6 +26,8 @@ model User {
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
 
+  metadata Json?
+
   @@index([id])
   @@index([email])
 }
