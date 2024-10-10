@@ -61,6 +61,9 @@ class MultimodalAIBlock(Block):
                     "The image depicts a serene boardwalk surrounded by lush greenery.",
                 ),
             ],
+            test_mock={
+                "run_model": lambda api_key, model_name, prompt, image_url: "The image depicts a serene boardwalk surrounded by lush greenery.",
+            },
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
