@@ -36,7 +36,12 @@ def run_custom_migrations():
     finally:
         conn.close()
 
+def main():
+    logging.info("Starting migrations")
+    if run_prisma_migrations():
+        run_custom_migrations()
+    logging.info("Migrations completed")
 
-def migrate():
+if __name__ == "__main__":
     run_prisma_migrations()
     run_custom_migrations()

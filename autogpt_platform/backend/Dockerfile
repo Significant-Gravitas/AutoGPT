@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update \
-    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev postgresql-client git \
+    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev libpq-dev gettext libz-dev libssl-dev postgresql-client git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,6 +26,7 @@ RUN pip3 install poetry
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
+COPY autogpt_platform/backend/custom_migrations /app/autogpt_platform/backend/custom_migrations
 WORKDIR /app/autogpt_platform/backend
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi
