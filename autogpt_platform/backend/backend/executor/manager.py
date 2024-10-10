@@ -166,7 +166,10 @@ def execute_node(
     user_credit = get_user_credit_model()
 
     extra_exec_kwargs = {}
-    # Last-minute fetch credentials + acquire a lock to prevent changes during execution
+    # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
+    # changes during execution. ⚠️ This means a set of credentials can only be used by
+    # one (running) block at a time; simultaneous execution of blocks using same
+    # credentials is not supported.
     credentials = creds_lock = None
     if CREDENTIALS_FIELD_NAME in input_data:
         credentials_meta = CredentialsMetaInput(**input_data[CREDENTIALS_FIELD_NAME])

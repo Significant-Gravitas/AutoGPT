@@ -20,6 +20,37 @@ settings = Settings()
 
 
 class IntegrationCredentialsManager:
+    """
+    Handles the lifecycle of integration credentials.
+    - Automatically refreshes requested credentials if needed.
+    - Uses locking mechanisms to ensure system-wide consistency and
+      prevent invalidation of in-use tokens.
+
+    ### ⚠️ Gotcha
+    With `acquire(..)`, credentials can only be in use in one place at a time (e.g. one
+    block execution).
+
+    ### Locking mechanism
+    - Because *getting* credentials can result in a refresh (= *invalidation* +
+      *replacement*) of the stored credentials, *getting* is an operation that
+      potentially requires read/write access.
+    - Checking whether a token has to be refreshed is subject to an additional `refresh`
+      scoped lock to prevent unnecessary sequential refreshes when multiple executions
+      try to access the same credentials simultaneously.
+    - We MUST lock credentials while in use to prevent them from being invalidated while
+      they are in use, e.g. because they are being refreshed by a different part
+      of the system.
+    - The `!time_sensitive` lock in `acquire(..)` is part of a two-tier locking
+      mechanism in which *updating* gets priority over *getting* credentials.
+      This is to prevent a long queue of waiting *get* requests from blocking essential
+      credential refreshes or user-initiated updates.
+
+    It is possible to implement a reader/writer locking system where either multiple
+    readers or a single writer can have simultaneous access, but this would add a lot of
+    complexity to the mechanism. I don't expect the current ("simple") mechanism to
+    cause so much latency that it's worth implementing.
+    """
+
     def __init__(self):
         redis_conn = redis.get_redis()
         self._locks = RedisKeyedMutex(redis_conn)
@@ -72,6 +103,11 @@ class IntegrationCredentialsManager:
     def acquire(
         self, user_id: str, credentials_id: str
     ) -> tuple[Credentials, RedisLock]:
+        """
+        ⚠️ WARNING: this locks credentials system-wide and blocks both acquiring
+        and updating them elsewhere until the lock is released.
+        See the class docstring for more info.
+        """
         # Use a low-priority (!time_sensitive) locking queue on top of the general lock
         # to allow priority access for refreshing/updating the tokens.
         with self._locked(user_id, credentials_id, "!time_sensitive"):
