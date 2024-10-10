@@ -330,20 +330,17 @@ class AddToDictionaryBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # If no dictionary is provided, create a new one
-            if input_data.dictionary is None:
-                updated_dict = {}
-            else:
-                # Create a copy of the input dictionary to avoid modifying the original
-                updated_dict = input_data.dictionary.copy()
+        # If no dictionary is provided, create a new one
+        if input_data.dictionary is None:
+            updated_dict = {}
+        else:
+            # Create a copy of the input dictionary to avoid modifying the original
+            updated_dict = input_data.dictionary.copy()
 
-            # Add the new key-value pair
-            updated_dict[input_data.key] = input_data.value
+        # Add the new key-value pair
+        updated_dict[input_data.key] = input_data.value
 
-            yield "updated_dictionary", updated_dict
-        except Exception as e:
-            yield "error", f"Failed to add entry to dictionary: {str(e)}"
+        yield "updated_dictionary", updated_dict
 
 
 class AddToListBlock(Block):
@@ -401,23 +398,20 @@ class AddToListBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # If no list is provided, create a new one
-            if input_data.list is None:
-                updated_list = []
-            else:
-                # Create a copy of the input list to avoid modifying the original
-                updated_list = input_data.list.copy()
+        # If no list is provided, create a new one
+        if input_data.list is None:
+            updated_list = []
+        else:
+            # Create a copy of the input list to avoid modifying the original
+            updated_list = input_data.list.copy()
 
-            # Add the new entry
-            if input_data.position is None:
-                updated_list.append(input_data.entry)
-            else:
-                updated_list.insert(input_data.position, input_data.entry)
+        # Add the new entry
+        if input_data.position is None:
+            updated_list.append(input_data.entry)
+        else:
+            updated_list.insert(input_data.position, input_data.entry)
 
-            yield "updated_list", updated_list
-        except Exception as e:
-            yield "error", f"Failed to add entry to list: {str(e)}"
+        yield "updated_list", updated_list
 
 
 class NoteBlock(Block):

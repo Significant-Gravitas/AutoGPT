@@ -96,14 +96,11 @@ class GithubListTagsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            tags = self.list_tags(
-                credentials,
-                input_data.repo_url,
-            )
-            yield from (("tag", tag) for tag in tags)
-        except Exception as e:
-            yield "error", f"Failed to list tags: {str(e)}"
+        tags = self.list_tags(
+            credentials,
+            input_data.repo_url,
+        )
+        yield from (("tag", tag) for tag in tags)
 
 
 class GithubListBranchesBlock(Block):
@@ -183,14 +180,11 @@ class GithubListBranchesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            branches = self.list_branches(
-                credentials,
-                input_data.repo_url,
-            )
-            yield from (("branch", branch) for branch in branches)
-        except Exception as e:
-            yield "error", f"Failed to list branches: {str(e)}"
+        branches = self.list_branches(
+            credentials,
+            input_data.repo_url,
+        )
+        yield from (("branch", branch) for branch in branches)
 
 
 class GithubListDiscussionsBlock(Block):
@@ -294,13 +288,10 @@ class GithubListDiscussionsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            discussions = self.list_discussions(
-                credentials, input_data.repo_url, input_data.num_discussions
-            )
-            yield from (("discussion", discussion) for discussion in discussions)
-        except Exception as e:
-            yield "error", f"Failed to list discussions: {str(e)}"
+        discussions = self.list_discussions(
+            credentials, input_data.repo_url, input_data.num_discussions
+        )
+        yield from (("discussion", discussion) for discussion in discussions)
 
 
 class GithubListReleasesBlock(Block):
@@ -381,14 +372,11 @@ class GithubListReleasesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            releases = self.list_releases(
-                credentials,
-                input_data.repo_url,
-            )
-            yield from (("release", release) for release in releases)
-        except Exception as e:
-            yield "error", f"Failed to list releases: {str(e)}"
+        releases = self.list_releases(
+            credentials,
+            input_data.repo_url,
+        )
+        yield from (("release", release) for release in releases)
 
 
 class GithubReadFileBlock(Block):
@@ -474,18 +462,15 @@ class GithubReadFileBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            raw_content, size = self.read_file(
-                credentials,
-                input_data.repo_url,
-                input_data.file_path.lstrip("/"),
-                input_data.branch,
-            )
-            yield "raw_content", raw_content
-            yield "text_content", base64.b64decode(raw_content).decode("utf-8")
-            yield "size", size
-        except Exception as e:
-            yield "error", f"Failed to read file: {str(e)}"
+        raw_content, size = self.read_file(
+            credentials,
+            input_data.repo_url,
+            input_data.file_path.lstrip("/"),
+            input_data.branch,
+        )
+        yield "raw_content", raw_content
+        yield "text_content", base64.b64decode(raw_content).decode("utf-8")
+        yield "size", size
 
 
 class GithubReadFolderBlock(Block):
@@ -612,17 +597,14 @@ class GithubReadFolderBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            files, dirs = self.read_folder(
-                credentials,
-                input_data.repo_url,
-                input_data.folder_path.lstrip("/"),
-                input_data.branch,
-            )
-            yield from (("file", file) for file in files)
-            yield from (("dir", dir) for dir in dirs)
-        except Exception as e:
-            yield "error", f"Failed to read folder: {str(e)}"
+        files, dirs = self.read_folder(
+            credentials,
+            input_data.repo_url,
+            input_data.folder_path.lstrip("/"),
+            input_data.branch,
+        )
+        yield from (("file", file) for file in files)
+        yield from (("dir", dir) for dir in dirs)
 
 
 class GithubMakeBranchBlock(Block):
@@ -703,16 +685,13 @@ class GithubMakeBranchBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.create_branch(
-                credentials,
-                input_data.repo_url,
-                input_data.new_branch,
-                input_data.source_branch,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to create branch: {str(e)}"
+        status = self.create_branch(
+            credentials,
+            input_data.repo_url,
+            input_data.new_branch,
+            input_data.source_branch,
+        )
+        yield "status", status
 
 
 class GithubDeleteBranchBlock(Block):
@@ -775,12 +754,9 @@ class GithubDeleteBranchBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.delete_branch(
-                credentials,
-                input_data.repo_url,
-                input_data.branch,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to delete branch: {str(e)}"
+        status = self.delete_branch(
+            credentials,
+            input_data.repo_url,
+            input_data.branch,
+        )
+        yield "status", status
