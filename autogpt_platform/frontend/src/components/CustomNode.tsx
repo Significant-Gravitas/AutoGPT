@@ -178,6 +178,7 @@ export function CustomNode({
                 <div key={propKey}>
                   {!isConnected && (
                     <NodeGenericInputField
+                      nodeId={id}
                       propKey={propKey}
                       propSchema={propSchema}
                       currentValue={getValue(propKey)}
@@ -236,6 +237,7 @@ export function CustomNode({
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
+                    nodeId={id}
                     propKey={propKey}
                     propSchema={propSchema}
                     currentValue={getValue(propKey)}
@@ -274,6 +276,7 @@ export function CustomNode({
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
+                    nodeId={id}
                     propKey={propKey}
                     propSchema={propSchema}
                     currentValue={getValue(propKey)}
