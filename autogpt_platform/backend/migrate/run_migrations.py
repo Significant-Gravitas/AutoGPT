@@ -34,7 +34,8 @@ def run_custom_migrations():
 
     try:
         with conn.cursor() as cur:
-            custom_migrations_dir = find_custom_migrations_dir()
+            # custom_migrations_dir = find_custom_migrations_dir()
+            custom_migrations_dir = "./custom_migrations"
             logging.info(f"Using custom migrations from: {custom_migrations_dir}")
             for filename in sorted(os.listdir(custom_migrations_dir)):
                 if filename.endswith(".sql"):
