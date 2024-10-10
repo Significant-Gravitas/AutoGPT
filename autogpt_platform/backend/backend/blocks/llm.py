@@ -344,7 +344,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                 logger.error(f"Error calling LLM: {e}")
                 retry_prompt = f"Error calling LLM: {e}"
 
-        yield "error", retry_prompt
+        raise RuntimeError(retry_prompt)
 
 
 class AITextGeneratorBlock(Block):
@@ -390,14 +390,11 @@ class AITextGeneratorBlock(Block):
         raise ValueError("Failed to get a response from the LLM.")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            object_input_data = AIStructuredResponseGeneratorBlock.Input(
-                **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
-                expected_format={},
-            )
-            yield "response", self.llm_call(object_input_data)
-        except Exception as e:
-            yield "error", str(e)
+        object_input_data = AIStructuredResponseGeneratorBlock.Input(
+            **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
+            expected_format={},
+        )
+        yield "response", self.llm_call(object_input_data)
 
 
 class SummaryStyle(Enum):
@@ -445,11 +442,8 @@ class AITextSummarizerBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            for output in self._run(input_data):
-                yield output
-        except Exception as e:
-            yield "error", str(e)
+        for output in self._run(input_data):
+            yield output
 
     def _run(self, input_data: Input) -> BlockOutput:
         chunks = self._split_text(
@@ -642,24 +636,21 @@ class AIConversationBlock(Block):
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            api_key = (
-                input_data.api_key.get_secret_value()
-                or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
-            )
+        api_key = (
+            input_data.api_key.get_secret_value()
+            or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
+        )
 
-            messages = [message.model_dump() for message in input_data.messages]
+        messages = [message.model_dump() for message in input_data.messages]
 
-            response = self.llm_call(
-                api_key=api_key,
-                model=input_data.model,
-                messages=messages,
-                max_tokens=input_data.max_tokens,
-            )
+        response = self.llm_call(
+            api_key=api_key,
+            model=input_data.model,
+            messages=messages,
+            max_tokens=input_data.max_tokens,
+        )
 
-            yield "response", response
-        except Exception as e:
-            yield "error", f"Error calling LLM: {str(e)}"
+        yield "response", response
 
 
 class AIListGeneratorBlock(Block):
@@ -777,9 +768,7 @@ class AIListGeneratorBlock(Block):
             or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
         )
         if not api_key_check:
-            logger.error("No LLM API key provided.")
-            yield "error", "No LLM API key provided."
-            return
+            raise ValueError("No LLM API key provided.")
 
         # Prepare the system prompt
         sys_prompt = """You are a Python list generator. Your task is to generate a Python list based on the user's prompt. 
@@ -873,7 +862,9 @@ class AIListGeneratorBlock(Block):
                     logger.error(
                         f"Failed to generate a valid Python list after {input_data.max_retries} attempts"
                     )
-                    yield "error", f"Failed to generate a valid Python list after {input_data.max_retries} attempts. Last error: {str(e)}"
+                    raise RuntimeError(
+                        f"Failed to generate a valid Python list after {input_data.max_retries} attempts. Last error: {str(e)}"
+                    )
                 else:
                     # Add a retry prompt
                     logger.debug("Preparing retry prompt")

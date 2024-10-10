@@ -35,8 +35,5 @@ This is a "quoted" string.""",
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            decoded_text = codecs.decode(input_data.text, "unicode_escape")
-            yield "decoded_text", decoded_text
-        except Exception as e:
-            yield "error", f"Error decoding text: {str(e)}"
+        decoded_text = codecs.decode(input_data.text, "unicode_escape")
+        yield "decoded_text", decoded_text
