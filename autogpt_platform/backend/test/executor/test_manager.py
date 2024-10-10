@@ -4,8 +4,8 @@ from prisma.models import User
 from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
-from backend.server import AgentServer
 from backend.server.model import CreateGraph
+from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
