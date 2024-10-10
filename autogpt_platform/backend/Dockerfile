@@ -26,7 +26,6 @@ RUN pip3 install poetry
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
-COPY autogpt_platform/backend/custom_migrations /app/autogpt_platform/backend/custom_migrations
 WORKDIR /app/autogpt_platform/backend
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi
@@ -72,6 +71,9 @@ WORKDIR /app/autogpt_platform/backend
 FROM server_dependencies AS server
 
 COPY autogpt_platform/backend /app/autogpt_platform/backend
+COPY autogpt_platform/backend/custom_migrations /app/autogpt_platform/backend/custom_migrations
+COPY autogpt_platform/backend/migrate /app/autogpt_platform/backend/migrate
+
 
 ENV DATABASE_URL=""
 ENV PORT=8000

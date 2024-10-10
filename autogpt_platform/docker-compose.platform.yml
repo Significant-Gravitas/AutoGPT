@@ -4,17 +4,18 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "migrate.run_migrations"]
+    command: ["sh", "-c", "poetry run migrate_db"]
     develop:
       watch:
         - path: ./
-          target: autogpt_platform/backend/migrate
+          target: autogpt_platform/backend/migrations
           action: rebuild
     depends_on:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60
+      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      - DIRECT_DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60
     networks:
       - app-network
     restart: on-failure
