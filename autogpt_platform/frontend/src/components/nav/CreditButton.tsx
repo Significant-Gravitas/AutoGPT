@@ -1,21 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { IconRefresh, IconCoin } from "@/components/ui/icons";
+import { IconRefresh } from "@/components/ui/icons";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+
+const api = new AutoGPTServerAPI();
 
 export default function CreditButton() {
   const [credit, setCredit] = useState<number | null>(null);
-  const api = new AutoGPTServerAPI();
 
-  const fetchCredit = async () => {
+  const fetchCredit = useCallback(async () => {
     const response = await api.getUserCredit();
     setCredit(response.credits);
-  };
+  }, []);
+
   useEffect(() => {
     fetchCredit();
-  }, [api]);
+  }, [fetchCredit]);
 
   return (
     credit !== null && (

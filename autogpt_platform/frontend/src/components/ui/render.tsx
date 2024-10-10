@@ -46,13 +46,15 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
 
 const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => (
   <div className="w-full p-2">
-    <img
-      src={imageUrl}
-      alt="Image"
-      className="h-auto max-w-full"
-      width="100%"
-      height="auto"
-    />
+    <picture>
+      <img
+        src={imageUrl}
+        alt="Image"
+        className="h-auto max-w-full"
+        width="100%"
+        height="auto"
+      />
+    </picture>
   </div>
 );
 

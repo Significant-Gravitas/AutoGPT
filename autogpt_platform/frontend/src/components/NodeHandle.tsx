@@ -31,20 +31,27 @@ const NodeHandle: FC<HandleProps> = ({
   const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${side === "left" ? "text-left" : "text-right"}`;
 
   const label = (
-    <div className="flex flex-grow flex-col">
-      <span className="text-m green -mb-1 text-gray-900">
-        {schema.title || beautifyString(keyName)}
+    <div className="flex flex-grow flex-row">
+      <span className="text-m green flex items-end pr-2 text-gray-900">
+        {schema.title || beautifyString(keyName.toLowerCase())}
         {isRequired ? "*" : ""}
       </span>
-      <span className={typeClass}>{typeName[schema.type] || "any"}</span>
+      <span className={`${typeClass} flex items-end`}>
+        ({typeName[schema.type as keyof typeof typeName] || "any"})
+      </span>
     </div>
   );
 
-  const dot = (
-    <div
-      className={`m-1 h-4 w-4 border-2 bg-white ${isConnected ? getTypeBgColor(schema.type || "any") : "border-gray-300"} rounded-full transition-colors duration-100 group-hover:bg-gray-300`}
-    />
-  );
+  const Dot = ({ className = "" }) => {
+    const color = isConnected
+      ? getTypeBgColor(schema.type || "any")
+      : "border-gray-300";
+    return (
+      <div
+        className={`${className} ${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
+      />
+    );
+  };
 
   if (side === "left") {
     return (
@@ -53,10 +60,10 @@ const NodeHandle: FC<HandleProps> = ({
           type="target"
           position={Position.Left}
           id={keyName}
-          className="background-color: white; border: 2px solid black; width: 15px; height: 15px; border-radius: 50%; bottom: -7px; left: 20%; group -ml-[26px]"
+          className="-ml-[26px]"
         >
           <div className="pointer-events-none flex items-center">
-            {dot}
+            <Dot className={`-ml-2 mr-2`} />
             {label}
           </div>
         </Handle>
@@ -74,7 +81,7 @@ const NodeHandle: FC<HandleProps> = ({
         >
           <div className="pointer-events-none flex items-center">
             {label}
-            {dot}
+            <Dot />
           </div>
         </Handle>
       </div>
