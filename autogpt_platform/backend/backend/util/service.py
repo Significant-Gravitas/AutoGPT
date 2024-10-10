@@ -3,10 +3,24 @@ import logging
 import os
 import threading
 import time
+import typing
 from abc import abstractmethod
-from typing import Any, Callable, Coroutine, Type, TypeVar, cast
+from types import UnionType
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Coroutine,
+    Iterator,
+    Type,
+    TypeVar,
+    cast,
+    get_args,
+    get_origin,
+)
 
 import Pyro5.api
+from pydantic import BaseModel
 from Pyro5 import api as pyro
 
 from backend.data import db
@@ -27,9 +41,8 @@ def expose(func: C) -> C:
     Decorator to mark a method or class to be exposed for remote calls.
 
     ## ⚠️ Gotcha
-    The types on the exposed function signature are respected **as long as they are
-    fully picklable**. This is not the case for Pydantic models, so if you really need
-    to pass a model, try dumping the model and passing the resulting dict instead.
+    Aside from "simple" types, only Pydantic models are passed unscathed *if annotated*.
+    Any other passed or returned class objects are converted to dictionaries by Pyro.
     """
 
     def wrapper(*args, **kwargs):
@@ -40,7 +53,33 @@ def expose(func: C) -> C:
             logger.exception(msg)
             raise Exception(msg, e)
 
+    # Register custom serializers and deserializers for annotated Pydantic models
+    for name, annotation in func.__annotations__.items():
+        for model in _pydantic_models_from_type_annotation(annotation):
+            logger.debug(
+                f"Registering Pyro (de)serializers for {func.__name__} annotation "
+                f"'{name}': {model.__qualname__}"
+            )
+            pyro.register_class_to_dict(
+                model,
+                lambda obj: {
+                    "__class__": obj.__class__.__qualname__,
+                    **obj.model_dump(),
+                },
+            )
+            pyro.register_dict_to_class(
+                model.__qualname__, _make_pyrodantic_parser(model)
+            )
+
     return pyro.expose(wrapper)  # type: ignore
+
+
+def _make_pyrodantic_parser(model: type[BaseModel]):
+    def parse_data_into_model(qualname, data: dict):
+        logger.debug(f"Parsing Pyroed {model.__qualname__} from data {data}")
+        return model(**data)
+
+    return parse_data_into_model
 
 
 class AppService(AppProcess):
@@ -134,3 +173,28 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
             return getattr(self.proxy, name)
 
     return cast(AS, DynamicClient())
+
+
+# --------- UTILITIES --------- #
+
+
+def _pydantic_models_from_type_annotation(annotation) -> Iterator[type[BaseModel]]:
+    # Peel Annotated parameters
+    if (origin := get_origin(annotation)) and origin is Annotated:
+        annotation = get_args(annotation)[0]
+
+    if origin := get_origin(annotation):
+        if origin is UnionType:
+            types = get_args(annotation)
+        else:
+            types = [origin]
+    else:
+        types = [annotation]
+
+    for annotype in types:
+        if (
+            annotype is not None
+            and not hasattr(typing, annotype.__name__)  # avoid generics and aliases
+            and issubclass(annotype, BaseModel)
+        ):
+            yield annotype

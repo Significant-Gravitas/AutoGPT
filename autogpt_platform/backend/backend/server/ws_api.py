@@ -12,7 +12,7 @@ from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
 from backend.util.service import AppProcess
-from backend.util.settings import Config, Settings
+from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     event_queue.close()
 
 
-docs_url = "/docs" if settings.config.app_env == "local" else None
+docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan)
 event_queue = RedisEventQueue()
 _connection_manager = None

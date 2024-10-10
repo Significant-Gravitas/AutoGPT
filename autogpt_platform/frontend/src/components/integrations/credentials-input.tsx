@@ -44,11 +44,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// --8<-- [start:ProviderIconsEmbed]
 const providerIcons: Record<string, React.FC<{ className?: string }>> = {
   github: FaGithub,
   google: FaGoogle,
   notion: NotionLogoIcon,
 };
+// --8<-- [end:ProviderIconsEmbed]
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {

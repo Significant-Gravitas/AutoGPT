@@ -4,9 +4,14 @@ from prisma.models import User
 from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
-from backend.server import AgentServer
+from backend.server.model import CreateGraph
+from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
+
+
+async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
+    return await s.agent_server.create_graph(CreateGraph(graph=g), False, u.id)
 
 
 async def execute_graph(
@@ -99,9 +104,8 @@ async def assert_sample_graph_executions(
 
 @pytest.mark.asyncio(scope="session")
 async def test_agent_execution(server: SpinTestServer):
-    test_graph = create_test_graph()
     test_user = await create_test_user()
-    await graph.create_graph(test_graph, user_id=test_user.id)
+    test_graph = await create_graph(server, create_test_graph(), test_user)
     data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server,
@@ -163,7 +167,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
         links=links,
     )
     test_user = await create_test_user()
-    test_graph = await graph.create_graph(test_graph, user_id=test_user.id)
+    test_graph = await create_graph(server, test_graph, test_user)
     graph_exec_id = await execute_graph(
         server.agent_server, test_graph, test_user, {}, 3
     )
@@ -244,7 +248,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
         links=links,
     )
     test_user = await create_test_user()
-    test_graph = await graph.create_graph(test_graph, user_id=test_user.id)
+    test_graph = await create_graph(server, test_graph, test_user)
     graph_exec_id = await execute_graph(
         server.agent_server, test_graph, test_user, {}, 8
     )

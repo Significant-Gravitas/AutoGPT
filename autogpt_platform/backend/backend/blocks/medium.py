@@ -138,31 +138,25 @@ class PublishToMediumBlock(Block):
         return response.json()
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            response = self.create_post(
-                input_data.api_key.get_secret_value(),
-                input_data.author_id.get_secret_value(),
-                input_data.title,
-                input_data.content,
-                input_data.content_format,
-                input_data.tags,
-                input_data.canonical_url,
-                input_data.publish_status,
-                input_data.license,
-                input_data.notify_followers,
+        response = self.create_post(
+            input_data.api_key.get_secret_value(),
+            input_data.author_id.get_secret_value(),
+            input_data.title,
+            input_data.content,
+            input_data.content_format,
+            input_data.tags,
+            input_data.canonical_url,
+            input_data.publish_status,
+            input_data.license,
+            input_data.notify_followers,
+        )
+
+        if "data" in response:
+            yield "post_id", response["data"]["id"]
+            yield "post_url", response["data"]["url"]
+            yield "published_at", response["data"]["publishedAt"]
+        else:
+            error_message = response.get("errors", [{}])[0].get(
+                "message", "Unknown error occurred"
             )
-
-            if "data" in response:
-                yield "post_id", response["data"]["id"]
-                yield "post_url", response["data"]["url"]
-                yield "published_at", response["data"]["publishedAt"]
-            else:
-                error_message = response.get("errors", [{}])[0].get(
-                    "message", "Unknown error occurred"
-                )
-                yield "error", f"Failed to create Medium post: {error_message}"
-
-        except requests.RequestException as e:
-            yield "error", f"Network error occurred while creating Medium post: {str(e)}"
-        except Exception as e:
-            yield "error", f"Error occurred while creating Medium post: {str(e)}"
+            raise RuntimeError(f"Failed to create Medium post: {error_message}")

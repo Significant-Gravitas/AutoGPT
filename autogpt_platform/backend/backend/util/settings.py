@@ -22,6 +22,11 @@ class AppEnvironment(str, Enum):
     PRODUCTION = "prod"
 
 
+class BehaveAs(str, Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
+
+
 class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
@@ -130,7 +135,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     app_env: AppEnvironment = Field(
         default=AppEnvironment.LOCAL,
-        description="The name of the app environment.",
+        description="The name of the app environment: local or dev or prod",
+    )
+
+    behave_as: BehaveAs = Field(
+        default=BehaveAs.LOCAL,
+        description="What environment to behave as: local or cloud",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
@@ -189,10 +199,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     # OAuth server credentials for integrations
+    # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
     github_client_secret: str = Field(
         default="", description="GitHub OAuth client secret"
     )
+    # --8<-- [end:OAuthServerCredentialsExample]
     google_client_id: str = Field(default="", description="Google OAuth client ID")
     google_client_secret: str = Field(
         default="", description="Google OAuth client secret"
