@@ -1,7 +1,6 @@
 import logging
 import time
 from enum import Enum
-from typing import Optional
 
 import requests
 from pydantic import Field
@@ -156,7 +155,7 @@ class AIShortformVideoCreatorBlock(Block):
 
     class Output(BlockSchema):
         video_url: str = Field(description="The URL of the created video")
-        error: Optional[str] = Field(description="Error message if the request failed")
+        error: str = Field(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -239,69 +238,58 @@ class AIShortformVideoCreatorBlock(Block):
         raise TimeoutError("Video creation timed out")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # Create a new Webhook.site URL
-            webhook_token, webhook_url = self.create_webhook()
-            logger.debug(f"Webhook URL: {webhook_url}")
+        # Create a new Webhook.site URL
+        webhook_token, webhook_url = self.create_webhook()
+        logger.debug(f"Webhook URL: {webhook_url}")
 
-            audio_url = input_data.background_music.audio_url
+        audio_url = input_data.background_music.audio_url
 
-            payload = {
-                "frameRate": input_data.frame_rate,
-                "resolution": input_data.resolution,
-                "frameDurationMultiplier": 18,
-                "webhook": webhook_url,
-                "creationParams": {
-                    "mediaType": input_data.video_style,
-                    "captionPresetName": "Wrap 1",
-                    "selectedVoice": input_data.voice.voice_id,
-                    "hasEnhancedGeneration": True,
-                    "generationPreset": input_data.generation_preset.name,
-                    "selectedAudio": input_data.background_music,
-                    "origin": "/create",
-                    "inputText": input_data.script,
-                    "flowType": "text-to-video",
-                    "slug": "create-tiktok-video",
-                    "hasToGenerateVoice": True,
-                    "hasToTranscript": False,
-                    "hasToSearchMedia": True,
-                    "hasAvatar": False,
-                    "hasWebsiteRecorder": False,
-                    "hasTextSmallAtBottom": False,
-                    "ratio": input_data.ratio,
-                    "sourceType": "contentScraping",
-                    "selectedStoryStyle": {"value": "custom", "label": "Custom"},
-                    "hasToGenerateVideos": input_data.video_style
-                    != VisualMediaType.STOCK_VIDEOS,
-                    "audioUrl": audio_url,
-                },
-            }
+        payload = {
+            "frameRate": input_data.frame_rate,
+            "resolution": input_data.resolution,
+            "frameDurationMultiplier": 18,
+            "webhook": webhook_url,
+            "creationParams": {
+                "mediaType": input_data.video_style,
+                "captionPresetName": "Wrap 1",
+                "selectedVoice": input_data.voice.voice_id,
+                "hasEnhancedGeneration": True,
+                "generationPreset": input_data.generation_preset.name,
+                "selectedAudio": input_data.background_music,
+                "origin": "/create",
+                "inputText": input_data.script,
+                "flowType": "text-to-video",
+                "slug": "create-tiktok-video",
+                "hasToGenerateVoice": True,
+                "hasToTranscript": False,
+                "hasToSearchMedia": True,
+                "hasAvatar": False,
+                "hasWebsiteRecorder": False,
+                "hasTextSmallAtBottom": False,
+                "ratio": input_data.ratio,
+                "sourceType": "contentScraping",
+                "selectedStoryStyle": {"value": "custom", "label": "Custom"},
+                "hasToGenerateVideos": input_data.video_style
+                != VisualMediaType.STOCK_VIDEOS,
+                "audioUrl": audio_url,
+            },
+        }
 
-            logger.debug("Creating video...")
-            response = self.create_video(input_data.api_key.get_secret_value(), payload)
-            pid = response.get("pid")
+        logger.debug("Creating video...")
+        response = self.create_video(input_data.api_key.get_secret_value(), payload)
+        pid = response.get("pid")
 
-            if not pid:
-                logger.error(
-                    f"Failed to create video: No project ID returned. API Response: {response}"
-                )
-                yield "error", "Failed to create video: No project ID returned"
-            else:
-                logger.debug(
-                    f"Video created with project ID: {pid}. Waiting for completion..."
-                )
-                video_url = self.wait_for_video(
-                    input_data.api_key.get_secret_value(), pid, webhook_token
-                )
-                logger.debug(f"Video ready: {video_url}")
-                yield "video_url", video_url
-
-        except requests.RequestException as e:
-            logger.exception("Error creating video")
-            yield "error", f"Error creating video: {str(e)}"
-        except ValueError as e:
-            logger.exception("Error in video creation process")
-            yield "error", str(e)
-        except TimeoutError as e:
-            logger.exception("Video creation timed out")
-            yield "error", str(e)
+        if not pid:
+            logger.error(
+                f"Failed to create video: No project ID returned. API Response: {response}"
+            )
+            raise RuntimeError("Failed to create video: No project ID returned")
+        else:
+            logger.debug(
+                f"Video created with project ID: {pid}. Waiting for completion..."
+            )
+            video_url = self.wait_for_video(
+                input_data.api_key.get_secret_value(), pid, webhook_token
+            )
+            logger.debug(f"Video ready: {video_url}")
+            yield "video_url", video_url

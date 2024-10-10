@@ -44,7 +44,7 @@ Follow these steps to create and test a new block:
 
     class Output(BlockSchema):
         summary: str  # The summary of the topic from Wikipedia
-        error: str  # Any error message if the request fails
+        error: str  # Any error message if the request fails, error field needs to be named `error`.
     ```
 
 4. **Implement the `__init__` method, including test data and mocks:**
@@ -95,17 +95,13 @@ Follow these steps to create and test a new block:
            yield "summary", response['extract']
 
        except requests.exceptions.HTTPError as http_err:
-           yield "error", f"HTTP error occurred: {http_err}"
-       except requests.RequestException as e:
-           yield "error", f"Request to Wikipedia failed: {e}"
-       except KeyError as e:
-           yield "error", f"Error parsing Wikipedia response: {e}"
+           raise RuntimeError(f"HTTP error occurred: {http_err}")
    ```
 
    - **Try block**: Contains the main logic to fetch and process the Wikipedia summary.
    - **API request**: Send a GET request to the Wikipedia API.
-   - **Error handling**: Handle various exceptions that might occur during the API request and data processing.
-   - **Yield**: Use `yield` to output the results. Prefer to output one result object at a time. If you are calling a function that returns a list, you can yield each item in the list separately. You can also yield the whole list as well, but do both rather than yielding the list. For example: If you were writing a block that outputs emails, you'd yield each email as a separate result object, but you could also yield the whole list as an additional single result object.
+   - **Error handling**: Handle various exceptions that might occur during the API request and data processing. We don't need to catch all exceptions, only the ones we expect and can handle. The uncaught exceptions will be automatically yielded as `error` in the output. Any block that raises an exception (or yields an `error` output) will be marked as failed. Prefer raising exceptions over yielding `error`, as it will stop the execution immediately.
+   - **Yield**: Use `yield` to output the results. Prefer to output one result object at a time. If you are calling a function that returns a list, you can yield each item in the list separately. You can also yield the whole list as well, but do both rather than yielding the list. For example: If you were writing a block that outputs emails, you'd yield each email as a separate result object, but you could also yield the whole list as an additional single result object. Yielding output named `error` will break the execution right away and mark the block execution as failed.
 
 ### Blocks with authentication
 
