@@ -32,6 +32,14 @@ jobs:
         python-version: ["3.10"]
     runs-on: ubuntu-latest
 
+    services:
+      redis:
+        image: bitnami/redis:6.2
+        env:
+          REDIS_PASSWORD: testpassword
+        ports:
+          - 6379:6379
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -96,9 +104,9 @@ jobs:
       - name: Run pytest with coverage
         run: |
           if [[ "${{ runner.debug }}" == "1" ]]; then
-            poetry run pytest -vv -o log_cli=true -o log_cli_level=DEBUG test
+            poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG test
           else
-            poetry run pytest -vv test
+            poetry run pytest -s -vv test
           fi
         if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
@@ -107,6 +115,10 @@ jobs:
           SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
           SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
+          REDIS_HOST: 'localhost'
+          REDIS_PORT: '6379'
+          REDIS_PASSWORD: 'testpassword'
+
     env:
       CI: true
       PLAIN_OUTPUT: True

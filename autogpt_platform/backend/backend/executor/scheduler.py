@@ -24,7 +24,6 @@ class ExecutionScheduler(AppService):
         self.use_db = True
         self.last_check = datetime.min
         self.refresh_interval = refresh_interval
-        self.use_redis = False
 
     @property
     def execution_manager_client(self) -> ExecutionManager:

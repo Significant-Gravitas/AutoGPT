@@ -172,6 +172,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 <div key={propKey} onMouseOver={() => {}}>
                   {!isConnected && (
                     <NodeGenericInputField
+                      nodeId={id}
                       className="mb-2 mt-1"
                       propKey={propKey}
                       propSchema={propSchema}
@@ -231,6 +232,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
+                    nodeId={id}
                     className="mb-2 mt-1"
                     propKey={propKey}
                     propSchema={propSchema}
@@ -270,6 +272,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
+                    nodeId={id}
                     className="mb-2 mt-1"
                     propKey={propKey}
                     propSchema={propSchema}

@@ -1,8 +1,12 @@
 import ast
 import logging
-from enum import Enum
+from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from typing import Any, List, NamedTuple
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, List, NamedTuple
+
+if TYPE_CHECKING:
+    from enum import _EnumMemberT
 
 import anthropic
 import ollama
@@ -12,6 +16,7 @@ from groq import Groq
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 from backend.util import json
+from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +34,26 @@ class ModelMetadata(NamedTuple):
     cost_factor: int
 
 
-class LlmModel(str, Enum):
+class LlmModelMeta(EnumMeta):
+    @property
+    def __members__(
+        self: type["_EnumMemberT"],
+    ) -> MappingProxyType[str, "_EnumMemberT"]:
+        if Settings().config.behave_as == BehaveAs.LOCAL:
+            members = super().__members__
+            return members
+        else:
+            removed_providers = ["ollama"]
+            existing_members = super().__members__
+            members = {
+                name: member
+                for name, member in existing_members.items()
+                if LlmModel[name].provider not in removed_providers
+            }
+            return MappingProxyType(members)
+
+
+class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenAI models
     O1_PREVIEW = "o1-preview"
     O1_MINI = "o1-mini"
@@ -57,6 +81,18 @@ class LlmModel(str, Enum):
     @property
     def metadata(self) -> ModelMetadata:
         return MODEL_METADATA[self]
+
+    @property
+    def provider(self) -> str:
+        return self.metadata.provider
+
+    @property
+    def context_window(self) -> int:
+        return self.metadata.context_window
+
+    @property
+    def cost_factor(self) -> int:
+        return self.metadata.cost_factor
 
 
 MODEL_METADATA = {
