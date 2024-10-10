@@ -40,8 +40,6 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 
 TODO
 
-
-
 ## Storybook
 
 Storybook is a powerful development environment for UI components. It allows you to build UI components in isolation, making it easier to develop, test, and document your components independently from your main application.
