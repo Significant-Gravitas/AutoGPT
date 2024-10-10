@@ -68,12 +68,9 @@ class UnrealTextToSpeechBlock(Block):
         return response.json()
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            api_response = self.call_unreal_speech_api(
-                input_data.api_key.get_secret_value(),
-                input_data.text,
-                input_data.voice_id,
-            )
-            yield "mp3_url", api_response["OutputUri"]
-        except Exception as e:
-            yield "error", str(e)
+        api_response = self.call_unreal_speech_api(
+            input_data.api_key.get_secret_value(),
+            input_data.text,
+            input_data.voice_id,
+        )
+        yield "mp3_url", api_response["OutputUri"]
