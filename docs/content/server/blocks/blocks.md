@@ -95,4 +95,38 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Condition Block](branching.md#condition-block) | Evaluates conditions for workflow branching |
 | [Step Through Items](iteration.md#step-through-items) | Iterates through lists or dictionaries |
 
+## Google Services
+| Block Name | Description |
+|------------|-------------|
+| [Gmail Read](google/gmail.md#gmail-read) | Retrieves and reads emails from a Gmail account |
+| [Gmail Send](google/gmail.md#gmail-send) | Sends emails using a Gmail account |
+| [Gmail List Labels](google/gmail.md#gmail-list-labels) | Retrieves all labels from a Gmail account |
+| [Gmail Add Label](google/gmail.md#gmail-add-label) | Adds a label to a specific email in a Gmail account |
+| [Gmail Remove Label](google/gmail.md#gmail-remove-label) | Removes a label from a specific email in a Gmail account |
+| [Google Sheets Read](google/sheet.md#google-sheets-read) | Reads data from a Google Sheets spreadsheet |
+| [Google Sheets Write](google/sheet.md#google-sheets-write) | Writes data to a Google Sheets spreadsheet |
+| [Google Maps Search](google_maps.md#google-maps-search) | Searches for local businesses using the Google Maps API |
+
+## GitHub Integration
+| Block Name | Description |
+|------------|-------------|
+| [GitHub Comment](github/issues.md#github-comment) | Posts comments on GitHub issues or pull requests |
+| [GitHub Make Issue](github/issues.md#github-make-issue) | Creates new issues on GitHub repositories |
+| [GitHub Read Issue](github/issues.md#github-read-issue) | Retrieves information about a specific GitHub issue |
+| [GitHub List Issues](github/issues.md#github-list-issues) | Retrieves a list of issues from a GitHub repository |
+| [GitHub Add Label](github/issues.md#github-add-label) | Adds a label to a GitHub issue or pull request |
+| [GitHub Remove Label](github/issues.md#github-remove-label) | Removes a label from a GitHub issue or pull request |
+| [GitHub Assign Issue](github/issues.md#github-assign-issue) | Assigns a user to a GitHub issue |
+| [GitHub List Tags](github/repo.md#github-list-tags) | Retrieves and lists all tags for a specified GitHub repository |
+| [GitHub List Branches](github/repo.md#github-list-branches) | Retrieves and lists all branches for a specified GitHub repository |
+| [GitHub List Discussions](github/repo.md#github-list-discussions) | Retrieves and lists recent discussions for a specified GitHub repository |
+| [GitHub Make Branch](github/repo.md#github-make-branch) | Creates a new branch in a GitHub repository |
+| [GitHub Delete Branch](github/repo.md#github-delete-branch) | Deletes a specified branch from a GitHub repository |
+| [GitHub List Pull Requests](github/pull_requests.md#github-list-pull-requests) | Retrieves a list of pull requests from a specified GitHub repository |
+| [GitHub Make Pull Request](github/pull_requests.md#github-make-pull-request) | Creates a new pull request in a specified GitHub repository |
+| [GitHub Read Pull Request](github/pull_requests.md#github-read-pull-request) | Retrieves detailed information about a specific GitHub pull request |
+| [GitHub Assign PR Reviewer](github/pull_requests.md#github-assign-pr-reviewer) | Assigns a reviewer to a specific GitHub pull request |
+| [GitHub Unassign PR Reviewer](github/pull_requests.md#github-unassign-pr-reviewer) | Removes an assigned reviewer from a specific GitHub pull request |
+| [GitHub List PR Reviewers](github/pull_requests.md#github-list-pr-reviewers) | Retrieves a list of all assigned reviewers for a specific GitHub pull request |
+
 This comprehensive list covers all the blocks available in AutoGPT. Each block is designed to perform a specific task, and they can be combined to create powerful, automated workflows. For more detailed information on each block, click on its name to view the full documentation.
