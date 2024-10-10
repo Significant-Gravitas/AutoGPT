@@ -4,7 +4,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["sh", "-c", "poetry run prisma migrate deploy"]
+    command: ["CMD", "poetry", "run", "prisma", "migrate_db"]
     develop:
       watch:
         - path: ./
