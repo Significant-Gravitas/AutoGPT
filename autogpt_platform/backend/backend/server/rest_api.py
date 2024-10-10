@@ -20,6 +20,7 @@ from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.queue import RedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
@@ -82,15 +83,16 @@ class AgentServer(AppService):
         api_router.dependencies.append(Depends(auth_middleware))
 
         # Import & Attach sub-routers
+        import backend.server.integrations.router
         import backend.server.routers.analytics
-        import backend.server.routers.integrations
 
         api_router.include_router(
-            backend.server.routers.integrations.router,
+            backend.server.integrations.router.router,
             prefix="/integrations",
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
         )
+        self.integration_creds_manager = IntegrationCredentialsManager()
 
         api_router.include_router(
             backend.server.routers.analytics.router,

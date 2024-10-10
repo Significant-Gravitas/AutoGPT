@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from multiprocessing import Manager
 from typing import Any, Generic, TypeVar
 
-from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -26,7 +25,6 @@ class GraphExecution(BaseModel):
     graph_exec_id: str
     graph_id: str
     start_node_execs: list["NodeExecution"]
-    node_input_credentials: dict[str, Credentials]  # dict[node_id, Credentials]
 
 
 class NodeExecution(BaseModel):
