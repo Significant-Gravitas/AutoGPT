@@ -6,8 +6,7 @@ from backend.data.execution import ExecutionStatus
 from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.data.user import create_default_user
 from backend.executor import ExecutionManager, ExecutionScheduler
-from backend.server import AgentServer
-from backend.server.rest_api import get_user_id
+from backend.server.rest_api import AgentServer, get_user_id
 
 log = print
 
