@@ -68,28 +68,37 @@ class MultimodalAIBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            # Initialize OpenAI client with the API key
-            client = OpenAI(
-                base_url="https://openrouter.ai/api/v1",
+            # Call the separated model execution logic
+            result = self.run_model(
                 api_key=input_data.api_key.get_secret_value(),
+                model_name=input_data.model_name,
+                prompt=input_data.prompt,
+                image_url=input_data.image_url,
             )
-
-            completion = client.chat.completions.create(
-                model=input_data.model_name,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": input_data.prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": input_data.image_url},
-                            },
-                        ],
-                    }
-                ],
-            )
-
-            yield "result", completion.choices[0].message.content
+            yield "result", result
         except Exception as e:
             yield "error", str(e)
+
+    def run_model(self, api_key, model_name, prompt, image_url):
+        # Initialize OpenAI client with the API key
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+        )
+
+        # Call the API to create a completion based on the input data
+        completion = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ],
+        )
+
+        # Extract and return the content from the API response
+        return completion.choices[0].message.content
