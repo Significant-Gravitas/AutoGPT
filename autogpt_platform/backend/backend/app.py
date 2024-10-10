@@ -25,7 +25,8 @@ def main(**kwargs):
     """
 
     from backend.executor import ExecutionManager, ExecutionScheduler
-    from backend.server import AgentServer, WebsocketServer
+    from backend.server.rest_api import AgentServer
+    from backend.server.ws_api import WebsocketServer
 
     run_processes(
         ExecutionManager(),

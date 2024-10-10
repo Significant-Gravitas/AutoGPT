@@ -8,6 +8,7 @@ from autogpt_libs.supabase_integration_credentials_store import OAuth2Credential
 from .base import BaseOAuthHandler
 
 
+# --8<-- [start:GithubOAuthHandlerExample]
 class GitHubOAuthHandler(BaseOAuthHandler):
     """
     Based on the documentation at:
@@ -41,7 +42,9 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         }
         return f"{self.auth_base_url}?{urlencode(params)}"
 
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
         return self._request_tokens({"code": code, "redirect_uri": self.redirect_uri})
 
     def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
@@ -135,3 +138,6 @@ class GitHubOAuthHandler(BaseOAuthHandler):
 
         # Get the login (username)
         return response.json().get("login")
+
+
+# --8<-- [end:GithubOAuthHandlerExample]

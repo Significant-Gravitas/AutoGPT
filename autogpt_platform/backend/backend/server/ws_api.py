@@ -1,23 +1,36 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.data.queue import AsyncRedisEventQueue
+from backend.data.queue import RedisEventQueue
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
 from backend.util.service import AppProcess
-from backend.util.settings import Config, Settings
+from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-app = FastAPI()
-event_queue = AsyncRedisEventQueue()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    event_queue.connect()
+    manager = get_connection_manager()
+    fut = asyncio.create_task(event_broadcaster(manager))
+    fut.add_done_callback(lambda _: logger.info("Event broadcaster stopped"))
+    yield
+    event_queue.close()
+
+
+docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
+app = FastAPI(lifespan=lifespan)
+event_queue = RedisEventQueue()
 _connection_manager = None
 
 logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
@@ -37,23 +50,13 @@ def get_connection_manager():
     return _connection_manager
 
 
-@app.on_event("startup")
-async def startup_event():
-    await event_queue.connect()
-    manager = get_connection_manager()
-    asyncio.create_task(event_broadcaster(manager))
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await event_queue.close()
-
-
 async def event_broadcaster(manager: ConnectionManager):
     while True:
-        event = await event_queue.get()
+        event = event_queue.get()
         if event is not None:
             await manager.send_execution_result(event)
+        else:
+            await asyncio.sleep(0.1)
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:

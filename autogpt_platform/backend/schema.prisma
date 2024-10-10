@@ -44,7 +44,7 @@ model AgentGraph {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
@@ -53,7 +53,7 @@ model AgentGraph {
   // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
   AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
   agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version])
+  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -63,11 +63,11 @@ model AgentNode {
   id String @id @default(uuid())
 
   agentBlockId String
-  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id])
+  AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id], onUpdate: Cascade)
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
   // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeSink")
@@ -90,12 +90,12 @@ model AgentNodeLink {
 
   // Output of a node is connected to the source of the link.
   agentNodeSourceId String
-  AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id])
+  AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id], onDelete: Cascade)
   sourceName        String
 
   // Input of a node is connected to the sink of the link.
   agentNodeSinkId String
-  AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id])
+  AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id], onDelete: Cascade)
   sinkName        String
 
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
@@ -137,13 +137,13 @@ model AgentGraphExecution {
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
   AgentNodeExecutions AgentNodeExecution[]
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stats String? // JSON serialized object
 }
@@ -153,10 +153,10 @@ model AgentNodeExecution {
   id String @id @default(uuid())
 
   agentGraphExecutionId String
-  AgentGraphExecution   AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id])
+  AgentGraphExecution   AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id], onDelete: Cascade)
 
   agentNodeId String
-  AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id])
+  AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id], onDelete: Cascade)
 
   Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
   Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
@@ -182,9 +182,9 @@ model AgentNodeExecutionInputOutput {
 
   // Prisma requires explicit back-references.
   referencedByInputExecId  String?
-  ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id])
+  ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id], onDelete: Cascade)
   referencedByOutputExecId String?
-  ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id])
+  ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
@@ -198,7 +198,7 @@ model AgentGraphExecutionSchedule {
 
   agentGraphId      String
   agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
@@ -209,7 +209,7 @@ model AgentGraphExecutionSchedule {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([isEnabled])
 }
@@ -224,7 +224,7 @@ model AnalyticsDetails {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
   type String
@@ -254,7 +254,7 @@ model AnalyticsMetrics {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum UserBlockCreditType {
@@ -267,7 +267,7 @@ model UserBlockCredit {
   createdAt      DateTime @default(now())
 
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   blockId String?
   block   AgentBlock? @relation(fields: [blockId], references: [id])

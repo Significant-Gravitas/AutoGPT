@@ -1,8 +1,12 @@
 import ast
 import logging
-from enum import Enum
+from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from typing import Any, List, NamedTuple
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, List, NamedTuple
+
+if TYPE_CHECKING:
+    from enum import _EnumMemberT
 
 import anthropic
 import ollama
@@ -12,6 +16,7 @@ from groq import Groq
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 from backend.util import json
+from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +34,26 @@ class ModelMetadata(NamedTuple):
     cost_factor: int
 
 
-class LlmModel(str, Enum):
+class LlmModelMeta(EnumMeta):
+    @property
+    def __members__(
+        self: type["_EnumMemberT"],
+    ) -> MappingProxyType[str, "_EnumMemberT"]:
+        if Settings().config.behave_as == BehaveAs.LOCAL:
+            members = super().__members__
+            return members
+        else:
+            removed_providers = ["ollama"]
+            existing_members = super().__members__
+            members = {
+                name: member
+                for name, member in existing_members.items()
+                if LlmModel[name].provider not in removed_providers
+            }
+            return MappingProxyType(members)
+
+
+class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenAI models
     O1_PREVIEW = "o1-preview"
     O1_MINI = "o1-mini"
@@ -57,6 +81,18 @@ class LlmModel(str, Enum):
     @property
     def metadata(self) -> ModelMetadata:
         return MODEL_METADATA[self]
+
+    @property
+    def provider(self) -> str:
+        return self.metadata.provider
+
+    @property
+    def context_window(self) -> int:
+        return self.metadata.context_window
+
+    @property
+    def cost_factor(self) -> int:
+        return self.metadata.cost_factor
 
 
 MODEL_METADATA = {
@@ -308,7 +344,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                 logger.error(f"Error calling LLM: {e}")
                 retry_prompt = f"Error calling LLM: {e}"
 
-        yield "error", retry_prompt
+        raise RuntimeError(retry_prompt)
 
 
 class AITextGeneratorBlock(Block):
@@ -354,14 +390,11 @@ class AITextGeneratorBlock(Block):
         raise ValueError("Failed to get a response from the LLM.")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            object_input_data = AIStructuredResponseGeneratorBlock.Input(
-                **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
-                expected_format={},
-            )
-            yield "response", self.llm_call(object_input_data)
-        except Exception as e:
-            yield "error", str(e)
+        object_input_data = AIStructuredResponseGeneratorBlock.Input(
+            **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
+            expected_format={},
+        )
+        yield "response", self.llm_call(object_input_data)
 
 
 class SummaryStyle(Enum):
@@ -409,11 +442,8 @@ class AITextSummarizerBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            for output in self._run(input_data):
-                yield output
-        except Exception as e:
-            yield "error", str(e)
+        for output in self._run(input_data):
+            yield output
 
     def _run(self, input_data: Input) -> BlockOutput:
         chunks = self._split_text(
@@ -606,24 +636,21 @@ class AIConversationBlock(Block):
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            api_key = (
-                input_data.api_key.get_secret_value()
-                or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
-            )
+        api_key = (
+            input_data.api_key.get_secret_value()
+            or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
+        )
 
-            messages = [message.model_dump() for message in input_data.messages]
+        messages = [message.model_dump() for message in input_data.messages]
 
-            response = self.llm_call(
-                api_key=api_key,
-                model=input_data.model,
-                messages=messages,
-                max_tokens=input_data.max_tokens,
-            )
+        response = self.llm_call(
+            api_key=api_key,
+            model=input_data.model,
+            messages=messages,
+            max_tokens=input_data.max_tokens,
+        )
 
-            yield "response", response
-        except Exception as e:
-            yield "error", f"Error calling LLM: {str(e)}"
+        yield "response", response
 
 
 class AIListGeneratorBlock(Block):
@@ -741,9 +768,7 @@ class AIListGeneratorBlock(Block):
             or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
         )
         if not api_key_check:
-            logger.error("No LLM API key provided.")
-            yield "error", "No LLM API key provided."
-            return
+            raise ValueError("No LLM API key provided.")
 
         # Prepare the system prompt
         sys_prompt = """You are a Python list generator. Your task is to generate a Python list based on the user's prompt. 
@@ -837,7 +862,9 @@ class AIListGeneratorBlock(Block):
                     logger.error(
                         f"Failed to generate a valid Python list after {input_data.max_retries} attempts"
                     )
-                    yield "error", f"Failed to generate a valid Python list after {input_data.max_retries} attempts. Last error: {str(e)}"
+                    raise RuntimeError(
+                        f"Failed to generate a valid Python list after {input_data.max_retries} attempts. Last error: {str(e)}"
+                    )
                 else:
                     # Add a retry prompt
                     logger.debug("Preparing retry prompt")

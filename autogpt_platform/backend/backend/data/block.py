@@ -45,7 +45,9 @@ class BlockCategory(Enum):
     INPUT = "Block that interacts with input of the graph."
     OUTPUT = "Block that interacts with output of the graph."
     LOGIC = "Programming logic to control the flow of your agent"
+    COMMUNICATION = "Block that interacts with communication platforms."
     DEVELOPER_TOOLS = "Developer tools such as GitHub blocks."
+    DATA = "Block that interacts with structured data."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -270,6 +272,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         for output_name, output_data in self.run(
             self.input_schema(**input_data), **kwargs
         ):
+            if output_name == "error":
+                raise RuntimeError(output_data)
             if error := self.output_schema.validate_field(output_name, output_data):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
@@ -286,7 +290,9 @@ def get_blocks() -> dict[str, Block]:
 
 async def initialize_blocks() -> None:
     for block in get_blocks().values():
-        existing_block = await AgentBlock.prisma().find_unique(where={"id": block.id})
+        existing_block = await AgentBlock.prisma().find_first(
+            where={"OR": [{"id": block.id}, {"name": block.name}]}
+        )
         if not existing_block:
             await AgentBlock.prisma().create(
                 data={
@@ -301,13 +307,15 @@ async def initialize_blocks() -> None:
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
         if (
-            block.name != existing_block.name
+            block.id != existing_block.id
+            or block.name != existing_block.name
             or input_schema != existing_block.inputSchema
             or output_schema != existing_block.outputSchema
         ):
             await AgentBlock.prisma().update(
-                where={"id": block.id},
+                where={"id": existing_block.id},
                 data={
+                    "id": block.id,
                     "name": block.name,
                     "inputSchema": input_schema,
                     "outputSchema": output_schema,

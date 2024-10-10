@@ -1,0 +1,81 @@
+replicaCount: 1 # not scaling websocket server for now
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-backend-prod/agpt-backend-prod
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8001
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-websocket-server-backend-config"}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-ws-backend-ip"
+    networking.gke.io/managed-certificates: "autogpt-websocket-server-cert"
+  hosts:
+    - host: ws-backend.agpt.co
+      paths:
+        - path: /ws
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-websocket-server
+          port: 8001
+  defaultBackend:
+    service:
+      name: autogpt-websocket-server
+      port:
+        number: 8001
+
+domain: "ws-backend.agpt.co"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+cors:
+  allowOrigins: "https://platform.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 10
+  periodSeconds: 5
+livenessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+env:
+  REDIS_HOST: "redis-prod-master.redis-prod.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ""
+  BACKEND_CORS_ALLOW_ORIGINS: '["https://platform.agpt.co"]'

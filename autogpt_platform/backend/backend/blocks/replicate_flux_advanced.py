@@ -11,12 +11,14 @@ from backend.data.model import BlockSecret, SchemaField, SecretField
 class ReplicateFluxModelName(str, Enum):
     FLUX_SCHNELL = ("Flux Schnell",)
     FLUX_PRO = ("Flux Pro",)
+    FLUX_PRO1_1 = ("Flux Pro 1.1",)
 
     @property
     def api_name(self):
         api_names = {
             ReplicateFluxModelName.FLUX_SCHNELL: "black-forest-labs/flux-schnell",
             ReplicateFluxModelName.FLUX_PRO: "black-forest-labs/flux-pro",
+            ReplicateFluxModelName.FLUX_PRO1_1: "black-forest-labs/flux-1.1-pro",
         }
         return api_names[self]
 
@@ -137,24 +139,21 @@ class ReplicateFluxAdvancedModelBlock(Block):
         if seed is None:
             seed = int.from_bytes(os.urandom(4), "big")
 
-        try:
-            # Run the model using the provided inputs
-            result = self.run_model(
-                api_key=input_data.api_key.get_secret_value(),
-                model_name=input_data.replicate_model_name.api_name,
-                prompt=input_data.prompt,
-                seed=seed,
-                steps=input_data.steps,
-                guidance=input_data.guidance,
-                interval=input_data.interval,
-                aspect_ratio=input_data.aspect_ratio,
-                output_format=input_data.output_format,
-                output_quality=input_data.output_quality,
-                safety_tolerance=input_data.safety_tolerance,
-            )
-            yield "result", result
-        except Exception as e:
-            yield "error", str(e)
+        # Run the model using the provided inputs
+        result = self.run_model(
+            api_key=input_data.api_key.get_secret_value(),
+            model_name=input_data.replicate_model_name.api_name,
+            prompt=input_data.prompt,
+            seed=seed,
+            steps=input_data.steps,
+            guidance=input_data.guidance,
+            interval=input_data.interval,
+            aspect_ratio=input_data.aspect_ratio,
+            output_format=input_data.output_format,
+            output_quality=input_data.output_quality,
+            safety_tolerance=input_data.safety_tolerance,
+        )
+        yield "result", result
 
     def run_model(
         self,

@@ -8,6 +8,9 @@ image:
 service:
   type: ClusterIP
   port: 8001
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-websocket-server-backend-config"}'
 
 ingress:
   enabled: true
@@ -19,7 +22,7 @@ ingress:
   hosts:
     - host: dev-ws-server.agpt.co
       paths:
-        - path: /
+        - path: /ws
           pathType: Prefix
       backend:
         service:
@@ -44,6 +47,20 @@ resources:
 autoscaling:
   enabled: false
 
+cors:
+  allowOrigins: "https://dev-builder.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
 readinessProbe:
   httpGet:
     path: /
@@ -61,4 +78,3 @@ env:
   REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
   REDIS_PORT: "6379"
   REDIS_PASSWORD: "password"
-  BACKEND_CORS_ALLOW_ORIGINS: "https://dev-builder.agpt.co"

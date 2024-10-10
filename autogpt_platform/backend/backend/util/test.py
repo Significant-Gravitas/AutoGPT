@@ -1,57 +1,20 @@
-import asyncio
 import time
 
 from backend.data import db
 from backend.data.block import Block, initialize_blocks
-from backend.data.execution import ExecutionResult, ExecutionStatus
+from backend.data.execution import ExecutionStatus
 from backend.data.model import CREDENTIALS_FIELD_NAME
-from backend.data.queue import AsyncEventQueue
 from backend.data.user import create_default_user
 from backend.executor import ExecutionManager, ExecutionScheduler
-from backend.server import AgentServer
-from backend.server.rest_api import get_user_id
+from backend.server.rest_api import AgentServer, get_user_id
 
 log = print
-
-
-class InMemoryAsyncEventQueue(AsyncEventQueue):
-    def __init__(self):
-        self.queue = asyncio.Queue()
-        self.connected = False
-        self.closed = False
-
-    async def connect(self):
-        if not self.connected:
-            self.connected = True
-        return
-
-    async def close(self):
-        self.closed = True
-        self.connected = False
-        return
-
-    async def put(self, execution_result: ExecutionResult):
-        if not self.connected:
-            raise RuntimeError("Queue is not connected")
-        await self.queue.put(execution_result)
-
-    async def get(self):
-        if self.closed:
-            return None
-        if not self.connected:
-            raise RuntimeError("Queue is not connected")
-        try:
-            item = await asyncio.wait_for(self.queue.get(), timeout=0.1)
-            return item
-        except asyncio.TimeoutError:
-            return None
 
 
 class SpinTestServer:
     def __init__(self):
         self.exec_manager = ExecutionManager()
-        self.in_memory_queue = InMemoryAsyncEventQueue()
-        self.agent_server = AgentServer(event_queue=self.in_memory_queue)
+        self.agent_server = AgentServer()
         self.scheduler = ExecutionScheduler()
 
     @staticmethod

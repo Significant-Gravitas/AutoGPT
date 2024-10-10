@@ -1,5 +1,6 @@
 import json
 import os
+from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -13,6 +14,17 @@ from pydantic_settings import (
 from backend.util.data import get_config_path, get_data_path, get_secrets_path
 
 T = TypeVar("T", bound=BaseSettings)
+
+
+class AppEnvironment(str, Enum):
+    LOCAL = "local"
+    DEVELOPMENT = "dev"
+    PRODUCTION = "prod"
+
+
+class BehaveAs(str, Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
 
 
 class UpdateTrackingModel(BaseModel, Generic[T]):
@@ -121,6 +133,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
 
+    app_env: AppEnvironment = Field(
+        default=AppEnvironment.LOCAL,
+        description="The name of the app environment: local or dev or prod",
+    )
+
+    behave_as: BehaveAs = Field(
+        default=BehaveAs.LOCAL,
+        description="What environment to behave as: local or cloud",
+    )
+
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
 
     @field_validator("backend_cors_allow_origins")
@@ -177,10 +199,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     # OAuth server credentials for integrations
+    # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
     github_client_secret: str = Field(
         default="", description="GitHub OAuth client secret"
     )
+    # --8<-- [end:OAuthServerCredentialsExample]
     google_client_id: str = Field(default="", description="Google OAuth client ID")
     google_client_secret: str = Field(
         default="", description="Google OAuth client secret"
@@ -207,7 +231,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_author_id: str = Field(default="", description="Medium author ID")
     did_api_key: str = Field(default="", description="D-ID API Key")
     revid_api_key: str = Field(default="", description="revid.ai API key")
-
     discord_bot_token: str = Field(default="", description="Discord bot token")
 
     smtp_server: str = Field(default="", description="SMTP server IP")
@@ -220,6 +243,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     google_maps_api_key: str = Field(default="", description="Google Maps API Key")
 
     replicate_api_key: str = Field(default="", description="Replicate API Key")
+    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
+    ideogram_api_key: str = Field(default="", description="Ideogram API Key")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(

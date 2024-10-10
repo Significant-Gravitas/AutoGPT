@@ -10,20 +10,20 @@ from autogpt_libs.auth.middleware import auth_middleware
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from backend.data import block, db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data import user as user_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
-from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
+from backend.data.queue import RedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
-from backend.util.lock import KeyedMutex
 from backend.util.service import AppService, expose, get_service_client
-from backend.util.settings import Config, Settings
+from backend.util.settings import AppEnvironment, Config, Settings
 
 from .utils import get_user_id
 
@@ -32,27 +32,25 @@ logger = logging.getLogger(__name__)
 
 
 class AgentServer(AppService):
-    mutex = KeyedMutex()
-    use_redis = True
+    use_queue = True
     _test_dependency_overrides = {}
     _user_credit_model = get_user_credit_model()
 
-    def __init__(self, event_queue: AsyncEventQueue | None = None):
+    def __init__(self):
         super().__init__(port=Config().agent_server_port)
-        self.event_queue = event_queue or AsyncRedisEventQueue()
+        self.event_queue = RedisEventQueue()
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        self.run_and_wait(self.event_queue.connect())
+        self.event_queue.connect()
         await block.initialize_blocks()
-        if await user_db.create_default_user(settings.config.enable_auth):
-            await graph_db.import_packaged_templates()
         yield
-        await self.event_queue.close()
+        self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
+        docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -62,6 +60,7 @@ class AgentServer(AppService):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
+            docs_url=docs_url,
         )
 
         if self._test_dependency_overrides:
@@ -84,15 +83,16 @@ class AgentServer(AppService):
         api_router.dependencies.append(Depends(auth_middleware))
 
         # Import & Attach sub-routers
+        import backend.server.integrations.router
         import backend.server.routers.analytics
-        import backend.server.routers.integrations
 
         api_router.include_router(
-            backend.server.routers.integrations.router,
+            backend.server.integrations.router.router,
             prefix="/integrations",
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
         )
+        self.integration_creds_manager = IntegrationCredentialsManager()
 
         api_router.include_router(
             backend.server.routers.analytics.router,
@@ -167,6 +167,12 @@ class AgentServer(AppService):
             endpoint=self.update_graph,
             methods=["PUT"],
             tags=["templates", "graphs"],
+        )
+        api_router.add_api_route(
+            path="/graphs/{graph_id}",
+            endpoint=self.delete_graph,
+            methods=["DELETE"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions",
@@ -346,8 +352,10 @@ class AgentServer(AppService):
         )
 
     @classmethod
-    async def get_templates(cls) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(filter_by="template")
+    async def get_templates(
+        cls, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
 
     @classmethod
     async def get_graph(
@@ -355,8 +363,11 @@ class AgentServer(AppService):
         graph_id: str,
         user_id: Annotated[str, Depends(get_user_id)],
         version: int | None = None,
+        hide_credentials: bool = False,
     ) -> graph_db.Graph:
-        graph = await graph_db.get_graph(graph_id, version, user_id=user_id)
+        graph = await graph_db.get_graph(
+            graph_id, version, user_id=user_id, hide_credentials=hide_credentials
+        )
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
@@ -392,6 +403,17 @@ class AgentServer(AppService):
         cls, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
     ) -> graph_db.Graph:
         return await cls.create_graph(create_graph, is_template=True, user_id=user_id)
+
+    class DeleteGraphResponse(TypedDict):
+        version_counts: int
+
+    @classmethod
+    async def delete_graph(
+        cls, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> DeleteGraphResponse:
+        return {
+            "version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)
+        }
 
     @classmethod
     async def create_graph(
@@ -616,15 +638,7 @@ class AgentServer(AppService):
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
         execution_result = execution_db.ExecutionResult(**execution_result_dict)
-        self.run_and_wait(self.event_queue.put(execution_result))
-
-    @expose
-    def acquire_lock(self, key: Any):
-        self.mutex.lock(key)
-
-    @expose
-    def release_lock(self, key: Any):
-        self.mutex.unlock(key)
+        self.event_queue.put(execution_result)
 
     @classmethod
     def update_configuration(

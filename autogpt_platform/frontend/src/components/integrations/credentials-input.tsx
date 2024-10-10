@@ -44,11 +44,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// --8<-- [start:ProviderIconsEmbed]
 const providerIcons: Record<string, React.FC<{ className?: string }>> = {
   github: FaGithub,
   google: FaGoogle,
   notion: NotionLogoIcon,
 };
+// --8<-- [end:ProviderIconsEmbed]
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {
@@ -74,6 +76,7 @@ export const CredentialsInput: FC<{
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupController, setOAuthPopupController] =
     useState<AbortController | null>(null);
+  const [oAuthError, setOAuthError] = useState<string | null>(null);
 
   if (!credentials) {
     return null;
@@ -95,6 +98,7 @@ export const CredentialsInput: FC<{
   } = credentials;
 
   async function handleOAuthLogin() {
+    setOAuthError(null);
     const { login_url, state_token } = await api.oAuthLogin(
       provider,
       schema.credentials_scopes,
@@ -102,46 +106,81 @@ export const CredentialsInput: FC<{
     setOAuth2FlowInProgress(true);
     const popup = window.open(login_url, "_blank", "popup=true");
 
+    if (!popup) {
+      throw new Error(
+        "Failed to open popup window. Please allow popups for this site.",
+      );
+    }
+
     const controller = new AbortController();
     setOAuthPopupController(controller);
     controller.signal.onabort = () => {
+      console.debug("OAuth flow aborted");
       setOAuth2FlowInProgress(false);
-      popup?.close();
+      popup.close();
     };
-    popup?.addEventListener(
-      "message",
-      async (e: MessageEvent<OAuthPopupResultMessage>) => {
-        if (
-          typeof e.data != "object" ||
-          !(
-            "message_type" in e.data &&
-            e.data.message_type == "oauth_popup_result"
-          )
-        )
-          return;
 
-        if (!e.data.success) {
-          console.error("OAuth flow failed:", e.data.message);
-          return;
-        }
+    const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
+      console.debug("Message received:", e.data);
+      if (
+        typeof e.data != "object" ||
+        !("message_type" in e.data) ||
+        e.data.message_type !== "oauth_popup_result"
+      ) {
+        console.debug("Ignoring irrelevant message");
+        return;
+      }
 
-        if (e.data.state !== state_token) return;
+      if (!e.data.success) {
+        console.error("OAuth flow failed:", e.data.message);
+        setOAuthError(`OAuth flow failed: ${e.data.message}`);
+        setOAuth2FlowInProgress(false);
+        return;
+      }
 
+      if (e.data.state !== state_token) {
+        console.error("Invalid state token received");
+        setOAuthError("Invalid state token received");
+        setOAuth2FlowInProgress(false);
+        return;
+      }
+
+      try {
+        console.debug("Processing OAuth callback");
         const credentials = await oAuthCallback(e.data.code, e.data.state);
+        console.debug("OAuth callback processed successfully");
         onSelectCredentials({
           id: credentials.id,
           type: "oauth2",
           title: credentials.title,
           provider,
         });
+      } catch (error) {
+        console.error("Error in OAuth callback:", error);
+        setOAuthError(
+          // type of error is unkown so we need to use String(error)
+          `Error in OAuth callback: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      } finally {
+        console.debug("Finalizing OAuth flow");
+        setOAuth2FlowInProgress(false);
         controller.abort("success");
-      },
-      { signal: controller.signal },
-    );
+      }
+    };
+
+    console.debug("Adding message event listener");
+    window.addEventListener("message", handleMessage, {
+      signal: controller.signal,
+    });
 
     setTimeout(
       () => {
+        console.debug("OAuth flow timed out");
         controller.abort("timeout");
+        setOAuth2FlowInProgress(false);
+        setOAuthError("OAuth flow timed out");
       },
       5 * 60 * 1000,
     );
@@ -189,6 +228,9 @@ export const CredentialsInput: FC<{
           )}
         </div>
         {modals}
+        {oAuthError && (
+          <div className="mt-2 text-red-500">Error: {oAuthError}</div>
+        )}
       </>
     );
   }
@@ -251,6 +293,9 @@ export const CredentialsInput: FC<{
         </SelectContent>
       </Select>
       {modals}
+      {oAuthError && (
+        <div className="mt-2 text-red-500">Error: {oAuthError}</div>
+      )}
     </>
   );
 };
