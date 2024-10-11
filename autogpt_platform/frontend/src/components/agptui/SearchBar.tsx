@@ -42,7 +42,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           value={searchQuery}
           onChange={handleInputChange}
           placeholder={placeholder}
-          className={`flex-grow border-none bg-transparent ${textColor} font-['PP Neue Montreal TT'] text-[23px] font-normal leading-9 tracking-tight placeholder:${placeholderColor} focus:outline-none`}
+          className={`flex-grow border-none bg-transparent ${textColor} font-neue text-[23px] font-normal leading-9 tracking-tight placeholder:${placeholderColor} focus:outline-none`}
         />
       </div>
     </form>

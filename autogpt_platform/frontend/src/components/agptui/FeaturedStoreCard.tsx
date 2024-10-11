@@ -51,30 +51,30 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
       onMouseLeave={handleMouseLeave}
     >
       <div className="flex flex-col items-start justify-start gap-3.5 self-stretch">
-        <div className="font-['PP Neue Montreal TT'] self-stretch text-[40px] font-medium leading-[43px] tracking-tight text-[#272727]">
+        <div className="font-neue self-stretch text-[40px] font-medium leading-[43px] tracking-tight text-[#272727]">
           {agentName}
         </div>
-        <div className="font-['PP Neue Montreal TT'] self-stretch text-xl font-normal tracking-tight text-[#878787]">
+        <div className="font-neue self-stretch text-xl font-normal tracking-tight text-[#878787]">
           by {creatorName}
         </div>
       </div>
       <div className="flex h-[381px] flex-col items-start justify-start gap-5 self-stretch">
-        <div className="font-['PP Neue Montreal TT'] w-[540px] text-xl font-normal tracking-tight text-[#282828]">
+        <div className="font-neue w-[540px] text-xl font-normal tracking-tight text-[#282828]">
           {description}
         </div>
         <div className="h-[245px] self-stretch rounded-xl bg-[#a8a8a8]" />
         <div className="flex items-center justify-between self-stretch">
           <div>
-            <span className="font-['PP Neue Montreal TT'] text-xl font-medium tracking-tight text-[#272727]">
+            <span className="font-neue text-xl font-medium tracking-tight text-[#272727]">
               {runs.toLocaleString()}+
             </span>
-            <span className="font-['PP Neue Montreal TT'] text-xl font-normal tracking-tight text-[#272727]">
+            <span className="font-neue text-xl font-normal tracking-tight text-[#272727]">
               {" "}
               runs
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="font-['PP Neue Montreal TT'] text-xl font-normal tracking-tight text-[#272727]">
+            <div className="font-neue text-xl font-normal tracking-tight text-[#272727]">
               {rating.toFixed(1)}
             </div>
             <div className="flex items-center justify-start gap-px">

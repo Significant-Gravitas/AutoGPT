@@ -54,17 +54,17 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         <AvatarImage src={avatarSrc} alt={agentName} />
         <AvatarFallback>{agentName.charAt(0)}</AvatarFallback>
       </Avatar>
-      <div className="font-['PP Neue Montreal TT'] absolute left-0 top-[254px] text-xl font-bold tracking-tight text-[#272727]">
+      <div className="font-neue absolute left-0 top-[254px] text-xl font-bold tracking-tight text-[#272727]">
         {agentName}
       </div>
-      <div className="font-['PP Neue Montreal TT'] absolute left-0 top-[284px] w-[440px] text-base font-normal leading-[21px] tracking-tight text-[#282828]">
+      <div className="font-neue absolute left-0 top-[284px] w-[440px] text-base font-normal leading-[21px] tracking-tight text-[#282828]">
         {description}
       </div>
-      <div className="font-['PP Neue Montreal TT'] absolute left-0 top-[360px] text-base font-medium tracking-tight text-[#272727]">
+      <div className="font-neue absolute left-0 top-[360px] text-base font-medium tracking-tight text-[#272727]">
         {runs.toLocaleString()}+ runs
       </div>
       <div className="absolute left-[297px] top-[360px] pb-2">
-        <div className="font-['PP Neue Montreal TT'] absolute left-0 top-0 text-base font-medium tracking-tight text-[#272727]">
+        <div className="font-neue absolute left-0 top-0 text-base font-medium tracking-tight text-[#272727]">
           {rating.toFixed(1)}
         </div>
         <div className="absolute left-[34px] top-0 inline-flex h-[19px] items-center justify-start gap-px">
