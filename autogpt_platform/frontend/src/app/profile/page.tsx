@@ -10,6 +10,16 @@ import { CredentialsProvidersContext } from "@/components/integrations/credentia
 import { Separator } from "@/components/ui/separator";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { useToast } from "@/components/ui/use-toast";
+import { IconKey, IconUser } from "@/components/ui/icons";
+import { providerIcons } from "@/components/integrations/credentials-input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export default function PrivatePage() {
   const { user, isLoading, error } = useUser();
@@ -61,60 +71,68 @@ export default function PrivatePage() {
     return null;
   }
 
+  const allCredentials = Object.values(providers).flatMap((provider) =>
+    [...provider.savedApiKeys, ...provider.savedOAuthCredentials].map(
+      (credentials) => ({
+        ...credentials,
+        provider: provider.provider,
+        providerName: provider.providerName,
+        ProviderIcon: providerIcons[provider.provider],
+        TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+      }),
+    ),
+  );
+
   return (
     <div>
       <p>Hello {user.email}</p>
       <Button onClick={() => supabase.auth.signOut()}>Log out</Button>
-      <div>
-        {Object.entries(providers).map(([providerName, provider]) => {
-          return (
-            <div key={provider.provider} className="mh-2">
-              <Separator />
-              <div className="text-xl">{provider.providerName}</div>
-              {provider.savedApiKeys.length > 0 && (
-                <div>
-                  <div className="text-md">API Keys</div>
-                  {provider.savedApiKeys.map((apiKey) => (
-                    <div key={apiKey.id} className="flex flex-row">
-                      <p className="p-2">
-                        {apiKey.id} - {apiKey.title}
-                      </p>
-                      <Button
-                        variant="destructive"
-                        onClick={() =>
-                          removeCredentials(providerName, apiKey.id)
-                        }
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  ))}
+      <Separator className="my-4" />
+      <h2 className="mb-4">Connections & Credentials</h2>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Provider</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {allCredentials.map((cred) => (
+            <TableRow key={cred.id}>
+              <TableCell>
+                <div className="flex items-center space-x-1.5">
+                  <cred.ProviderIcon className="h-4 w-4" />
+                  <strong>{cred.providerName}</strong>
                 </div>
-              )}
-              {provider.savedOAuthCredentials.length > 0 && (
-                <div>
-                  <div className="text-md">OAuth Credentials</div>
-                  {provider.savedOAuthCredentials.map((oauth) => (
-                    <div key={oauth.id} className="flex flex-row">
-                      <p className="p-2">
-                        {oauth.id} - {oauth.title}
-                      </p>
-                      <Button
-                        variant="destructive"
-                        onClick={() =>
-                          removeCredentials(providerName, oauth.id)
-                        }
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  ))}
+              </TableCell>
+              <TableCell>
+                <div className="flex h-full items-center space-x-1.5">
+                  <cred.TypeIcon />
+                  <span>{cred.title || cred.username}</span>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                <small className="text-muted-foreground">
+                  {
+                    {
+                      oauth2: "OAuth2 credentials",
+                      api_key: "API key",
+                    }[cred.type]
+                  }{" "}
+                  - <code>{cred.id}</code>
+                </small>
+              </TableCell>
+              <TableCell>
+                <Button
+                  variant="destructive"
+                  onClick={() => removeCredentials(cred.provider, cred.id)}
+                >
+                  Delete
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 }
