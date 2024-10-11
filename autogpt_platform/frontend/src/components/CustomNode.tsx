@@ -666,7 +666,7 @@ export function CustomNode({
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
           <div
-            className="flex items-start justify-between"
+            className="flex w-fit items-start justify-between"
             data-id="input-handles"
           >
             <div>
