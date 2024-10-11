@@ -210,7 +210,8 @@ export const startTutorial = (
     id: "focus-new-block",
     title: "New Block",
     text: "This is the Calculator Block! Let's go over how it works.",
-    attachTo: { element: `[data-id="custom-node-1"]`, on: "left" },
+    // It's better to show this in the middle than showing the dropdown that can't be clicked.
+    // attachTo: { element: `[data-id="input-handles"]`, on: "right" },
     beforeShowPromise: () => waitForElement('[data-id="custom-node-1"]'),
     buttons: [
       {
@@ -277,10 +278,6 @@ export const startTutorial = (
         action: tour.next,
       },
     ],
-    when: {
-      show: () => tour.modal.hide(),
-      hide: () => tour.modal.show(),
-    },
   });
 
   tour.addStep({

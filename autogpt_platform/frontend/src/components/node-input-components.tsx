@@ -323,7 +323,7 @@ const NodeCredentialsInput: FC<{
 };
 
 const InputRef = (value: any): ((el: HTMLInputElement | null) => void) => {
-  return (el) => el && (el.value = value);
+  return (el) => el && value && (el.value = value);
 };
 
 const NodeKeyValueInput: FC<{
@@ -352,7 +352,7 @@ const NodeKeyValueInput: FC<{
     const defaultEntries = new Map(
       Object.entries(entries ?? schema.default ?? {}),
     );
-    const prefix = getEntryKey("");
+    const prefix = `${selfKey}_#_`;
     connections
       .filter((c) => c.targetHandle.startsWith(prefix))
       .map((c) => c.targetHandle.slice(prefix.length))

@@ -109,24 +109,25 @@ const FlowEditor: React.FC<{
 
   const TUTORIAL_STORAGE_KEY = "shepherd-tour";
 
-  const emptyNodes = (forceRemove: boolean = false) => {
-    if (forceRemove) {
-      setNodes([]);
-      setEdges([]);
-      return true;
-    }
-    return nodes.length === 0;
-  };
-
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
       localStorage.removeItem(TUTORIAL_STORAGE_KEY);
       router.push(pathname);
     } else if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
+      const emptyNodes = (forceRemove: boolean = false) =>
+        forceRemove ? (setNodes([]), setEdges([]), true) : nodes.length === 0;
       startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
       localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
     }
-  }, [availableNodes, router, pathname, params]);
+  }, [
+    availableNodes,
+    router,
+    pathname,
+    params,
+    setEdges,
+    setNodes,
+    nodes.length,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
