@@ -40,15 +40,16 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   addBlock,
   pinBlocksPopover,
 }) => {
+  const blockList = blocks.sort((a, b) => a.name.localeCompare(b.name));
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [filteredBlocks, setFilteredBlocks] = useState<Block[]>(blocks);
+  const [filteredBlocks, setFilteredBlocks] = useState<Block[]>(blockList);
 
   const resetFilters = React.useCallback(() => {
     setSearchQuery("");
     setSelectedCategory(null);
-    setFilteredBlocks(blocks);
-  }, [blocks]);
+    setFilteredBlocks(blockList);
+  }, [blockList]);
 
   // Extract unique categories from blocks
   const categories = Array.from(
@@ -60,7 +61,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
 
   React.useEffect(() => {
     setFilteredBlocks(
-      blocks.filter(
+      blockList.filter(
         (block: Block) =>
           (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             beautifyString(block.name)
@@ -70,7 +71,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
             block.categories.some((cat) => cat.category === selectedCategory)),
       ),
     );
-  }, [blocks, searchQuery, selectedCategory]);
+  }, [blockList, searchQuery, selectedCategory]);
 
   return (
     <Popover
