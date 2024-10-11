@@ -72,3 +72,15 @@ export const WithInteraction: Story = {
     await userEvent.click(storeCard);
   },
 };
+
+export const LongDescription: Story = {
+  args: {
+    agentName: "AI Writing Assistant",
+    description:
+      "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking.",
+    runs: 75000,
+    rating: 4.7,
+    onClick: () => console.log("LongDescription StoreCard clicked"),
+    avatarSrc: "https://example.com/avatar5.jpg",
+  },
+};
