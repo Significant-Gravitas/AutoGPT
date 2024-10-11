@@ -29,15 +29,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install
-
-      - name: Check formatting with Prettier
-        run: |
-          npx prettier --check .
+          yarn install --frozen-lockfile
 
       - name: Run lint
         run: |
-          npm run lint
+          yarn lint
 
   test:
     runs-on: ubuntu-latest
@@ -62,18 +58,18 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install
+          yarn install --frozen-lockfile
 
       - name: Setup Builder .env
         run: |
           cp .env.example .env
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+        run: yarn playwright install --with-deps
 
       - name: Run tests
         run: |
-          npm run test
+          yarn test
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
