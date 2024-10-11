@@ -50,7 +50,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="flex h-[124px] flex-col items-start justify-start gap-3.5 self-stretch">
+      <div className="flex flex-col items-start justify-start gap-3.5 self-stretch">
         <div className="font-['PP Neue Montreal TT'] self-stretch text-[40px] font-medium leading-[43px] tracking-tight text-[#272727]">
           {agentName}
         </div>
