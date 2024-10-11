@@ -1,6 +1,6 @@
 from backend.app import run_processes
 from backend.executor import ExecutionScheduler
-from backend.server import AgentServer
+from backend.server.rest_api import AgentServer
 
 
 def main():
