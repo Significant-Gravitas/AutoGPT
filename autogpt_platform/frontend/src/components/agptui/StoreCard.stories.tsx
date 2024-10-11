@@ -15,6 +15,7 @@ const meta = {
     runs: { control: "number" },
     rating: { control: "number", min: 0, max: 5, step: 0.1 },
     onClick: { action: "clicked" },
+    avatarSrc: { control: "text" },
   },
 } satisfies Meta<typeof StoreCard>;
 
@@ -28,6 +29,7 @@ export const Default: Story = {
     runs: 10000,
     rating: 4.5,
     onClick: () => console.log("Default StoreCard clicked"),
+    avatarSrc: "https://github.com/shadcn.png",
   },
 };
 
@@ -38,6 +40,7 @@ export const LowRating: Story = {
     runs: 5000,
     rating: 2.7,
     onClick: () => console.log("LowRating StoreCard clicked"),
+    avatarSrc: "https://example.com/avatar2.jpg",
   },
 };
 
@@ -48,6 +51,7 @@ export const HighRuns: Story = {
     runs: 1000000,
     rating: 4.8,
     onClick: () => console.log("HighRuns StoreCard clicked"),
+    avatarSrc: "https://example.com/avatar3.jpg",
   },
 };
 
@@ -58,6 +62,7 @@ export const WithInteraction: Story = {
     runs: 50000,
     rating: 4.2,
     onClick: () => console.log("WithInteraction StoreCard clicked"),
+    avatarSrc: "https://example.com/avatar4.jpg",
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
