@@ -58,7 +58,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
           by {creatorName}
         </div>
       </div>
-      <div className="font-neue flex-grow w-[540px] text-xl font-normal tracking-tight text-[#282828]">
+      <div className="font-neue w-[540px] flex-grow text-xl font-normal tracking-tight text-[#282828]">
         {description}
       </div>
       <div className="flex flex-col items-start justify-end gap-5 self-stretch">
