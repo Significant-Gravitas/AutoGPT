@@ -1,5 +1,6 @@
 import * as React from "react";
 import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface StoreCardProps {
   agentName: string;
@@ -7,6 +8,7 @@ interface StoreCardProps {
   runs: number;
   rating: number;
   onClick: () => void;
+  avatarSrc: string;
 }
 
 export const StoreCard: React.FC<StoreCardProps> = ({
@@ -15,6 +17,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   runs,
   rating,
   onClick,
+  avatarSrc,
 }) => {
   const [isHovered, setIsHovered] = React.useState(false);
 
@@ -47,7 +50,10 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       onMouseLeave={handleMouseLeave}
     >
       <div className="absolute left-0 top-0 h-[238px] w-[440px] rounded-xl bg-[#d9d9d9]" />
-      <div className="absolute left-[16px] top-[158px] h-16 w-16 rounded-full bg-[#7e7e7e]" />
+      <Avatar className="absolute left-[16px] top-[158px] h-16 w-16">
+        <AvatarImage src={avatarSrc} alt={agentName} />
+        <AvatarFallback>{agentName.charAt(0)}</AvatarFallback>
+      </Avatar>
       <div className="font-['PP Neue Montreal TT'] absolute left-0 top-[254px] text-xl font-bold tracking-tight text-[#272727]">
         {agentName}
       </div>
