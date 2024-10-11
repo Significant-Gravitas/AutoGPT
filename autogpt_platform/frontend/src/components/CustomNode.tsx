@@ -611,7 +611,7 @@ export function CustomNode({
 
   const stripeColor = getPrimaryCategoryColor(data.categories);
 
-  const NodeContent = () => (
+  const nodeContent = () => (
     <div
       className={`${blockClasses} ${errorClass} ${statusClass}`}
       data-id={`custom-node-${id}`}
@@ -796,9 +796,7 @@ export function CustomNode({
 
   return (
     <ContextMenu.Root>
-      <ContextMenu.Trigger>
-        <NodeContent />
-      </ContextMenu.Trigger>
+      <ContextMenu.Trigger>{nodeContent()}</ContextMenu.Trigger>
     </ContextMenu.Root>
   );
 }
