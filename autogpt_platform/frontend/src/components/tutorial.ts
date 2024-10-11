@@ -431,7 +431,9 @@ export const startTutorial = (
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-id^="badge-"][data-id$="-QUEUED"]').then(fitViewToScreen),
+      waitForElement('[data-id^="badge-"][data-id$="-QUEUED"]').then(
+        fitViewToScreen,
+      ),
     when: {
       show: () => {
         waitForElement('[data-id^="badge-"][data-id$="-COMPLETED"]').then(
