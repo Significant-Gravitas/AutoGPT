@@ -43,7 +43,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
 
   return (
     <div
-      className={`inline-flex h-[595px] w-[667px] cursor-pointer flex-col items-start justify-start gap-10 rounded-xl border border-black/10 bg-[#f9f9f9] px-[25px] pb-[15px] pt-[35px] ${
+      className={`inline-flex h-[595px] w-[667px] cursor-pointer flex-col items-start justify-between gap-10 rounded-xl border border-black/10 bg-[#f9f9f9] px-[25px] pb-[15px] pt-[35px] ${
         isHovered ? "shadow-lg" : ""
       } transition-shadow duration-300`}
       onClick={onClick}
@@ -58,10 +58,10 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
           by {creatorName}
         </div>
       </div>
-      <div className="flex h-[381px] flex-col items-start justify-start gap-5 self-stretch">
-        <div className="font-neue w-[540px] text-xl font-normal tracking-tight text-[#282828]">
-          {description}
-        </div>
+      <div className="font-neue flex-grow w-[540px] text-xl font-normal tracking-tight text-[#282828]">
+        {description}
+      </div>
+      <div className="flex flex-col items-start justify-end gap-5 self-stretch">
         <div className="h-[245px] self-stretch rounded-xl bg-[#a8a8a8]" />
         <div className="flex items-center justify-between self-stretch">
           <div>
