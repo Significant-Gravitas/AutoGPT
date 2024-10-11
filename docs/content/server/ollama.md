@@ -29,7 +29,7 @@ Follow these steps to set up and run Ollama and your AutoGPT project:
      ```
    - Start the frontend development server:
      ```
-     yarn dev
+     npm run dev
      ```
 
 4. **Choose the Ollama Model**

@@ -8,7 +8,7 @@ Welcome to the AutoGPT Platform - a powerful system for creating and running AI 
 
 - Docker
 - Docker Compose V2 (comes with Docker Desktop, or can be installed separately)
-- Node.js (for running the frontend application)
+- Node.js & NPM (for running the frontend application)
 
 ### Running the System
 
@@ -52,8 +52,13 @@ To run the AutoGPT Platform, follow these steps:
 
 7. Run the following command:
    ```
-   yarn install
-   yarn dev
+   npm install
+   npm run dev
+   ```
+   This command will install the necessary dependencies and start the frontend application in development mode.
+   If you are using Yarn, you can run the following commands instead:
+   ```
+   yarn install && yarn dev
    ```
 
 8. Open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
