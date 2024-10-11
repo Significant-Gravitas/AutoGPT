@@ -3,9 +3,10 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: 'PP Neue Montreal TT';
-  src: url('/fonts/PPNeueMontreal-Regular.woff2') format('woff2'),
-       url('/fonts/PPNeueMontreal-Regular.woff') format('woff');
+  font-family: "PP Neue Montreal TT";
+  src:
+    url("/fonts/PPNeueMontreal-Regular.woff2") format("woff2"),
+    url("/fonts/PPNeueMontreal-Regular.woff") format("woff");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -13,7 +14,7 @@
 
 @layer base {
   .font-neue {
-    font-family: 'PP Neue Montreal TT', sans-serif;
+    font-family: "PP Neue Montreal TT", sans-serif;
   }
 }
 
@@ -48,12 +49,7 @@
   .left-34 {
     left: 2.125rem;
   }
-
 }
-
-
-
-
 
 @layer utilities {
   .text-balance {
