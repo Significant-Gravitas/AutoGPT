@@ -149,6 +149,3 @@ To persist data for PostgreSQL and Redis, you can modify the `docker-compose.yml
 3. Save the file and run `docker compose up -d` to apply the changes.
 
 This configuration will create named volumes for PostgreSQL and Redis, ensuring that your data persists across container restarts.
-
-
-
