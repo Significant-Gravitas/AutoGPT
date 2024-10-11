@@ -72,7 +72,7 @@ export default function PrivatePage() {
   }
 
   const allCredentials = Object.values(providers).flatMap((provider) =>
-    [...provider.savedApiKeys, ...provider.savedOAuthCredentials].map(
+    [...provider.savedOAuthCredentials, ...provider.savedApiKeys].map(
       (credentials) => ({
         ...credentials,
         provider: provider.provider,
