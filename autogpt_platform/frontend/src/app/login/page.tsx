@@ -114,7 +114,7 @@ export default function LoginPage() {
   return (
     <div className="flex h-[80vh] items-center justify-center">
       <div className="w-full max-w-md space-y-6 rounded-lg p-8 shadow-md">
-        <div className="mb-6 space-y-2">
+        {/* <div className="mb-6 space-y-2">
           <Button
             className="w-full"
             onClick={() => handleSignInWithProvider("google")}
@@ -145,7 +145,7 @@ export default function LoginPage() {
             <FaDiscord className="mr-2 h-4 w-4" />
             Sign in with Discord
           </Button>
-        </div>
+        </div> */}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onLogin)}>
             <FormField
