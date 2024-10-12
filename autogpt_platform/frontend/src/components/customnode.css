@@ -4,20 +4,6 @@
   transition: border-color 0.3s ease-in-out;
 }
 
-.custom-node .mb-2 {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 40px;
-  /* Increased to accommodate larger buttons */
-  margin-bottom: 10px;
-}
-
-.custom-node .mb-2 .text-lg {
-  flex-grow: 1;
-  margin-right: 10px;
-}
-
 /* Existing styles */
 .handle-container {
   display: flex;
