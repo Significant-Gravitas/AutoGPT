@@ -85,16 +85,16 @@ export default function PrivatePage() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto md:py-8">
+    <div className="mx-auto max-w-3xl md:py-8">
       <div className="flex items-center justify-between">
         <p>Hello {user.email}</p>
         <Button onClick={() => supabase.auth.signOut()}>
-          <LogOutIcon className="size-4 mr-1.5" />
+          <LogOutIcon className="mr-1.5 size-4" />
           Log out
         </Button>
       </div>
       <Separator className="my-6" />
-      <h2 className="text-lg mb-4">Connections & Credentials</h2>
+      <h2 className="mb-4 text-lg">Connections & Credentials</h2>
       <Table>
         <TableHeader>
           <TableRow>
@@ -132,7 +132,7 @@ export default function PrivatePage() {
                   variant="destructive"
                   onClick={() => removeCredentials(cred.provider, cred.id)}
                 >
-                  <Trash2Icon className="size-4 mr-1.5" /> Delete
+                  <Trash2Icon className="mr-1.5 size-4" /> Delete
                 </Button>
               </TableCell>
             </TableRow>
