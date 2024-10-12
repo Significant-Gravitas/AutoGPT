@@ -47,7 +47,7 @@ export const ControlPanel = ({
   return (
     <Card className={cn("m-4 mt-24 w-14", className)}>
       <CardContent className="p-0">
-        <div className="flex flex-col items-center gap-3 rounded-xl border py-3">
+        <div className="flex flex-col items-center gap-3 rounded-xl py-3">
           {topChildren}
           <Separator />
           {controls.map((control, index) => (
