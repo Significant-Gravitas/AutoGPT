@@ -169,3 +169,5 @@ body:
         ⚠️ The error log may contain personal data given to AutoGPT by you in prompt or input as well as 
         any personal information that AutoGPT collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
+      required: true
+      
