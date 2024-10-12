@@ -59,7 +59,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
               onClick={runButtonOnClick}
               size="primary"
               style={{
-                background: isRunning ? "#FFB3BA" : "#7544DF",
+                background: isRunning ? "#DF4444" : "#7544DF",
                 opacity: isDisabled ? 0.5 : 1,
               }}
               data-id="primary-action-run-agent"
