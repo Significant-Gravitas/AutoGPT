@@ -301,7 +301,7 @@ export const startTutorial = (
       hide: () => setPinSavePopover(true),
     },
   });
-  
+
   tour.addStep({
     id: "save-agent-details",
     title: "Save the Agent",
@@ -311,7 +311,8 @@ export const startTutorial = (
       on: "bottom",
     },
     buttons: [],
-    beforeShowPromise: () => waitForElement('[data-id="save-control-popover-content"]'),
+    beforeShowPromise: () =>
+      waitForElement('[data-id="save-control-popover-content"]'),
     advanceOn: {
       selector: '[data-id="save-control-save-agent"]',
       event: "click",
