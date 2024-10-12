@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
+import { LogOutIcon, Trash2Icon } from "lucide-react";
 import { providerIcons } from "@/components/integrations/credentials-input";
 import {
   Table,
@@ -84,11 +85,16 @@ export default function PrivatePage() {
   );
 
   return (
-    <div>
-      <p>Hello {user.email}</p>
-      <Button onClick={() => supabase.auth.signOut()}>Log out</Button>
-      <Separator className="my-4" />
-      <h2 className="mb-4">Connections & Credentials</h2>
+    <div className="max-w-3xl mx-auto md:py-8">
+      <div className="flex items-center justify-between">
+        <p>Hello {user.email}</p>
+        <Button onClick={() => supabase.auth.signOut()}>
+          <LogOutIcon className="size-4 mr-1.5" />
+          Log out
+        </Button>
+      </div>
+      <Separator className="my-6" />
+      <h2 className="text-lg mb-4">Connections & Credentials</h2>
       <Table>
         <TableHeader>
           <TableRow>
@@ -121,12 +127,12 @@ export default function PrivatePage() {
                   - <code>{cred.id}</code>
                 </small>
               </TableCell>
-              <TableCell>
+              <TableCell className="w-0 whitespace-nowrap">
                 <Button
                   variant="destructive"
                   onClick={() => removeCredentials(cred.provider, cred.id)}
                 >
-                  Delete
+                  <Trash2Icon className="size-4 mr-1.5" /> Delete
                 </Button>
               </TableCell>
             </TableRow>
