@@ -74,7 +74,7 @@ class SideBarView extends StatelessWidget {
                       IconButton(
                         splashRadius: 0.1,
                         iconSize: 25,
-                        icon: Icon(Icons.book,
+                        icon: const Icon(Icons.book,
                             color: Color.fromRGBO(50, 120, 123, 1)),
                         onPressed: () => _launchURL(
                             'https://aiedge.medium.com/autogpt-forge-e3de53cc58ec'),

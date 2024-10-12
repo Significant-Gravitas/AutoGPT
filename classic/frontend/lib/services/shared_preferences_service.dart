@@ -6,7 +6,7 @@ class SharedPreferencesService {
   static final SharedPreferencesService instance =
       SharedPreferencesService._privateConstructor();
 
-  Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
+  final Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
 
   /// Sets a boolean [value] for the given [key] in the shared preferences.
   ///

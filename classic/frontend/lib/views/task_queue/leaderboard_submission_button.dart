@@ -5,8 +5,8 @@ class LeaderboardSubmissionButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isDisabled;
 
-  LeaderboardSubmissionButton(
-      {required this.onPressed, this.isDisabled = false});
+  const LeaderboardSubmissionButton(
+      {super.key, required this.onPressed, this.isDisabled = false});
 
   @override
   Widget build(BuildContext context) {

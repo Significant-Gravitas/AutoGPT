@@ -1,7 +1,6 @@
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/continuous_mode_dialog.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatInputField extends StatefulWidget {
   // Callback to be triggered when the send button is pressed

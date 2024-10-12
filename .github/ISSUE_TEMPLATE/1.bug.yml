@@ -5,6 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
+        "### ⚠️ Before you continue"
         * Check out our [backlog], [roadmap] and join our [discord] to discuss what's going on
         * If you need help, you can ask in the [discussions] section or in [#tech-support]
         * **Thoroughly search the [existing issues] before creating a new one**

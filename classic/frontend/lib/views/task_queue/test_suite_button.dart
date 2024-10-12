@@ -8,7 +8,7 @@ class TestSuiteButton extends StatefulWidget {
   final Function(String) onPlayPressed;
   String selectedOptionString;
 
-  TestSuiteButton({
+  TestSuiteButton({super.key, 
     this.isDisabled = false,
     required this.onOptionSelected,
     required this.onPlayPressed,

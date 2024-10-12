@@ -8,7 +8,7 @@ class TreeNodeView extends StatefulWidget {
   final SkillTreeNode node;
   final bool selected;
 
-  TreeNodeView({required this.node, this.selected = false});
+  const TreeNodeView({super.key, required this.node, this.selected = false});
 
   @override
   _TreeNodeViewState createState() => _TreeNodeViewState();
@@ -61,10 +61,10 @@ class _TreeNodeViewState extends State<TreeNodeView> {
                 ),
               ),
             ),
-            SizedBox(height: 4),
+            const SizedBox(height: 4),
             Text(
               widget.node.label,
-              style: TextStyle(fontSize: 12),
+              style: const TextStyle(fontSize: 12),
             ),
           ],
         ),

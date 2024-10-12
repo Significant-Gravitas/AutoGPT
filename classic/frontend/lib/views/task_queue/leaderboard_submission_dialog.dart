@@ -199,7 +199,7 @@ class _LeaderboardSubmissionDialogState
                     ),
                   ),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 // Submit Button
                 SizedBox(
                   width: 106,
