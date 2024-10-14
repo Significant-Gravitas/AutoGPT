@@ -1,11 +1,10 @@
 import datetime
 import typing
+from enum import Enum
+from typing import Generic, Literal, TypeVar, Union
 
 import prisma.enums
 import pydantic
-
-from enum import Enum
-from typing import Literal, Union, TypeVar, Generic
 
 
 class InstallationLocation(str, Enum):

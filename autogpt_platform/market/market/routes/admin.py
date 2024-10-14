@@ -178,7 +178,10 @@ async def get_not_featured_agents(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/agent/submissions", response_model=market.model.ListResponse[market.model.AgentResponse])
+@router.get(
+    "/agent/submissions",
+    response_model=market.model.ListResponse[market.model.AgentResponse],
+)
 async def get_agent_submissions(
     page: int = fastapi.Query(1, ge=1, description="Page number"),
     page_size: int = fastapi.Query(

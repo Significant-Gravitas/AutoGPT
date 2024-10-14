@@ -701,7 +701,7 @@ async def get_all_categories() -> market.model.CategoriesResponse:
         return market.model.CategoriesResponse(unique_categories=unique_categories)
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
-    except Exception as e:
+    except Exception:
         # Return an empty list of categories in case of unexpected errors
         return market.model.CategoriesResponse(unique_categories=[])
 

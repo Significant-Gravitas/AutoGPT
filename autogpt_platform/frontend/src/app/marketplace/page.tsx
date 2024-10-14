@@ -197,7 +197,6 @@ const Marketplace: React.FC = () => {
   const [topAgentsTotalPages, setTopAgentsTotalPages] = useState(1);
   const [searchTotalPages, setSearchTotalPages] = useState(1);
 
-
   const fetchTopAgents = useCallback(
     async (currentPage: number) => {
       setIsLoading(true);
