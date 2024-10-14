@@ -22,7 +22,11 @@ resource "google_storage_bucket_iam_policy" "public_access" {
       {
         role    = "roles/storage.objectViewer"
         members = ["allUsers"]
+      },
+      {
+        role    = "roles/storage.admin"
+        members = ["group:gcp-devops-agpt@agpt.co", "group:gcp-developers@agpt.co"]
       }
     ]
   })
-}
+} 
