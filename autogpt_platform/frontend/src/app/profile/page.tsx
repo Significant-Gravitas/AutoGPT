@@ -4,15 +4,17 @@ import { useSupabase } from "@/components/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext, useMemo } from "react";
+import { useCallback, useContext } from "react";
 import { FaSpinner } from "react-icons/fa";
-import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import { Separator } from "@/components/ui/separator";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { LogOutIcon, Trash2Icon } from "lucide-react";
 import { providerIcons } from "@/components/integrations/credentials-input";
+import {
+  CredentialsProviderName,
+  CredentialsProvidersContext,
+} from "@/components/integrations/credentials-provider";
 import {
   Table,
   TableBody,
@@ -27,13 +29,16 @@ export default function PrivatePage() {
   const { supabase } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
   const { toast } = useToast();
 
   const removeCredentials = useCallback(
-    async (provider: string, id: string) => {
+    async (provider: CredentialsProviderName, id: string) => {
+      if (!providers || !providers[provider]) {
+        return;
+      }
+
       try {
-        const { revoked } = await api.deleteCredentials(provider, id);
+        const { revoked } = await providers[provider].deleteCredentials(id);
         if (revoked !== false) {
           toast({
             title: "Credentials deleted",
@@ -54,7 +59,7 @@ export default function PrivatePage() {
         });
       }
     },
-    [api, toast],
+    [providers, toast],
   );
 
   if (isLoading || !providers || !providers) {
