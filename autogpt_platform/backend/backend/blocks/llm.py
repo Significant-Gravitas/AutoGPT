@@ -52,6 +52,8 @@ class LlmModel(str, Enum):
     # Ollama models
     OLLAMA_LLAMA3_8B = "llama3"
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
+    # CUSTOM
+    OLLAMA_DOLPHIN = "dolphin-mistral:latest"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -78,6 +80,8 @@ MODEL_METADATA = {
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=13),
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
+    # CUSTOM
+    LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama",  32768, cost_factor=0),
 }
 
 for model in LlmModel:
@@ -104,6 +108,9 @@ class AIStructuredResponseGeneratorBlock(Block):
         prompt_values: dict[str, str] = SchemaField(
             advanced=False, default={}, description="Values used to fill in the prompt."
         )
+        ollama_host: str = SchemaField(
+            advanced=True, default="localhost:11434", description="Ollama host for local  models"
+	)
 
     class Output(BlockSchema):
         response: dict[str, Any]
@@ -200,7 +207,8 @@ class AIStructuredResponseGeneratorBlock(Block):
             )
             return response.choices[0].message.content or ""
         elif provider == "ollama":
-            response = ollama.generate(
+            client = ollama.Client(host=api_key)
+            response = client.generate(
                 model=model.value,
                 prompt=prompt[0]["content"],
             )
