@@ -52,6 +52,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - if: env.DOCKER_HUB_USER
+        name: Log in to Docker hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        env:
+          DOCKER_HUB_USER: ${{ secrets.DOCKER_USER }}
+
       - name: Setup Supabase
         uses: supabase/setup-cli@v1
         with:
