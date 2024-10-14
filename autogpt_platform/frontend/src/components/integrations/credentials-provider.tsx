@@ -14,7 +14,8 @@ import {
 // --8<-- [start:CredentialsProviderNames]
 const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
 
-export type CredentialsProviderName = (typeof CREDENTIALS_PROVIDER_NAMES)[number];
+export type CredentialsProviderName =
+  (typeof CREDENTIALS_PROVIDER_NAMES)[number];
 
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
   github: "GitHub",
@@ -122,14 +123,22 @@ export default function CredentialsProvider({
 
   /** Wraps `AutoGPTServerAPI.deleteCredentials`, and removes the credentials from the internal store. */
   const deleteCredentials = useCallback(
-    async (provider: CredentialsProviderName, id: string): Promise<CredentialsDeleteResponse> => {
+    async (
+      provider: CredentialsProviderName,
+      id: string,
+    ): Promise<CredentialsDeleteResponse> => {
       const result = await api.deleteCredentials(provider, id);
       setProviders((prev) => {
         if (!prev || !prev[provider]) return prev;
 
         const updatedProvider = { ...prev[provider] };
-        updatedProvider.savedApiKeys = updatedProvider.savedApiKeys.filter(cred => cred.id !== id);
-        updatedProvider.savedOAuthCredentials = updatedProvider.savedOAuthCredentials.filter(cred => cred.id !== id);
+        updatedProvider.savedApiKeys = updatedProvider.savedApiKeys.filter(
+          (cred) => cred.id !== id,
+        );
+        updatedProvider.savedOAuthCredentials =
+          updatedProvider.savedOAuthCredentials.filter(
+            (cred) => cred.id !== id,
+          );
 
         return {
           ...prev,
@@ -174,7 +183,8 @@ export default function CredentialsProvider({
               createAPIKeyCredentials: (
                 credentials: APIKeyCredentialsCreatable,
               ) => createAPIKeyCredentials(provider, credentials),
-              deleteCredentials: (id: string) => deleteCredentials(provider, id),
+              deleteCredentials: (id: string) =>
+                deleteCredentials(provider, id),
             },
           }));
         });
