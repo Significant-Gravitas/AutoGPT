@@ -1,0 +1,1410 @@
+diff --git a/autogpt_platform/frontend/src/app/globals.css b/autogpt_platform/frontend/src/app/globals.css
+index 130a1e630..7814276f7 100644
+--- a/autogpt_platform/frontend/src/app/globals.css
++++ b/autogpt_platform/frontend/src/app/globals.css
+@@ -2,6 +2,55 @@
+ @tailwind components;
+ @tailwind utilities;
+ 
++@font-face {
++  font-family: "PP Neue Montreal TT";
++  src:
++    url("/fonts/PPNeueMontreal-Regular.woff2") format("woff2"),
++    url("/fonts/PPNeueMontreal-Regular.woff") format("woff");
++  font-weight: normal;
++  font-style: normal;
++  font-display: swap;
++}
++
++@layer base {
++  .font-neue {
++    font-family: "PP Neue Montreal TT", sans-serif;
++  }
++}
++
++@layer utilities {
++  .w-110 {
++    width: 27.5rem;
++  }
++  .h-7\.5 {
++    height: 1.1875rem;
++  }
++  .h-18 {
++    height: 4.5rem;
++  }
++  .h-238 {
++    height: 14.875rem;
++  }
++  .top-158 {
++    top: 9.875rem;
++  }
++  .top-254 {
++    top: 15.875rem;
++  }
++  .top-284 {
++    top: 17.75rem;
++  }
++  .top-360 {
++    top: 22.5rem;
++  }
++  .left-297 {
++    left: 18.5625rem;
++  }
++  .left-34 {
++    left: 2.125rem;
++  }
++}
++
+ @layer utilities {
+   .text-balance {
+     text-wrap: balance;
+diff --git a/autogpt_platform/frontend/src/components/agptui/BecomeACreator.stories.tsx b/autogpt_platform/frontend/src/components/agptui/BecomeACreator.stories.tsx
+new file mode 100644
+index 000000000..7b3c18784
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/BecomeACreator.stories.tsx
+@@ -0,0 +1,62 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { BecomeACreator } from "./BecomeACreator";
++import { userEvent, within } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/BecomeACreator",
++  component: BecomeACreator,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    title: { control: "text" },
++    heading: { control: "text" },
++    description: { control: "text" },
++    buttonText: { control: "text" },
++    onButtonClick: { action: "buttonClicked" },
++  },
++} satisfies Meta<typeof BecomeACreator>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++export const Default: Story = {
++  args: {
++    title: "Want to contribute?",
++    heading: "We're always looking for more Creators!",
++    description: "Join our ever-growing community of hackers and tinkerers",
++    buttonText: "Become a Creator",
++    onButtonClick: () => console.log("Button clicked"),
++  },
++};
++
++export const CustomText: Story = {
++  args: {
++    title: "Become a Creator Today!",
++    heading: "Join Our Creator Community",
++    description: "Share your ideas and build amazing AI agents with us",
++    buttonText: "Start Creating",
++    onButtonClick: () => console.log("Custom button clicked"),
++  },
++};
++
++export const LongDescription: Story = {
++  args: {
++    ...Default.args,
++    description:
++      "Join our vibrant community of innovators, developers, and AI enthusiasts. Share your unique perspectives, collaborate on groundbreaking projects, and help shape the future of AI technology.",
++  },
++};
++
++export const WithInteraction: Story = {
++  args: {
++    ...Default.args,
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const button = canvas.getByText("Become a Creator");
++
++    await userEvent.click(button);
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/BecomeACreator.tsx b/autogpt_platform/frontend/src/components/agptui/BecomeACreator.tsx
+new file mode 100644
+index 000000000..63985d7da
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/BecomeACreator.tsx
+@@ -0,0 +1,35 @@
++import * as React from "react";
++import { Button } from "./Button";
++
++interface BecomeACreatorProps {
++  title: string;
++  heading: string;
++  description: string;
++  buttonText: string;
++  onButtonClick: () => void;
++}
++
++export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
++  title = "Want to contribute?",
++  heading = "We're always looking for more Creators!",
++  description = "Join our ever-growing community of hackers and tinkerers",
++  buttonText = "Become a Creator",
++  onButtonClick = () => {},
++}) => {
++  return (
++    <div className="flex w-full flex-col items-center justify-between space-y-8 py-8">
++      <div className="font-neue mb-8 self-start text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
++        {title}
++      </div>
++      <div className="font-neue max-w-full text-center text-5xl font-medium leading-9 tracking-wide text-[#272727]">
++        {heading}
++      </div>
++      <div className="font-neue max-w-full text-center text-[26px] font-medium leading-9 tracking-tight text-[#878787]">
++        {description}
++      </div>
++      <Button onClick={onButtonClick} className="mt-8">
++        {buttonText}
++      </Button>
++    </div>
++  );
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/Button.stories.tsx b/autogpt_platform/frontend/src/components/agptui/Button.stories.tsx
+new file mode 100644
+index 000000000..308fd6000
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/Button.stories.tsx
+@@ -0,0 +1,218 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { Button } from "./Button";
++import { userEvent, within, expect } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/Button",
++  component: Button,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    variant: {
++      control: "select",
++      options: [
++        "default",
++        "destructive",
++        "outline",
++        "secondary",
++        "ghost",
++        "link",
++      ],
++    },
++    size: {
++      control: "select",
++      options: ["default", "sm", "lg", "primary", "icon"],
++    },
++    disabled: {
++      control: "boolean",
++    },
++    asChild: {
++      control: "boolean",
++    },
++    children: {
++      control: "text",
++    },
++    onClick: { action: "clicked" },
++  },
++} satisfies Meta<typeof Button>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++export const Default: Story = {
++  args: {
++    children: "Button",
++  },
++};
++
++export const Interactive: Story = {
++  args: {
++    children: "Interactive Button",
++  },
++  argTypes: {
++    onClick: { action: "clicked" },
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const button = canvas.getByRole("button", { name: /Interactive Button/i });
++    await userEvent.click(button);
++    await expect(button).toHaveFocus();
++  },
++};
++
++export const Variants: Story = {
++  render: (args) => (
++    <div className="flex flex-wrap gap-2">
++      <Button {...args} variant="default">
++        Default
++      </Button>
++      <Button {...args} variant="destructive">
++        Destructive
++      </Button>
++      <Button {...args} variant="outline">
++        Outline
++      </Button>
++      <Button {...args} variant="secondary">
++        Secondary
++      </Button>
++      <Button {...args} variant="ghost">
++        Ghost
++      </Button>
++      <Button {...args} variant="link">
++        Link
++      </Button>
++    </div>
++  ),
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const buttons = canvas.getAllByRole("button");
++    expect(buttons).toHaveLength(6);
++    for (const button of buttons) {
++      await userEvent.hover(button);
++      await expect(button).toHaveAttribute(
++        "class",
++        expect.stringContaining("hover:"),
++      );
++    }
++  },
++};
++
++export const Sizes: Story = {
++  render: (args) => (
++    <div className="flex flex-wrap items-center gap-2">
++      <Button {...args} size="sm">
++        Small
++      </Button>
++      <Button {...args} size="default">
++        Default
++      </Button>
++      <Button {...args} size="lg">
++        Large
++      </Button>
++      <Button {...args} size="primary">
++        Primary
++      </Button>
++      <Button {...args} size="icon">
++        🚀
++      </Button>
++    </div>
++  ),
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const buttons = canvas.getAllByRole("button");
++    expect(buttons).toHaveLength(5);
++    const sizeClasses = [
++      "h-[50px] px-[20px] py-[5px] text-sm",
++      "h-[70px] px-[26px] py-[7px]",
++      "h-[90px] px-[32px] py-[9px] text-2xl",
++      "md:h-[70px] md:w-[176px] h-[50px] w-[112px]",
++      "h-[70px] w-[70px]",
++    ];
++    buttons.forEach((button, index) => {
++      expect(button).toHaveAttribute(
++        "class",
++        expect.stringContaining(sizeClasses[index]),
++      );
++    });
++  },
++};
++
++export const Disabled: Story = {
++  args: {
++    children: "Disabled Button",
++    disabled: true,
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const button = canvas.getByRole("button", { name: /Disabled Button/i });
++    await expect(button).toBeDisabled();
++    await expect(button).toHaveStyle("pointer-events: none");
++    await expect(button).not.toHaveFocus();
++  },
++};
++
++export const WithIcon: Story = {
++  args: {
++    children: (
++      <>
++        <svg
++          xmlns="http://www.w3.org/2000/svg"
++          width="24"
++          height="24"
++          viewBox="0 0 24 24"
++          fill="none"
++          stroke="currentColor"
++          strokeWidth="2"
++          strokeLinecap="round"
++          strokeLinejoin="round"
++          className="mr-2 h-4 w-4"
++        >
++          <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
++        </svg>
++        Button with Icon
++      </>
++    ),
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const button = canvas.getByRole("button", { name: /Button with Icon/i });
++    const icon = button.querySelector("svg");
++    await expect(icon).toBeInTheDocument();
++    await expect(button).toHaveTextContent("Button with Icon");
++  },
++};
++
++export const LoadingState: Story = {
++  args: {
++    children: "Loading...",
++    disabled: true,
++  },
++  render: (args) => (
++    <Button {...args}>
++      <svg
++        className="mr-2 h-4 w-4 animate-spin"
++        xmlns="http://www.w3.org/2000/svg"
++        width="24"
++        height="24"
++        viewBox="0 0 24 24"
++        fill="none"
++        stroke="currentColor"
++        strokeWidth="2"
++        strokeLinecap="round"
++        strokeLinejoin="round"
++      >
++        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
++      </svg>
++      {args.children}
++    </Button>
++  ),
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const button = canvas.getByRole("button", { name: /Loading.../i });
++    expect(button).toBeDisabled();
++    const spinner = button.querySelector("svg");
++    await expect(spinner).toHaveClass("animate-spin");
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/Button.tsx b/autogpt_platform/frontend/src/components/agptui/Button.tsx
+new file mode 100644
+index 000000000..d10dc11d1
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/Button.tsx
+@@ -0,0 +1,59 @@
++import * as React from "react";
++import { Slot } from "@radix-ui/react-slot";
++import { cva, type VariantProps } from "class-variance-authority";
++
++import { cn } from "@/lib/utils";
++
++const buttonVariants = cva(
++  "inline-flex items-center justify-center whitespace-nowrap rounded-[80px] text-xl font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-neutral-300 font-neue leading-9 tracking-tight",
++  {
++    variants: {
++      variant: {
++        default:
++          "h-[70px] px-[26px] py-[7px] bg-white border border-black/50 text-[#272727]",
++        destructive:
++          "h-[70px] px-[26px] py-[7px] bg-red-500 text-neutral-50 border border-red-500/50 hover:bg-red-500/90",
++        outline:
++          "h-[70px] px-[26px] py-[7px] bg-white border border-black/50 text-[#272727] hover:bg-neutral-100",
++        secondary:
++          "h-[70px] px-[26px] py-[7px] bg-neutral-100 text-[#272727] border border-neutral-200 hover:bg-neutral-100/80",
++        ghost:
++          "h-[70px] px-[26px] py-[7px] hover:bg-neutral-100 text-[#272727]",
++        link: "text-[#272727] underline-offset-4 hover:underline",
++      },
++      size: {
++        default: "h-[70px] px-[26px] py-[7px]",
++        sm: "h-[50px] px-[20px] py-[5px] text-sm",
++        lg: "h-[90px] px-[32px] py-[9px] text-2xl",
++        primary: "md:h-[70px] md:w-[176px] h-[50px] w-[112px]",
++        icon: "h-[70px] w-[70px]",
++      },
++    },
++    defaultVariants: {
++      variant: "default",
++      size: "default",
++    },
++  },
++);
++
++export interface ButtonProps
++  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
++    VariantProps<typeof buttonVariants> {
++  asChild?: boolean;
++}
++
++const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
++  ({ className, variant, size, asChild = false, ...props }, ref) => {
++    const Comp = asChild ? Slot : "button";
++    return (
++      <Comp
++        className={cn(buttonVariants({ variant, size, className }))}
++        ref={ref}
++        {...props}
++      />
++    );
++  },
++);
++Button.displayName = "Button";
++
++export { Button, buttonVariants };
+diff --git a/autogpt_platform/frontend/src/components/agptui/CreatorCard.stories.tsx b/autogpt_platform/frontend/src/components/agptui/CreatorCard.stories.tsx
+new file mode 100644
+index 000000000..7ec92ecdf
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/CreatorCard.stories.tsx
+@@ -0,0 +1,69 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { CreatorCard } from "./CreatorCard";
++import { userEvent, within } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/CreatorCard",
++  component: CreatorCard,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    creatorName: { control: "text" },
++    bio: { control: "text" },
++    agentsUploaded: { control: "number" },
++    onClick: { action: "clicked" },
++    avatarSrc: { control: "text" },
++  },
++} satisfies Meta<typeof CreatorCard>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++export const Default: Story = {
++  args: {
++    creatorName: "John Doe",
++    bio: "AI enthusiast and developer with a passion for creating innovative agents",
++    agentsUploaded: 15,
++    onClick: () => console.log("Default CreatorCard clicked"),
++    avatarSrc: "https://github.com/shadcn.png",
++  },
++};
++
++export const NewCreator: Story = {
++  args: {
++    creatorName: "Jane Smith",
++    bio: "Aspiring AI creator, just getting started in the world of agent development",
++    agentsUploaded: 1,
++    onClick: () => console.log("NewCreator CreatorCard clicked"),
++    avatarSrc: "https://example.com/avatar2.jpg",
++  },
++};
++
++export const ExperiencedCreator: Story = {
++  args: {
++    creatorName: "Alex Johnson",
++    bio: "Veteran AI researcher with numerous publications and a track record of successful agents",
++    agentsUploaded: 50,
++    onClick: () => console.log("ExperiencedCreator CreatorCard clicked"),
++    avatarSrc: "https://example.com/avatar3.jpg",
++  },
++};
++
++export const WithInteraction: Story = {
++  args: {
++    creatorName: "Sam Brown",
++    bio: "Specializing in natural language processing agents for various applications",
++    agentsUploaded: 30,
++    onClick: () => console.log("WithInteraction CreatorCard clicked"),
++    avatarSrc: "https://example.com/avatar4.jpg",
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const creatorCard = canvas.getByText("Sam Brown");
++
++    await userEvent.hover(creatorCard);
++    await userEvent.click(creatorCard);
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/CreatorCard.tsx b/autogpt_platform/frontend/src/components/agptui/CreatorCard.tsx
+new file mode 100644
+index 000000000..ea70f3436
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/CreatorCard.tsx
+@@ -0,0 +1,47 @@
++import * as React from "react";
++import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
++
++interface CreatorCardProps {
++  creatorName: string;
++  bio: string;
++  agentsUploaded: number;
++  onClick: () => void;
++  avatarSrc: string;
++}
++
++export const CreatorCard: React.FC<CreatorCardProps> = ({
++  creatorName,
++  bio,
++  agentsUploaded,
++  onClick,
++  avatarSrc,
++}) => {
++  const [isHovered, setIsHovered] = React.useState(false);
++
++  const handleMouseEnter = () => setIsHovered(true);
++  const handleMouseLeave = () => setIsHovered(false);
++
++  return (
++    <div
++      className={`relative h-96 w-[210px] ${isHovered ? "shadow-lg" : ""} rounded-xl transition-shadow duration-300`}
++      onClick={onClick}
++      onMouseEnter={handleMouseEnter}
++      onMouseLeave={handleMouseLeave}
++    >
++      <div className="absolute left-0 top-0 h-[238px] w-[210px] rounded-xl bg-[#d9d9d9]" />
++      <Avatar className="absolute left-[16px] top-[158px] h-16 w-16">
++        <AvatarImage src={avatarSrc} alt={creatorName} />
++        <AvatarFallback>{creatorName.charAt(0)}</AvatarFallback>
++      </Avatar>
++      <div className="font-neue absolute left-0 top-[254px] text-xl font-bold tracking-tight text-[#272727]">
++        {creatorName}
++      </div>
++      <div className="font-neue absolute left-0 top-[284px] line-clamp-3 w-[210px] text-base font-normal leading-[21px] tracking-tight text-[#282828]">
++        {bio}
++      </div>
++      <div className="font-neue absolute left-0 top-[360px] text-base font-medium tracking-tight text-[#272727]">
++        {agentsUploaded} agents uploaded
++      </div>
++    </div>
++  );
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/FeaturedStoreCard.stories.tsx b/autogpt_platform/frontend/src/components/agptui/FeaturedStoreCard.stories.tsx
+new file mode 100644
+index 000000000..0d7e07e82
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/FeaturedStoreCard.stories.tsx
+@@ -0,0 +1,89 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { FeaturedStoreCard } from "./FeaturedStoreCard";
++import { userEvent, within } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/FeaturedStoreCard",
++  component: FeaturedStoreCard,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    agentName: { control: "text" },
++    creatorName: { control: "text" },
++    description: { control: "text" },
++    runs: { control: "number" },
++    rating: { control: "number", min: 0, max: 5, step: 0.1 },
++    onClick: { action: "clicked" },
++  },
++} satisfies Meta<typeof FeaturedStoreCard>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++export const Default: Story = {
++  args: {
++    agentName: "SEO Optimizer Pro",
++    creatorName: "AI Solutions Inc.",
++    description:
++      "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
++    runs: 50000,
++    rating: 4.7,
++    onClick: () => console.log("Card clicked"),
++  },
++};
++
++export const LowRating: Story = {
++  args: {
++    agentName: "Data Analyzer Lite",
++    creatorName: "DataTech",
++    description: "A basic tool for analyzing small to medium-sized datasets.",
++    runs: 10000,
++    rating: 2.8,
++    onClick: () => console.log("Card clicked"),
++  },
++};
++
++export const HighRuns: Story = {
++  args: {
++    agentName: "CodeAssist AI",
++    creatorName: "DevTools Co.",
++    description:
++      "Get instant coding help and suggestions for multiple programming languages.",
++    runs: 1000000,
++    rating: 4.9,
++    onClick: () => console.log("Card clicked"),
++  },
++};
++
++export const LongDescription: Story = {
++  args: {
++    agentName: "MultiTasker",
++    creatorName: "Productivity Plus",
++    description:
++      "An all-in-one productivity suite that helps you manage tasks, schedule meetings, track time, and collaborate with team members. Powered by advanced AI to optimize your workflow and boost efficiency.",
++    runs: 75000,
++    rating: 4.5,
++    onClick: () => console.log("Card clicked"),
++  },
++};
++
++export const WithInteraction: Story = {
++  args: {
++    agentName: "AI Writing Assistant",
++    creatorName: "WordCraft AI",
++    description:
++      "Enhance your writing with AI-powered suggestions, grammar checks, and style improvements.",
++    runs: 200000,
++    rating: 4.6,
++    onClick: () => console.log("Card clicked"),
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const featuredCard = canvas.getByText("AI Writing Assistant");
++
++    await userEvent.hover(featuredCard);
++    await userEvent.click(featuredCard);
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/FeaturedStoreCard.tsx b/autogpt_platform/frontend/src/components/agptui/FeaturedStoreCard.tsx
+new file mode 100644
+index 000000000..961116135
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/FeaturedStoreCard.tsx
+@@ -0,0 +1,88 @@
++import * as React from "react";
++import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
++
++interface FeaturedStoreCardProps {
++  agentName: string;
++  creatorName: string;
++  description: string;
++  runs: number;
++  rating: number;
++  onClick: () => void;
++}
++
++export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
++  agentName,
++  creatorName,
++  description,
++  runs,
++  rating,
++  onClick,
++}) => {
++  const [isHovered, setIsHovered] = React.useState(false);
++
++  const handleMouseEnter = () => setIsHovered(true);
++  const handleMouseLeave = () => setIsHovered(false);
++
++  const renderStars = () => {
++    const fullStars = Math.floor(rating);
++    const hasHalfStar = rating % 1 !== 0;
++    const stars = [];
++
++    for (let i = 0; i < 5; i++) {
++      if (i < fullStars) {
++        stars.push(<StarFilledIcon key={i} className="text-black" />);
++      } else if (i === fullStars && hasHalfStar) {
++        stars.push(<StarIcon key={i} className="text-black" />);
++      } else {
++        stars.push(<StarIcon key={i} className="text-black" />);
++      }
++    }
++
++    return stars;
++  };
++
++  return (
++    <div
++      className={`inline-flex h-[595px] w-[667px] cursor-pointer flex-col items-start justify-between gap-10 rounded-xl border border-black/10 bg-[#f9f9f9] px-[25px] pb-[15px] pt-[35px] ${
++        isHovered ? "shadow-lg" : ""
++      } transition-shadow duration-300`}
++      onClick={onClick}
++      onMouseEnter={handleMouseEnter}
++      onMouseLeave={handleMouseLeave}
++    >
++      <div className="flex flex-col items-start justify-start gap-3.5 self-stretch">
++        <div className="font-neue self-stretch text-[40px] font-medium leading-[43px] tracking-tight text-[#272727]">
++          {agentName}
++        </div>
++        <div className="font-neue self-stretch text-xl font-normal tracking-tight text-[#878787]">
++          by {creatorName}
++        </div>
++      </div>
++      <div className="font-neue w-[540px] flex-grow text-xl font-normal tracking-tight text-[#282828]">
++        {description}
++      </div>
++      <div className="flex flex-col items-start justify-end gap-5 self-stretch">
++        <div className="h-[245px] self-stretch rounded-xl bg-[#a8a8a8]" />
++        <div className="flex items-center justify-between self-stretch">
++          <div>
++            <span className="font-neue text-xl font-medium tracking-tight text-[#272727]">
++              {runs.toLocaleString()}+
++            </span>
++            <span className="font-neue text-xl font-normal tracking-tight text-[#272727]">
++              {" "}
++              runs
++            </span>
++          </div>
++          <div className="flex items-center gap-2">
++            <div className="font-neue text-xl font-normal tracking-tight text-[#272727]">
++              {rating.toFixed(1)}
++            </div>
++            <div className="flex items-center justify-start gap-px">
++              {renderStars()}
++            </div>
++          </div>
++        </div>
++      </div>
++    </div>
++  );
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/FilterChips.stories.tsx b/autogpt_platform/frontend/src/components/agptui/FilterChips.stories.tsx
+new file mode 100644
+index 000000000..102e0fc60
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/FilterChips.stories.tsx
+@@ -0,0 +1,123 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { FilterChips } from "./FilterChips";
++import { userEvent, within, expect } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/FilterChips",
++  component: FilterChips,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    badges: { control: "object" },
++    onFilterChange: { action: "onFilterChange" },
++    multiSelect: { control: "boolean" },
++  },
++} satisfies Meta<typeof FilterChips>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++const defaultBadges = [
++  "Marketing",
++  "Sales",
++  "Content creation",
++  "Lorem ipsum",
++  "Lorem ipsum",
++];
++
++export const Default: Story = {
++  args: {
++    badges: defaultBadges,
++    multiSelect: true,
++  },
++};
++
++export const SingleSelect: Story = {
++  args: {
++    badges: defaultBadges,
++    multiSelect: false,
++  },
++};
++
++export const WithSelectedFilters: Story = {
++  args: {
++    badges: defaultBadges,
++    multiSelect: true,
++  },
++  play: async ({ canvasElement, args }) => {
++    const canvas = within(canvasElement);
++    const marketingChip = canvas.getByText("Marketing").parentElement;
++    const salesChip = canvas.getByText("Sales").parentElement;
++    if (!marketingChip || !salesChip) {
++      throw new Error("Marketing or Sales chip not found");
++    }
++
++    await userEvent.click(marketingChip);
++    await userEvent.click(salesChip);
++
++    expect(marketingChip).toHaveClass("bg-neutral-100");
++    expect(salesChip).toHaveClass("bg-neutral-100");
++  },
++};
++
++export const WithFilterChangeCallback: Story = {
++  args: {
++    badges: defaultBadges,
++    multiSelect: true,
++    onFilterChange: (selectedFilters: string[]) => {
++      console.log("Selected filters:", selectedFilters);
++    },
++  },
++  play: async ({ canvasElement, args }) => {
++    const canvas = within(canvasElement);
++    const salesChip = canvas.getByText("Sales");
++    const marketingChip = canvas.getByText("Marketing");
++
++    await userEvent.click(salesChip);
++    await userEvent.click(marketingChip);
++  },
++};
++
++export const EmptyBadges: Story = {
++  args: {
++    badges: [],
++    multiSelect: true,
++  },
++};
++
++export const LongBadgeNames: Story = {
++  args: {
++    badges: [
++      "Machine Learning",
++      "Natural Language Processing",
++      "Computer Vision",
++      "Data Science",
++    ],
++    multiSelect: true,
++  },
++};
++
++export const SingleSelectBehavior: Story = {
++  args: {
++    badges: defaultBadges,
++    multiSelect: false,
++  },
++  play: async ({ canvasElement, args }) => {
++    const canvas = within(canvasElement);
++    const salesChip = canvas.getByText("Sales").parentElement;
++    const marketingChip = canvas.getByText("Marketing").parentElement;
++
++    if (!salesChip || !marketingChip) {
++      throw new Error("Sales or Marketing chip not found");
++    }
++
++    await userEvent.click(salesChip);
++    expect(salesChip).toHaveClass("bg-neutral-100");
++
++    await userEvent.click(marketingChip);
++    expect(marketingChip).toHaveClass("bg-neutral-100");
++    expect(salesChip).not.toHaveClass("bg-neutral-100");
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/FilterChips.tsx b/autogpt_platform/frontend/src/components/agptui/FilterChips.tsx
+new file mode 100644
+index 000000000..62283dbd0
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/FilterChips.tsx
+@@ -0,0 +1,52 @@
++import * as React from "react";
++import { Badge } from "@/components/ui/badge";
++
++interface FilterChipsProps {
++  badges: string[];
++  onFilterChange?: (selectedFilters: string[]) => void;
++  multiSelect?: boolean;
++}
++/** FilterChips is a component that allows the user to select filters from a list of badges. It is used on the Agent Store home page */
++export const FilterChips: React.FC<FilterChipsProps> = ({
++  badges,
++  onFilterChange,
++  multiSelect = true,
++}) => {
++  const [selectedFilters, setSelectedFilters] = React.useState<string[]>([]);
++
++  const handleBadgeClick = (badge: string) => {
++    setSelectedFilters((prevFilters) => {
++      let newFilters;
++      if (multiSelect) {
++        newFilters = prevFilters.includes(badge)
++          ? prevFilters.filter((filter) => filter !== badge)
++          : [...prevFilters, badge];
++      } else {
++        newFilters = prevFilters.includes(badge) ? [] : [badge];
++      }
++
++      if (onFilterChange) {
++        onFilterChange(newFilters);
++      }
++
++      return newFilters;
++    });
++  };
++
++  return (
++    <div className="inline-flex h-14 items-center justify-start gap-5">
++      {badges.map((badge) => (
++        <Badge
++          key={badge}
++          variant={selectedFilters.includes(badge) ? "secondary" : "outline"}
++          className="h-1] flex cursor-pointer items-center justify-center gap-2.5 rounded-full border border-black/50 px-6 py-2"
++          onClick={() => handleBadgeClick(badge)}
++        >
++          <div className="font-neue text-xl font-medium leading-9 tracking-tight text-[#474747]">
++            {badge}
++          </div>
++        </Badge>
++      ))}
++    </div>
++  );
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/Navbar.stories.tsx b/autogpt_platform/frontend/src/components/agptui/Navbar.stories.tsx
+new file mode 100644
+index 000000000..b38bf52ac
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/Navbar.stories.tsx
+@@ -0,0 +1,75 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { Navbar } from "./Navbar";
++import { userEvent, within } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/Navbar",
++  component: Navbar,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    userName: { control: "text" },
++    links: { control: "object" },
++    activeLink: { control: "text" },
++    onProfileClick: { action: "profileClicked" },
++  },
++} satisfies Meta<typeof Navbar>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++export const Default: Story = {
++  args: {
++    userName: "John Doe",
++    links: [
++      { name: "Marketplace", href: "/" },
++      { name: "Library", href: "/agents" },
++      { name: "Build", href: "/tasks" },
++    ],
++    activeLink: "/",
++    onProfileClick: () => console.log("Profile clicked"),
++  },
++};
++
++export const WithActiveLink: Story = {
++  args: {
++    ...Default.args,
++    activeLink: "/agents",
++  },
++};
++
++export const LongUserName: Story = {
++  args: {
++    ...Default.args,
++    userName: "John Doe with a Very Long Name",
++  },
++};
++
++export const ManyLinks: Story = {
++  args: {
++    userName: "Jane Smith",
++    links: [
++      { name: "Home", href: "/" },
++      { name: "Agents", href: "/agents" },
++      { name: "Tasks", href: "/tasks" },
++      { name: "Analytics", href: "/analytics" },
++      { name: "Settings", href: "/settings" },
++    ],
++    activeLink: "/analytics",
++    onProfileClick: () => console.log("Profile clicked"),
++  },
++};
++
++export const WithInteraction: Story = {
++  args: {
++    ...Default.args,
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const profileElement = canvas.getByText("John Doe");
++
++    await userEvent.click(profileElement);
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/Navbar.tsx b/autogpt_platform/frontend/src/components/agptui/Navbar.tsx
+new file mode 100644
+index 000000000..f2e4576d2
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/Navbar.tsx
+@@ -0,0 +1,53 @@
++import * as React from "react";
++import Link from "next/link";
++
++interface NavLink {
++  name: string;
++  href: string;
++}
++
++interface NavbarProps {
++  userName: string;
++  links: NavLink[];
++  activeLink: string;
++  onProfileClick: () => void;
++}
++
++export const Navbar: React.FC<NavbarProps> = ({
++  userName,
++  links,
++  activeLink,
++  onProfileClick,
++}) => {
++  return (
++    <nav className="flex h-[5.5rem] w-screen items-center justify-between border border-black/10 bg-[#f0f0f0] px-10">
++      <div className="flex items-center space-x-10">
++        {links.map((link) => (
++          <div key={link.name} className="relative">
++            <Link href={link.href}>
++              <div
++                className={`text-[${activeLink === link.href ? "#272727" : "#474747"}] font-neue text-2xl font-medium leading-9 tracking-tight`}
++              >
++                {link.name}
++              </div>
++            </Link>
++            {activeLink === link.href && (
++              <div className="absolute bottom-[-30px] left-[-10px] h-1.5 w-full bg-[#282828]" />
++            )}
++          </div>
++        ))}
++      </div>
++      <div className="flex items-center space-x-5">
++        <div
++          className="font-neue cursor-pointer text-2xl font-medium leading-9 tracking-tight text-[#474747]"
++          onClick={onProfileClick}
++        >
++          {userName}
++        </div>
++        <div className="h-10 w-10 cursor-pointer" onClick={onProfileClick}>
++          <div className="h-10 w-10 rounded-full border border-[#474747] bg-[#dbdbdb]" />
++        </div>
++      </div>
++    </nav>
++  );
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/SearchBar.stories.tsx b/autogpt_platform/frontend/src/components/agptui/SearchBar.stories.tsx
+new file mode 100644
+index 000000000..403ee4295
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/SearchBar.stories.tsx
+@@ -0,0 +1,72 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { SearchBar } from "./SearchBar";
++import { userEvent, within, expect } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/SearchBar",
++  component: SearchBar,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    onSearch: { action: "searched" },
++    placeholder: { control: "text" },
++    backgroundColor: { control: "text" },
++    iconColor: { control: "text" },
++    textColor: { control: "text" },
++    placeholderColor: { control: "text" },
++  },
++} satisfies Meta<typeof SearchBar>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++export const Default: Story = {
++  args: {
++    onSearch: (query: string) => console.log(`Searched: ${query}`),
++    placeholder: 'Search for tasks like "optimise SEO"',
++  },
++};
++
++export const CustomStyles: Story = {
++  args: {
++    onSearch: (query: string) => console.log(`Searched: ${query}`),
++    placeholder: "Enter your search query",
++    backgroundColor: "bg-blue-100",
++    iconColor: "text-blue-500",
++    textColor: "text-blue-700",
++    placeholderColor: "text-blue-400",
++  },
++};
++
++export const WithInteraction: Story = {
++  args: {
++    onSearch: (query: string) => console.log(`Searched: ${query}`),
++    placeholder: "Type and press Enter",
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const input = canvas.getByPlaceholderText("Type and press Enter");
++
++    await userEvent.type(input, "test query");
++    await userEvent.keyboard("{Enter}");
++
++    await expect(input).toHaveValue("test query");
++  },
++};
++
++export const EmptySubmit: Story = {
++  args: {
++    onSearch: (query: string) => console.log(`Searched: ${query}`),
++    placeholder: "Empty submit test",
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const input = canvas.getByPlaceholderText("Empty submit test");
++
++    await userEvent.keyboard("{Enter}");
++
++    await expect(input).toHaveValue("");
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/SearchBar.tsx b/autogpt_platform/frontend/src/components/agptui/SearchBar.tsx
+new file mode 100644
+index 000000000..a37204763
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/SearchBar.tsx
+@@ -0,0 +1,50 @@
++import * as React from "react";
++
++import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
++
++interface SearchBarProps {
++  onSearch: (query: string) => void;
++  placeholder?: string;
++  backgroundColor?: string;
++  iconColor?: string;
++  textColor?: string;
++  placeholderColor?: string;
++}
++
++/** SearchBar component for user input and search functionality. */
++export const SearchBar: React.FC<SearchBarProps> = ({
++  onSearch,
++  placeholder = 'Search for tasks like "optimise SEO"',
++  backgroundColor = "bg-neutral-100",
++  iconColor = "text-[#646464]",
++  textColor = "text-[#878787]",
++  placeholderColor = "text-[#878787]",
++}) => {
++  const [searchQuery, setSearchQuery] = React.useState("");
++
++  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
++    setSearchQuery(event.target.value);
++  };
++
++  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
++    event.preventDefault();
++    onSearch(searchQuery);
++  };
++
++  return (
++    <form onSubmit={handleSubmit} className="w-[900px]">
++      <div
++        className={`h-18 px-6 py-2.5 ${backgroundColor} flex items-center gap-5 rounded-full`}
++      >
++        <MagnifyingGlassIcon className={`h-7 w-7 ${iconColor}`} />
++        <input
++          type="text"
++          value={searchQuery}
++          onChange={handleInputChange}
++          placeholder={placeholder}
++          className={`flex-grow border-none bg-transparent ${textColor} font-neue text-2xl font-normal leading-9 tracking-tight placeholder:${placeholderColor} focus:outline-none`}
++        />
++      </div>
++    </form>
++  );
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/StoreCard.stories.tsx b/autogpt_platform/frontend/src/components/agptui/StoreCard.stories.tsx
+new file mode 100644
+index 000000000..b6c50cad6
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/StoreCard.stories.tsx
+@@ -0,0 +1,86 @@
++import type { Meta, StoryObj } from "@storybook/react";
++import { StoreCard } from "./StoreCard";
++import { userEvent, within } from "@storybook/test";
++
++const meta = {
++  title: "AGPTUI/StoreCard",
++  component: StoreCard,
++  parameters: {
++    layout: "centered",
++  },
++  tags: ["autodocs"],
++  argTypes: {
++    agentName: { control: "text" },
++    description: { control: "text" },
++    runs: { control: "number" },
++    rating: { control: "number", min: 0, max: 5, step: 0.1 },
++    onClick: { action: "clicked" },
++    avatarSrc: { control: "text" },
++  },
++} satisfies Meta<typeof StoreCard>;
++
++export default meta;
++type Story = StoryObj<typeof meta>;
++
++export const Default: Story = {
++  args: {
++    agentName: "SEO Optimizer",
++    description: "Optimize your website's SEO with AI-powered suggestions",
++    runs: 10000,
++    rating: 4.5,
++    onClick: () => console.log("Default StoreCard clicked"),
++    avatarSrc: "https://github.com/shadcn.png",
++  },
++};
++
++export const LowRating: Story = {
++  args: {
++    agentName: "Data Analyzer",
++    description: "Analyze complex datasets with machine learning algorithms",
++    runs: 5000,
++    rating: 2.7,
++    onClick: () => console.log("LowRating StoreCard clicked"),
++    avatarSrc: "https://example.com/avatar2.jpg",
++  },
++};
++
++export const HighRuns: Story = {
++  args: {
++    agentName: "Code Assistant",
++    description: "Get AI-powered coding help for various programming languages",
++    runs: 1000000,
++    rating: 4.8,
++    onClick: () => console.log("HighRuns StoreCard clicked"),
++    avatarSrc: "https://example.com/avatar3.jpg",
++  },
++};
++
++export const WithInteraction: Story = {
++  args: {
++    agentName: "Task Planner",
++    description: "Plan and organize your tasks efficiently with AI",
++    runs: 50000,
++    rating: 4.2,
++    onClick: () => console.log("WithInteraction StoreCard clicked"),
++    avatarSrc: "https://example.com/avatar4.jpg",
++  },
++  play: async ({ canvasElement }) => {
++    const canvas = within(canvasElement);
++    const storeCard = canvas.getByText("Task Planner");
++
++    await userEvent.hover(storeCard);
++    await userEvent.click(storeCard);
++  },
++};
++
++export const LongDescription: Story = {
++  args: {
++    agentName: "AI Writing Assistant",
++    description:
++      "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking.",
++    runs: 75000,
++    rating: 4.7,
++    onClick: () => console.log("LongDescription StoreCard clicked"),
++    avatarSrc: "https://example.com/avatar5.jpg",
++  },
++};
+diff --git a/autogpt_platform/frontend/src/components/agptui/StoreCard.tsx b/autogpt_platform/frontend/src/components/agptui/StoreCard.tsx
+new file mode 100644
+index 000000000..ea11b1469
+--- /dev/null
++++ b/autogpt_platform/frontend/src/components/agptui/StoreCard.tsx
+@@ -0,0 +1,76 @@
++import * as React from "react";
++import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
++import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
++
++interface StoreCardProps {
++  agentName: string;
++  description: string;
++  runs: number;
++  rating: number;
++  onClick: () => void;
++  avatarSrc: string;
++}
++
++export const StoreCard: React.FC<StoreCardProps> = ({
++  agentName,
++  description,
++  runs,
++  rating,
++  onClick,
++  avatarSrc,
++}) => {
++  const [isHovered, setIsHovered] = React.useState(false);
++
++  const handleMouseEnter = () => setIsHovered(true);
++  const handleMouseLeave = () => setIsHovered(false);
++
++  const renderStars = () => {
++    const fullStars = Math.floor(rating);
++    const hasHalfStar = rating % 1 !== 0;
++    const stars = [];
++
++    for (let i = 0; i < 5; i++) {
++      if (i < fullStars) {
++        stars.push(<StarFilledIcon key={i} className="text-black" />);
++      } else if (i === fullStars && hasHalfStar) {
++        stars.push(<StarIcon key={i} className="text-black" />);
++      } else {
++        stars.push(<StarIcon key={i} className="text-black" />);
++      }
++    }
++
++    return stars;
++  };
++
++  return (
++    <div
++      className={`w-110 relative h-96 pb-2 ${isHovered ? "shadow-lg" : ""} rounded-xl transition-shadow duration-300`}
++      onClick={onClick}
++      onMouseEnter={handleMouseEnter}
++      onMouseLeave={handleMouseLeave}
++    >
++      <div className="h-238 w-110 absolute left-0 top-0 rounded-xl bg-[#d9d9d9]" />
++      <Avatar className="top-158 absolute left-4 h-16 w-16">
++        <AvatarImage src={avatarSrc} alt={agentName} />
++        <AvatarFallback>{agentName.charAt(0)}</AvatarFallback>
++      </Avatar>
++      <div className="font-neue top-254 absolute pl-2 text-xl font-bold tracking-tight text-[#272727]">
++        {agentName}
++      </div>
++      <div className="font-neue top-284 w-110 absolute pl-2 text-base font-normal leading-[21px] tracking-tight text-[#282828]">
++        {description}
++      </div>
++      <div className="font-neue top-360 absolute pl-2 text-base font-medium tracking-tight text-[#272727]">
++        {runs.toLocaleString()}+ runs
++      </div>
++      <div className="left-297 top-360 absolute pb-2">
++        <div className="font-neue absolute top-0 pl-2 text-base font-medium tracking-tight text-[#272727]">
++          {rating.toFixed(1)}
++        </div>
++        <div className="left-34 h-7.5 absolute top-[2px] inline-flex items-center justify-start gap-px">
++          {renderStars()}
++        </div>
++      </div>
++    </div>
++  );
++};

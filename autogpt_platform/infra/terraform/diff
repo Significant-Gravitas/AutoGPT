@@ -1,0 +1,135 @@
+diff --git a/autogpt_platform/infra/terraform/environments/dev.tfvars b/autogpt_platform/infra/terraform/environments/dev.tfvars
+index 3b868ea5c..529f5c31a 100644
+--- a/autogpt_platform/infra/terraform/environments/dev.tfvars
++++ b/autogpt_platform/infra/terraform/environments/dev.tfvars
+@@ -97,4 +97,6 @@ role_bindings = {
+ }
+ 
+ pods_ip_cidr_range     = "10.1.0.0/16"
+-services_ip_cidr_range = "10.2.0.0/20"
+\ No newline at end of file
++services_ip_cidr_range = "10.2.0.0/20"
++
++website_media_bucket_name = "agpt-dev-website-media"
+\ No newline at end of file
+diff --git a/autogpt_platform/infra/terraform/environments/prod.tfvars b/autogpt_platform/infra/terraform/environments/prod.tfvars
+index 43f2ae63c..2d36929c6 100644
+--- a/autogpt_platform/infra/terraform/environments/prod.tfvars
++++ b/autogpt_platform/infra/terraform/environments/prod.tfvars
+@@ -97,4 +97,6 @@ role_bindings = {
+ }
+ 
+ pods_ip_cidr_range     = "10.1.0.0/16"
+-services_ip_cidr_range = "10.2.0.0/20"
+\ No newline at end of file
++services_ip_cidr_range = "10.2.0.0/20"
++
++website_media_bucket_name = "agpt-prod-website-media"
+\ No newline at end of file
+diff --git a/autogpt_platform/infra/terraform/main.tf b/autogpt_platform/infra/terraform/main.tf
+index 495130b6a..5f7a9b2a9 100644
+--- a/autogpt_platform/infra/terraform/main.tf
++++ b/autogpt_platform/infra/terraform/main.tf
+@@ -61,4 +61,12 @@ module "iam" {
+   service_accounts           = var.service_accounts
+   workload_identity_bindings = var.workload_identity_bindings
+   role_bindings              = var.role_bindings
+-}
+\ No newline at end of file
++}
++
++module "storage" {
++  source = "./modules/storage"
++
++  project_id = var.project_id
++  region = var.region
++  website_media_bucket_name = var.website_media_bucket_name
++}
+diff --git a/autogpt_platform/infra/terraform/modules/storage/main.tf b/autogpt_platform/infra/terraform/modules/storage/main.tf
+new file mode 100644
+index 000000000..dfeac4df4
+--- /dev/null
++++ b/autogpt_platform/infra/terraform/modules/storage/main.tf
+@@ -0,0 +1,28 @@
++resource "google_storage_bucket" "website_artifacts" {
++  name          = var.website_media_bucket_name
++  location      = var.region
++  force_destroy = true
++
++  uniform_bucket_level_access = true
++
++  cors {
++    origin          = ["*"]
++    method          = ["GET", "HEAD", "OPTIONS"]
++    response_header = ["*"]
++    max_age_seconds = 3600
++  }
++
++}
++
++# IAM Policy for public access to Cloud Storage buckets
++resource "google_storage_bucket_iam_policy" "public_access" {
++  bucket      = google_storage_bucket.website_artifacts.name
++  policy_data = jsonencode({
++    bindings = [
++      {
++        role    = "roles/storage.objectViewer"
++        members = ["allUsers"]
++      }
++    ]
++  })
++}
+diff --git a/autogpt_platform/infra/terraform/modules/storage/outputs.tf b/autogpt_platform/infra/terraform/modules/storage/outputs.tf
+new file mode 100644
+index 000000000..9e0f9f30c
+--- /dev/null
++++ b/autogpt_platform/infra/terraform/modules/storage/outputs.tf
+@@ -0,0 +1,9 @@
++output "bucket_name" {
++  description = "The name of the created bucket"
++  value       = google_storage_bucket.website_artifacts.name
++}
++
++output "bucket_url" {
++  description = "The URL of the created bucket"
++  value       = google_storage_bucket.website_artifacts.url
++}
+diff --git a/autogpt_platform/infra/terraform/modules/storage/variables.tf b/autogpt_platform/infra/terraform/modules/storage/variables.tf
+new file mode 100644
+index 000000000..9efdfe74f
+--- /dev/null
++++ b/autogpt_platform/infra/terraform/modules/storage/variables.tf
+@@ -0,0 +1,14 @@
++variable "project_id" {
++  description = "The ID of the project"
++  type        = string
++}
++
++variable "region" {
++  description = "The region where the bucket will be created"
++  type        = string
++}
++
++variable "website_media_bucket_name" {
++  description = "The name of the bucket to create"
++  type        = string
++}
+\ No newline at end of file
+diff --git a/autogpt_platform/infra/terraform/variables.tf b/autogpt_platform/infra/terraform/variables.tf
+index 76da68cce..6016f4228 100644
+--- a/autogpt_platform/infra/terraform/variables.tf
++++ b/autogpt_platform/infra/terraform/variables.tf
+@@ -110,4 +110,11 @@ variable "services_ip_cidr_range" {
+   description = "The IP address range for services"
+   type        = string
+   default     = "10.2.0.0/20"
+-}
+\ No newline at end of file
++}
++
++variable "website_media_bucket_name" {
++  description = "The name of the bucket to create"
++  type        = string
++  default     = "website-media"
++}
++
