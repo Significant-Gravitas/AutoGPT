@@ -6,7 +6,10 @@ const meta = {
   title: "AGPTUI/SearchBar",
   component: SearchBar,
   parameters: {
-    layout: "centered",
+    layout: {
+      center: true,
+      padding: 0,
+    },
   },
   tags: ["autodocs"],
   argTypes: {
