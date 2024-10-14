@@ -3,6 +3,7 @@ import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 
 export const startTutorial = (
+  emptyNodeList: (forceEmpty: boolean) => boolean,
   setPinBlocksPopover: (value: boolean) => void,
   setPinSavePopover: (value: boolean) => void,
 ) => {
@@ -138,10 +139,14 @@ export const startTutorial = (
 
   injectStyles();
 
+  const warningText = emptyNodeList(false)
+    ? ""
+    : "<br/><br/><b>Caution: Clicking next will start a tutorial and will clear the current flow.</b>";
+
   tour.addStep({
     id: "starting-step",
     title: "Welcome to the Tutorial",
-    text: "This is the AutoGPT builder!",
+    text: `This is the AutoGPT builder! ${warningText}`,
     buttons: [
       {
         text: "Skip Tutorial",
@@ -153,7 +158,10 @@ export const startTutorial = (
       },
       {
         text: "Next",
-        action: tour.next,
+        action: () => {
+          emptyNodeList(true);
+          tour.next();
+        },
       },
     ],
   });
@@ -202,7 +210,7 @@ export const startTutorial = (
     id: "focus-new-block",
     title: "New Block",
     text: "This is the Calculator Block! Let's go over how it works.",
-    attachTo: { element: `[data-id="custom-node-1"]`, on: "left" },
+    attachTo: { element: `[data-id="custom-node-1"]`, on: "top" },
     beforeShowPromise: () => waitForElement('[data-id="custom-node-1"]'),
     buttons: [
       {
@@ -213,7 +221,9 @@ export const startTutorial = (
     when: {
       show: () => {
         setPinBlocksPopover(false);
-        fitViewToScreen();
+        setTimeout(() => {
+          fitViewToScreen();
+        }, 100);
       },
     },
   });
@@ -253,48 +263,10 @@ export const startTutorial = (
   });
 
   tour.addStep({
-    id: "select-operation",
-    title: "Select Operation",
-    text: 'Select a mathematical operation to perform. Let’s choose "Add" for now.',
-    attachTo: { element: ".mt-1.mb-2", on: "right" },
-    buttons: [
-      {
-        text: "Back",
-        action: tour.back,
-      },
-      {
-        text: "Next",
-        action: tour.next,
-      },
-    ],
-    when: {
-      show: () => tour.modal.hide(),
-      hide: () => tour.modal.show(),
-    },
-  });
-
-  tour.addStep({
-    id: "enter-number-1",
-    title: "Enter a Number",
-    text: "Enter a number here to try the Calculator Block!",
-    attachTo: { element: "#a", on: "right" },
-    buttons: [
-      {
-        text: "Back",
-        action: tour.back,
-      },
-      {
-        text: "Next",
-        action: tour.next,
-      },
-    ],
-  });
-
-  tour.addStep({
-    id: "enter-number-2",
-    title: "Enter Another Number",
-    text: "Enter another number here!",
-    attachTo: { element: "#b", on: "right" },
+    id: "select-operation-and-input",
+    title: "Select Operation and Input Numbers",
+    text: "Select any mathematical operation you'd like to perform, and enter numbers in both input fields.",
+    attachTo: { element: '[data-id="input-handles"]', on: "right" },
     buttons: [
       {
         text: "Back",
@@ -331,60 +303,20 @@ export const startTutorial = (
   });
 
   tour.addStep({
-    id: "enter-agent-name",
-    title: "Enter Agent Name",
-    text: 'Please enter any agent name, here we can just call it "Tutorial" if you\'d like.',
-    attachTo: {
-      element: '[data-id="save-control-name-input"]',
-      on: "bottom",
-    },
-    buttons: [
-      {
-        text: "Back",
-        action: tour.back,
-      },
-      {
-        text: "Next",
-        action: tour.next,
-      },
-    ],
-    beforeShowPromise: () =>
-      waitForElement('[data-id="save-control-name-input"]'),
-  });
-
-  tour.addStep({
-    id: "enter-agent-description",
-    title: "Enter Agent Description",
-    text: "This is where you can add a description if you'd like, but that is optional.",
-    attachTo: {
-      element: '[data-id="save-control-description-input"]',
-      on: "bottom",
-    },
-    buttons: [
-      {
-        text: "Back",
-        action: tour.back,
-      },
-      {
-        text: "Next",
-        action: tour.next,
-      },
-    ],
-  });
-
-  tour.addStep({
-    id: "save-agent",
+    id: "save-agent-details",
     title: "Save the Agent",
-    text: "Now, let's save the agent by clicking the 'Save agent' button.",
+    text: "Enter a name for your agent, add an optional description, and then click 'Save agent' to save your flow.",
     attachTo: {
-      element: '[data-id="save-control-save-agent"]',
-      on: "top",
+      element: '[data-id="save-control-popover-content"]',
+      on: "bottom",
     },
+    buttons: [],
+    beforeShowPromise: () =>
+      waitForElement('[data-id="save-control-popover-content"]'),
     advanceOn: {
       selector: '[data-id="save-control-save-agent"]',
       event: "click",
     },
-    buttons: [],
     when: {
       hide: () => setPinSavePopover(false),
     },
@@ -421,7 +353,9 @@ export const startTutorial = (
     },
     buttons: [],
     beforeShowPromise: () =>
-      waitForElement('[data-id^="badge-"][data-id$="-QUEUED"]'),
+      waitForElement('[data-id^="badge-"][data-id$="-QUEUED"]').then(
+        fitViewToScreen,
+      ),
     when: {
       show: () => {
         waitForElement('[data-id^="badge-"][data-id$="-COMPLETED"]').then(
