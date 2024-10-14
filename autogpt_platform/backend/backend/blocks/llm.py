@@ -216,7 +216,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             client = ollama.Client(host=ollama_host)
             response = client.generate(
                 model=model.value,
-                prompt=prompt,
+                prompt=str(prompt),
             )
             return response["response"]
         else:
