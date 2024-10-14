@@ -33,13 +33,13 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         <AvatarImage src={avatarSrc} alt={creatorName} />
         <AvatarFallback>{creatorName.charAt(0)}</AvatarFallback>
       </Avatar>
-      <div className="font-neue absolute left-0 top-[254px] text-xl font-bold tracking-tight text-[#272727]">
+      <div className="absolute left-0 top-[254px] font-neue text-xl font-bold tracking-tight text-[#272727]">
         {creatorName}
       </div>
-      <div className="font-neue absolute left-0 top-[284px] line-clamp-3 w-[210px] text-base font-normal leading-[21px] tracking-tight text-[#282828]">
+      <div className="absolute left-0 top-[284px] line-clamp-3 w-[210px] font-neue text-base font-normal leading-[21px] tracking-tight text-[#282828]">
         {bio}
       </div>
-      <div className="font-neue absolute left-0 top-[360px] text-base font-medium tracking-tight text-[#272727]">
+      <div className="absolute left-0 top-[360px] font-neue text-base font-medium tracking-tight text-[#272727]">
         {agentsUploaded} agents uploaded
       </div>
     </div>

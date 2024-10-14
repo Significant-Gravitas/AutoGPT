@@ -51,14 +51,14 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
       onMouseLeave={handleMouseLeave}
     >
       <div className="flex flex-col items-start justify-start gap-3.5 self-stretch">
-        <div className="font-neue self-stretch text-[40px] font-medium leading-[43px] tracking-tight text-[#272727]">
+        <div className="self-stretch font-neue text-[40px] font-medium leading-[43px] tracking-tight text-[#272727]">
           {agentName}
         </div>
-        <div className="font-neue self-stretch text-xl font-normal tracking-tight text-[#878787]">
+        <div className="self-stretch font-neue text-xl font-normal tracking-tight text-[#878787]">
           by {creatorName}
         </div>
       </div>
-      <div className="font-neue w-[540px] flex-grow text-xl font-normal tracking-tight text-[#282828]">
+      <div className="w-[540px] flex-grow font-neue text-xl font-normal tracking-tight text-[#282828]">
         {description}
       </div>
       <div className="flex flex-col items-start justify-end gap-5 self-stretch">
