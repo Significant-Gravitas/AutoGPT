@@ -6,7 +6,11 @@ const meta = {
   title: "AGPTUI/StoreCard",
   component: StoreCard,
   parameters: {
-    layout: "centered",
+    layout: {
+      center: true,
+      fullscreen: true,
+      padding: 0,
+    },
   },
   tags: ["autodocs"],
   argTypes: {
