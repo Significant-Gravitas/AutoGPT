@@ -582,8 +582,8 @@ class AIConversationBlock(Block):
         api_key: str,
         model: LlmModel,
         messages: List[dict[str, str]],
-        max_tokens: int | None = None,
         ollama_host: str,
+        max_tokens: int | None = None,
     ) -> str:
         provider = model.metadata.provider
 
