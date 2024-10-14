@@ -5,11 +5,15 @@ const meta = {
   title: "AGPTUI/AgentImages",
   component: AgentImages,
   parameters: {
-    layout: "centered",
+    layout: {
+      center: true,
+      fullscreen: true,
+      padding: 0,
+    },
   },
   tags: ["autodocs"],
   argTypes: {
-    images: { control: 'object' },
+    images: { control: "object" },
   },
 } satisfies Meta<typeof AgentImages>;
 
@@ -21,7 +25,7 @@ export const Default: Story = {
     images: [
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
       "https://youtu.be/KWonAsyKF3g?si=JMibxlN_6OVo6LhJ",
-      "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      "https://storage.googleapis.com/agpt-dev-website-media/DJINeo.mp4",
     ],
   },
 };
@@ -29,8 +33,8 @@ export const Default: Story = {
 export const OnlyImages: Story = {
   args: {
     images: [
-        "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-        "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     ],
   },
 };
@@ -38,7 +42,7 @@ export const OnlyImages: Story = {
 export const WithVideos: Story = {
   args: {
     images: [
-      "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      "https://storage.googleapis.com/agpt-dev-website-media/DJINeo.mp4",
       "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
       "https://youtu.be/KWonAsyKF3g?si=JMibxlN_6OVo6LhJ",
     ],
@@ -48,7 +52,7 @@ export const WithVideos: Story = {
 export const SingleItem: Story = {
   args: {
     images: [
-        "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     ],
   },
 };
