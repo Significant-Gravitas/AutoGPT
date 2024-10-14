@@ -45,64 +45,64 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   };
 
   return (
-    <div className="w-[27.5rem] flow-root">
-      <div className="text-[#272727] text-5xl font-medium font-['PP Neue Montreal TT'] leading-9 tracking-wide mb-4">
+    <div className="flow-root w-[27.5rem]">
+      <div className="font-['PP Neue Montreal TT'] mb-4 text-5xl font-medium leading-9 tracking-wide text-[#272727]">
         {name}
       </div>
-      <div className="text-[#878787] text-[1.1875rem] font-medium font-['PP Neue Montreal TT'] leading-9 tracking-tight mb-4">
-        by <Link href={`/creator/${creator.replace(/\s+/g, '-')}`} className="text-[#272727]">{creator}</Link>
+      <div className="font-['PP Neue Montreal TT'] mb-4 text-[1.1875rem] font-medium leading-9 tracking-tight text-[#878787]">
+        by{" "}
+        <Link
+          href={`/creator/${creator.replace(/\s+/g, "-")}`}
+          className="text-[#272727]"
+        >
+          {creator}
+        </Link>
       </div>
-      <Button
-        onClick={onRunAgent}
-        className="mb-8"
-        variant="outline"
-      >
+      <Button onClick={onRunAgent} className="mb-8" variant="outline">
         Run agent
       </Button>
-      <div className="text-[#282828] text-[1.1875rem] font-normal font-['PP Neue Montreal TT'] leading-relaxed tracking-tight mb-6">
+      <div className="font-['PP Neue Montreal TT'] mb-6 text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#282828]">
         {description}
       </div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center">
-          <div className="text-[#272727] text-xl font-normal font-['PP Neue Montreal TT'] tracking-tight mr-2">
+          <div className="font-['PP Neue Montreal TT'] mr-2 text-xl font-normal tracking-tight text-[#272727]">
             {rating.toFixed(1)}
           </div>
-          <div className="flex items-center gap-px">
-            {renderStars(rating)}
-          </div>
+          <div className="flex items-center gap-px">{renderStars(rating)}</div>
         </div>
         <div>
-          <span className="text-[#272727] text-xl font-medium font-['PP Neue Montreal TT'] tracking-tight">
+          <span className="font-['PP Neue Montreal TT'] text-xl font-medium tracking-tight text-[#272727]">
             {runs.toLocaleString()}+
           </span>
-          <span className="text-[#272727] text-xl font-normal font-['PP Neue Montreal TT'] tracking-tight">
+          <span className="font-['PP Neue Montreal TT'] text-xl font-normal tracking-tight text-[#272727]">
             {" "}
             runs
           </span>
         </div>
       </div>
-      <div className="text-[#282828] text-lg font-medium font-['PP Neue Montreal TT'] leading-9 tracking-tight mb-3">
+      <div className="font-['PP Neue Montreal TT'] mb-3 text-lg font-medium leading-9 tracking-tight text-[#282828]">
         Categories
       </div>
-      <div className="flex flex-wrap gap-2.5 mb-6">
+      <div className="mb-6 flex flex-wrap gap-2.5">
         {categories.map((category, index) => (
           <div
             key={index}
-            className="px-4 py-1.5 rounded-[2.125rem] border border-black/50 flex items-center"
+            className="flex items-center rounded-[2.125rem] border border-black/50 px-4 py-1.5"
           >
-            <div className="text-[#474747] text-[1.1875rem] font-normal font-['PP Neue Montreal TT'] leading-relaxed tracking-tight">
+            <div className="font-['PP Neue Montreal TT'] text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
               {category}
             </div>
           </div>
         ))}
       </div>
-      <div className="text-[#282828] text-lg font-medium font-['PP Neue Montreal TT'] leading-9 tracking-tight mb-3">
+      <div className="font-['PP Neue Montreal TT'] mb-3 text-lg font-medium leading-9 tracking-tight text-[#282828]">
         Version history
       </div>
-      <div className="text-[#474747] text-[1.1875rem] font-normal font-['PP Neue Montreal TT'] leading-relaxed tracking-tight mb-2">
+      <div className="font-['PP Neue Montreal TT'] mb-2 text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
         Last updated {lastUpdated}
       </div>
-      <div className="text-[#474747] text-[1.1875rem] font-normal font-['PP Neue Montreal TT'] leading-relaxed tracking-tight">
+      <div className="font-['PP Neue Montreal TT'] text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
         Version {version}
       </div>
     </div>
