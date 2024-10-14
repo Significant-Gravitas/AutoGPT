@@ -39,7 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
       <div className="flex items-center space-x-5">
         <div
-          className="font-neue cursor-pointer text-2xl font-medium leading-9 tracking-tight text-[#474747]"
+          className="cursor-pointer font-neue text-2xl font-medium leading-9 tracking-tight text-[#474747]"
           onClick={onProfileClick}
         >
           {userName}

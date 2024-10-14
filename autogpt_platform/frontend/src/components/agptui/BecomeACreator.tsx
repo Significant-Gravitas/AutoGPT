@@ -18,13 +18,13 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
 }) => {
   return (
     <div className="flex w-full flex-col items-center justify-between space-y-8 py-8">
-      <div className="font-neue mb-8 self-start text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
+      <div className="mb-8 self-start font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
         {title}
       </div>
-      <div className="font-neue max-w-full text-center text-5xl font-medium leading-9 tracking-wide text-[#272727]">
+      <div className="max-w-full text-center font-neue text-5xl font-medium leading-9 tracking-wide text-[#272727]">
         {heading}
       </div>
-      <div className="font-neue max-w-full text-center text-[26px] font-medium leading-9 tracking-tight text-[#878787]">
+      <div className="max-w-full text-center font-neue text-[26px] font-medium leading-9 tracking-tight text-[#878787]">
         {description}
       </div>
       <Button onClick={onButtonClick} className="mt-8">
