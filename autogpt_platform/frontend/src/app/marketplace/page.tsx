@@ -298,7 +298,15 @@ const Marketplace: React.FC = () => {
           </div>
         ) : searchValue ? (
           searchResults.length > 0 ? (
-            <AgentGrid agents={searchResults} title="Search Results" />
+            <>
+              <AgentGrid agents={searchResults} title="Search Results" />
+              <Pagination
+                page={searchPage}
+                totalPages={searchTotalPages}
+                onPrevPage={handlePrevPage}
+                onNextPage={handleNextPage}
+              />
+            </>
           ) : (
             <div className="py-12 text-center">
               <p className="text-gray-600">
@@ -317,8 +325,8 @@ const Marketplace: React.FC = () => {
             )}
             <AgentGrid agents={topAgents} title="Top Downloaded Agents" />
             <Pagination
-              page={searchValue ? searchPage : topAgentsPage}
-              totalPages={searchValue ? searchTotalPages : topAgentsTotalPages}
+              page={topAgentsPage}
+              totalPages={topAgentsTotalPages}
               onPrevPage={handlePrevPage}
               onNextPage={handleNextPage}
             />
