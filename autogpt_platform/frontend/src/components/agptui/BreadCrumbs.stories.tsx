@@ -29,9 +29,7 @@ export const Default: Story = {
 
 export const SingleItem: Story = {
   args: {
-    items: [
-      { name: "Home", link: "/" },
-    ],
+    items: [{ name: "Home", link: "/" }],
   },
 };
 
@@ -42,7 +40,10 @@ export const LongPath: Story = {
       { name: "Categories", link: "/categories" },
       { name: "AI Tools", link: "/categories/ai-tools" },
       { name: "Data Analysis", link: "/categories/ai-tools/data-analysis" },
-      { name: "Data Analyzer", link: "/categories/ai-tools/data-analysis/data-analyzer" },
+      {
+        name: "Data Analyzer",
+        link: "/categories/ai-tools/data-analysis/data-analyzer",
+      },
     ],
   },
 };
@@ -69,7 +70,10 @@ export const LongNames: Story = {
     items: [
       { name: "Home", link: "/" },
       { name: "AI-Powered Writing Assistants", link: "/ai-writing-assistants" },
-      { name: "Advanced Grammar and Style Checker", link: "/ai-writing-assistants/grammar-style-checker" },
+      {
+        name: "Advanced Grammar and Style Checker",
+        link: "/ai-writing-assistants/grammar-style-checker",
+      },
     ],
   },
 };
