@@ -33,30 +33,29 @@ export default function PrivatePage() {
   const removeCredentials = useCallback(
     async (provider: string, id: string) => {
       try {
-        const response = await api.deleteCredentials(provider, id);
-        console.log("response", response);
-        toast({
-          title: "Credentials deleted",
-          duration: 2000,
-        });
-      } catch (error: any) {
-        if (error.response && error.response.status === 501) {
+        const { revoked } = await api.deleteCredentials(provider, id);
+        if (revoked !== false) {
+          toast({
+            title: "Credentials deleted",
+            duration: 2000,
+          });
+        }
+        else {
           toast({
             title: "Credentials deleted from AutoGPT",
             description: `You may also manually remove the connection to AutoGPT at ${provider}!`,
             duration: 3000,
           });
-          return;
         }
-
+      } catch (error: any) {
         toast({
-          title: "Something went wrong when deleting credentials " + error,
+          title: "Something went wrong when deleting credentials: " + error,
           variant: "destructive",
           duration: 2000,
         });
       }
     },
-    [api],
+    [api, toast],
   );
 
   if (isLoading || !providers || !providers) {

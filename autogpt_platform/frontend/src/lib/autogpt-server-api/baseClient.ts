@@ -4,6 +4,7 @@ import {
   AnalyticsDetails,
   APIKeyCredentials,
   Block,
+  CredentialsDeleteResponse,
   CredentialsMetaResponse,
   Graph,
   GraphCreatable,
@@ -215,10 +216,7 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
-  /** Returns 204 if removed successfuly
-   * 501 if credentials were removed from AutoGPT DB but provider does not support deletion via api.
-   */
-  deleteCredentials(provider: string, id: string): Promise<void> {
+  deleteCredentials(provider: string, id: string): Promise<CredentialsDeleteResponse> {
     return this._request(
       "DELETE",
       `/integrations/${provider}/credentials/${id}`,
