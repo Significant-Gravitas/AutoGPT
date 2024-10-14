@@ -93,7 +93,8 @@ export const LongDescription: Story = {
     ...Default.args,
     name: "AI Writing Assistant",
     creator: "WordCraft AI",
-    description: "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and can even generate content ideas based on your input.",
+    description:
+      "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and can even generate content ideas based on your input.",
     rating: 4.7,
     runs: 75000,
     categories: ["Writing", "AI", "Content Creation"],
