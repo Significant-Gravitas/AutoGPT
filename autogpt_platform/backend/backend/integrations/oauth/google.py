@@ -34,7 +34,6 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.token_uri = "https://oauth2.googleapis.com/token"
-        self.email_uri = "https://www.googleapis.com/oauth2/v2/userinfo"
         self.revoke_uri = "https://oauth2.googleapis.com/revoke"
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
@@ -116,7 +115,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self, creds: Credentials | ExternalAccountCredentials
     ) -> str | None:
         session = AuthorizedSession(creds)
-        response = session.get(self.email_uri)
+        response = session.get(self.EMAIL_ENDPOINT)
         if not response.ok:
             logger.error(
                 f"Failed to get user email. Status code: {response.status_code}"
