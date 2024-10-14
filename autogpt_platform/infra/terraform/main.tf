@@ -62,3 +62,11 @@ module "iam" {
   workload_identity_bindings = var.workload_identity_bindings
   role_bindings              = var.role_bindings
 }
+
+module "storage" {
+  source = "./modules/storage"
+
+  project_id = var.project_id
+  region = var.region
+  website_media_bucket_name = var.website_media_bucket_name
+}

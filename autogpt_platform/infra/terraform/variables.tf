@@ -111,3 +111,10 @@ variable "services_ip_cidr_range" {
   type        = string
   default     = "10.2.0.0/20"
 }
+
+variable "website_media_bucket_name" {
+  description = "The name of the bucket to create"
+  type        = string
+  default     = "website-media"
+}
+
