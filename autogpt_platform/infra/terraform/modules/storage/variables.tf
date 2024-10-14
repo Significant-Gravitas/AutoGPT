@@ -11,4 +11,5 @@ variable "region" {
 variable "website_media_bucket_name" {
   description = "The name of the bucket to create"
   type        = string
+  default     = "website-media"
 }

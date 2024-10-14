@@ -98,5 +98,3 @@ role_bindings = {
 
 pods_ip_cidr_range     = "10.1.0.0/16"
 services_ip_cidr_range = "10.2.0.0/20"
-
-website_media_bucket_name = "agpt-prod-website-media"

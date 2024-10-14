@@ -1,5 +1,5 @@
 resource "google_storage_bucket" "website_artifacts" {
-  name          = var.website_media_bucket_name
+  name          = "${var.project_id}-${var.website_media_bucket_name}"
   location      = var.region
   force_destroy = true
 
