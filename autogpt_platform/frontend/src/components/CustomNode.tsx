@@ -21,19 +21,20 @@ import {
 import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Copy, Trash2 } from "lucide-react";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
   NodeGenericInputField,
   NodeTextBoxInput,
 } from "./node-input-components";
-import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
-import DataTable from "./DataTable";
+import NodeOutputs from "./NodeOutputs";
 import { IconCoin } from "./ui/icons";
+import * as Separator from "@radix-ui/react-separator";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { DotsVerticalIcon, TrashIcon, CopyIcon } from "@radix-ui/react-icons";
 
 type ParsedKey = { key: string; index?: number };
 
@@ -72,14 +73,19 @@ export type CustomNodeData = {
 
 export type CustomNode = Node<CustomNodeData, "custom">;
 
-export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
+export function CustomNode({
+  data,
+  id,
+  width,
+  height,
+  selected,
+}: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [inputModalValue, setInputModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
     CustomNode,
     Edge
@@ -165,15 +171,14 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey}>
-                <span className="text-m green -mb-1 text-gray-900">
+              <div key={propKey} data-id={`input-handle-${propKey}`}>
+                <span className="text-m green mb-0 text-gray-900">
                   {propSchema.title || beautifyString(propKey)}
                 </span>
-                <div key={propKey} onMouseOver={() => {}}>
+                <div key={propKey}>
                   {!isConnected && (
                     <NodeGenericInputField
                       nodeId={id}
-                      className="mb-2 mt-1"
                       propKey={propKey}
                       propSchema={propSchema}
                       currentValue={getValue(propKey)}
@@ -216,9 +221,9 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey} data-id={`output-handle-${propKey}`}>
                 {propKey !== "value" ? (
-                  <span className="text-m green -mb-1 text-gray-900">
+                  <span className="text-m green mb-0 text-gray-900">
                     {propSchema.title || beautifyString(propKey)}
                   </span>
                 ) : (
@@ -233,7 +238,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 {!isConnected && (
                   <NodeGenericInputField
                     nodeId={id}
-                    className="mb-2 mt-1"
                     propKey={propKey}
                     propSchema={propSchema}
                     currentValue={getValue(propKey)}
@@ -256,9 +260,9 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
+              <div key={propKey} data-id={`input-handle-${propKey}`}>
                 {"credentials_provider" in propSchema ? (
-                  <span className="text-m green -mb-1 text-gray-900">
+                  <span className="text-m green mb-0 text-gray-900">
                     Credentials
                   </span>
                 ) : (
@@ -273,7 +277,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                 {!isConnected && (
                   <NodeGenericInputField
                     nodeId={id}
-                    className="mb-2 mt-1"
                     propKey={propKey}
                     propSchema={propSchema}
                     currentValue={getValue(propKey)}
@@ -395,7 +398,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   };
 
   const handleInputClick = (key: string) => {
-    console.log(`Opening modal for key: ${key}`);
+    console.debug(`Opening modal for key: ${key}`);
     setActiveKey(key);
     const value = getValue(key);
     setInputModalValue(
@@ -421,16 +424,8 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     setIsOutputModalOpen(true);
   };
 
-  const handleHovered = () => {
-    setIsHovered(true);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-  };
-
   const deleteNode = useCallback(() => {
-    console.log("Deleting node:", id);
+    console.debug("Deleting node:", id);
 
     // Remove the node
     deleteElements({ nodes: [{ id }] });
@@ -467,7 +462,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
     history.push({
       type: "ADD_NODE",
-      payload: { node: newNode },
+      payload: { node: { ...newNode, ...newNode.data } as CustomNodeData },
       undo: () => deleteElements({ nodes: [{ id: newId }] }),
       redo: () => addNodes(newNode),
     });
@@ -510,20 +505,53 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     "custom-node",
     "dark-theme",
     "rounded-xl",
-    "border",
     "bg-white/[.9]",
-    "shadow-md",
+    "border border-gray-300",
+    data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
+    data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
+    selected ? "shadow-2xl" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const errorClass =
-    hasConfigErrors || hasOutputError ? "border-red-500 border-2" : "";
+    hasConfigErrors || hasOutputError ? "border-red-200 border-2" : "";
 
-  const statusClass =
-    hasConfigErrors || hasOutputError
-      ? "failed"
-      : (data.status?.toLowerCase() ?? "");
+  const statusClass = (() => {
+    if (hasConfigErrors || hasOutputError) return "border-red-200 border-4";
+    switch (data.status?.toLowerCase()) {
+      case "completed":
+        return "border-green-200 border-4";
+      case "running":
+        return "border-yellow-200 border-4";
+      case "failed":
+        return "border-red-200 border-4";
+      case "incomplete":
+        return "border-purple-200 border-4";
+      case "queued":
+        return "border-cyan-200 border-4";
+      default:
+        return "";
+    }
+  })();
+
+  const statusBackgroundClass = (() => {
+    if (hasConfigErrors || hasOutputError) return "bg-red-200";
+    switch (data.status?.toLowerCase()) {
+      case "completed":
+        return "bg-green-200";
+      case "running":
+        return "bg-yellow-200";
+      case "failed":
+        return "bg-red-200";
+      case "incomplete":
+        return "bg-purple-200";
+      case "queued":
+        return "bg-cyan-200";
+      default:
+        return "";
+    }
+  })();
 
   const hasAdvancedFields =
     data.inputSchema &&
@@ -544,115 +572,212 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       ),
     );
 
-  return (
-    <div
-      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
-      onMouseEnter={handleHovered}
-      onMouseLeave={handleMouseLeave}
-      data-id={`custom-node-${id}`}
-    >
-      <div
-        className={`mb-2 p-3 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
+  const LineSeparator = () => (
+    <div className="bg-white pt-6">
+      <Separator.Root className="h-[1px] w-full bg-gray-300"></Separator.Root>
+    </div>
+  );
+
+  const ContextMenuContent = () => (
+    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md">
+      <ContextMenu.Item
+        onSelect={copyNode}
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
       >
-        <div className="flex items-center justify-between">
-          <div className="font-roboto p-3 text-lg font-semibold">
-            {beautifyString(
-              data.blockType?.replace(/Block$/, "") || data.title,
-            )}
+        <CopyIcon className="mr-2 h-5 w-5" />
+        <span>Copy</span>
+      </ContextMenu.Item>
+      <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
+      <ContextMenu.Item
+        onSelect={deleteNode}
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
+      >
+        <TrashIcon className="mr-2 h-5 w-5 text-red-500" />
+        <span>Delete</span>
+      </ContextMenu.Item>
+    </ContextMenu.Content>
+  );
+
+  const onContextButtonTrigger = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+    });
+    e.currentTarget.dispatchEvent(event);
+  };
+
+  const stripeColor = getPrimaryCategoryColor(data.categories);
+
+  const nodeContent = () => (
+    <div
+      className={`${blockClasses} ${errorClass} ${statusClass}`}
+      data-id={`custom-node-${id}`}
+      z-index={1}
+    >
+      {/* Header */}
+      <div
+        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} items-center rounded-t-xl`}
+      >
+        {/* Color Stripe */}
+        <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
+
+        <div className="flex w-full flex-col">
+          <div className="flex flex-row items-center justify-between">
+            <div className="font-roboto px-3 text-lg font-semibold">
+              {beautifyString(
+                data.blockType?.replace(/Block$/, "") || data.title,
+              )}
+            </div>
           </div>
-          <SchemaTooltip description={data.description} />
-        </div>
-        <div className="flex gap-[5px]">
-          {isHovered && (
-            <>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copyNode}
-                title="Copy node"
-              >
-                <Copy size={18} />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={deleteNode}
-                title="Delete node"
-              >
-                <Trash2 size={18} />
-              </Button>
-            </>
+          {blockCost && (
+            <div className="px-3 text-base font-light">
+              <span className="ml-auto flex items-center">
+                <IconCoin />{" "}
+                <span className="m-1 font-medium">{blockCost.cost_amount}</span>{" "}
+                credits/{blockCost.cost_type}
+              </span>
+            </div>
           )}
         </div>
+        {data.categories.map((category) => (
+          <Badge
+            key={category.category}
+            variant="outline"
+            className={`mr-5 ${getPrimaryCategoryColor([category])} rounded-xl border border-gray-300 opacity-50`}
+          >
+            {beautifyString(category.category.toLowerCase())}
+          </Badge>
+        ))}
+        <button
+          aria-label="Options"
+          className="mr-2 cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
+          onClick={onContextButtonTrigger}
+        >
+          <DotsVerticalIcon className="h-5 w-5" />
+        </button>
+
+        <ContextMenuContent />
       </div>
-      {blockCost && (
-        <div className="p-3 font-semibold">
-          <span className="ml-auto flex items-center">
-            <IconCoin /> {blockCost.cost_amount} credits/{blockCost.cost_type}
-          </span>
-        </div>
-      )}
-      {data.uiType !== BlockUIType.NOTE ? (
-        <div className="flex items-start justify-between p-3">
+      {/* Body */}
+      <div className="ml-5 mt-6 rounded-b-xl">
+        {/* Input Handles */}
+        {data.uiType !== BlockUIType.NOTE ? (
+          <div
+            className="flex w-fit items-start justify-between"
+            data-id="input-handles"
+          >
+            <div>
+              {data.inputSchema &&
+                generateInputHandles(data.inputSchema, data.uiType)}
+            </div>
+          </div>
+        ) : (
           <div>
             {data.inputSchema &&
               generateInputHandles(data.inputSchema, data.uiType)}
           </div>
-          <div className="flex-none">
-            {data.outputSchema &&
-              generateOutputHandles(data.outputSchema, data.uiType)}
-          </div>
-        </div>
-      ) : (
-        <div>
-          {data.inputSchema &&
-            generateInputHandles(data.inputSchema, data.uiType)}
-        </div>
-      )}
-      {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
-        <div
-          data-id="latest-output"
-          className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
-        >
-          {(data.executionResults?.length ?? 0) > 0 ? (
-            <>
-              <DataTable
-                title="Latest Output"
-                truncateLongData
-                data={data.executionResults!.at(-1)?.data || {}}
+        )}
+
+        {/* Advanced Settings */}
+        {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
+          <>
+            <LineSeparator />
+            <div className="flex items-center justify-between pt-6">
+              Advanced
+              <Switch
+                onCheckedChange={toggleAdvancedSettings}
+                checked={isAdvancedOpen}
+                className="mr-5"
               />
-              <div className="flex justify-end">
-                <Button variant="ghost" onClick={handleOutputClick}>
-                  View More
-                </Button>
+            </div>
+          </>
+        )}
+        {/* Output Handles */}
+        {data.uiType !== BlockUIType.NOTE && (
+          <>
+            <LineSeparator />
+            <div className="flex items-start justify-end rounded-b-xl pb-2 pr-2 pt-6">
+              <div className="flex-none">
+                {data.outputSchema &&
+                  generateOutputHandles(data.outputSchema, data.uiType)}
               </div>
-            </>
-          ) : (
-            <span>No outputs yet</span>
-          )}
-        </div>
-      )}
-      {data.uiType !== BlockUIType.NOTE && (
-        <div className="mt-2.5 flex items-center pb-4 pl-4">
-          <Switch checked={isOutputOpen} onCheckedChange={toggleOutput} />
-          <span className="m-1 mr-4">Output</span>
-          {hasAdvancedFields && (
-            <>
-              <Switch onCheckedChange={toggleAdvancedSettings} />
-              <span className="m-1">Advanced</span>
-            </>
-          )}
-          {data.status && (
-            <Badge
-              variant="outline"
-              data-id={`badge-${id}-${data.status}`}
-              className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
+            </div>
+          </>
+        )}
+      </div>
+      {/* End Body */}
+      {/* Footer */}
+      <div className="flex rounded-b-xl">
+        {/* Display Outputs  */}
+        {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
+          <div
+            data-id="latest-output"
+            className={cn(
+              "nodrag w-full overflow-hidden break-words",
+              statusBackgroundClass,
+            )}
+          >
+            {(data.executionResults?.length ?? 0) > 0 ? (
+              <div className="mt-0 rounded-b-xl bg-gray-50">
+                <LineSeparator />
+                <NodeOutputs
+                  title="Latest Output"
+                  truncateLongData
+                  data={data.executionResults!.at(-1)?.data || {}}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    onClick={handleOutputClick}
+                    className="border border-gray-300"
+                  >
+                    View More
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-0 min-h-4 rounded-b-xl bg-white"></div>
+            )}
+            <div
+              className={cn(
+                "flex min-h-12 items-center justify-end",
+                statusBackgroundClass,
+              )}
             >
-              {data.status}
-            </Badge>
-          )}
-        </div>
-      )}
+              <Badge
+                variant="default"
+                data-id={`badge-${id}-${data.status}`}
+                className={cn(
+                  "mr-4 flex min-w-[114px] items-center justify-center rounded-3xl text-center text-xs font-semibold",
+                  hasConfigErrors || hasOutputError
+                    ? "border-red-600 bg-red-600 text-white"
+                    : {
+                        "border-green-600 bg-green-600 text-white":
+                          data.status === "COMPLETED",
+                        "border-yellow-600 bg-yellow-600 text-white":
+                          data.status === "RUNNING",
+                        "border-red-600 bg-red-600 text-white":
+                          data.status === "FAILED",
+                        "border-blue-600 bg-blue-600 text-white":
+                          data.status === "QUEUED",
+                        "border-gray-600 bg-gray-600 font-black":
+                          data.status === "INCOMPLETE",
+                      },
+                )}
+              >
+                {hasConfigErrors || hasOutputError
+                  ? "Error"
+                  : data.status
+                    ? beautifyString(data.status)
+                    : "Not Run"}
+              </Badge>
+            </div>
+          </div>
+        )}
+      </div>
       <InputModalComponent
         title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
         isOpen={isModalOpen}
@@ -667,5 +792,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         executionResults={data.executionResults?.toReversed() || []}
       />
     </div>
+  );
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger>{nodeContent()}</ContextMenu.Trigger>
+    </ContextMenu.Root>
   );
 }

@@ -105,7 +105,7 @@ const AgentCard: React.FC<{ agent: Agent; featured?: boolean }> = ({
 
   return (
     <div
-      className={`flex cursor-pointer flex-col justify-between rounded-lg border p-6 transition-colors duration-200 hover:bg-gray-50 ${featured ? "border-indigo-500 shadow-md" : "border-gray-200"}`}
+      className={`flex cursor-pointer flex-col justify-between rounded-lg border p-6 transition-colors duration-200 hover:bg-gray-50 ${featured ? "border-indigo-500 shadow-md" : "border-gray-300"}`}
       onClick={handleClick}
     >
       <div>
