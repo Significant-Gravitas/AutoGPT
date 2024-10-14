@@ -81,7 +81,7 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
     # CUSTOM
-    LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama",  32768, cost_factor=0),
+    LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, cost_factor=0),
 }
 
 for model in LlmModel:
@@ -109,8 +109,10 @@ class AIStructuredResponseGeneratorBlock(Block):
             advanced=False, default={}, description="Values used to fill in the prompt."
         )
         ollama_host: str = SchemaField(
-            advanced=True, default="localhost:11434", description="Ollama host for local  models"
-	)
+            advanced=True,
+            default="localhost:11434",
+            description="Ollama host for local  models",
+        )
 
     class Output(BlockSchema):
         response: dict[str, Any]
@@ -145,7 +147,11 @@ class AIStructuredResponseGeneratorBlock(Block):
 
     @staticmethod
     def llm_call(
-        api_key: str, model: LlmModel, prompt: list[dict], json_format: bool, ollama_host: str
+        api_key: str,
+        model: LlmModel,
+        prompt: list[dict],
+        json_format: bool,
+        ollama_host: str,
     ) -> str:
         provider = model.metadata.provider
 
@@ -334,8 +340,11 @@ class AITextGeneratorBlock(Block):
             advanced=False, default={}, description="Values used to fill in the prompt."
         )
         ollama_host: str = SchemaField(
-            advanced=True, default="localhost:11434", description="Ollama host for local  models"
-	)
+            advanced=True,
+            default="localhost:11434",
+            description="Ollama host for local  models",
+        )
+
     class Output(BlockSchema):
         response: str
         error: str
@@ -395,8 +404,10 @@ class AITextSummarizerBlock(Block):
         max_tokens: int = 4000  # Adjust based on the model's context window
         chunk_overlap: int = 100  # Overlap between chunks to maintain context
         ollama_host: str = SchemaField(
-            advanced=True, default="localhost:11434", description="Ollama host for local  models"
-	)
+            advanced=True,
+            default="localhost:11434",
+            description="Ollama host for local  models",
+        )
 
     class Output(BlockSchema):
         summary: str
@@ -539,7 +550,9 @@ class AIConversationBlock(Block):
             ge=1,
         )
         ollama_host: str = SchemaField(
-                advanced=True, default="localhost:11434", description="Ollama host for local  models"
+            advanced=True,
+            default="localhost:11434",
+            description="Ollama host for local  models",
         )
 
     class Output(BlockSchema):
