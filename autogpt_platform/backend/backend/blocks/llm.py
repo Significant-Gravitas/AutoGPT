@@ -145,7 +145,7 @@ class AIStructuredResponseGeneratorBlock(Block):
 
     @staticmethod
     def llm_call(
-        api_key: str, model: LlmModel, prompt: list[dict], json_format: bool
+        api_key: str, model: LlmModel, prompt: list[dict], json_format: bool, ollama_host: str
     ) -> str:
         provider = model.metadata.provider
 
@@ -207,7 +207,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             )
             return response.choices[0].message.content or ""
         elif provider == "ollama":
-            client = ollama.Client(host=api_key)
+            client = ollama.Client(host=ollama_host)
             response = client.generate(
                 model=model.value,
                 prompt=prompt[0]["content"],
@@ -275,6 +275,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                     model=model,
                     prompt=prompt,
                     json_format=bool(input_data.expected_format),
+                    ollama_host=input_data.ollama_host,
                 )
                 logger.info(f"LLM attempt-{retry_count} response: {response_text}")
 
@@ -332,7 +333,9 @@ class AITextGeneratorBlock(Block):
         prompt_values: dict[str, str] = SchemaField(
             advanced=False, default={}, description="Values used to fill in the prompt."
         )
-
+        ollama_host: str = SchemaField(
+            advanced=True, default="localhost:11434", description="Ollama host for local  models"
+	)
     class Output(BlockSchema):
         response: str
         error: str
@@ -391,6 +394,9 @@ class AITextSummarizerBlock(Block):
         # TODO: Make this dynamic
         max_tokens: int = 4000  # Adjust based on the model's context window
         chunk_overlap: int = 100  # Overlap between chunks to maintain context
+        ollama_host: str = SchemaField(
+            advanced=True, default="localhost:11434", description="Ollama host for local  models"
+	)
 
     class Output(BlockSchema):
         summary: str
@@ -532,6 +538,9 @@ class AIConversationBlock(Block):
             description="The maximum number of tokens to generate in the chat completion.",
             ge=1,
         )
+        ollama_host: str = SchemaField(
+                advanced=True, default="localhost:11434", description="Ollama host for local  models"
+        )
 
     class Output(BlockSchema):
         response: str = SchemaField(
@@ -574,6 +583,7 @@ class AIConversationBlock(Block):
         model: LlmModel,
         messages: List[dict[str, str]],
         max_tokens: int | None = None,
+        ollama_host: str,
     ) -> str:
         provider = model.metadata.provider
 
@@ -602,7 +612,8 @@ class AIConversationBlock(Block):
             )
             return response.choices[0].message.content or ""
         elif provider == "ollama":
-            response = ollama.chat(
+            client = ollama.Client(host=ollama_host)
+            response = client.chat(
                 model=model.value,
                 messages=messages,  # type: ignore
                 stream=False,  # type: ignore
@@ -625,6 +636,7 @@ class AIConversationBlock(Block):
                 model=input_data.model,
                 messages=messages,
                 max_tokens=input_data.max_tokens,
+                ollama_host=input_data.ollama_host,
             )
 
             yield "response", response
