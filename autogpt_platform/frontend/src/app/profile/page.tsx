@@ -39,8 +39,7 @@ export default function PrivatePage() {
             title: "Credentials deleted",
             duration: 2000,
           });
-        }
-        else {
+        } else {
           toast({
             title: "Credentials deleted from AutoGPT",
             description: `You may also manually remove the connection to AutoGPT at ${provider}!`,

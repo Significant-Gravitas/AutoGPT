@@ -216,7 +216,10 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
-  deleteCredentials(provider: string, id: string): Promise<CredentialsDeleteResponse> {
+  deleteCredentials(
+    provider: string,
+    id: string,
+  ): Promise<CredentialsDeleteResponse> {
     return this._request(
       "DELETE",
       `/integrations/${provider}/credentials/${id}`,
