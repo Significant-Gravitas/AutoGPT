@@ -26,10 +26,10 @@ def log(msg, **kwargs):
 
 
 class ExecutionScheduler(AppService):
-    use_db = True
 
     def __init__(self, refresh_interval=10):
         super().__init__(port=Config().execution_scheduler_port)
+        self.use_db = True
         self.last_check = datetime.min
         self.refresh_interval = refresh_interval
 

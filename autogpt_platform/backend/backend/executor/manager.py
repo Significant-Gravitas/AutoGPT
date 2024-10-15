@@ -31,6 +31,7 @@ from backend.data.graph import Graph, Link, Node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
+from backend.util.cache import thread_cached_property
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
@@ -661,7 +662,6 @@ class ExecutionManager(AppService):
             SupabaseIntegrationCredentialsStore,
         )
 
-        self.thread_local = threading.local()
         self.credentials_store = SupabaseIntegrationCredentialsStore(
             self.supabase, redis.get_redis()
         )
@@ -694,11 +694,9 @@ class ExecutionManager(AppService):
 
         super().cleanup()
 
-    @property
+    @thread_cached_property
     def db_client(self) -> "DatabaseAPI":
-        if not hasattr(self.thread_local, "db_client"):
-            self.thread_local.db_client = get_db_client()
-        return self.thread_local.db_client
+        return get_db_client()
 
     @expose
     def add_execution(
