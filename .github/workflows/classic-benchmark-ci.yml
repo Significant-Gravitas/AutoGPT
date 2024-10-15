@@ -2,13 +2,13 @@ name: Classic - AGBenchmark CI
 
 on:
   push:
-    branches: [ master, development, ci-test* ]
+    branches: [ master, dev, ci-test* ]
     paths:
       - 'classic/benchmark/**'
       - '!classic/benchmark/reports/**'
       - .github/workflows/classic-benchmark-ci.yml
   pull_request:
-    branches: [ master, development, release-* ]
+    branches: [ master, dev, release-* ]
     paths:
       - 'classic/benchmark/**'
       - '!classic/benchmark/reports/**'
