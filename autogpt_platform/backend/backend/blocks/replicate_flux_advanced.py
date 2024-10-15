@@ -1,10 +1,15 @@
 import os
 from enum import Enum
+from typing import Literal
 
 import replicate
+from autogpt_platform.autogpt_libs.autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+)
+from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
 # Model name enum
@@ -32,9 +37,17 @@ class ImageType(str, Enum):
 
 class ReplicateFluxAdvancedModelBlock(Block):
     class Input(BlockSchema):
-        api_key: BlockSecret = SecretField(
-            key="replicate_api_key",
-            description="Replicate API Key",
+        # api_key: BlockSecret = SecretField(
+        #     key="replicate_api_key",
+        #     description="Replicate API Key",
+        # )
+        credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="replicate",
+                supported_credential_types={"api_key"},
+                description="The Replicate integration can be used with "
+                "any API key with sufficient permissions for the blocks it is used on.",
+            )
         )
         prompt: str = SchemaField(
             description="Text prompt for image generation",
@@ -133,7 +146,9 @@ class ReplicateFluxAdvancedModelBlock(Block):
             },
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         # If the seed is not provided, generate a random seed
         seed = input_data.seed
         if seed is None:
@@ -141,7 +156,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
 
         # Run the model using the provided inputs
         result = self.run_model(
-            api_key=input_data.api_key.get_secret_value(),
+            api_key=credentials.api_key,
             model_name=input_data.replicate_model_name.api_name,
             prompt=input_data.prompt,
             seed=seed,
@@ -157,7 +172,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
 
     def run_model(
         self,
-        api_key,
+        api_key: SecretStr,
         model_name,
         prompt,
         seed,
@@ -170,7 +185,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         safety_tolerance,
     ):
         # Initialize Replicate client with the API key
-        client = replicate.Client(api_token=api_key)
+        client = replicate.Client(api_token=api_key.get_secret_value())
 
         # Run the model with additional parameters
         output = client.run(

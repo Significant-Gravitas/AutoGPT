@@ -2,15 +2,24 @@ import time
 from typing import Literal
 
 import requests
+from autogpt_platform.autogpt_libs.autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+)
+from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
 class CreateTalkingAvatarVideoBlock(Block):
     class Input(BlockSchema):
-        api_key: BlockSecret = SecretField(
-            key="did_api_key", description="D-ID API Key"
+        credentials: CredentialsMetaInput[Literal["d_id"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="d_id",
+                supported_credential_types={"api_key"},
+                description="The D-ID integration can be used with "
+                "any API key with sufficient permissions for the blocks it is used on.",
+            )
         )
         script_input: str = SchemaField(
             description="The text input for the script", default="Welcome to AutoGPT"
@@ -87,25 +96,30 @@ class CreateTalkingAvatarVideoBlock(Block):
             },
         )
 
-    def create_clip(self, api_key: str, payload: dict) -> dict:
+    def create_clip(self, api_key: SecretStr, payload: dict) -> dict:
         url = "https://api.d-id.com/clips"
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Basic {api_key}",
+            "authorization": f"Basic {api_key.get_secret_value()}",
         }
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
 
-    def get_clip_status(self, api_key: str, clip_id: str) -> dict:
+    def get_clip_status(self, api_key: SecretStr, clip_id: str) -> dict:
         url = f"https://api.d-id.com/clips/{clip_id}"
-        headers = {"accept": "application/json", "authorization": f"Basic {api_key}"}
+        headers = {
+            "accept": "application/json",
+            "authorization": f"Basic {api_key.get_secret_value()}",
+        }
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.json()
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         # Create the clip
         payload = {
             "script": {
@@ -124,14 +138,12 @@ class CreateTalkingAvatarVideoBlock(Block):
             "driver_id": input_data.driver_id,
         }
 
-        response = self.create_clip(input_data.api_key.get_secret_value(), payload)
+        response = self.create_clip(credentials.api_key, payload)
         clip_id = response["id"]
 
         # Poll for clip status
         for _ in range(input_data.max_polling_attempts):
-            status_response = self.get_clip_status(
-                input_data.api_key.get_secret_value(), clip_id
-            )
+            status_response = self.get_clip_status(credentials.api_key, clip_id)
             if status_response["status"] == "done":
                 yield "video_url", status_response["result_url"]
                 return

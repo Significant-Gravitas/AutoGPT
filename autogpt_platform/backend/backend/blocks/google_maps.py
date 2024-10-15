@@ -1,8 +1,13 @@
+from typing import Literal
+
 import googlemaps
-from pydantic import BaseModel
+from autogpt_platform.autogpt_libs.autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+)
+from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
 class Place(BaseModel):
@@ -16,8 +21,11 @@ class Place(BaseModel):
 
 class GoogleMapsSearchBlock(Block):
     class Input(BlockSchema):
-        api_key: BlockSecret = SecretField(
-            key="google_maps_api_key",
+        credentials: CredentialsMetaInput[
+            Literal["google_maps"], Literal["api_key"]
+        ] = CredentialsField(
+            provider="google_maps",
+            supported_credential_types={"api_key"},
             description="Google Maps API Key",
         )
         query: str = SchemaField(
@@ -81,9 +89,11 @@ class GoogleMapsSearchBlock(Block):
             },
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         places = self.search_places(
-            input_data.api_key.get_secret_value(),
+            credentials.api_key,
             input_data.query,
             input_data.radius,
             input_data.max_results,
@@ -91,8 +101,8 @@ class GoogleMapsSearchBlock(Block):
         for place in places:
             yield "place", place
 
-    def search_places(self, api_key, query, radius, max_results):
-        client = googlemaps.Client(key=api_key)
+    def search_places(self, api_key: SecretStr, query, radius, max_results):
+        client = googlemaps.Client(key=api_key.get_secret_value())
         return self._search_places(client, query, radius, max_results)
 
     def _search_places(self, client, query, radius, max_results):

@@ -1,17 +1,30 @@
 import asyncio
+from typing import Literal
 
 import aiohttp
 import discord
-from pydantic import Field
+from autogpt_platform.autogpt_libs.autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+)
+from pydantic import Field, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SecretField
+from backend.data.model import (
+    BlockSecret,
+    CredentialsField,
+    CredentialsMetaInput,
+    SecretField,
+)
 
 
 class ReadDiscordMessagesBlock(Block):
     class Input(BlockSchema):
-        discord_bot_token: BlockSecret = SecretField(
-            key="discord_bot_token", description="Discord bot token"
+        credential: CredentialsMetaInput[Literal["discord"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="discord",
+                supported_credential_types={"api_key"},
+                description="Discord bot token",
+            )
         )
         continuous_read: bool = Field(
             description="Whether to continuously read messages", default=True
@@ -47,7 +60,7 @@ class ReadDiscordMessagesBlock(Block):
             },
         )
 
-    async def run_bot(self, token: str):
+    async def run_bot(self, token: SecretStr):
         intents = discord.Intents.default()
         intents.message_content = True
 
@@ -80,19 +93,21 @@ class ReadDiscordMessagesBlock(Block):
 
             await client.close()
 
-        await client.start(token)
+        await client.start(token.get_secret_value())
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         while True:
-            for output_name, output_value in self.__run(input_data):
+            for output_name, output_value in self.__run(input_data, credentials):
                 yield output_name, output_value
             if not input_data.continuous_read:
                 break
 
-    def __run(self, input_data: Input) -> BlockOutput:
+    def __run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
-            future = self.run_bot(input_data.discord_bot_token.get_secret_value())
+            future = self.run_bot(credentials.api_key)
 
             # If it's a Future (mock), set the result
             if isinstance(future, asyncio.Future):

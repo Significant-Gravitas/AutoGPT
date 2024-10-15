@@ -1,10 +1,13 @@
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 import requests
+from autogpt_platform.autogpt_libs.autogpt_libs.supabase_integration_credentials_store.types import (
+    APIKeyCredentials,
+)
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
 class GetRequest:
@@ -117,7 +120,14 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
 class GetWeatherInformationBlock(Block, GetRequest):
     class Input(BlockSchema):
         location: str
-        api_key: BlockSecret = SecretField(key="openweathermap_api_key")
+        credentials: CredentialsMetaInput[
+            Literal["openweathermap"], Literal["api_key"]
+        ] = CredentialsField(
+            provider="openweathermap",
+            supported_credential_types={"api_key"},
+            description="The OpenWeatherMap integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
+        )
         use_celsius: bool = True
 
     class Output(BlockSchema):
@@ -150,9 +160,11 @@ class GetWeatherInformationBlock(Block, GetRequest):
             },
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         units = "metric" if input_data.use_celsius else "imperial"
-        api_key = input_data.api_key.get_secret_value()
+        api_key = credentials.api_key
         location = input_data.location
         url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
         weather_data = self.get_request(url, json=True)
