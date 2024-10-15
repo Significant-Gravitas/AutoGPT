@@ -47,15 +47,8 @@ resource "google_storage_bucket" "standard_buckets" {
     enabled = true
   }
 
-  lifecycle_rule {
-    condition {
-      age = 30
-    }
-    action {
-      type = "Delete"
-    }
-  }
 }
+
 resource "google_storage_bucket_iam_member" "standard_access" {
   for_each = {
     for pair in setproduct(keys(google_storage_bucket.standard_buckets), ["gcp-devops-agpt@agpt.co", "gcp-developers@agpt.co"]) :
