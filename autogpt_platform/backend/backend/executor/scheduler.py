@@ -6,9 +6,14 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.data.block import BlockInput
-from backend.data.schedule import ExecutionSchedule
+from backend.data.schedule import (
+    ExecutionSchedule,
+    add_schedule,
+    get_active_schedules,
+    get_schedules,
+    update_schedule,
+)
 from backend.executor.manager import ExecutionManager
-from backend.server.db_api import DatabaseAPI
 from backend.util.cache import thread_cached_property
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config
@@ -21,6 +26,8 @@ def log(msg, **kwargs):
 
 
 class ExecutionScheduler(AppService):
+    use_db = True
+
     def __init__(self, refresh_interval=10):
         super().__init__(port=Config().execution_scheduler_port)
         self.last_check = datetime.min
@@ -30,10 +37,6 @@ class ExecutionScheduler(AppService):
     def execution_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager, Config().execution_manager_port)
 
-    @thread_cached_property
-    def db_client(self) -> DatabaseAPI:
-        return get_service_client(DatabaseAPI, Config().database_api_port)
-
     def run_service(self):
         scheduler = BackgroundScheduler()
         scheduler.start()
@@ -42,7 +45,7 @@ class ExecutionScheduler(AppService):
             time.sleep(self.refresh_interval)
 
     def __refresh_jobs_from_db(self, scheduler: BackgroundScheduler):
-        schedules = self.db_client.get_active_schedules(self.last_check)
+        schedules = self.run_and_wait(get_active_schedules(self.last_check))
         for schedule in schedules:
             if schedule.last_updated:
                 self.last_check = max(self.last_check, schedule.last_updated)
@@ -70,7 +73,7 @@ class ExecutionScheduler(AppService):
 
     @expose
     def update_schedule(self, schedule_id: str, is_enabled: bool, user_id: str) -> str:
-        self.db_client.update_schedule(schedule_id, is_enabled, user_id)
+        self.run_and_wait(update_schedule(schedule_id, is_enabled, user_id))
         return schedule_id
 
     @expose
@@ -89,9 +92,9 @@ class ExecutionScheduler(AppService):
             schedule=cron,
             input_data=input_data,
         )
-        return self.db_client.add_schedule(schedule).id
+        return self.run_and_wait(add_schedule(schedule)).id
 
     @expose
     def get_execution_schedules(self, graph_id: str, user_id: str) -> dict[str, str]:
-        schedules = self.db_client.get_schedules(graph_id, user_id=user_id)
+        schedules = self.run_and_wait(get_schedules(graph_id, user_id=user_id))
         return {v.id: v.schedule for v in schedules}

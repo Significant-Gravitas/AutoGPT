@@ -4,7 +4,6 @@ from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, ca
 from backend.data import credit as C
 from backend.data import execution as E
 from backend.data import graph as G
-from backend.data import schedule as S
 from backend.data.queue import RedisEventQueue
 from backend.util.service import AppService, expose
 from backend.util.settings import Config
@@ -48,12 +47,6 @@ class DatabaseAPI(AppService):
     update_node_execution_stats = exposed_run_and_wait(E.update_node_execution_stats)
     upsert_execution_input = exposed_run_and_wait(E.upsert_execution_input)
     upsert_execution_output = exposed_run_and_wait(E.upsert_execution_output)
-
-    # Schedules
-    get_active_schedules = exposed_run_and_wait(S.get_active_schedules)
-    get_schedules = exposed_run_and_wait(S.get_schedules)
-    update_schedule = exposed_run_and_wait(S.update_schedule)
-    add_schedule = exposed_run_and_wait(S.add_schedule)
 
     # Graphs
     get_node = exposed_run_and_wait(G.get_node)
