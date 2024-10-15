@@ -1,9 +1,20 @@
 from functools import wraps
 from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, cast
 
-from backend.data import credit as C
-from backend.data import execution as E
-from backend.data import graph as G
+from backend.data.credit import get_user_credit_model
+from backend.data.execution import (
+    ExecutionResult,
+    create_graph_execution,
+    get_execution_results,
+    get_incomplete_executions,
+    get_latest_execution,
+    update_execution_status,
+    update_graph_execution_stats,
+    update_node_execution_stats,
+    upsert_execution_input,
+    upsert_execution_output,
+)
+from backend.data.graph import get_graph, get_node
 from backend.data.queue import RedisEventQueue
 from backend.util.service import AppService, expose
 from backend.util.settings import Config
@@ -22,7 +33,7 @@ class DatabaseAPI(AppService):
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        self.event_queue.put(E.ExecutionResult(**execution_result_dict))
+        self.event_queue.put(ExecutionResult(**execution_result_dict))
 
     @staticmethod
     def exposed_run_and_wait(
@@ -38,22 +49,22 @@ class DatabaseAPI(AppService):
         return wrapper
 
     # Executions
-    create_graph_execution = exposed_run_and_wait(E.create_graph_execution)
-    get_execution_results = exposed_run_and_wait(E.get_execution_results)
-    get_incomplete_executions = exposed_run_and_wait(E.get_incomplete_executions)
-    get_latest_execution = exposed_run_and_wait(E.get_latest_execution)
-    update_execution_status = exposed_run_and_wait(E.update_execution_status)
-    update_graph_execution_stats = exposed_run_and_wait(E.update_graph_execution_stats)
-    update_node_execution_stats = exposed_run_and_wait(E.update_node_execution_stats)
-    upsert_execution_input = exposed_run_and_wait(E.upsert_execution_input)
-    upsert_execution_output = exposed_run_and_wait(E.upsert_execution_output)
+    create_graph_execution = exposed_run_and_wait(create_graph_execution)
+    get_execution_results = exposed_run_and_wait(get_execution_results)
+    get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
+    get_latest_execution = exposed_run_and_wait(get_latest_execution)
+    update_execution_status = exposed_run_and_wait(update_execution_status)
+    update_graph_execution_stats = exposed_run_and_wait(update_graph_execution_stats)
+    update_node_execution_stats = exposed_run_and_wait(update_node_execution_stats)
+    upsert_execution_input = exposed_run_and_wait(upsert_execution_input)
+    upsert_execution_output = exposed_run_and_wait(upsert_execution_output)
 
     # Graphs
-    get_node = exposed_run_and_wait(G.get_node)
-    get_graph = exposed_run_and_wait(G.get_graph)
+    get_node = exposed_run_and_wait(get_node)
+    get_graph = exposed_run_and_wait(get_graph)
 
     # Credits
-    user_credit_model = C.get_user_credit_model()
+    user_credit_model = get_user_credit_model()
     get_or_refill_credit = cast(
         Callable[[Any, str], int],
         exposed_run_and_wait(user_credit_model.get_or_refill_credit),
