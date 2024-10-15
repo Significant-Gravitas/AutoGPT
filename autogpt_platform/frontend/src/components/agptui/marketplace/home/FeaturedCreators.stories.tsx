@@ -6,7 +6,11 @@ const meta = {
   title: "AGPTUI/Marketplace/Home/FeaturedCreators",
   component: FeaturedCreators,
   parameters: {
-    layout: "centered",
+    layout: {
+      center: true,
+      fullscreen: true,
+      padding: 0,
+    },
   },
   tags: ["autodocs"],
   argTypes: {
