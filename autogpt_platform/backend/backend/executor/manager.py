@@ -440,7 +440,14 @@ class Executor:
     @classmethod
     def on_node_executor_sigterm(cls):
         llprint(f"[on_node_executor_sigterm {cls.pid}] ⚠️ SIGTERM received")
-        cls.on_node_executor_stop()
+        if not cls.shutdown_lock.acquire(blocking=False):
+            return  # already shutting down
+
+        llprint(f"[on_node_executor_stop {cls.pid}] ⏳ Releasing locks...")
+        cls.creds_manager.release_all_locks()
+        llprint(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
+        llprint(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
         sys.exit(0)
 
     @classmethod
