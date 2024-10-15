@@ -6,7 +6,11 @@ const meta = {
   title: "AGPTUI/Marketplace/Home/Page",
   component: Page,
   parameters: {
-    layout: "fullscreen",
+    layout: {
+      center: true,
+      fullscreen: true,
+      padding: 0,
+    },
   },
   tags: ["autodocs"],
   argTypes: {

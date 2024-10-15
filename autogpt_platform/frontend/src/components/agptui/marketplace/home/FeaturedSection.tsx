@@ -3,6 +3,7 @@ import { FeaturedStoreCard } from "../../FeaturedStoreCard";
 
 interface FeaturedAgent {
   agentName: string;
+  agentImage: string;
   creatorName: string;
   description: string;
   runs: number;
@@ -29,6 +30,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
             <FeaturedStoreCard
               key={index}
               agentName={agent.agentName}
+              agentImage={agent.agentImage}
               creatorName={agent.creatorName}
               description={agent.description}
               runs={agent.runs}

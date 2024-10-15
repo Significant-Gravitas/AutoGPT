@@ -5,7 +5,11 @@ const meta = {
   title: "AGPTUI/Marketplace/Home/FeaturedSection",
   component: FeaturedSection,
   parameters: {
-    layout: "centered",
+    layout: {
+      center: true,
+      fullscreen: true,
+      padding: 0,
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -25,6 +29,8 @@ const mockFeaturedAgents = [
       "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
     runs: 50000,
     rating: 4.7,
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
   },
   {
     agentName: "Content Writer AI",
@@ -33,6 +39,8 @@ const mockFeaturedAgents = [
       "Generate high-quality, engaging content for your blog, social media, or marketing campaigns.",
     runs: 75000,
     rating: 4.5,
+    agentImage:
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
   },
   {
     agentName: "Data Analyzer Lite",
@@ -40,6 +48,8 @@ const mockFeaturedAgents = [
     description: "A basic tool for analyzing small to medium-sized datasets.",
     runs: 10000,
     rating: 3.8,
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
   },
 ];
 

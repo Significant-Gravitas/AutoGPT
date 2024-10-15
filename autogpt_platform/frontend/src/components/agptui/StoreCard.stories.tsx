@@ -15,6 +15,7 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     agentName: { control: "text" },
+    agentImage: { control: "text" },
     description: { control: "text" },
     runs: { control: "number" },
     rating: { control: "number", min: 0, max: 5, step: 0.1 },
@@ -29,6 +30,8 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     agentName: "SEO Optimizer",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     description: "Optimize your website's SEO with AI-powered suggestions",
     runs: 10000,
     rating: 4.5,
@@ -40,6 +43,8 @@ export const Default: Story = {
 export const LowRating: Story = {
   args: {
     agentName: "Data Analyzer",
+    agentImage:
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     description: "Analyze complex datasets with machine learning algorithms",
     runs: 5000,
     rating: 2.7,
@@ -51,6 +56,8 @@ export const LowRating: Story = {
 export const HighRuns: Story = {
   args: {
     agentName: "Code Assistant",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     description: "Get AI-powered coding help for various programming languages",
     runs: 1000000,
     rating: 4.8,
@@ -62,6 +69,8 @@ export const HighRuns: Story = {
 export const WithInteraction: Story = {
   args: {
     agentName: "Task Planner",
+    agentImage:
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     description: "Plan and organize your tasks efficiently with AI",
     runs: 50000,
     rating: 4.2,
@@ -80,6 +89,8 @@ export const WithInteraction: Story = {
 export const LongDescription: Story = {
   args: {
     agentName: "AI Writing Assistant",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     description:
       "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking.",
     runs: 75000,
