@@ -34,15 +34,15 @@ export const FilterChips: React.FC<FilterChipsProps> = ({
   };
 
   return (
-    <div className="flex flex-wrap h-auto min-h-8 gap-3 lg:min-h-14 lg:gap-5 items-center justify-center lg:justify-start">
+    <div className="flex h-auto min-h-8 flex-wrap items-center justify-center gap-3 lg:min-h-14 lg:justify-start lg:gap-5">
       {badges.map((badge) => (
         <Badge
           key={badge}
           variant={selectedFilters.includes(badge) ? "secondary" : "outline"}
-          className="gap-2 px-3 py-1 lg:gap-2.5 lg:px-6 lg:py-2 flex cursor-pointer items-center justify-center rounded-full border border-black/50 mb-2 lg:mb-3"
+          className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-full border border-black/50 px-3 py-1 lg:mb-3 lg:gap-2.5 lg:px-6 lg:py-2"
           onClick={() => handleBadgeClick(badge)}
         >
-          <div className="font-neue text-sm font-light lg:text-xl lg:font-medium lg:leading-9 tracking-tight text-[#474747]">
+          <div className="font-neue text-sm font-light tracking-tight text-[#474747] lg:text-xl lg:font-medium lg:leading-9">
             {badge}
           </div>
         </Badge>

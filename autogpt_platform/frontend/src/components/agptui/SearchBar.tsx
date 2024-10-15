@@ -34,7 +34,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   return (
     <form onSubmit={handleSubmit} className="w-screen lg:w-[56.25rem]">
       <div
-        className={`h-12 md:h-[4.5rem] px-4 py-2md:px-6 md:py-[0.625rem] ${backgroundColor} flex items-center gap-2 md:gap-5 rounded-full`}
+        className={`py-2md:px-6 h-12 px-4 md:h-[4.5rem] md:py-[0.625rem] ${backgroundColor} flex items-center gap-2 rounded-full md:gap-5`}
       >
         <MagnifyingGlassIcon className={`h-5 w-5 md:h-7 md:w-7 ${iconColor}`} />
         <input
@@ -42,7 +42,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           value={searchQuery}
           onChange={handleInputChange}
           placeholder={placeholder}
-          className={`flex-grow border-none bg-transparent ${textColor} font-neue text-lg md:text-xl font-normal leading-[2.25rem] tracking-tight placeholder:${placeholderColor} focus:outline-none`}
+          className={`flex-grow border-none bg-transparent ${textColor} font-neue text-lg font-normal leading-[2.25rem] tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-none`}
         />
       </div>
     </form>

@@ -21,7 +21,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   return (
     <div className="flex flex-col items-center justify-center px-4 py-8">
       <div className="px-16">
-        <h2 className="font-neue mb-6 text-2xl font-bold leading-tight tracking-tight text-[#282828] sm:mb-8 sm:text-3xl">
+        <h2 className="mb-6 font-neue text-2xl font-bold leading-tight tracking-tight text-[#282828] sm:mb-8 sm:text-3xl">
           Featured agents
         </h2>
         <div className="flex flex-col items-center justify-center gap-6 sm:flex-row">
