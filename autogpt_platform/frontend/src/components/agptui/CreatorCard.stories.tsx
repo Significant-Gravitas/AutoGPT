@@ -11,6 +11,7 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     creatorName: { control: "text" },
+    creatorImage: { control: "text" },
     bio: { control: "text" },
     agentsUploaded: { control: "number" },
     onClick: { action: "clicked" },
@@ -24,7 +25,9 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     creatorName: "John Doe",
-    bio: "AI enthusiast and developer with a passion for creating innovative agents",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    bio: "AI enthusiast and developer with a passion for creating innovative agents.",
     agentsUploaded: 15,
     onClick: () => console.log("Default CreatorCard clicked"),
     avatarSrc: "https://github.com/shadcn.png",
@@ -34,7 +37,9 @@ export const Default: Story = {
 export const NewCreator: Story = {
   args: {
     creatorName: "Jane Smith",
-    bio: "Aspiring AI creator, just getting started in the world of agent development",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    bio: "Excited to start my journey in AI agent development!",
     agentsUploaded: 1,
     onClick: () => console.log("NewCreator CreatorCard clicked"),
     avatarSrc: "https://example.com/avatar2.jpg",
@@ -44,7 +49,9 @@ export const NewCreator: Story = {
 export const ExperiencedCreator: Story = {
   args: {
     creatorName: "Alex Johnson",
-    bio: "Veteran AI researcher with numerous publications and a track record of successful agents",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    bio: "Veteran AI researcher with a focus on natural language processing and machine learning.",
     agentsUploaded: 50,
     onClick: () => console.log("ExperiencedCreator CreatorCard clicked"),
     avatarSrc: "https://example.com/avatar3.jpg",
@@ -54,7 +61,9 @@ export const ExperiencedCreator: Story = {
 export const WithInteraction: Story = {
   args: {
     creatorName: "Sam Brown",
-    bio: "Specializing in natural language processing agents for various applications",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    bio: "Exploring the frontiers of AI and its applications in everyday life.",
     agentsUploaded: 30,
     onClick: () => console.log("WithInteraction CreatorCard clicked"),
     avatarSrc: "https://example.com/avatar4.jpg",
