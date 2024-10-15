@@ -12,7 +12,7 @@ interface BreadCrumbsProps {
 
 export const BreadCrumbs: React.FC<BreadCrumbsProps> = ({ items }) => {
   return (
-    <div className="flex flex-wrap h-auto min-h-[4.375rem] items-center justify-center gap-4 rounded-[5rem] bg-white px-[1.625rem] py-[0.4375rem]">
+    <div className="flex h-auto min-h-[4.375rem] flex-wrap items-center justify-center gap-4 rounded-[5rem] bg-white px-[1.625rem] py-[0.4375rem]">
       {items.map((item, index) => (
         <React.Fragment key={index}>
           <Link href={item.link}>

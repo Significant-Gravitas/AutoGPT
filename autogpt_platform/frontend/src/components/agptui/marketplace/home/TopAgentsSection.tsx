@@ -20,7 +20,7 @@ export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
   return (
     <div className="flex flex-col items-center justify-center py-8">
       <div className="w-full">
-        <div className="font-neue mb-6 text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
+        <div className="mb-6 font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
           Top agents
         </div>
         <div className="grid w-full grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">

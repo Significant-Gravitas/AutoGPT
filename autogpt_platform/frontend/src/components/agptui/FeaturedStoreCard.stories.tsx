@@ -29,7 +29,8 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     agentName: "SEO Optimizer Pro",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "AI Solutions Inc.",
     description:
       "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
@@ -42,7 +43,8 @@ export const Default: Story = {
 export const LowRating: Story = {
   args: {
     agentName: "Data Analyzer Lite",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "DataTech",
     description: "A basic tool for analyzing small to medium-sized datasets.",
     runs: 10000,
@@ -54,7 +56,8 @@ export const LowRating: Story = {
 export const HighRuns: Story = {
   args: {
     agentName: "CodeAssist AI",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "DevTools Co.",
     description:
       "Get instant coding help and suggestions for multiple programming languages.",
@@ -67,7 +70,8 @@ export const HighRuns: Story = {
 export const LongDescription: Story = {
   args: {
     agentName: "MultiTasker",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "Productivity Plus",
     description:
       "An all-in-one productivity suite that helps you manage tasks, schedule meetings, track time, and collaborate with team members. Powered by advanced AI to optimize your workflow and boost efficiency.",
@@ -80,7 +84,8 @@ export const LongDescription: Story = {
 export const ShortDescription: Story = {
   args: {
     agentName: "QuickTask",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "EfficientWorks",
     description: "Streamline your workflow.",
     runs: 50000,
@@ -92,9 +97,11 @@ export const ShortDescription: Story = {
 export const TwoLineName: Story = {
   args: {
     agentName: "Agent name goes here example of agent with two lines of text",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "InnovativeTech Solutions",
-    description: "Boost your productivity with our cutting-edge AI assistant. Manages tasks, schedules, and more.",
+    description:
+      "Boost your productivity with our cutting-edge AI assistant. Manages tasks, schedules, and more.",
     runs: 100000,
     rating: 4.8,
     onClick: () => console.log("Card clicked"),
@@ -104,7 +111,8 @@ export const TwoLineName: Story = {
 export const TwoLineNameLongDescription: Story = {
   args: {
     agentName: "Advanced Natural Language Processing and Machine Learning",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "AI Research Labs",
     description:
       "Our cutting-edge AI assistant combines state-of-the-art natural language processing and machine learning algorithms to provide unparalleled support in various domains. From text analysis and sentiment detection to predictive modeling and data visualization, this powerful tool empowers researchers, data scientists, and businesses to unlock valuable insights from complex datasets and textual information. With continuous learning capabilities and adaptable interfaces, it's the perfect companion for pushing the boundaries of AI-driven discovery and innovation.",
@@ -114,11 +122,11 @@ export const TwoLineNameLongDescription: Story = {
   },
 };
 
-
 export const WithInteraction: Story = {
   args: {
     agentName: "AI Writing Assistant",
-    agentImage: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "WordCraft AI",
     description:
       "Enhance your writing with AI-powered suggestions, grammar checks, and style improvements.",
