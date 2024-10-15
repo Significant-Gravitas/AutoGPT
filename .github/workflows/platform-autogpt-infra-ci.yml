@@ -2,7 +2,7 @@ name: AutoGPT Platform - Infra
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, dev ]
     paths:
       - '.github/workflows/platform-autogpt-infra-ci.yml'
       - 'autogpt_platform/infra/**'

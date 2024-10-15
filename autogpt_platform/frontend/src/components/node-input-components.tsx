@@ -459,7 +459,7 @@ const NodeKeyValueInput: FC<{
           </div>
         ))}
         <Button
-          className="rounded-xl bg-gray-200 font-normal text-black hover:text-white"
+          className="bg-gray-200 font-normal text-black hover:text-white"
           disabled={
             keyValuePairs.length > 0 &&
             !keyValuePairs[keyValuePairs.length - 1].key
@@ -567,7 +567,7 @@ const NodeArrayInput: FC<{
         );
       })}
       <Button
-        className="w-[183p] rounded-xl bg-gray-200 font-normal text-black hover:text-white"
+        className="w-[183p] bg-gray-200 font-normal text-black hover:text-white"
         onClick={() =>
           handleInputChange(selfKey, [...entries, isItemObject ? {} : ""])
         }
@@ -633,7 +633,7 @@ const NodeStringInput: FC<{
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
             onBlur={(e) => handleInputChange(selfKey, e.target.value)}
-            className="rounded-xl pr-8 read-only:cursor-pointer read-only:text-gray-500"
+            className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
           />
           <Button
             variant="ghost"
@@ -685,7 +685,7 @@ export const NodeTextBoxInput: FC<{
             schema?.placeholder || `Enter ${beautifyString(displayName)}`
           }
           onChange={(e) => handleInputChange(selfKey, e.target.value)}
-          className="h-full w-full resize-none overflow-hidden rounded-xl border-none bg-transparent text-lg text-black outline-none"
+          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none"
           style={{
             fontSize: "min(1em, 16px)",
             lineHeight: "1.2",

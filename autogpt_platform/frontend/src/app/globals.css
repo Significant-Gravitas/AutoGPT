@@ -27,7 +27,7 @@
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
+    --input: 240 5.9% 85%;
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
     --chart-1: 12 76% 61%;
@@ -71,5 +71,13 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  .agpt-border-input {
+    @apply border-input focus-visible:border-gray-400 focus-visible:outline-none;
+  }
+
+  .agpt-shadow-input {
+    @apply shadow-sm focus-visible:shadow-md;
   }
 }
