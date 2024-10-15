@@ -1,9 +1,9 @@
-output "website_artifacts_bucket_names" {
+output "public_bucket_names" {
   description = "The names of the created website artifacts buckets"
   value       = { for k, v in google_storage_bucket.public_buckets : k => v.name }
 }
 
-output "website_artifacts_bucket_urls" {
+output "public_bucket_urls" {
   description = "The URLs of the created website artifacts buckets"
   value       = { for k, v in google_storage_bucket.public_buckets : k => v.url }
 }
