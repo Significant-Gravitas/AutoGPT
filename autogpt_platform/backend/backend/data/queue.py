@@ -2,6 +2,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
+from functools import cached_property
 
 from backend.data import redis
 from backend.data.execution import ExecutionResult
@@ -18,14 +19,6 @@ class DateTimeEncoder(json.JSONEncoder):
 
 class AbstractEventQueue(ABC):
     @abstractmethod
-    def connect(self):
-        pass
-
-    @abstractmethod
-    def close(self):
-        pass
-
-    @abstractmethod
     def put(self, execution_result: ExecutionResult):
         pass
 
@@ -36,26 +29,22 @@ class AbstractEventQueue(ABC):
 
 class RedisEventQueue(AbstractEventQueue):
     def __init__(self):
-        self.connection = None
         self.queue_name = redis.QUEUE_NAME
 
-    def connect(self):
-        self.connection = redis.connect()
+    @cached_property
+    def connection(self):
+        return redis.get_redis()
 
     def put(self, execution_result: ExecutionResult):
-        if self.connection:
-            message = json.dumps(execution_result.model_dump(), cls=DateTimeEncoder)
-            logger.info(f"Putting execution result to Redis {message}")
-            self.connection.lpush(self.queue_name, message)
+        message = json.dumps(execution_result.model_dump(), cls=DateTimeEncoder)
+        logger.info(f"Putting execution result to Redis {message}")
+        self.connection.lpush(self.queue_name, message)
 
     def get(self) -> ExecutionResult | None:
-        if self.connection:
-            message = self.connection.rpop(self.queue_name)
-            if message is not None and isinstance(message, (str, bytes, bytearray)):
-                data = json.loads(message)
-                logger.info(f"Getting execution result from Redis {data}")
-                return ExecutionResult(**data)
-        return None
-
-    def close(self):
-        redis.disconnect()
+        key, message = self.connection.brpop(self.queue_name)
+        if message is not None and isinstance(message, (str, bytes, bytearray)):
+            data = json.loads(message)
+            logger.info(f"Getting execution result from Redis {data}")
+            return ExecutionResult(**data)
+        else:
+            logger.error(f"Failed to get execution result from Redis {message}")

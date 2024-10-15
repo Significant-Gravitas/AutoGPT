@@ -25,10 +25,12 @@ def main(**kwargs):
     """
 
     from backend.executor import ExecutionManager, ExecutionScheduler
+    from backend.server.db_api import DatabaseAPI
     from backend.server.rest_api import AgentServer
     from backend.server.ws_api import WebsocketServer
 
     run_processes(
+        DatabaseAPI(),
         ExecutionManager(),
         ExecutionScheduler(),
         WebsocketServer(),

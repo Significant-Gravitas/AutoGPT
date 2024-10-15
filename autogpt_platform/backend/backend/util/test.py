@@ -6,6 +6,7 @@ from backend.data.execution import ExecutionStatus
 from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.data.user import create_default_user
 from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.server.db_api import DatabaseAPI
 from backend.server.rest_api import AgentServer, get_user_id
 
 log = print
@@ -13,6 +14,7 @@ log = print
 
 class SpinTestServer:
     def __init__(self):
+        self.db_api = DatabaseAPI()
         self.exec_manager = ExecutionManager()
         self.agent_server = AgentServer()
         self.scheduler = ExecutionScheduler()
@@ -23,6 +25,7 @@ class SpinTestServer:
 
     async def __aenter__(self):
         self.setup_dependency_overrides()
+        self.db_api.__enter__()
         self.agent_server.__enter__()
         self.exec_manager.__enter__()
         self.scheduler.__enter__()
@@ -39,6 +42,7 @@ class SpinTestServer:
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
         self.agent_server.__exit__(exc_type, exc_val, exc_tb)
+        self.db_api.__exit__(exc_type, exc_val, exc_tb)
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing

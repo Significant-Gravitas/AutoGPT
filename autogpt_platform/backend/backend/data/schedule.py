@@ -35,9 +35,10 @@ class ExecutionSchedule(BaseDbModel):
         )
 
 
-async def get_active_schedules(last_fetch_time: datetime) -> list[ExecutionSchedule]:
+async def get_active_schedules(last_fetch_time: str) -> list[ExecutionSchedule]:
+    datetime_last_fetch_time = datetime.fromisoformat(last_fetch_time)
     query = AgentGraphExecutionSchedule.prisma().find_many(
-        where={"isEnabled": True, "lastUpdated": {"gt": last_fetch_time}},
+        where={"isEnabled": True, "lastUpdated": {"gt": datetime_last_fetch_time}},
         order={"lastUpdated": "asc"},
     )
     return [ExecutionSchedule.from_db(schedule) for schedule in await query]

@@ -73,7 +73,6 @@ class PrintToConsoleBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        print(">>>>> Print: ", input_data.text)
         yield "status", "printed"
 
 
