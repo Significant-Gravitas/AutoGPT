@@ -68,5 +68,7 @@ module "storage" {
 
   project_id = var.project_id
   region = var.region
-  website_media_bucket_name = var.website_media_bucket_name
+  standard_bucket_names = var.standard_bucket_names
+  public_bucket_names = var.public_bucket_names
+  bucket_admins = var.bucket_admins
 }
