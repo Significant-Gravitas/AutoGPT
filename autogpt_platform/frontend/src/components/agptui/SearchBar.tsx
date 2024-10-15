@@ -32,9 +32,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-screen lg:w-[56.25rem]">
+    <form onSubmit={handleSubmit} className="w-9/10 lg:w-[56.25rem]">
       <div
-        className={`py-2md:px-6 h-12 px-4 md:h-[4.5rem] md:py-[0.625rem] ${backgroundColor} flex items-center gap-2 rounded-full md:gap-5`}
+        className={`h-12 px-4 py-2 md:h-[4.5rem] md:px-6 md:py-[0.625rem] ${backgroundColor} flex items-center gap-2 rounded-full md:gap-5`}
       >
         <MagnifyingGlassIcon className={`h-5 w-5 md:h-7 md:w-7 ${iconColor}`} />
         <input
