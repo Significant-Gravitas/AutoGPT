@@ -78,6 +78,14 @@ class AgentServer(AppService):
             allow_headers=["*"],  # Allows all headers
         )
 
+        health_router = APIRouter()
+        health_router.add_api_route(
+            path="/health",
+            endpoint=self.health_check,
+            methods=["GET"],
+            tags=["health"],
+        )
+
         # Define the API routes
         api_router = APIRouter(prefix="/api")
         api_router.dependencies.append(Depends(auth_middleware))
@@ -639,6 +647,9 @@ class AgentServer(AppService):
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
         execution_result = execution_db.ExecutionResult(**execution_result_dict)
         self.event_queue.put(execution_result)
+
+    async def health_check(self):
+        return {"status": "healthy"}
 
     @classmethod
     def update_configuration(
