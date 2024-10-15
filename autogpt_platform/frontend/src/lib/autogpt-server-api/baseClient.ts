@@ -4,6 +4,7 @@ import {
   AnalyticsDetails,
   APIKeyCredentials,
   Block,
+  CredentialsDeleteResponse,
   CredentialsMetaResponse,
   Graph,
   GraphCreatable,
@@ -215,7 +216,10 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
-  deleteCredentials(provider: string, id: string): Promise<void> {
+  deleteCredentials(
+    provider: string,
+    id: string,
+  ): Promise<CredentialsDeleteResponse> {
     return this._request(
       "DELETE",
       `/integrations/${provider}/credentials/${id}`,
@@ -239,7 +243,7 @@ export default class BaseAutoGPTServerAPI {
     path: string,
     payload?: Record<string, any>,
   ) {
-    if (method != "GET") {
+    if (method !== "GET") {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
@@ -257,36 +261,52 @@ export default class BaseAutoGPTServerAPI {
     const hasRequestBody = method !== "GET" && payload !== undefined;
     const response = await fetch(url, {
       method,
-      headers: hasRequestBody
-        ? {
-            "Content-Type": "application/json",
-            Authorization: token ? `Bearer ${token}` : "",
-          }
-        : {
-            Authorization: token ? `Bearer ${token}` : "",
-          },
+      headers: {
+        ...(hasRequestBody && { "Content-Type": "application/json" }),
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
       body: hasRequestBody ? JSON.stringify(payload) : undefined,
     });
-    const response_data = await response.json();
 
     if (!response.ok) {
-      console.warn(
-        `${method} ${path} returned non-OK response:`,
-        response_data.detail,
-        response,
-      );
+      console.warn(`${method} ${path} returned non-OK response:`, response);
 
       if (
         response.status === 403 &&
-        response_data.detail === "Not authenticated" &&
-        window // Browser environment only: redirect to login page.
+        response.statusText === "Not authenticated" &&
+        typeof window !== "undefined" // Check if in browser environment
       ) {
         window.location.href = "/login";
       }
 
-      throw new Error(`HTTP error ${response.status}! ${response_data.detail}`);
+      let errorDetail;
+      try {
+        const errorData = await response.json();
+        errorDetail = errorData.detail || response.statusText;
+      } catch (e) {
+        errorDetail = response.statusText;
+      }
+
+      throw new Error(`HTTP error ${response.status}! ${errorDetail}`);
     }
-    return response_data;
+
+    // Handle responses with no content (like DELETE requests)
+    if (
+      response.status === 204 ||
+      response.headers.get("Content-Length") === "0"
+    ) {
+      return null;
+    }
+
+    try {
+      return await response.json();
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        console.warn(`${method} ${path} returned invalid JSON:`, e);
+        return null;
+      }
+      throw e;
+    }
   }
 
   async connectWebSocket(): Promise<void> {
