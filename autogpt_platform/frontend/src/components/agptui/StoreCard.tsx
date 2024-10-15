@@ -1,9 +1,10 @@
 import * as React from "react";
 import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
+import Image from "next/image";
 interface StoreCardProps {
   agentName: string;
+  agentImage: string;
   description: string;
   runs: number;
   rating: number;
@@ -13,17 +14,13 @@ interface StoreCardProps {
 
 export const StoreCard: React.FC<StoreCardProps> = ({
   agentName,
+  agentImage,
   description,
   runs,
   rating,
   onClick,
   avatarSrc,
 }) => {
-  const [isHovered, setIsHovered] = React.useState(false);
-
-  const handleMouseEnter = () => setIsHovered(true);
-  const handleMouseLeave = () => setIsHovered(false);
-
   const renderStars = () => {
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 !== 0;
@@ -44,12 +41,18 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className={`flex h-96 w-screen flex-col pb-2 lg:w-110 ${isHovered ? "shadow-lg" : ""} rounded-xl transition-shadow duration-300`}
+      className="flex h-96 w-64 flex-col rounded-xl pb-2 transition-shadow duration-300 hover:shadow-lg sm:w-64 md:w-80 xl:w-110"
       onClick={onClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
-      <div className="h-69 w-full rounded-xl bg-[#d9d9d9]" />
+      <div className="relative h-48 w-full">
+        <Image
+          src={agentImage}
+          alt={`${agentName} preview`}
+          layout="fill"
+          objectFit="cover"
+          className="rounded-xl"
+        />
+      </div>
       <div className="-mt-8 flex flex-col px-4">
         <Avatar className="mb-2 h-16 w-16">
           <AvatarImage src={avatarSrc} alt={agentName} />
