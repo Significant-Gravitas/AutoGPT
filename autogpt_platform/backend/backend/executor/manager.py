@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
 if TYPE_CHECKING:
-    from backend.server.db_api import DatabaseAPI
+    from backend.executor import DatabaseManager
 
 from backend.data import redis
 from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
@@ -93,7 +93,7 @@ ExecutionStream = Generator[NodeExecution, None, None]
 
 
 def execute_node(
-    db_client: "DatabaseAPI",
+    db_client: "DatabaseManager",
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecution,
     execution_stats: dict[str, Any] | None = None,
@@ -214,7 +214,7 @@ def execute_node(
 
 
 def _enqueue_next_nodes(
-    db_client: "DatabaseAPI",
+    db_client: "DatabaseManager",
     node: Node,
     output: BlockData,
     user_id: str,
@@ -702,7 +702,7 @@ class ExecutionManager(AppService):
         super().cleanup()
 
     @thread_cached_property
-    def db_client(self) -> "DatabaseAPI":
+    def db_client(self) -> "DatabaseManager":
         return get_db_client()
 
     @expose
@@ -857,10 +857,10 @@ class ExecutionManager(AppService):
 # ------- UTILITIES ------- #
 
 
-def get_db_client() -> "DatabaseAPI":
-    from backend.server.db_api import DatabaseAPI
+def get_db_client() -> "DatabaseManager":
+    from backend.executor import DatabaseManager
 
-    return get_service_client(DatabaseAPI, settings.config.database_api_port)
+    return get_service_client(DatabaseManager, settings.config.database_api_port)
 
 
 @contextmanager

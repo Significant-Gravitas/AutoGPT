@@ -23,7 +23,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-class DatabaseAPI(AppService):
+class DatabaseManager(AppService):
 
     def __init__(self):
         super().__init__(port=Config().database_api_port)

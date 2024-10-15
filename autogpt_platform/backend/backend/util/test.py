@@ -5,8 +5,7 @@ from backend.data.block import Block, initialize_blocks
 from backend.data.execution import ExecutionStatus
 from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.data.user import create_default_user
-from backend.executor import ExecutionManager, ExecutionScheduler
-from backend.server.db_api import DatabaseAPI
+from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
 from backend.server.rest_api import AgentServer, get_user_id
 
 log = print
@@ -14,7 +13,7 @@ log = print
 
 class SpinTestServer:
     def __init__(self):
-        self.db_api = DatabaseAPI()
+        self.db_api = DatabaseManager()
         self.exec_manager = ExecutionManager()
         self.agent_server = AgentServer()
         self.scheduler = ExecutionScheduler()
