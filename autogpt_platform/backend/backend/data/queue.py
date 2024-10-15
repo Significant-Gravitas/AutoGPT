@@ -2,7 +2,6 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from functools import cached_property
 
 from backend.data import redis
 from backend.data.execution import ExecutionResult
@@ -31,7 +30,7 @@ class RedisEventQueue(AbstractEventQueue):
     def __init__(self):
         self.queue_name = redis.QUEUE_NAME
 
-    @cached_property
+    @property
     def connection(self):
         return redis.get_redis()
 
