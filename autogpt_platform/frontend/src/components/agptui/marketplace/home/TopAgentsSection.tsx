@@ -52,7 +52,7 @@ export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
             ))}
           </CarouselContent>
         </Carousel>
-        <div className="hidden w-full grid-cols-1 gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
+        <div className="hidden grid-cols-1 place-items-center gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
           {topAgents.map((agent, index) => (
             <StoreCard
               key={index}

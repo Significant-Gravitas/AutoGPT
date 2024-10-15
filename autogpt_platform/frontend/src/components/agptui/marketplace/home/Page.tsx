@@ -12,6 +12,7 @@ interface PageProps {
   activeLink: string;
   featuredAgents: {
     agentName: string;
+    agentImage: string;
     creatorName: string;
     description: string;
     runs: number;
@@ -19,12 +20,15 @@ interface PageProps {
   }[];
   topAgents: {
     agentName: string;
+    agentImage: string;
+    avatarSrc: string;
     description: string;
     runs: number;
     rating: number;
   }[];
   featuredCreators: {
     creatorName: string;
+    creatorImage: string;
     bio: string;
     agentsUploaded: number;
     avatarSrc: string;
@@ -65,14 +69,14 @@ export const Page: React.FC<PageProps> = ({
   };
 
   return (
-    <div className="mx-auto flex w-screen max-w-[1360px] flex-col items-center">
-      <Navbar
+    <div className="mx-auto w-screen max-w-[1360px]">
+      {/* <Navbar
         userName={userName}
         links={navLinks}
         activeLink={activeLink}
         onProfileClick={handleProfileClick}
-      />
-      <main className="mt-8 flex max-w-[1360px] flex-col items-center pb-32">
+      /> */}
+      <main className="px-4">
         <HeroSection
           onSearch={handleSearch}
           onFilterChange={handleFilterChange}
