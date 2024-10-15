@@ -70,7 +70,6 @@ class PrintToConsoleBlock(Block):
             output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
             test_output=("status", "printed"),
-            disabled=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
