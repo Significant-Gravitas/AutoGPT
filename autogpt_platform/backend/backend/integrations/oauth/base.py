@@ -43,6 +43,14 @@ class BaseOAuthHandler(ABC):
         """Implements the token refresh mechanism"""
         ...
 
+    @abstractmethod
+    # --8<-- [start:BaseOAuthHandler6]
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+        # --8<-- [end:BaseOAuthHandler6]
+        """Revokes the given token at provider,
+        returns False provider does not support it"""
+        ...
+
     def refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         if credentials.provider != self.PROVIDER_NAME:
             raise ValueError(
