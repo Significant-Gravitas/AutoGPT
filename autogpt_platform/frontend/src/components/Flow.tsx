@@ -45,7 +45,7 @@ import RunnerUIWrapper, {
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
 import { forceLoad } from "@sentry/nextjs";
-import { useCopyPaste } from '../hooks/useCopyPaste';
+import { useCopyPaste } from "../hooks/useCopyPaste";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -475,7 +475,7 @@ const FlowEditor: React.FC<{
 
       handleCopyPaste(event);
     },
-    [isAnyModalOpen, handleCopyPaste]
+    [isAnyModalOpen, handleCopyPaste],
   );
 
   useEffect(() => {
