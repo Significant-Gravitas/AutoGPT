@@ -1,8 +1,10 @@
 import * as React from "react";
 import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
+import Image from "next/image";
 
 interface FeaturedStoreCardProps {
   agentName: string;
+  agentImage: string;
   creatorName: string;
   description: string;
   runs: number;
@@ -12,17 +14,13 @@ interface FeaturedStoreCardProps {
 
 export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
   agentName,
+  agentImage,
   creatorName,
   description,
   runs,
   rating,
   onClick,
 }) => {
-  const [isHovered, setIsHovered] = React.useState(false);
-
-  const handleMouseEnter = () => setIsHovered(true);
-  const handleMouseLeave = () => setIsHovered(false);
-
   const renderStars = () => {
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 !== 0;
@@ -43,38 +41,48 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
 
   return (
     <div
-      className={`inline-flex h-[595px] w-[667px] cursor-pointer flex-col items-start justify-between gap-10 rounded-xl border border-black/10 bg-[#f9f9f9] px-[25px] pb-[15px] pt-[35px] ${
-        isHovered ? "shadow-lg" : ""
-      } transition-shadow duration-300`}
+      className={`
+        w-screen px-2 pb-2 pt-4 gap-3
+        md:w-[41.875rem] md:h-[37.188rem] md:px-[1.5625rem] md:pb-[0.9375rem] md:pt-[2.1875rem] md:gap-5 rounded-xl
+        text-sm md:text-xl tracking-tight font-neue text-[#272727]
+        inline-flex cursor-pointer flex-col items-start justify-between
+        border border-black/10 bg-[#f9f9f9] transition-shadow duration-300 hover:shadow-lg
+      `}
       onClick={onClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
-      <div className="flex flex-col items-start justify-start gap-3.5 self-stretch">
-        <div className="self-stretch font-neue text-[40px] font-medium leading-[43px] tracking-tight text-[#272727]">
+      <div className="flex flex-col items-start justify-start self-stretch">
+        <div className="text-2xl md:text-4xl font-medium self-stretch  ">
           {agentName}
         </div>
-        <div className="self-stretch font-neue text-xl font-normal tracking-tight text-[#878787]">
+        <div className="font-normal self-stretch text-[#878787]">
           by {creatorName}
         </div>
       </div>
-      <div className="w-[540px] flex-grow font-neue text-xl font-normal tracking-tight text-[#282828]">
-        {description}
+      <div className="w-full md:w-[33.75rem] max-h-18 font-normal flex-grow text-clip text-[#282828]">
+        {description.length > 170 ? `${description.slice(0, 170)}...` : description}
       </div>
-      <div className="flex flex-col items-start justify-end gap-5 self-stretch">
-        <div className="h-[245px] self-stretch rounded-xl bg-[#a8a8a8]" />
+      <div className="gap-3 flex flex-col items-start justify-end  self-stretch">
+        <div className="w-full aspect-[540/245] relative">
+          <Image
+            src={agentImage}
+            alt={`${agentName} preview`}
+            layout="fill"
+            objectFit="cover"
+            className="rounded-xl "
+          />
+        </div>
         <div className="flex items-center justify-between self-stretch">
           <div>
-            <span className="font-neue text-xl font-medium tracking-tight text-[#272727]">
+            <span className="font-medium">
               {runs.toLocaleString()}+
             </span>
-            <span className="font-neue text-xl font-normal tracking-tight text-[#272727]">
+            <span className="font-normal">
               {" "}
               runs
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="font-neue text-xl font-normal tracking-tight text-[#272727]">
+            <div className=" font-normal  ">
               {rating.toFixed(1)}
             </div>
             <div className="flex items-center justify-start gap-px">
