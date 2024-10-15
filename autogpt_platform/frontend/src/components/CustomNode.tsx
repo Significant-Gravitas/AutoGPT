@@ -646,7 +646,7 @@ export function CustomNode({
           <Badge
             key={category.category}
             variant="outline"
-            className={`mr-5 ${getPrimaryCategoryColor([category])} rounded-xl border border-gray-300 opacity-50`}
+            className={`mr-5 ${getPrimaryCategoryColor([category])} whitespace-nowrap rounded-xl border border-gray-300 opacity-50`}
           >
             {beautifyString(category.category.toLowerCase())}
           </Badge>
