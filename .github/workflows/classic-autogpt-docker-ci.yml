@@ -8,7 +8,7 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
   pull_request:
-    branches: [ master, development, release-* ]
+    branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
       - 'classic/original_autogpt/**'
