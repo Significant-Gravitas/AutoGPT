@@ -1,5 +1,5 @@
 from backend.app import run_processes
-from backend.executor import ExecutionManager
+from backend.executor import DatabaseManager, ExecutionManager
 
 
 def main():
@@ -7,6 +7,7 @@ def main():
     Run all the processes required for the AutoGPT-server REST API.
     """
     run_processes(
+        DatabaseManager(),
         ExecutionManager(),
     )
 

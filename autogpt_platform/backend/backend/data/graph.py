@@ -7,7 +7,7 @@ from typing import Any, Literal
 import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
 from prisma.types import AgentGraphInclude
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel
 from pydantic_core import PydanticUndefinedType
 
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
@@ -51,17 +51,8 @@ class Node(BaseDbModel):
     block_id: str
     input_default: BlockInput = {}  # dict[input_name, default_value]
     metadata: dict[str, Any] = {}
-
-    _input_links: list[Link] = PrivateAttr(default=[])
-    _output_links: list[Link] = PrivateAttr(default=[])
-
-    @property
-    def input_links(self) -> list[Link]:
-        return self._input_links
-
-    @property
-    def output_links(self) -> list[Link]:
-        return self._output_links
+    input_links: list[Link] = []
+    output_links: list[Link] = []
 
     @staticmethod
     def from_db(node: AgentNode):
@@ -73,8 +64,8 @@ class Node(BaseDbModel):
             input_default=json.loads(node.constantInput),
             metadata=json.loads(node.metadata),
         )
-        obj._input_links = [Link.from_db(link) for link in node.Input or []]
-        obj._output_links = [Link.from_db(link) for link in node.Output or []]
+        obj.input_links = [Link.from_db(link) for link in node.Input or []]
+        obj.output_links = [Link.from_db(link) for link in node.Output or []]
         return obj
 
 
