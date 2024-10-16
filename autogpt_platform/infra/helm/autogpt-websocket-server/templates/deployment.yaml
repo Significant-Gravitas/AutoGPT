@@ -35,6 +35,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "autogpt-websocket-server.fullname" . }}-config
+            - secretRef:
+                name: {{ include "autogpt-websocket-server.fullname" . }}-secrets
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
