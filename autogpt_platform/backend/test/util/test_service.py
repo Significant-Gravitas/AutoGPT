@@ -2,13 +2,12 @@ import pytest
 
 from backend.util.service import AppService, expose, get_service_client
 
+TEST_SERVICE_PORT = 8765
+
 
 class TestService(AppService):
     def __init__(self):
-        super().__init__(port=8005)
-
-    def run_service(self):
-        super().run_service()
+        super().__init__(port=TEST_SERVICE_PORT)
 
     @expose
     def add(self, a: int, b: int) -> int:
@@ -29,7 +28,7 @@ class TestService(AppService):
 @pytest.mark.asyncio(scope="session")
 async def test_service_creation(server):
     with TestService():
-        client = get_service_client(TestService, 8005)
+        client = get_service_client(TestService, TEST_SERVICE_PORT)
         assert client.add(5, 3) == 8
         assert client.subtract(10, 4) == 6
         assert client.fun_with_async(5, 3) == 8
