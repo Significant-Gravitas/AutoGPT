@@ -17,6 +17,11 @@ def get_service_name():
     return _SERVICE_NAME
 
 
+def set_service_name(name: str):
+    global _SERVICE_NAME
+    _SERVICE_NAME = name
+
+
 class AppProcess(ABC):
     """
     A class to represent an object that can be executed in a background process.
@@ -63,9 +68,7 @@ class AppProcess(ABC):
                 sys.stdout = open(os.devnull, "w")
                 sys.stderr = open(os.devnull, "w")
 
-            global _SERVICE_NAME
-            _SERVICE_NAME = self.service_name
-
+            set_service_name(self.service_name)
             logger.info(f"[{self.service_name}] Starting...")
             self.run()
         except (KeyboardInterrupt, SystemExit) as e:

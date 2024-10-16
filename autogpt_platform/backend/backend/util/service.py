@@ -1,19 +1,26 @@
 import asyncio
+import builtins
 import logging
 import os
 import threading
 import time
 import typing
-from abc import abstractmethod
-from types import UnionType
+from enum import Enum
+from types import NoneType, UnionType
 from typing import (
     Annotated,
     Any,
     Callable,
     Coroutine,
+    Dict,
+    FrozenSet,
     Iterator,
+    List,
+    Set,
+    Tuple,
     Type,
     TypeVar,
+    Union,
     cast,
     get_args,
     get_origin,
@@ -23,8 +30,7 @@ import Pyro5.api
 from pydantic import BaseModel
 from Pyro5 import api as pyro
 
-from backend.data import db
-from backend.data.queue import AbstractEventQueue, RedisEventQueue
+from backend.data import db, redis
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
@@ -51,50 +57,59 @@ def expose(func: C) -> C:
         except Exception as e:
             msg = f"Error in {func.__name__}: {e.__str__()}"
             logger.exception(msg)
-            raise Exception(msg, e)
+            raise
 
     # Register custom serializers and deserializers for annotated Pydantic models
     for name, annotation in func.__annotations__.items():
-        for model in _pydantic_models_from_type_annotation(annotation):
+        try:
+            pydantic_types = _pydantic_models_from_type_annotation(annotation)
+        except Exception as e:
+            raise TypeError(f"Error while exposing {func.__name__}: {e.__str__()}")
+
+        for model in pydantic_types:
             logger.debug(
                 f"Registering Pyro (de)serializers for {func.__name__} annotation "
                 f"'{name}': {model.__qualname__}"
             )
-            pyro.register_class_to_dict(
-                model,
-                lambda obj: {
-                    "__class__": obj.__class__.__qualname__,
-                    **obj.model_dump(),
-                },
-            )
+            pyro.register_class_to_dict(model, _make_custom_serializer(model))
             pyro.register_dict_to_class(
-                model.__qualname__, _make_pyrodantic_parser(model)
+                model.__qualname__, _make_custom_deserializer(model)
             )
 
     return pyro.expose(wrapper)  # type: ignore
 
 
-def _make_pyrodantic_parser(model: type[BaseModel]):
-    def parse_data_into_model(qualname, data: dict):
-        logger.debug(f"Parsing Pyroed {model.__qualname__} from data {data}")
+def _make_custom_serializer(model: Type[BaseModel]):
+    def custom_class_to_dict(obj):
+        data = {
+            "__class__": obj.__class__.__qualname__,
+            **obj.model_dump(),
+        }
+        logger.debug(f"Serializing {obj.__class__.__qualname__} with data: {data}")
+        return data
+
+    return custom_class_to_dict
+
+
+def _make_custom_deserializer(model: Type[BaseModel]):
+    def custom_dict_to_class(qualname, data: dict):
+        logger.debug(f"Deserializing {model.__qualname__} from data: {data}")
         return model(**data)
 
-    return parse_data_into_model
+    return custom_dict_to_class
 
 
 class AppService(AppProcess):
     shared_event_loop: asyncio.AbstractEventLoop
-    event_queue: AbstractEventQueue = RedisEventQueue()
     use_db: bool = False
-    use_queue: bool = False
+    use_redis: bool = False
     use_supabase: bool = False
 
     def __init__(self, port):
         self.port = port
         self.uri = None
 
-    @abstractmethod
-    def run_service(self):
+    def run_service(self) -> None:
         while True:
             time.sleep(10)
 
@@ -109,8 +124,8 @@ class AppService(AppProcess):
         self.shared_event_loop = asyncio.get_event_loop()
         if self.use_db:
             self.shared_event_loop.run_until_complete(db.connect())
-        if self.use_queue:
-            self.event_queue.connect()
+        if self.use_redis:
+            redis.connect()
         if self.use_supabase:
             from supabase import create_client
 
@@ -136,9 +151,9 @@ class AppService(AppProcess):
         if self.use_db:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting DB...")
             self.run_and_wait(db.disconnect())
-        if self.use_queue:
+        if self.use_redis:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
-            self.event_queue.close()
+            redis.disconnect()
 
     @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
@@ -170,12 +185,15 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
             logger.debug(f"Successfully connected to service [{service_name}]")
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
-            return getattr(self.proxy, name)
+            res = getattr(self.proxy, name)
+            return res
 
     return cast(AS, DynamicClient())
 
 
 # --------- UTILITIES --------- #
+
+builtin_types = [*vars(builtins).values(), NoneType, Enum]
 
 
 def _pydantic_models_from_type_annotation(annotation) -> Iterator[type[BaseModel]]:
@@ -183,18 +201,37 @@ def _pydantic_models_from_type_annotation(annotation) -> Iterator[type[BaseModel
     if (origin := get_origin(annotation)) and origin is Annotated:
         annotation = get_args(annotation)[0]
 
-    if origin := get_origin(annotation):
-        if origin is UnionType:
-            types = get_args(annotation)
-        else:
-            types = [origin]
-    else:
-        types = [annotation]
+    origin = get_origin(annotation)
+    args = get_args(annotation)
 
-    for annotype in types:
+    if origin in (
+        Union,
+        UnionType,
+        list,
+        List,
+        tuple,
+        Tuple,
+        set,
+        Set,
+        frozenset,
+        FrozenSet,
+    ):
+        for arg in args:
+            yield from _pydantic_models_from_type_annotation(arg)
+    elif origin in (dict, Dict):
+        key_type, value_type = args
+        yield from _pydantic_models_from_type_annotation(key_type)
+        yield from _pydantic_models_from_type_annotation(value_type)
+    else:
+        annotype = annotation if origin is None else origin
+
+        # Exclude generic types and aliases
         if (
             annotype is not None
-            and not hasattr(typing, annotype.__name__)  # avoid generics and aliases
-            and issubclass(annotype, BaseModel)
+            and not hasattr(typing, getattr(annotype, "__name__", ""))
+            and isinstance(annotype, type)
         ):
-            yield annotype
+            if issubclass(annotype, BaseModel):
+                yield annotype
+            elif annotype not in builtin_types and not issubclass(annotype, Enum):
+                raise TypeError(f"Unsupported type encountered: {annotype}")

@@ -1,5 +1,6 @@
 import logging
 import os
+from functools import wraps
 from uuid import uuid4
 
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -21,28 +22,33 @@ def _log_prefix(resource_name: str, conn_id: str):
 def conn_retry(resource_name: str, action_name: str, max_retry: int = 5):
     conn_id = str(uuid4())
 
-    def before_call(retry_state):
-        prefix = _log_prefix(resource_name, conn_id)
-        logger.info(f"{prefix} {action_name} started...")
-
-    def after_call(retry_state):
-        prefix = _log_prefix(resource_name, conn_id)
-        if retry_state.outcome.failed:
-            # Optionally, you can log something here if needed
-            pass
-        else:
-            logger.info(f"{prefix} {action_name} completed!")
-
     def on_retry(retry_state):
         prefix = _log_prefix(resource_name, conn_id)
         exception = retry_state.outcome.exception()
         logger.info(f"{prefix} {action_name} failed: {exception}. Retrying now...")
 
-    return retry(
-        stop=stop_after_attempt(max_retry + 1),
-        wait=wait_exponential(multiplier=1, min=1, max=30),
-        before=before_call,
-        after=after_call,
-        before_sleep=on_retry,
-        reraise=True,
-    )
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            prefix = _log_prefix(resource_name, conn_id)
+            logger.info(f"{prefix} {action_name} started...")
+
+            # Define the retrying strategy
+            retrying_func = retry(
+                stop=stop_after_attempt(max_retry + 1),
+                wait=wait_exponential(multiplier=1, min=1, max=30),
+                before_sleep=on_retry,
+                reraise=True,
+            )(func)
+
+            try:
+                result = retrying_func(*args, **kwargs)
+                logger.info(f"{prefix} {action_name} completed successfully.")
+                return result
+            except Exception as e:
+                logger.error(f"{prefix} {action_name} failed after retries: {e}")
+                raise
+
+        return wrapper
+
+    return decorator

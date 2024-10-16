@@ -19,7 +19,7 @@ async def test_block_credit_usage(server: SpinTestServer):
     spending_amount_1 = await user_credit.spend_credits(
         DEFAULT_USER_ID,
         current_credit,
-        AITextGeneratorBlock(),
+        AITextGeneratorBlock().id,
         {"model": "gpt-4-turbo"},
         0.0,
         0.0,
@@ -30,7 +30,7 @@ async def test_block_credit_usage(server: SpinTestServer):
     spending_amount_2 = await user_credit.spend_credits(
         DEFAULT_USER_ID,
         current_credit,
-        AITextGeneratorBlock(),
+        AITextGeneratorBlock().id,
         {"model": "gpt-4-turbo", "api_key": "owned_api_key"},
         0.0,
         0.0,

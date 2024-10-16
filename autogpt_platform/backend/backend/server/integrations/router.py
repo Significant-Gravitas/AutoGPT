@@ -7,16 +7,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
     CredentialsType,
     OAuth2Credentials,
 )
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    HTTPException,
-    Path,
-    Query,
-    Request,
-    Response,
-)
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
