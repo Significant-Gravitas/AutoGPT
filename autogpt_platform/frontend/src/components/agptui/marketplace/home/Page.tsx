@@ -5,6 +5,7 @@ import { FeaturedSection } from "./FeaturedSection";
 import { TopAgentsSection } from "./TopAgentsSection";
 import { BecomeACreator } from "../../BecomeACreator";
 import { FeaturedCreators } from "./FeaturedCreators";
+import { Separator } from "../../../ui/separator";
 
 interface PageProps {
   userName: string;
@@ -85,11 +86,14 @@ export const Page: React.FC<PageProps> = ({
           featuredAgents={featuredAgents}
           onCardClick={handleCardClick}
         />
+        <Separator />
         <TopAgentsSection topAgents={topAgents} onCardClick={handleCardClick} />
+        <Separator />
         <FeaturedCreators
           featuredCreators={featuredCreators}
           onCardClick={handleCardClick}
         />
+        <Separator />
         <BecomeACreator
           title="Want to contribute?"
           heading="We're always looking for more Creators!"

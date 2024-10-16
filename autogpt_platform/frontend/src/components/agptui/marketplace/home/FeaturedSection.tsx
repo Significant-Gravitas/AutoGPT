@@ -26,7 +26,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           Featured agents
         </h2>
 
-        <div className="flex flex-col items-center justify-center gap-6 sm:flex-row sm:flex-wrap">
+        <div className="flex flex-col items-center justify-center gap-6 sm:flex-row sm:flex-wrap md:flex-nowrap">
           {featuredAgents.slice(0, 2).map((agent, index) => (
             <FeaturedStoreCard
               key={index}
