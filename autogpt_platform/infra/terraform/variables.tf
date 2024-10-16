@@ -130,3 +130,19 @@ variable "bucket_admins" {
   default     = ["gcp-devops-agpt@agpt.co", "gcp-developers@agpt.co"]
 }
 
+variable "workload_identity_pools" {
+  type = map(object({
+    display_name = string
+    providers = map(object({
+      issuer_uri = string
+      attribute_mapping = map(string)
+      allowed_audiences = optional(list(string))
+    }))
+    service_accounts = map(list(string))
+  }))
+  default = {}
+  description = "Configuration for workload identity pools and their providers"
+}
+
+
+
