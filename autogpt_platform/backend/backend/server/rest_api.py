@@ -78,7 +78,7 @@ class AgentServer(AppService):
         health_router = APIRouter()
         health_router.add_api_route(
             path="/health",
-            endpoint=self.health_check,
+            endpoint=self.health,
             methods=["GET"],
             tags=["health"],
         )
@@ -640,7 +640,7 @@ class AgentServer(AppService):
         execution_scheduler = self.execution_scheduler_client
         return execution_scheduler.get_execution_schedules(graph_id, user_id)
 
-    async def health_check(self):
+    async def health(self):
         return {"status": "healthy"}
 
     @classmethod
