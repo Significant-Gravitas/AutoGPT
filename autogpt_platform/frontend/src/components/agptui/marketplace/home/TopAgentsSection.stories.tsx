@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { TopAgentsSection } from "./TopAgentsSection";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
   title: "AGPTUI/Marketplace/Home/TopAgentsSection",
@@ -82,8 +82,9 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const firstCard = canvas.getAllByRole("button")[0];
+    const firstCard = canvas.getAllByRole("store-card")[0];
     await userEvent.click(firstCard);
+    await expect(firstCard).toHaveAttribute("aria-pressed", "true");
   },
 };
 

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { FeaturedCreators } from "./FeaturedCreators";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
   title: "AGPTUI/Marketplace/Home/FeaturedCreators",
@@ -95,9 +95,13 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const firstCreatorCard = canvas.getByText("AI Innovator");
+    const creatorCards = canvas.getAllByRole("creator-card");
+    const firstCreatorCard = creatorCards[0];
 
     await userEvent.hover(firstCreatorCard);
     await userEvent.click(firstCreatorCard);
+
+    // Check if the card has the expected hover and click effects
+    await expect(firstCreatorCard).toHaveClass("hover:shadow-lg");
   },
 };

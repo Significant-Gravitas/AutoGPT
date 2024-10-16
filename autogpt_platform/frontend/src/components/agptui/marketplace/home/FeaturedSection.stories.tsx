@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { FeaturedSection } from "./FeaturedSection";
+import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
   title: "AGPTUI/Marketplace/Home/FeaturedSection",
@@ -71,5 +72,19 @@ export const NoAgents: Story = {
   args: {
     featuredAgents: [],
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+  },
+};
+
+export const WithInteraction: Story = {
+  args: {
+    featuredAgents: mockFeaturedAgents,
+    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const firstCard = canvas.getAllByRole("featured-store-card")[0];
+    await userEvent.click(firstCard);
+    await userEvent.hover(firstCard);
+    await expect(firstCard).toHaveClass("hover:shadow-lg");
   },
 };

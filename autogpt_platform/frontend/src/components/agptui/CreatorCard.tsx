@@ -23,6 +23,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
     <div
       className="flex h-96 w-[13.125rem] flex-col rounded-xl transition-shadow duration-300 hover:shadow-lg"
       onClick={onClick}
+      role="creator-card"
     >
       <div className="relative aspect-[210/238] w-full">
         <Image

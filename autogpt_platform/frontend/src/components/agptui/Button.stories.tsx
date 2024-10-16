@@ -124,11 +124,11 @@ export const Sizes: Story = {
     const buttons = canvas.getAllByRole("button");
     expect(buttons).toHaveLength(5);
     const sizeClasses = [
-      "h-[50px] px-[20px] py-[5px] text-sm",
-      "h-[70px] px-[26px] py-[7px]",
-      "h-[90px] px-[32px] py-[9px] text-2xl",
-      "md:h-[70px] md:w-[176px] h-[50px] w-[112px]",
-      "h-[70px] w-[70px]",
+      "h-8 px-3 py-1.5 text-xs",
+      "h-10 px-4 py-2 text-sm",
+      "h-12 px-5 py-2.5 text-lg",
+      "h-10 w-28",
+      "h-10 w-10",
     ];
     buttons.forEach((button, index) => {
       expect(button).toHaveAttribute(
@@ -148,7 +148,10 @@ export const Disabled: Story = {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: /Disabled Button/i });
     await expect(button).toBeDisabled();
-    await expect(button).toHaveStyle("pointer-events: none");
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("disabled:opacity-50"),
+    );
     await expect(button).not.toHaveFocus();
   },
 };
