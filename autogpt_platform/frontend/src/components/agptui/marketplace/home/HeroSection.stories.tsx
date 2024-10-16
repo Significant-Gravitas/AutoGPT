@@ -38,7 +38,7 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const searchInput = canvas.getByPlaceholderText(/Search for tasks/i);
+    const searchInput = canvas.getByRole("store-search-input");
 
     await userEvent.type(searchInput, "test query");
     await userEvent.keyboard("{Enter}");
@@ -48,7 +48,7 @@ export const WithInteraction: Story = {
     const filterChip = canvas.getByText("Marketing");
     await userEvent.click(filterChip);
 
-    await expect(filterChip).toHaveClass("bg-[#F1F1F1]");
+    await expect(filterChip).toHaveClass("text-[#474747]");
   },
 };
 
@@ -60,8 +60,9 @@ export const EmptySearch: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const searchInput = canvas.getByPlaceholderText(/Search for tasks/i);
+    const searchInput = canvas.getByRole("store-search-input");
 
+    await userEvent.click(searchInput);
     await userEvent.keyboard("{Enter}");
 
     await expect(searchInput).toHaveValue("");

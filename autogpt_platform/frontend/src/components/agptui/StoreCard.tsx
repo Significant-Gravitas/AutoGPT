@@ -2,6 +2,7 @@ import * as React from "react";
 import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
+
 interface StoreCardProps {
   agentName: string;
   agentImage: string;
@@ -21,6 +22,13 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   onClick,
   avatarSrc,
 }) => {
+  const [isPressed, setIsPressed] = React.useState(false);
+
+  const handleClick = () => {
+    setIsPressed(!isPressed);
+    onClick();
+  };
+
   const renderStars = () => {
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 !== 0;
@@ -42,7 +50,9 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   return (
     <div
       className="flex h-96 w-64 flex-col rounded-xl pb-2 transition-shadow duration-300 hover:shadow-lg sm:w-64 md:w-80 xl:w-110"
-      onClick={onClick}
+      onClick={handleClick}
+      role="store-card"
+      aria-pressed={isPressed}
     >
       <div className="relative h-48 w-full">
         <Image

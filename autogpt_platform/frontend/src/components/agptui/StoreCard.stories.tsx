@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { StoreCard } from "./StoreCard";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
   title: "AGPTUI/StoreCard",

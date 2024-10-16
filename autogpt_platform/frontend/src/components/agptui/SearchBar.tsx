@@ -32,7 +32,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-9/10 lg:w-[56.25rem]">
+    <form
+      onSubmit={handleSubmit}
+      className="w-9/10 lg:w-[56.25rem]"
+      role="store-search-bar"
+    >
       <div
         className={`h-12 px-4 py-2 md:h-[4.5rem] md:px-6 md:py-[0.625rem] ${backgroundColor} flex items-center gap-2 rounded-full md:gap-5`}
       >
@@ -43,6 +47,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           onChange={handleInputChange}
           placeholder={placeholder}
           className={`flex-grow border-none bg-transparent ${textColor} font-neue text-lg font-normal leading-[2.25rem] tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-none`}
+          role="store-search-input"
         />
       </div>
     </form>
