@@ -64,14 +64,11 @@ class TranscribeYouTubeVideoBlock(Block):
         return YouTubeTranscriptApi.get_transcript(video_id)
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            video_id = self.extract_video_id(input_data.youtube_url)
-            yield "video_id", video_id
+        video_id = self.extract_video_id(input_data.youtube_url)
+        yield "video_id", video_id
 
-            transcript = self.get_transcript(video_id)
-            formatter = TextFormatter()
-            transcript_text = formatter.format_transcript(transcript)
+        transcript = self.get_transcript(video_id)
+        formatter = TextFormatter()
+        transcript_text = formatter.format_transcript(transcript)
 
-            yield "transcript", transcript_text
-        except Exception as e:
-            yield "error", str(e)
+        yield "transcript", transcript_text

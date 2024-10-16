@@ -13,6 +13,7 @@ from ._auth import (
 )
 
 
+# --8<-- [start:GithubCommentBlockExample]
 class GithubCommentBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -92,16 +93,16 @@ class GithubCommentBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            id, url = self.post_comment(
-                credentials,
-                input_data.issue_url,
-                input_data.comment,
-            )
-            yield "id", id
-            yield "url", url
-        except Exception as e:
-            yield "error", f"Failed to post comment: {str(e)}"
+        id, url = self.post_comment(
+            credentials,
+            input_data.issue_url,
+            input_data.comment,
+        )
+        yield "id", id
+        yield "url", url
+
+
+# --8<-- [end:GithubCommentBlockExample]
 
 
 class GithubMakeIssueBlock(Block):
@@ -175,17 +176,14 @@ class GithubMakeIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            number, url = self.create_issue(
-                credentials,
-                input_data.repo_url,
-                input_data.title,
-                input_data.body,
-            )
-            yield "number", number
-            yield "url", url
-        except Exception as e:
-            yield "error", f"Failed to create issue: {str(e)}"
+        number, url = self.create_issue(
+            credentials,
+            input_data.repo_url,
+            input_data.title,
+            input_data.body,
+        )
+        yield "number", number
+        yield "url", url
 
 
 class GithubReadIssueBlock(Block):
@@ -258,16 +256,13 @@ class GithubReadIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            title, body, user = self.read_issue(
-                credentials,
-                input_data.issue_url,
-            )
-            yield "title", title
-            yield "body", body
-            yield "user", user
-        except Exception as e:
-            yield "error", f"Failed to read issue: {str(e)}"
+        title, body, user = self.read_issue(
+            credentials,
+            input_data.issue_url,
+        )
+        yield "title", title
+        yield "body", body
+        yield "user", user
 
 
 class GithubListIssuesBlock(Block):
@@ -346,14 +341,11 @@ class GithubListIssuesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            issues = self.list_issues(
-                credentials,
-                input_data.repo_url,
-            )
-            yield from (("issue", issue) for issue in issues)
-        except Exception as e:
-            yield "error", f"Failed to list issues: {str(e)}"
+        issues = self.list_issues(
+            credentials,
+            input_data.repo_url,
+        )
+        yield from (("issue", issue) for issue in issues)
 
 
 class GithubAddLabelBlock(Block):
@@ -424,15 +416,12 @@ class GithubAddLabelBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.add_label(
-                credentials,
-                input_data.issue_url,
-                input_data.label,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to add label: {str(e)}"
+        status = self.add_label(
+            credentials,
+            input_data.issue_url,
+            input_data.label,
+        )
+        yield "status", status
 
 
 class GithubRemoveLabelBlock(Block):
@@ -508,15 +497,12 @@ class GithubRemoveLabelBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.remove_label(
-                credentials,
-                input_data.issue_url,
-                input_data.label,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to remove label: {str(e)}"
+        status = self.remove_label(
+            credentials,
+            input_data.issue_url,
+            input_data.label,
+        )
+        yield "status", status
 
 
 class GithubAssignIssueBlock(Block):
@@ -590,15 +576,12 @@ class GithubAssignIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.assign_issue(
-                credentials,
-                input_data.issue_url,
-                input_data.assignee,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to assign issue: {str(e)}"
+        status = self.assign_issue(
+            credentials,
+            input_data.issue_url,
+            input_data.assignee,
+        )
+        yield "status", status
 
 
 class GithubUnassignIssueBlock(Block):
@@ -672,12 +655,9 @@ class GithubUnassignIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.unassign_issue(
-                credentials,
-                input_data.issue_url,
-                input_data.assignee,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to unassign issue: {str(e)}"
+        status = self.unassign_issue(
+            credentials,
+            input_data.issue_url,
+            input_data.assignee,
+        )
+        yield "status", status

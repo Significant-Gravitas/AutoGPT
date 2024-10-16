@@ -14,6 +14,7 @@ from .base import BaseOAuthHandler
 logger = logging.getLogger(__name__)
 
 
+# --8<-- [start:GoogleOAuthHandlerExample]
 class GoogleOAuthHandler(BaseOAuthHandler):
     """
     Based on the documentation at https://developers.google.com/identity/protocols/oauth2/web-server
@@ -26,12 +27,14 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         "https://www.googleapis.com/auth/userinfo.profile",
         "openid",
     ]
+    # --8<-- [end:GoogleOAuthHandlerExample]
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.token_uri = "https://oauth2.googleapis.com/token"
+        self.revoke_uri = "https://oauth2.googleapis.com/revoke"
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
         all_scopes = list(set(scopes + self.DEFAULT_SCOPES))
@@ -97,6 +100,16 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
 
         return credentials
+
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+        session = AuthorizedSession(credentials)
+        response = session.post(
+            self.revoke_uri,
+            params={"token": credentials.access_token.get_secret_value()},
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+        response.raise_for_status()
+        return True
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials

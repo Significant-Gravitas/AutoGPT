@@ -9,16 +9,8 @@ import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import { FaGithub, FaGoogle } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
-import {
-  APIKeyCredentials,
-  CredentialsMetaInput,
-} from "@/lib/autogpt-server-api/types";
-import {
-  IconKey,
-  IconKeyPlus,
-  IconUser,
-  IconUserPlus,
-} from "@/components/ui/icons";
+import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {
   Dialog,
   DialogContent,
@@ -44,11 +36,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const providerIcons: Record<string, React.FC<{ className?: string }>> = {
+// --8<-- [start:ProviderIconsEmbed]
+export const providerIcons: Record<string, React.FC<{ className?: string }>> = {
   github: FaGithub,
   google: FaGoogle,
   notion: NotionLogoIcon,
 };
+// --8<-- [end:ProviderIconsEmbed]
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {

@@ -13,6 +13,7 @@ nav:
     - Advanced Setup: server/advanced_setup.md
     - Using Ollama: server/ollama.md
     - Using D-ID: server/d_id.md
+    - Blocks: server/blocks/blocks.md
 
   - AutoGPT Agent:
       - Introduction: AutoGPT/index.md
@@ -136,8 +137,9 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
-      auto_append:
-        - includes/abbreviations.md
+      base_path: ['.','../']
+      check_paths: true
+      dedent_subsections: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid

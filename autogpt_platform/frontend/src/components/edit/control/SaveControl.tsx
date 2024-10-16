@@ -76,7 +76,12 @@ export const SaveControl = ({
         </TooltipTrigger>
         <TooltipContent side="right">Save</TooltipContent>
       </Tooltip>
-      <PopoverContent side="right" sideOffset={15} align="start">
+      <PopoverContent
+        side="right"
+        sideOffset={15}
+        align="start"
+        data-id="save-control-popover-content"
+      >
         <Card className="border-none shadow-none">
           <CardContent className="p-4">
             <div className="grid gap-3">

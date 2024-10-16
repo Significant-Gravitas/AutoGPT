@@ -2,7 +2,7 @@ name: Classic - Python checks
 
 on:
   push:
-    branches: [ master, development, ci-test* ]
+    branches: [ master, dev, ci-test* ]
     paths:
       - '.github/workflows/classic-python-checks-ci.yml'
       - 'classic/original_autogpt/**'
@@ -11,7 +11,7 @@ on:
       - '**.py'
       - '!classic/forge/tests/vcr_cassettes'
   pull_request:
-    branches: [ master, development, release-* ]
+    branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-python-checks-ci.yml'
       - 'classic/original_autogpt/**'
