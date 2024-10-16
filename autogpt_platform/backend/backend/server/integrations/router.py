@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from autogpt_libs.supabase_integration_credentials_store.types import (
     APIKeyCredentials,
@@ -7,17 +7,8 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
     CredentialsType,
     OAuth2Credentials,
 )
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    HTTPException,
-    Path,
-    Query,
-    Request,
-    Response,
-)
-from pydantic import BaseModel, SecretStr
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
+from pydantic import BaseModel, Field, SecretStr
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
@@ -182,12 +173,22 @@ async def create_api_key_credentials(
     return new_credentials
 
 
-@router.delete("/{provider}/credentials/{cred_id}", status_code=204)
-async def delete_credential(
+class CredentialsDeletionResponse(BaseModel):
+    deleted: Literal[True] = True
+    revoked: bool | None = Field(
+        description="Indicates whether the credentials were also revoked by their "
+        "provider. `None`/`null` if not applicable, e.g. when deleting "
+        "non-revocable credentials such as API keys."
+    )
+
+
+@router.delete("/{provider}/credentials/{cred_id}")
+async def delete_credentials(
+    request: Request,
     provider: Annotated[str, Path(title="The provider to delete credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
     user_id: Annotated[str, Depends(get_user_id)],
-):
+) -> CredentialsDeletionResponse:
     creds = creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(status_code=404, detail="Credentials not found")
@@ -197,7 +198,13 @@ async def delete_credential(
         )
 
     creds_manager.delete(user_id, cred_id)
-    return Response(status_code=204)
+
+    tokens_revoked = None
+    if isinstance(creds, OAuth2Credentials):
+        handler = _get_provider_oauth_handler(request, provider)
+        tokens_revoked = handler.revoke_tokens(creds)
+
+    return CredentialsDeletionResponse(revoked=tokens_revoked)
 
 
 # -------- UTILITIES --------- #

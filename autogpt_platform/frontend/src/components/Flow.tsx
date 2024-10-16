@@ -44,6 +44,7 @@ import RunnerUIWrapper, {
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
+import { forceLoad } from "@sentry/nextjs";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -113,10 +114,20 @@ const FlowEditor: React.FC<{
       localStorage.removeItem(TUTORIAL_STORAGE_KEY);
       router.push(pathname);
     } else if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
-      startTutorial(setPinBlocksPopover, setPinSavePopover);
+      const emptyNodes = (forceRemove: boolean = false) =>
+        forceRemove ? (setNodes([]), setEdges([]), true) : nodes.length === 0;
+      startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
       localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
     }
-  }, [availableNodes, router, pathname, params]);
+  }, [
+    availableNodes,
+    router,
+    pathname,
+    params,
+    setEdges,
+    setNodes,
+    nodes.length,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -423,7 +434,7 @@ const FlowEditor: React.FC<{
 
       history.push({
         type: "ADD_NODE",
-        payload: { node: newNode.data },
+        payload: { node: { ...newNode, ...newNode.data } },
         undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
         redo: () => addNodes(newNode),
       });

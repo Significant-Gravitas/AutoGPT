@@ -98,3 +98,7 @@ role_bindings = {
 
 pods_ip_cidr_range     = "10.1.0.0/16"
 services_ip_cidr_range = "10.2.0.0/20"
+
+public_bucket_names = ["website-artifacts"]
+standard_bucket_names = []
+bucket_admins = ["gcp-devops-agpt@agpt.co", "gcp-developers@agpt.co"]
