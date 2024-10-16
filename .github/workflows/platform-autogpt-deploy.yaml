@@ -10,9 +10,9 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GKE_CLUSTER: your-cluster-name
-  GKE_ZONE: your-cluster-zone
-  NAMESPACE: prod-agpt
+  GKE_CLUSTER: dev-gke-cluster
+  GKE_ZONE: us-central1-a
+  NAMESPACE: dev-agpt
 
 jobs:
   build-push-deploy:
