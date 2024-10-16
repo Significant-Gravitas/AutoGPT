@@ -453,7 +453,9 @@ class AgentServer(AppService):
         graph.is_active = not is_template
         graph.reassign_ids(reassign_graph_id=True)
 
-        return await graph_db.create_graph(graph, user_id=user_id)
+        graph = await graph_db.create_graph(graph, user_id=user_id)
+        graph.on_update()
+        return graph
 
     @classmethod
     async def update_graph(
@@ -486,6 +488,7 @@ class AgentServer(AppService):
         graph.reassign_ids()
 
         new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
+        new_graph_version.on_update(latest_version_graph)
 
         if new_graph_version.is_active:
             # Ensure new version is the only active version

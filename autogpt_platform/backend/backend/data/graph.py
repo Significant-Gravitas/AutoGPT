@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
@@ -281,6 +281,52 @@ class Graph(GraphMeta):
                 link.is_static = True  # Each value block output should be static.
 
             # TODO: Add type compatibility check here.
+
+    def on_update(self, previous_graph_version: Optional["Graph"] = None):
+        """
+        Hook for graph creation/updation.
+
+        Compares nodes and their preset inputs with a previous graph version, and calls
+        the `on_node_update` and `on_node_delete` hooks of the corresponding blocks
+        where applicable.
+        """
+        # Compare nodes in new_graph_version with previous_graph_version
+        for new_node in self.nodes:
+            if not (block := get_block(new_node.block_id)):
+                raise ValueError(f"Block #{new_node.block_id} not found")
+
+            if previous_graph_version and (
+                old_node := next(
+                    (
+                        node
+                        for node in previous_graph_version.nodes
+                        if node.id == new_node.id
+                    ),
+                    None,
+                )
+            ):
+                if new_node.input_default != old_node.input_default:
+                    # Input default has changed, call on_node_update
+                    block.on_node_update(
+                        new_node.input_default,
+                        old_node.input_default,
+                    )
+            else:
+                # New node added, call on_node_update with only new inputs
+                block.on_node_update(new_node.input_default)
+
+        if previous_graph_version:
+            # Check for deleted nodes
+            for old_node in previous_graph_version.nodes:
+                if not any(node.id == old_node.id for node in self.nodes):
+                    # Node was deleted, call on_node_delete
+                    if block := get_block(old_node.block_id):
+                        block.on_node_delete(preset_inputs=old_node.input_default)
+                    else:
+                        logger.warning(
+                            f"Can not handle node #{old_node.id} deletion: "
+                            f"block #{new_node.block_id} not found"
+                        )
 
     def get_input_schema(self) -> list[InputSchemaItem]:
         """

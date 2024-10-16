@@ -278,6 +278,18 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
 
+    def on_node_update(
+        self,
+        new_preset_inputs: BlockInput,
+        old_preset_inputs: Optional[BlockInput] = None,
+    ) -> None:
+        """Hook to be called when the preset inputs change or the block is created"""
+        pass
+
+    def on_node_delete(self, preset_inputs: BlockInput) -> None:
+        """Hook to be called when the block is deleted"""
+        pass
+
 
 # ======================= Block Helper Functions ======================= #
 
