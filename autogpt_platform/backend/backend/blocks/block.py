@@ -37,14 +37,12 @@ class BlockInstallationBlock(Block):
         if search := re.search(r"class (\w+)\(Block\):", code):
             class_name = search.group(1)
         else:
-            yield "error", "No class found in the code."
-            return
+            raise RuntimeError("No class found in the code.")
 
         if search := re.search(r"id=\"(\w+-\w+-\w+-\w+-\w+)\"", code):
             file_name = search.group(1)
         else:
-            yield "error", "No UUID found in the code."
-            return
+            raise RuntimeError("No UUID found in the code.")
 
         block_dir = os.path.dirname(__file__)
         file_path = f"{block_dir}/{file_name}.py"
@@ -63,4 +61,4 @@ class BlockInstallationBlock(Block):
             yield "success", "Block installed successfully."
         except Exception as e:
             os.remove(file_path)
-            yield "error", f"[Code]\n{code}\n\n[Error]\n{str(e)}"
+            raise RuntimeError(f"[Code]\n{code}\n\n[Error]\n{str(e)}")

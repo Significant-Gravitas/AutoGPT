@@ -104,16 +104,11 @@ class GmailReadBlock(Block):
     def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            service = self._build_service(credentials, **kwargs)
-            messages = self._read_emails(
-                service, input_data.query, input_data.max_results
-            )
-            for email in messages:
-                yield "email", email
-            yield "emails", messages
-        except Exception as e:
-            yield "error", str(e)
+        service = self._build_service(credentials, **kwargs)
+        messages = self._read_emails(service, input_data.query, input_data.max_results)
+        for email in messages:
+            yield "email", email
+        yield "emails", messages
 
     @staticmethod
     def _build_service(credentials: GoogleCredentials, **kwargs):
@@ -267,14 +262,11 @@ class GmailSendBlock(Block):
     def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            service = GmailReadBlock._build_service(credentials, **kwargs)
-            send_result = self._send_email(
-                service, input_data.to, input_data.subject, input_data.body
-            )
-            yield "result", send_result
-        except Exception as e:
-            yield "error", str(e)
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        send_result = self._send_email(
+            service, input_data.to, input_data.subject, input_data.body
+        )
+        yield "result", send_result
 
     def _send_email(self, service, to: str, subject: str, body: str) -> dict:
         if not to or not subject or not body:
@@ -342,12 +334,9 @@ class GmailListLabelsBlock(Block):
     def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            service = GmailReadBlock._build_service(credentials, **kwargs)
-            labels = self._list_labels(service)
-            yield "result", labels
-        except Exception as e:
-            yield "error", str(e)
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        labels = self._list_labels(service)
+        yield "result", labels
 
     def _list_labels(self, service) -> list[dict]:
         results = service.users().labels().list(userId="me").execute()
@@ -406,14 +395,9 @@ class GmailAddLabelBlock(Block):
     def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            service = GmailReadBlock._build_service(credentials, **kwargs)
-            result = self._add_label(
-                service, input_data.message_id, input_data.label_name
-            )
-            yield "result", result
-        except Exception as e:
-            yield "error", str(e)
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        result = self._add_label(service, input_data.message_id, input_data.label_name)
+        yield "result", result
 
     def _add_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = self._get_or_create_label(service, label_name)
@@ -494,14 +478,11 @@ class GmailRemoveLabelBlock(Block):
     def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            service = GmailReadBlock._build_service(credentials, **kwargs)
-            result = self._remove_label(
-                service, input_data.message_id, input_data.label_name
-            )
-            yield "result", result
-        except Exception as e:
-            yield "error", str(e)
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        result = self._remove_label(
+            service, input_data.message_id, input_data.label_name
+        )
+        yield "result", result
 
     def _remove_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = self._get_label_id(service, label_name)

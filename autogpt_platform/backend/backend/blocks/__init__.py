@@ -53,13 +53,20 @@ for cls in all_subclasses(Block):
     if block.id in AVAILABLE_BLOCKS:
         raise ValueError(f"Block ID {block.name} error: {block.id} is already in use")
 
+    input_schema = block.input_schema.model_fields
+    output_schema = block.output_schema.model_fields
+
     # Prevent duplicate field name in input_schema and output_schema
-    duplicate_field_names = set(block.input_schema.model_fields.keys()) & set(
-        block.output_schema.model_fields.keys()
-    )
+    duplicate_field_names = set(input_schema.keys()) & set(output_schema.keys())
     if duplicate_field_names:
         raise ValueError(
             f"{block.name} has duplicate field names in input_schema and output_schema: {duplicate_field_names}"
+        )
+
+    # Make sure `error` field is a string in the output schema
+    if "error" in output_schema and output_schema["error"].annotation is not str:
+        raise ValueError(
+            f"{block.name} `error` field in output_schema must be a string"
         )
 
     for field in block.input_schema.model_fields.values():

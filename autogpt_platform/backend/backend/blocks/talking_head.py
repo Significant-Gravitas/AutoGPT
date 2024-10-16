@@ -106,41 +106,40 @@ class CreateTalkingAvatarVideoBlock(Block):
         return response.json()
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # Create the clip
-            payload = {
-                "script": {
-                    "type": "text",
-                    "subtitles": str(input_data.subtitles).lower(),
-                    "provider": {
-                        "type": input_data.provider,
-                        "voice_id": input_data.voice_id,
-                    },
-                    "ssml": str(input_data.ssml).lower(),
-                    "input": input_data.script_input,
+        # Create the clip
+        payload = {
+            "script": {
+                "type": "text",
+                "subtitles": str(input_data.subtitles).lower(),
+                "provider": {
+                    "type": input_data.provider,
+                    "voice_id": input_data.voice_id,
                 },
-                "config": {"result_format": input_data.result_format},
-                "presenter_config": {"crop": {"type": input_data.crop_type}},
-                "presenter_id": input_data.presenter_id,
-                "driver_id": input_data.driver_id,
-            }
+                "ssml": str(input_data.ssml).lower(),
+                "input": input_data.script_input,
+            },
+            "config": {"result_format": input_data.result_format},
+            "presenter_config": {"crop": {"type": input_data.crop_type}},
+            "presenter_id": input_data.presenter_id,
+            "driver_id": input_data.driver_id,
+        }
 
-            response = self.create_clip(input_data.api_key.get_secret_value(), payload)
-            clip_id = response["id"]
+        response = self.create_clip(input_data.api_key.get_secret_value(), payload)
+        clip_id = response["id"]
 
-            # Poll for clip status
-            for _ in range(input_data.max_polling_attempts):
-                status_response = self.get_clip_status(
-                    input_data.api_key.get_secret_value(), clip_id
+        # Poll for clip status
+        for _ in range(input_data.max_polling_attempts):
+            status_response = self.get_clip_status(
+                input_data.api_key.get_secret_value(), clip_id
+            )
+            if status_response["status"] == "done":
+                yield "video_url", status_response["result_url"]
+                return
+            elif status_response["status"] == "error":
+                raise RuntimeError(
+                    f"Clip creation failed: {status_response.get('error', 'Unknown error')}"
                 )
-                if status_response["status"] == "done":
-                    yield "video_url", status_response["result_url"]
-                    return
-                elif status_response["status"] == "error":
-                    yield "error", f"Clip creation failed: {status_response.get('error', 'Unknown error')}"
-                    return
-                time.sleep(input_data.polling_interval)
 
-            yield "error", "Clip creation timed out"
-        except Exception as e:
-            yield "error", str(e)
+            time.sleep(input_data.polling_interval)
+
+        raise TimeoutError("Clip creation timed out")

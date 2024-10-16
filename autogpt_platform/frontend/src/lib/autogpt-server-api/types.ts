@@ -216,13 +216,19 @@ export type NodeExecutionResult = {
   end_time?: Date;
 };
 
-/* Mirror of backend/server/integrations.py:CredentialsMetaResponse */
+/* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
   type: CredentialsType;
   title?: string;
   scopes?: Array<string>;
   username?: string;
+};
+
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
+export type CredentialsDeleteResponse = {
+  deleted: true;
+  revoked: boolean | null;
 };
 
 /* Mirror of backend/data/model.py:CredentialsMetaInput */
