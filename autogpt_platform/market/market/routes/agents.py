@@ -14,7 +14,9 @@ import market.utils.analytics
 router = fastapi.APIRouter()
 
 
-@router.get("/agents", response_model=market.model.AgentListResponse)
+@router.get(
+    "/agents", response_model=market.model.ListResponse[market.model.AgentResponse]
+)
 async def list_agents(
     page: int = fastapi.Query(1, ge=1, description="Page number"),
     page_size: int = fastapi.Query(
@@ -60,7 +62,7 @@ async def list_agents(
         submission_status (str): Filter by submission status (default: "APPROVED").
 
     Returns:
-        market.model.AgentListResponse: A response containing the list of agents and pagination information.
+        market.model.ListResponse[market.model.AgentResponse]: A response containing the list of agents and pagination information.
 
     Raises:
         HTTPException: If there is a client error (status code 400) or an unexpected error (status code 500).
@@ -83,8 +85,8 @@ async def list_agents(
             market.model.AgentResponse(**agent.dict()) for agent in result["agents"]
         ]
 
-        return market.model.AgentListResponse(
-            agents=agents,
+        return market.model.ListResponse(
+            items=agents,
             total_count=result["total_count"],
             page=result["page"],
             page_size=result["page_size"],
@@ -211,7 +213,10 @@ async def download_agent_file(
 
 
 # top agents by downloads
-@router.get("/top-downloads/agents", response_model=market.model.AgentListResponse)
+@router.get(
+    "/top-downloads/agents",
+    response_model=market.model.ListResponse[market.model.AgentResponse],
+)
 async def top_agents_by_downloads(
     page: int = fastapi.Query(1, ge=1, description="Page number"),
     page_size: int = fastapi.Query(
@@ -221,7 +226,7 @@ async def top_agents_by_downloads(
         default=prisma.enums.SubmissionStatus.APPROVED,
         description="Filter by submission status",
     ),
-):
+) -> market.model.ListResponse[market.model.AgentResponse]:
     """
     Retrieve a list of top agents based on the number of downloads.
 
@@ -231,7 +236,7 @@ async def top_agents_by_downloads(
         submission_status (str): Filter by submission status (default: "APPROVED").
 
     Returns:
-        market.model.AgentListResponse: A response containing the list of top agents and pagination information.
+        market.model.ListResponse[market.model.AgentResponse]: A response containing the list of top agents and pagination information.
 
     Raises:
         HTTPException: If there is a client error (status code 400) or an unexpected error (status code 500).
@@ -243,12 +248,12 @@ async def top_agents_by_downloads(
             submission_status=submission_status,
         )
 
-        ret = market.model.AgentListResponse(
+        ret = market.model.ListResponse(
             total_count=result.total_count,
             page=result.page,
             page_size=result.page_size,
             total_pages=result.total_pages,
-            agents=[
+            items=[
                 market.model.AgentResponse(
                     id=item.agent.id,
                     name=item.agent.name,
@@ -263,7 +268,7 @@ async def top_agents_by_downloads(
                     downloads=item.downloads,
                     submissionStatus=item.agent.submissionStatus,
                 )
-                for item in result.analytics
+                for item in result.items
                 if item.agent is not None
             ],
         )
@@ -278,7 +283,10 @@ async def top_agents_by_downloads(
         ) from e
 
 
-@router.get("/featured/agents", response_model=market.model.AgentListResponse)
+@router.get(
+    "/featured/agents",
+    response_model=market.model.ListResponse[market.model.AgentResponse],
+)
 async def get_featured_agents(
     category: str = fastapi.Query(
         "featured", description="Category of featured agents"
@@ -302,7 +310,7 @@ async def get_featured_agents(
         submission_status (str): Filter by submission status (default: "APPROVED").
 
     Returns:
-        market.model.AgentListResponse: A response containing the list of featured agents and pagination information.
+        market.model.ListResponse[market.model.AgentResponse]: A response containing the list of featured agents and pagination information.
 
     Raises:
         HTTPException: If there is a client error (status code 400) or an unexpected error (status code 500).
@@ -315,12 +323,12 @@ async def get_featured_agents(
             submission_status=submission_status,
         )
 
-        ret = market.model.AgentListResponse(
+        ret = market.model.ListResponse(
             total_count=result.total_count,
             page=result.page,
             page_size=result.page_size,
             total_pages=result.total_pages,
-            agents=[
+            items=[
                 market.model.AgentResponse(
                     id=item.agent.id,
                     name=item.agent.name,
