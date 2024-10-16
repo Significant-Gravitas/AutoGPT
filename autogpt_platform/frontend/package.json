@@ -86,6 +86,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/react-modal": "^3.16.3",
+    "chromatic": "^11.12.5",
     "concurrently": "^9.0.1",
     "eslint": "^8",
     "eslint-config-next": "14.2.4",
