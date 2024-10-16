@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
+import BoringAvatar from "./BoringAvatarWrapper"
 
 import { cn } from "@/lib/utils";
 
@@ -35,16 +36,23 @@ AvatarImage.displayName = AvatarPrimitive.Image.displayName;
 const AvatarFallback = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Fallback>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback>
->(({ className, ...props }, ref) => (
+>(({ className, ...props }, ref) => (  
   <AvatarPrimitive.Fallback
     ref={ref}
     className={cn(
-      "flex h-full w-full items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800",
+      "flex h-full w-full items-center justify-center rounded-full",
       className,
     )}
     {...props}
-  />
+  >
+    <BoringAvatar
+      size={40}
+      name={props.children?.toString() || "User"}
+      variant="marble"
+      colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
+    />
+  </AvatarPrimitive.Fallback>
 ));
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
 
-export { Avatar, AvatarImage, AvatarFallback };
+export { Avatar as Avatar, AvatarImage, AvatarFallback };
