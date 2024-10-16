@@ -72,7 +72,7 @@ cors:
 
 livenessProbe:
   httpGet:
-    path: /docs
+    path: /heath
     port: 8006
   initialDelaySeconds: 30
   periodSeconds: 10
@@ -80,7 +80,7 @@ livenessProbe:
   failureThreshold: 6
 readinessProbe:
   httpGet:
-    path: /docs
+    path: /heath
     port: 8006
   initialDelaySeconds: 30
   periodSeconds: 10
