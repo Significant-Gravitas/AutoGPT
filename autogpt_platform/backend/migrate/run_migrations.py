@@ -4,19 +4,6 @@ import subprocess
 
 import psycopg2
 
-
-def find_custom_migrations_dir():
-    # List of possible locations for the custom_migrations directory
-    possible_paths = [
-        "./custom_migrations",
-        "../backend/custom_migrations",
-        "/app/autogpt_platform/backend/custom_migrations",
-    ]
-
-    for path in possible_paths:
-        if os.path.isdir(path):
-            return path
-
 def run_prisma_migrations():
     result = subprocess.run(
         ["prisma", "migrate", "deploy"], capture_output=True, text=True
@@ -34,7 +21,6 @@ def run_custom_migrations():
 
     try:
         with conn.cursor() as cur:
-            # custom_migrations_dir = find_custom_migrations_dir()
             custom_migrations_dir = "./custom_migrations"
             for filename in sorted(os.listdir(custom_migrations_dir)):
                 if filename.endswith(".sql"):
