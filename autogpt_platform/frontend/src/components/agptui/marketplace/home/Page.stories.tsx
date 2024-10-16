@@ -36,7 +36,7 @@ const mockFeaturedAgents = [
   {
     agentName: "Super SEO Optimizer",
     agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/cc/11/cc1172271dcf723a34f488a3344e82b2.jpg",
     creatorName: "AI Labs",
     description:
       "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
@@ -59,8 +59,8 @@ const mockTopAgents = [
   {
     agentName: "Data Analyzer Pro",
     agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    avatarSrc: "https://example.com/avatar1.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/07/78/0778415062f8dff56a046a7eca44567c.jpg",
+    avatarSrc: "https://github.com/shadcn.png",
     description:
       "Powerful tool for analyzing large datasets and generating insights.",
     runs: 50000,
@@ -69,7 +69,7 @@ const mockTopAgents = [
   {
     agentName: "Image Recognition Master",
     agentImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/59/b9/59b9415d4044f48f9b9e318c4c5a7984.jpg",
     avatarSrc: "https://example.com/avatar2.jpg",
     description:
       "Accurately identify and classify objects in images using state-of-the-art machine learning algorithms.",
@@ -79,7 +79,7 @@ const mockTopAgents = [
   {
     agentName: "Natural Language Processor",
     agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/11/47/114784105a9b180e08e117cbf2612e5b.jpg",
     avatarSrc: "https://example.com/avatar3.jpg",
     description:
       "Analyze and understand human language with advanced NLP techniques.",
@@ -89,7 +89,7 @@ const mockTopAgents = [
   {
     agentName: "Sentiment Analyzer",
     agentImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/07/7c/077c975fdb404609532364dd5a2e2354.jpg",
     avatarSrc: "https://example.com/avatar4.jpg",
     description:
       "Determine the emotional tone of text data for customer feedback analysis.",
@@ -99,7 +99,7 @@ const mockTopAgents = [
   {
     agentName: "Chatbot Builder",
     agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/63/96/6396cb4e44284b80ead9300d9b47c544.jpg",
     avatarSrc: "https://example.com/avatar5.jpg",
     description:
       "Create intelligent chatbots for customer service and engagement.",
@@ -109,7 +109,7 @@ const mockTopAgents = [
   {
     agentName: "Predictive Analytics Tool",
     agentImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/53/b2/53b2bc7d7900f0e1e60bf64ebf38032d.jpg",
     avatarSrc: "https://example.com/avatar6.jpg",
     description:
       "Forecast future trends and outcomes based on historical data.",
@@ -129,7 +129,7 @@ const mockTopAgents = [
   {
     agentName: "Code Generator AI",
     agentImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/40/f7/40f7bc97c952f8df0f9c88d29defe8d4.jpg",
     avatarSrc: "https://example.com/avatar8.jpg",
     description:
       "Automatically generate code snippets and boilerplate for various programming languages.",
@@ -139,7 +139,7 @@ const mockTopAgents = [
   {
     agentName: "Virtual Assistant Creator",
     agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/14/9e/149ebb9014aa8c0097e72ed89845af0e.jpg",
     avatarSrc: "https://example.com/avatar9.jpg",
     description:
       "Build customized virtual assistants for various business needs and personal use.",
@@ -152,15 +152,15 @@ const mockFeaturedCreators = [
   {
     creatorName: "AI Labs",
     creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/53/b2/53b2bc7d7900f0e1e60bf64ebf38032d.jpg",
     bio: "Pioneering AI solutions for everyday problems",
     agentsUploaded: 25,
-    avatarSrc: "https://example.com/ailabs-avatar.jpg",
+    avatarSrc: "https://github.com/shadcn.png",
   },
   {
     creatorName: "WriteRight Inc.",
     creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/40/f7/40f7bc97c952f8df0f9c88d29defe8d4.jpg",
     bio: "Empowering content creators with AI-driven tools",
     agentsUploaded: 18,
     avatarSrc: "https://example.com/writeright-avatar.jpg",
@@ -168,7 +168,7 @@ const mockFeaturedCreators = [
   {
     creatorName: "DataMasters",
     creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/14/9e/149ebb9014aa8c0097e72ed89845af0e.jpg",
     bio: "Transforming data into actionable insights",
     agentsUploaded: 30,
     avatarSrc: "https://example.com/datamasters-avatar.jpg",
@@ -176,15 +176,15 @@ const mockFeaturedCreators = [
   {
     creatorName: "AInovators",
     creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/53/b2/53b2bc7d7900f0e1e60bf64ebf38032d.jpg",
     bio: "Pushing the boundaries of artificial intelligence",
     agentsUploaded: 22,
-    avatarSrc: "https://example.com/ainovators-avatar.jpg",
+    avatarSrc: "https://github.com/shadcn.png",
   },
   {
     creatorName: "CodeCrafters",
     creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/40/f7/40f7bc97c952f8df0f9c88d29defe8d4.jpg",
     bio: "Building intelligent coding assistants for developers",
     agentsUploaded: 28,
     avatarSrc: "https://example.com/codecrafters-avatar.jpg",
@@ -192,7 +192,7 @@ const mockFeaturedCreators = [
   {
     creatorName: "EcoTech Solutions",
     creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/14/9e/149ebb9014aa8c0097e72ed89845af0e.jpg",
     bio: "Developing AI-powered tools for environmental sustainability",
     agentsUploaded: 20,
     avatarSrc: "https://example.com/ecotech-avatar.jpg",
