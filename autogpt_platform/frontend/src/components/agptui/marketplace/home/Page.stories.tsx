@@ -273,6 +273,7 @@ export const WithInteraction: Story = {
 export const EmptyState: Story = {
   args: {
     userName: "Jane Smith",
+    userEmail: "jane.smith@example.com",
     navLinks: mockNavLinks,
     activeLink: "Marketplace",
     featuredAgents: [],
