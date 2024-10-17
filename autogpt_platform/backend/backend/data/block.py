@@ -35,6 +35,7 @@ class BlockType(Enum):
     INPUT = "Input"
     OUTPUT = "Output"
     NOTE = "Note"
+    WEBHOOK = "Webhook"
 
 
 class BlockCategory(Enum):
@@ -238,7 +239,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.contributors = contributors or set()
         self.disabled = disabled
         self.static_output = static_output
-        self.block_type = block_type
+        self.block_type = block_type if not webhook_config else BlockType.WEBHOOK
         self.webhook_config = webhook_config
 
         # Enforce shape of webhook event filter
@@ -256,6 +257,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 raise NotImplementedError(
                     f"{self.name} has an invalid webhook event selector: "
                     "field must be a BaseModel and all its fields must be boolean"
+                )
+            if "payload" not in self.input_schema.model_fields:
+                raise TypeError(
+                    f"{self.name} is webhook-triggered but has no 'payload' input"
                 )
 
     @abstractmethod

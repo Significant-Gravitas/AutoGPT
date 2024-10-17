@@ -57,6 +57,9 @@ class Node(BaseDbModel):
     input_links: list[Link] = []
     output_links: list[Link] = []
 
+    graph_id: str
+    graph_version: int
+
     webhook_id: Optional[str] = None
     webhook: Optional["Webhook"] = None
 
@@ -71,6 +74,8 @@ class Node(BaseDbModel):
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
             metadata=json.loads(node.metadata),
+            graph_id=node.agentGraphId,
+            graph_version=node.agentGraphVersion,
             webhook_id=node.webhookId,
             webhook=Webhook.from_db(node.Webhook) if node.Webhook else None,
         )

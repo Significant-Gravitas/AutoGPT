@@ -10,9 +10,14 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.integrations import get_webhook
+from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
-from backend.util.settings import Settings
+from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
+from backend.util.service import get_service_client
+from backend.util.settings import Config, Settings
 
 from ..utils import get_user_id
 
@@ -207,7 +212,31 @@ async def delete_credentials(
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
 
-# -------- UTILITIES --------- #
+# ------------------------- WEBHOOK STUFF -------------------------- #
+
+
+@router.post("/{provider}/webhooks/{webhook_id}/ingress")
+async def webhook_ingress_generic(
+    request: Request,
+    provider: Annotated[
+        ProviderName, Path(title="Provider where the webhook was registered")
+    ],
+    webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
+):
+    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
+    webhook = await get_webhook(webhook_id)
+    payload = await webhook_manager.validate_payload(webhook, request)
+
+    executor = get_service_client(ExecutionManager, Config().execution_manager_port)
+    for node in webhook.attached_nodes or []:
+        executor.add_execution(
+            node.graph_id,
+            data={f"webhook_{webhook_id}_payload": payload},
+            user_id=webhook.user_id,
+        )
+
+
+# --------------------------- UTILITIES ---------------------------- #
 
 
 def _get_provider_oauth_handler(req: Request, provider_name: str) -> BaseOAuthHandler:

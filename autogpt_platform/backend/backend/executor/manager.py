@@ -222,7 +222,6 @@ def _enqueue_next_nodes(
     graph_id: str,
     log_metadata: LogMetadata,
 ) -> list[NodeExecution]:
-
     def add_enqueued_execution(
         node_exec_id: str, node_id: str, data: BlockInput
     ) -> NodeExecution:
@@ -655,7 +654,6 @@ class Executor:
 
 
 class ExecutionManager(AppService):
-
     def __init__(self):
         super().__init__(port=settings.config.execution_manager_port)
         self.use_redis = True
@@ -730,6 +728,15 @@ class ExecutionManager(AppService):
                 name = node.input_default.get("name")
                 if name and name in data:
                     input_data = {"value": data[name]}
+
+            # Extract webhook payload, and assign it to the input pin
+            webhook_payload_key = f"webhook_{node.webhook_id}_payload"
+            if (
+                block.block_type == BlockType.WEBHOOK
+                and node.webhook_id
+                and webhook_payload_key in data
+            ):
+                input_data = {webhook_payload_key: data["payload"]}
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
