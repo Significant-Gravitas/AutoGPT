@@ -100,7 +100,11 @@ export const Page: React.FC<PageProps> = ({
           onCardClick={handleCardClick}
         />
         <Separator />
-        <TopAgentsSection topAgents={topAgents} onCardClick={handleCardClick} />
+        <TopAgentsSection
+          sectionTitle="Top Agents"
+          topAgents={topAgents}
+          onCardClick={handleCardClick}
+        />
         <Separator />
         <FeaturedCreators
           featuredCreators={featuredCreators}

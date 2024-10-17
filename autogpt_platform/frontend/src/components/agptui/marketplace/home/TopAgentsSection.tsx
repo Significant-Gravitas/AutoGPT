@@ -16,11 +16,13 @@ interface TopAgent {
 }
 
 interface TopAgentsSectionProps {
+  sectionTitle: string;
   topAgents: TopAgent[];
   onCardClick: (agentName: string) => void;
 }
 
 export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
+  sectionTitle,
   topAgents,
   onCardClick,
 }) => {
@@ -28,7 +30,7 @@ export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
     <div className="flex flex-col items-center justify-center py-8">
       <div className="w-full">
         <div className="mb-6 font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
-          Top agents
+          {sectionTitle}
         </div>
         <Carousel
           className="md:hidden"
