@@ -121,7 +121,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
           </Avatar>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="inline-flex w-[280px] flex-col items-start justify-start gap-3.5 rounded-[10px] border border-black/10 bg-[#efefef] px-4 py-5 shadow">
+      <PopoverContent className="ml-2 inline-flex w-[280px] flex-col items-start justify-start gap-3.5 rounded-[10px] border border-black/10 bg-[#efefef] px-4 py-5 shadow">
         <div className="inline-flex items-end justify-start gap-4">
           <Avatar className="h-14 w-14 border border-[#474747]">
             <AvatarImage src={avatarSrc} alt={userName} />
