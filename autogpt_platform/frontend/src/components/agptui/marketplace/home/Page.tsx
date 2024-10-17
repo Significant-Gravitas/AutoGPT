@@ -6,7 +6,7 @@ import { TopAgentsSection } from "./TopAgentsSection";
 import { BecomeACreator } from "../../BecomeACreator";
 import { FeaturedCreators } from "./FeaturedCreators";
 import { Separator } from "../../../ui/separator";
-
+import { IconType } from "../../../ui/icons";
 interface PageProps {
   userName: string;
   navLinks: { name: string; href: string }[];
@@ -34,6 +34,15 @@ interface PageProps {
     agentsUploaded: number;
     avatarSrc: string;
   }[];
+  menuItemGroups: {
+    groupName?: string;
+    items: {
+      icon: IconType;
+      text: string;
+      href?: string;
+      onClick?: () => void;
+    }[];
+  }[];
 }
 
 export const Page: React.FC<PageProps> = ({
@@ -43,6 +52,7 @@ export const Page: React.FC<PageProps> = ({
   featuredAgents,
   topAgents,
   featuredCreators,
+  menuItemGroups,
 }) => {
   const handleSearch = (query: string) => {
     console.log("Search query:", query);
@@ -71,12 +81,12 @@ export const Page: React.FC<PageProps> = ({
 
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
-      {/* <Navbar
+      <Navbar
         userName={userName}
         links={navLinks}
         activeLink={activeLink}
-        onProfileClick={handleProfileClick}
-      /> */}
+        menuItemGroups={menuItemGroups}
+      />
       <main className="px-4">
         <HeroSection
           onSearch={handleSearch}
