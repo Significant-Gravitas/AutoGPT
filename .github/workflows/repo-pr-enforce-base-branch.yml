@@ -8,7 +8,7 @@ jobs:
   check_pr_target:
     runs-on: ubuntu-latest
     permissions:
-      issues: write
+      pull-requests: write
     steps:
       - name: Check if PR is from dev or hotfix
         if: ${{ !(startsWith(github.event.pull_request.head.ref, 'hotfix/') || github.event.pull_request.head.ref == 'dev') }}
