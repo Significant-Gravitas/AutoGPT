@@ -7,15 +7,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
     CredentialsType,
     OAuth2Credentials,
 )
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    HTTPException,
-    Path,
-    Query,
-    Request
-)
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -197,7 +189,7 @@ async def delete_credentials(
     provider: Annotated[str, Path(title="The provider to delete credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
     user_id: Annotated[str, Depends(get_user_id)],
-)-> CredentialsDeletionResponse:
+) -> CredentialsDeletionResponse:
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(status_code=404, detail="Credentials not found")

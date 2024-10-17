@@ -1,4 +1,3 @@
-from asyncio import wait
 import atexit
 import logging
 import multiprocessing
@@ -670,9 +669,7 @@ class ExecutionManager(AppService):
             SupabaseIntegrationCredentialsStore,
         )
 
-        self.credentials_store = SupabaseIntegrationCredentialsStore(
-            redis.get_redis()
-        )
+        self.credentials_store = SupabaseIntegrationCredentialsStore(redis.get_redis())
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,

@@ -4,6 +4,7 @@ import subprocess
 
 import psycopg2
 
+
 def run_prisma_migrations():
     result = subprocess.run(
         ["prisma", "migrate", "deploy"], capture_output=True, text=True
@@ -35,11 +36,13 @@ def run_custom_migrations():
     finally:
         conn.close()
 
+
 def main():
     logging.info("Starting migrations")
     if run_prisma_migrations():
         run_custom_migrations()
     logging.info("Migrations completed")
+
 
 if __name__ == "__main__":
     run_prisma_migrations()
