@@ -14,6 +14,7 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
+    sectionTitle: { control: "text" },
     topAgents: { control: "object" },
     onCardClick: { action: "clicked" },
   },
@@ -56,6 +57,7 @@ const mockTopAgents = [
 
 export const Default: Story = {
   args: {
+    sectionTitle: "Top Agents",
     topAgents: mockTopAgents,
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
@@ -63,6 +65,7 @@ export const Default: Story = {
 
 export const SingleAgent: Story = {
   args: {
+    sectionTitle: "Top Agents",
     topAgents: [mockTopAgents[0]],
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
@@ -70,6 +73,7 @@ export const SingleAgent: Story = {
 
 export const NoAgents: Story = {
   args: {
+    sectionTitle: "Top Agents",
     topAgents: [],
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
@@ -77,6 +81,7 @@ export const NoAgents: Story = {
 
 export const WithInteraction: Story = {
   args: {
+    sectionTitle: "Top Agents",
     topAgents: mockTopAgents,
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
@@ -90,6 +95,7 @@ export const WithInteraction: Story = {
 
 export const MultiRowAgents: Story = {
   args: {
+    sectionTitle: "Top Agents",
     topAgents: [
       ...mockTopAgents,
       {
