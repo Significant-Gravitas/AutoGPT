@@ -11,6 +11,7 @@ interface StoreCardProps {
   rating: number;
   onClick: () => void;
   avatarSrc: string;
+  hideAvatar?: boolean;
 }
 
 export const StoreCard: React.FC<StoreCardProps> = ({
@@ -21,6 +22,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   rating,
   onClick,
   avatarSrc,
+  hideAvatar = false,
 }) => {
   const [isPressed, setIsPressed] = React.useState(false);
 
@@ -64,12 +66,16 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         />
       </div>
       <div className="-mt-8 flex flex-col px-4">
-        <Avatar className="mb-2 h-16 w-16">
-          <AvatarImage src={avatarSrc} alt={agentName} />
-          <AvatarFallback className="h-16 w-16">
-            {agentName.charAt(0)}
-          </AvatarFallback>
-        </Avatar>
+        {!hideAvatar ? (
+          <Avatar className="mb-2 h-16 w-16">
+            <AvatarImage src={avatarSrc} alt={agentName} />
+            <AvatarFallback className="h-16 w-16">
+              {agentName.charAt(0)}
+            </AvatarFallback>
+          </Avatar>
+        ) : (
+          <div className="h-16" />
+        )}
         <div className="mb-1 font-neue text-xl font-bold tracking-tight text-[#272727]">
           {agentName}
         </div>

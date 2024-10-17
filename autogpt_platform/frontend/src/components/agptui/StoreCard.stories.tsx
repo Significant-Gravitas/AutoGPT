@@ -99,3 +99,17 @@ export const LongDescription: Story = {
     avatarSrc: "https://example.com/avatar5.jpg",
   },
 };
+
+export const HiddenAvatar: Story = {
+  args: {
+    agentName: "Data Visualizer",
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    description: "Create stunning visualizations from complex datasets",
+    runs: 60000,
+    rating: 4.6,
+    onClick: () => console.log("HiddenAvatar StoreCard clicked"),
+    avatarSrc: "https://example.com/avatar6.jpg",
+    hideAvatar: true,
+  },
+};
