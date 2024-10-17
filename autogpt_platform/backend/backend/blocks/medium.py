@@ -7,7 +7,7 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 
 
-class PublishToMediumStatus(Enum):
+class PublishToMediumStatus(str, Enum):
     PUBLIC = "public"
     DRAFT = "draft"
     UNLISTED = "unlisted"
@@ -43,7 +43,7 @@ class PublishToMediumBlock(Block):
         )
         publish_status: PublishToMediumStatus = SchemaField(
             description="The publish status",
-            placeholder=PublishToMediumStatus.DRAFT.value,
+            placeholder=PublishToMediumStatus.DRAFT,
         )
         license: str = SchemaField(
             default="all-rights-reserved",
