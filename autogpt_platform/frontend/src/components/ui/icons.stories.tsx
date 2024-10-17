@@ -19,11 +19,16 @@ import {
   IconMegaphone,
   IconMenu,
   IconCoin,
+  IconEdit,
+  IconLogOut,
+  IconSettings,
+  IconLayoutDashboard,
+  IconUploadCloud,
 } from "./icons";
 
 const meta = {
   title: "UI/Icons",
-  component: IconUser, // Add a component property
+  component: IconUser,
   parameters: {
     layout: "centered",
   },
@@ -35,7 +40,7 @@ const meta = {
     },
     className: { control: "text" },
   },
-} satisfies Meta<typeof IconUser>; // Specify the type parameter
+} satisfies Meta<typeof IconUser>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -66,6 +71,11 @@ export const AllIcons: Story = {
       <IconMegaphone {...args} />
       <IconMenu {...args} />
       <IconCoin {...args} />
+      <IconEdit {...args} />
+      <IconLogOut {...args} />
+      <IconSettings {...args} />
+      <IconLayoutDashboard {...args} />
+      <IconUploadCloud {...args} />
     </IconWrapper>
   ),
 };
