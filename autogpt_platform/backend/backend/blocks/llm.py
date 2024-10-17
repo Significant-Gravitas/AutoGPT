@@ -96,25 +96,25 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 
 
 MODEL_METADATA = {
-    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000, cost_factor=60),
-    LlmModel.O1_MINI: ModelMetadata("openai", 62000, cost_factor=30),
-    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=10),
-    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=12),
-    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=11),
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=8),
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=14),
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=13),
-    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=6),
-    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=9),
-    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=7),
-    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=6),
-    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=7),
-    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=10),
+    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000, cost_factor=16),
+    LlmModel.O1_MINI: ModelMetadata("openai", 62000, cost_factor=4),
+    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=1),
+    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=3),
+    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=10),
+    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=1),
+    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=4),
+    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=1),
+    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=1),
+    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=1),
     # Limited to 16k during preview
-    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=15),
-    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=13),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
+    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=1),
+    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=1),
+    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=1),
+    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=1),
 }
 
 for model in LlmModel:
