@@ -5,8 +5,12 @@ from backend.data import db
 from prisma import Json, Prisma
 from prisma.models import User
 import json
+from typing import TYPE_CHECKING, cast
 
-from supabase import Client
+if TYPE_CHECKING:
+    from redis import Redis
+
+from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
 from .types import (
     Credentials,
@@ -18,18 +22,20 @@ from .types import (
 
 
 class SupabaseIntegrationCredentialsStore:
-    def __init__(self):
+    def __init__(self, redis: "Redis"):
         self.prisma: Prisma = db.prisma
+        self.locks = RedisKeyedMutex(redis)
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
-        if await self.get_creds_by_id(user_id, credentials.id):
-            raise ValueError(
-                f"Can not re-create existing credentials with ID {credentials.id} "
-                f"for user with ID {user_id}"
+        with self.locked_user_metadata(user_id):
+            if self.get_creds_by_id(user_id, credentials.id):
+                raise ValueError(
+                    f"Can not re-create existing credentials #{credentials.id} "
+                    f"for user #{user_id}"
+                )
+            await self._set_user_integration_creds(
+                user_id, [*await self.get_all_creds(user_id), credentials]
             )
-        await self._set_user_integration_creds(
-            user_id, [*(await self.get_all_creds(user_id)), credentials]
-        )
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
         user_metadata = await self._get_user_metadata(user_id)
@@ -37,11 +43,9 @@ class SupabaseIntegrationCredentialsStore:
             user_metadata.model_dump()
         ).integration_credentials
 
-    async def get_creds_by_id(
-        self, user_id: str, credentials_id: str
-    ) -> Credentials | None:
-        credentials = await self.get_all_creds(user_id)
-        return next((c for c in credentials if c.id == credentials_id), None)
+    async def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
+        all_credentials = await self.get_all_creds(user_id)
+        return next((c for c in all_credentials if c.id == credentials_id), None)
 
     async def get_creds_by_provider(
         self, user_id: str, provider: str
@@ -54,43 +58,45 @@ class SupabaseIntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
-        current = await self.get_creds_by_id(user_id, updated.id)
-        if not current:
-            raise ValueError(
-                f"Credentials with ID {updated.id} "
-                f"for user with ID {user_id} not found"
-            )
-        if type(current) is not type(updated):
-            raise TypeError(
-                f"Can not update credentials with ID {updated.id} "
-                f"from type {type(current)} "
-                f"to type {type(updated)}"
-            )
+        with self.locked_user_metadata(user_id):
+            current = self.get_creds_by_id(user_id, updated.id)
+            if not current:
+                raise ValueError(
+                    f"Credentials with ID {updated.id} "
+                    f"for user with ID {user_id} not found"
+                )
+            if type(current) is not type(updated):
+                raise TypeError(
+                    f"Can not update credentials with ID {updated.id} "
+                    f"from type {type(current)} "
+                    f"to type {type(updated)}"
+                )
 
-        # Ensure no scopes are removed when updating credentials
-        if (
-            isinstance(updated, OAuth2Credentials)
-            and isinstance(current, OAuth2Credentials)
-            and not set(updated.scopes).issuperset(current.scopes)
-        ):
-            raise ValueError(
-                f"Can not update credentials with ID {updated.id} "
-                f"and scopes {current.scopes} "
-                f"to more restrictive set of scopes {updated.scopes}"
-            )
+            # Ensure no scopes are removed when updating credentials
+            if (
+                isinstance(updated, OAuth2Credentials)
+                and isinstance(current, OAuth2Credentials)
+                and not set(updated.scopes).issuperset(current.scopes)
+            ):
+                raise ValueError(
+                    f"Can not update credentials with ID {updated.id} "
+                    f"and scopes {current.scopes} "
+                    f"to more restrictive set of scopes {updated.scopes}"
+                )
 
-        # Update the credentials
-        updated_credentials_list = [
-            updated if c.id == updated.id else c
-            for c in await self.get_all_creds(user_id)
-        ]
-        await self._set_user_integration_creds(user_id, updated_credentials_list)
+            # Update the credentials
+            updated_credentials_list = [
+                updated if c.id == updated.id else c
+                for c in await self.get_all_creds(user_id)
+            ]
+            await self._set_user_integration_creds(user_id, updated_credentials_list)
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
-        filtered_credentials = [
-            c for c in await self.get_all_creds(user_id) if c.id != credentials_id
-        ]
-        await self._set_user_integration_creds(user_id, filtered_credentials)
+        with self.locked_user_metadata(user_id):
+            filtered_credentials = [
+                c for c in await self.get_all_creds(user_id) if c.id != credentials_id
+            ]
+            await self._set_user_integration_creds(user_id, filtered_credentials)
 
     async def store_state_token(
         self, user_id: str, provider: str, scopes: list[str]
@@ -105,14 +111,15 @@ class SupabaseIntegrationCredentialsStore:
             scopes=scopes,
         )
 
-        user_metadata = await self._get_user_metadata(user_id)
-        oauth_states = user_metadata.integration_oauth_states
-        oauth_states.append(state.model_dump())
-        user_metadata.integration_oauth_states = oauth_states
+        with self.locked_user_metadata(user_id):
+            user_metadata = await self._get_user_metadata(user_id)
+            oauth_states = user_metadata.integration_oauth_states
+            oauth_states.append(state.model_dump())
+            user_metadata.integration_oauth_states = oauth_states
 
-        await self.prisma.user.update(
-            where={"id": user_id}, data={"metadata": Json(user_metadata.model_dump())}
-        )
+            await self.prisma.user.update(
+                where={"id": user_id}, data={"metadata": Json(user_metadata.model_dump())}
+            )
 
         return token
 
@@ -147,30 +154,31 @@ class SupabaseIntegrationCredentialsStore:
         return []
 
     async def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
-        user_metadata = await self._get_user_metadata(user_id)
-        oauth_states = user_metadata.integration_oauth_states
+        with self.locked_user_metadata(user_id):
+            user_metadata = await self._get_user_metadata(user_id)
+            oauth_states = user_metadata.integration_oauth_states
 
-        now = datetime.now(timezone.utc)
-        valid_state = next(
-            (
-                state
-                for state in oauth_states
-                if state["token"] == token
-                and state["provider"] == provider
-                and state["expires_at"] > now.timestamp()
-            ),
-            None,
-        )
-
-        if valid_state:
-            # Remove the used state
-            oauth_states.remove(valid_state)
-            user_metadata.integration_oauth_states = oauth_states
-            await self.prisma.user.update(
-                where={"id": user_id},
-                data={"metadata": Json(user_metadata.model_dump())},
+            now = datetime.now(timezone.utc)
+            valid_state = next(
+                (
+                    state
+                    for state in oauth_states
+                    if state["token"] == token
+                    and state["provider"] == provider
+                    and state["expires_at"] > now.timestamp()
+                ),
+                None,
             )
-            return True
+
+            if valid_state:
+                # Remove the used state
+                oauth_states.remove(valid_state)
+                user_metadata.integration_oauth_states = oauth_states
+                await self.prisma.user.update(
+                    where={"id": user_id},
+                    data={"metadata": Json(user_metadata.model_dump())},
+                )
+                return True
 
         return False
 
@@ -192,3 +200,7 @@ class SupabaseIntegrationCredentialsStore:
             if user.metadata
             else UserMetadataRaw()
         )
+
+    def locked_user_metadata(self, user_id: str):
+        key = ("usermetadatalock", f"user:{user_id}", "metadata")
+        return self.locks.locked(key)

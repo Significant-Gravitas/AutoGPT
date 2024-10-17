@@ -128,9 +128,7 @@ class IdeogramModelBlock(Block):
 
     class Output(BlockSchema):
         result: str = SchemaField(description="Generated image URL")
-        error: Optional[str] = SchemaField(
-            description="Error message if the model run failed"
-        )
+        error: str = SchemaField(description="Error message if the model run failed")
 
     def __init__(self):
         super().__init__(
@@ -166,30 +164,27 @@ class IdeogramModelBlock(Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         seed = input_data.seed
 
-        try:
-            # Step 1: Generate the image
-            result = self.run_model(
+        # Step 1: Generate the image
+        result = self.run_model(
+            api_key=input_data.api_key.get_secret_value(),
+            model_name=input_data.ideogram_model_name.value,
+            prompt=input_data.prompt,
+            seed=seed,
+            aspect_ratio=input_data.aspect_ratio.value,
+            magic_prompt_option=input_data.magic_prompt_option.value,
+            style_type=input_data.style_type.value,
+            negative_prompt=input_data.negative_prompt,
+            color_palette_name=input_data.color_palette_name.value,
+        )
+
+        # Step 2: Upscale the image if requested
+        if input_data.upscale == UpscaleOption.AI_UPSCALE:
+            result = self.upscale_image(
                 api_key=input_data.api_key.get_secret_value(),
-                model_name=input_data.ideogram_model_name.value,
-                prompt=input_data.prompt,
-                seed=seed,
-                aspect_ratio=input_data.aspect_ratio.value,
-                magic_prompt_option=input_data.magic_prompt_option.value,
-                style_type=input_data.style_type.value,
-                negative_prompt=input_data.negative_prompt,
-                color_palette_name=input_data.color_palette_name.value,
+                image_url=result,
             )
 
-            # Step 2: Upscale the image if requested
-            if input_data.upscale == UpscaleOption.AI_UPSCALE:
-                result = self.upscale_image(
-                    api_key=input_data.api_key.get_secret_value(),
-                    image_url=result,
-                )
-
-            yield "result", result
-        except Exception as e:
-            yield "error", str(e)
+        yield "result", result
 
     def run_model(
         self,

@@ -293,6 +293,7 @@ develop = true
 
 [package.dependencies]
 colorama = "^0.4.6"
+expiringdict = "^1.2.2"
 google-cloud-logging = "^3.8.0"
 pydantic = "^2.8.2"
 pydantic-settings = "^2.5.2"
@@ -3886,4 +3887,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "6fe7cc40c307d9da3cf79c829e3eca5ff849ea0675afdbebb0cea08718b19e01"
+content-hash = "0962d61ced1a8154c64c6bbdb3f72aca558831adfbfda68eb66f39b535466f77"

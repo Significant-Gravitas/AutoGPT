@@ -34,6 +34,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.token_uri = "https://oauth2.googleapis.com/token"
+        self.revoke_uri = "https://oauth2.googleapis.com/revoke"
 
     def get_login_url(self, scopes: list[str], state: str) -> str:
         all_scopes = list(set(scopes + self.DEFAULT_SCOPES))
@@ -99,6 +100,16 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
 
         return credentials
+
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+        session = AuthorizedSession(credentials)
+        response = session.post(
+            self.revoke_uri,
+            params={"token": credentials.access_token.get_secret_value()},
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+        response.raise_for_status()
+        return True
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials

@@ -16,7 +16,6 @@ autogpt-libs = { path = "../autogpt_libs", develop = true }
 click = "^8.1.7"
 croniter = "^2.0.5"
 discord-py = "^2.4.0"
-expiringdict = "^1.2.2"
 fastapi = "^0.109.0"
 feedparser = "^6.0.11"
 flake8 = "^7.0.0"

@@ -82,17 +82,14 @@ class GoogleMapsSearchBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            places = self.search_places(
-                input_data.api_key.get_secret_value(),
-                input_data.query,
-                input_data.radius,
-                input_data.max_results,
-            )
-            for place in places:
-                yield "place", place
-        except Exception as e:
-            yield "error", str(e)
+        places = self.search_places(
+            input_data.api_key.get_secret_value(),
+            input_data.query,
+            input_data.radius,
+            input_data.max_results,
+        )
+        for place in places:
+            yield "place", place
 
     def search_places(self, api_key, query, radius, max_results):
         client = googlemaps.Client(key=api_key)

@@ -87,14 +87,11 @@ class GithubListPullRequestsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            pull_requests = self.list_prs(
-                credentials,
-                input_data.repo_url,
-            )
-            yield from (("pull_request", pr) for pr in pull_requests)
-        except Exception as e:
-            yield "error", f"Failed to list pull requests: {str(e)}"
+        pull_requests = self.list_prs(
+            credentials,
+            input_data.repo_url,
+        )
+        yield from (("pull_request", pr) for pr in pull_requests)
 
 
 class GithubMakePullRequestBlock(Block):
@@ -203,9 +200,7 @@ class GithubMakePullRequestBlock(Block):
                 error_message = error_details.get("message", "Unknown error")
             else:
                 error_message = str(http_err)
-            yield "error", f"Failed to create pull request: {error_message}"
-        except Exception as e:
-            yield "error", f"Failed to create pull request: {str(e)}"
+            raise RuntimeError(f"Failed to create pull request: {error_message}")
 
 
 class GithubReadPullRequestBlock(Block):
@@ -313,23 +308,20 @@ class GithubReadPullRequestBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            title, body, author = self.read_pr(
+        title, body, author = self.read_pr(
+            credentials,
+            input_data.pr_url,
+        )
+        yield "title", title
+        yield "body", body
+        yield "author", author
+
+        if input_data.include_pr_changes:
+            changes = self.read_pr_changes(
                 credentials,
                 input_data.pr_url,
             )
-            yield "title", title
-            yield "body", body
-            yield "author", author
-
-            if input_data.include_pr_changes:
-                changes = self.read_pr_changes(
-                    credentials,
-                    input_data.pr_url,
-                )
-                yield "changes", changes
-        except Exception as e:
-            yield "error", f"Failed to read pull request: {str(e)}"
+            yield "changes", changes
 
 
 class GithubAssignPRReviewerBlock(Block):
@@ -418,9 +410,7 @@ class GithubAssignPRReviewerBlock(Block):
                 )
             else:
                 error_msg = f"HTTP error: {http_err} - {http_err.response.text}"
-            yield "error", error_msg
-        except Exception as e:
-            yield "error", f"Failed to assign reviewer: {str(e)}"
+            raise RuntimeError(error_msg)
 
 
 class GithubUnassignPRReviewerBlock(Block):
@@ -490,15 +480,12 @@ class GithubUnassignPRReviewerBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.unassign_reviewer(
-                credentials,
-                input_data.pr_url,
-                input_data.reviewer,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to unassign reviewer: {str(e)}"
+        status = self.unassign_reviewer(
+            credentials,
+            input_data.pr_url,
+            input_data.reviewer,
+        )
+        yield "status", status
 
 
 class GithubListPRReviewersBlock(Block):
@@ -586,11 +573,8 @@ class GithubListPRReviewersBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            reviewers = self.list_reviewers(
-                credentials,
-                input_data.pr_url,
-            )
-            yield from (("reviewer", reviewer) for reviewer in reviewers)
-        except Exception as e:
-            yield "error", f"Failed to list reviewers: {str(e)}"
+        reviewers = self.list_reviewers(
+            credentials,
+            input_data.pr_url,
+        )
+        yield from (("reviewer", reviewer) for reviewer in reviewers)

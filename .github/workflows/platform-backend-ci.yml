@@ -2,12 +2,12 @@ name: AutoGPT Platform - Backend CI
 
 on:
   push:
-    branches: [master, development, ci-test*]
+    branches: [master, dev, ci-test*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
   pull_request:
-    branches: [master, development, release-*]
+    branches: [master, dev, release-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
