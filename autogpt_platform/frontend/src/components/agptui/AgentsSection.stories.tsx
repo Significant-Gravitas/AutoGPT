@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { TopAgentsSection } from "./TopAgentsSection";
+import { AgentsSection } from "./AgentsSection";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPTUI/Marketplace/Home/TopAgentsSection",
-  component: TopAgentsSection,
+  title: "AGPTUI/AgentsSection",
+  component: AgentsSection,
   parameters: {
     layout: {
       center: true,
@@ -15,10 +15,10 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     sectionTitle: { control: "text" },
-    topAgents: { control: "object" },
+    agents: { control: "object" },
     onCardClick: { action: "clicked" },
   },
-} satisfies Meta<typeof TopAgentsSection>;
+} satisfies Meta<typeof AgentsSection>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -58,7 +58,7 @@ const mockTopAgents = [
 export const Default: Story = {
   args: {
     sectionTitle: "Top Agents",
-    topAgents: mockTopAgents,
+    agents: mockTopAgents,
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
@@ -66,7 +66,7 @@ export const Default: Story = {
 export const SingleAgent: Story = {
   args: {
     sectionTitle: "Top Agents",
-    topAgents: [mockTopAgents[0]],
+    agents: [mockTopAgents[0]],
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
@@ -74,7 +74,7 @@ export const SingleAgent: Story = {
 export const NoAgents: Story = {
   args: {
     sectionTitle: "Top Agents",
-    topAgents: [],
+    agents: [],
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
@@ -82,7 +82,7 @@ export const NoAgents: Story = {
 export const WithInteraction: Story = {
   args: {
     sectionTitle: "Top Agents",
-    topAgents: mockTopAgents,
+    agents: mockTopAgents,
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
   play: async ({ canvasElement }) => {
@@ -96,7 +96,7 @@ export const WithInteraction: Story = {
 export const MultiRowAgents: Story = {
   args: {
     sectionTitle: "Top Agents",
-    topAgents: [
+    agents: [
       ...mockTopAgents,
       {
         agentName: "Image Recognition AI",
@@ -160,5 +160,13 @@ export const MultiRowAgents: Story = {
       },
     ],
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+  },
+};
+
+export const HiddenAvatars: Story = {
+  args: {
+    ...Default.args,
+    hideAvatars: true,
+    sectionTitle: "Agents with Hidden Avatars",
   },
 };

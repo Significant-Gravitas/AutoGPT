@@ -1,29 +1,31 @@
 import * as React from "react";
-import { StoreCard } from "../../StoreCard";
+import { StoreCard } from "./StoreCard";
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
 } from "@/components/ui/carousel";
 
-interface TopAgent {
+interface Agent {
   agentName: string;
   agentImage: string;
   description: string;
   runs: number;
   rating: number;
-  avatarSrc: string; // Added avatarSrc to match StoreCard props
+  avatarSrc: string;
 }
 
-interface TopAgentsSectionProps {
+interface AgentsSectionProps {
   sectionTitle: string;
-  topAgents: TopAgent[];
+  agents: Agent[];
+  hideAvatars?: boolean;
   onCardClick: (agentName: string) => void;
 }
 
-export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
+export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
-  topAgents,
+  agents: topAgents,
+  hideAvatars = false,
   onCardClick,
 }) => {
   return (
@@ -48,6 +50,7 @@ export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
                   runs={agent.runs}
                   rating={agent.rating}
                   avatarSrc={agent.avatarSrc}
+                  hideAvatar={hideAvatars}
                   onClick={() => onCardClick(agent.agentName)}
                 />
               </CarouselItem>
@@ -64,6 +67,7 @@ export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
               runs={agent.runs}
               rating={agent.rating}
               avatarSrc={agent.avatarSrc}
+              hideAvatar={hideAvatars}
               onClick={() => onCardClick(agent.agentName)}
             />
           ))}

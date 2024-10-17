@@ -3,7 +3,7 @@ import { Navbar } from "../../Navbar";
 import { AgentInfo } from "../../AgentInfo";
 import { AgentImages } from "../../AgentImages";
 import { BecomeACreator } from "../../BecomeACreator";
-import { TopAgentsSection } from "../home/TopAgentsSection";
+import { AgentsSection } from "../../AgentsSection";
 import { Separator } from "../../../ui/separator";
 import { IconType } from "../../../ui/icons";
 import { BreadCrumbs } from "../../BreadCrumbs";
@@ -111,14 +111,14 @@ export const Page: React.FC<PageProps> = ({
           <AgentImages images={agentImages} />
         </div>
         <Separator className="my-6" />
-        <TopAgentsSection
-          topAgents={otherAgentsByCreator}
+        <AgentsSection
+          agents={otherAgentsByCreator}
           onCardClick={handleCardClick}
           sectionTitle={`Other agents by ${agentInfo.creator}`}
         />
         <Separator className="my-6" />
-        <TopAgentsSection
-          topAgents={similarAgents}
+        <AgentsSection
+          agents={similarAgents}
           onCardClick={handleCardClick}
           sectionTitle="Similar agents"
         />

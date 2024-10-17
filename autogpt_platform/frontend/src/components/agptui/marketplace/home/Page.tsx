@@ -2,7 +2,7 @@ import * as React from "react";
 import { Navbar } from "../../Navbar";
 import { HeroSection } from "./HeroSection";
 import { FeaturedSection } from "./FeaturedSection";
-import { TopAgentsSection } from "./TopAgentsSection";
+import { AgentsSection } from "../../AgentsSection";
 import { BecomeACreator } from "../../BecomeACreator";
 import { FeaturedCreators } from "./FeaturedCreators";
 import { Separator } from "../../../ui/separator";
@@ -100,9 +100,9 @@ export const Page: React.FC<PageProps> = ({
           onCardClick={handleCardClick}
         />
         <Separator />
-        <TopAgentsSection
+        <AgentsSection
           sectionTitle="Top Agents"
-          topAgents={topAgents}
+          agents={topAgents}
           onCardClick={handleCardClick}
         />
         <Separator />
