@@ -17,8 +17,9 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
-from backend.data.block import Block, BlockInput
+from backend.data.block import Block, BlockInput, get_block
 from backend.util.settings import Config
 
 
@@ -74,6 +75,10 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     CreateTalkingAvatarVideoBlock: [
         BlockCost(cost_amount=15, cost_filter={"api_key": None})
     ],
+    SearchTheWebBlock: [BlockCost(cost_amount=1)],
+    ExtractWebsiteContentBlock: [
+        BlockCost(cost_amount=1, cost_filter={"raw_content": False})
+    ],
 }
 
 
@@ -96,7 +101,7 @@ class UserCreditBase(ABC):
         self,
         user_id: str,
         user_credit: int,
-        block: Block,
+        block_id: str,
         input_data: BlockInput,
         data_size: float,
         run_time: float,
@@ -107,7 +112,7 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             user_credit (int): The current credit for the user.
-            block (Block): The block that is being used.
+            block_id (str): The block ID.
             input_data (BlockInput): The input data for the block.
             data_size (float): The size of the data being processed.
             run_time (float): The time taken to run the block.
@@ -208,12 +213,16 @@ class UserCredit(UserCreditBase):
         self,
         user_id: str,
         user_credit: int,
-        block: Block,
+        block_id: str,
         input_data: BlockInput,
         data_size: float,
         run_time: float,
         validate_balance: bool = True,
     ) -> int:
+        block = get_block(block_id)
+        if not block:
+            raise ValueError(f"Block not found: {block_id}")
+
         cost, matching_filter = self._block_usage_cost(
             block=block, input_data=input_data, data_size=data_size, run_time=run_time
         )

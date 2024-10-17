@@ -17,12 +17,12 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
-from backend.data.queue import RedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.cache import thread_cached_property
+from backend.util.service import AppService, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
 from .utils import get_user_id
@@ -32,21 +32,18 @@ logger = logging.getLogger(__name__)
 
 
 class AgentServer(AppService):
-    use_queue = True
     _test_dependency_overrides = {}
     _user_credit_model = get_user_credit_model()
 
     def __init__(self):
         super().__init__(port=Config().agent_server_port)
-        self.event_queue = RedisEventQueue()
+        self.use_redis = True
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        self.event_queue.connect()
         await block.initialize_blocks()
         yield
-        self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
@@ -76,6 +73,14 @@ class AgentServer(AppService):
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
+        )
+
+        health_router = APIRouter()
+        health_router.add_api_route(
+            path="/health",
+            endpoint=self.health,
+            methods=["GET"],
+            tags=["health"],
         )
 
         # Define the API routes
@@ -262,6 +267,7 @@ class AgentServer(AppService):
         app.add_exception_handler(500, self.handle_internal_http_error)
 
         app.include_router(api_router)
+        app.include_router(health_router)
 
         uvicorn.run(
             app,
@@ -299,11 +305,11 @@ class AgentServer(AppService):
 
         return wrapper
 
-    @property
+    @thread_cached_property
     def execution_manager_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager, Config().execution_manager_port)
 
-    @property
+    @thread_cached_property
     def execution_scheduler_client(self) -> ExecutionScheduler:
         return get_service_client(ExecutionScheduler, Config().execution_scheduler_port)
 
@@ -635,10 +641,8 @@ class AgentServer(AppService):
         execution_scheduler = self.execution_scheduler_client
         return execution_scheduler.get_execution_schedules(graph_id, user_id)
 
-    @expose
-    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        execution_result = execution_db.ExecutionResult(**execution_result_dict)
-        self.event_queue.put(execution_result)
+    async def health(self):
+        return {"status": "healthy"}
 
     @classmethod
     def update_configuration(

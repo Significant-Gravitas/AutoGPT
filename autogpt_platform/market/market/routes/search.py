@@ -4,6 +4,7 @@ import fastapi
 import prisma.enums
 
 import market.db
+import market.model
 import market.utils.extension_types
 
 router = fastapi.APIRouter()
@@ -27,9 +28,10 @@ async def search(
         "desc", description="The sort order based on sort_by"
     ),
     submission_status: prisma.enums.SubmissionStatus = fastapi.Query(
-        None, description="The submission status to filter by"
+        prisma.enums.SubmissionStatus.APPROVED,
+        description="The submission status to filter by",
     ),
-) -> typing.List[market.utils.extension_types.AgentsWithRank]:
+) -> market.model.ListResponse[market.utils.extension_types.AgentsWithRank]:
     """searches endpoint for agents
 
     Args:
@@ -41,7 +43,7 @@ async def search(
         sort_by (str, optional): Sorting by column. Defaults to "rank".
         sort_order ('asc' | 'desc', optional): the sort order based on sort_by. Defaults to "desc".
     """
-    return await market.db.search_db(
+    agents = await market.db.search_db(
         query=query,
         page=page,
         page_size=page_size,
@@ -51,3 +53,4 @@ async def search(
         sort_order=sort_order,
         submission_status=submission_status,
     )
+    return agents
