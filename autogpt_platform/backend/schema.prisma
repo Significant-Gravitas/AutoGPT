@@ -82,6 +82,7 @@ model AgentNode {
   metadata String @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
+  AgentNodeWebhook AgentNodeWebhook[]
 }
 
 // This model describes the link between two AgentNodes.
@@ -100,6 +101,19 @@ model AgentNodeLink {
 
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
   isStatic Boolean @default(false)
+}
+
+// One-to-one relation between a webhook-triggered node and the webhook that triggers it
+model AgentNodeWebhook {
+  agentNodeId String
+  webhookId   String
+
+  // Before deleting a linked node from the DB, its webhook has to be
+  // deregistered and deleted if there are no other linked nodes
+  AgentNode          AgentNode          @relation(fields: [agentNodeId], references: [id], onDelete: Restrict)
+  IntegrationWebhook IntegrationWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@id(name: "agentNodeWebhookId", [agentNodeId, webhookId])
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -212,6 +226,22 @@ model AgentGraphExecutionSchedule {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([isEnabled])
+}
+
+// Webhook that is registered with a provider and propagates to one or more nodes
+model IntegrationWebhook {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+
+  credentialsId String // relation to the credentials that the webhook was created with
+
+  provider          String // e.g. 'github'
+  providerWebhookId String
+  config            Json
+  token             String // crypto string, used to verify payload authenticity
+
+  AgentNodeWebhook AgentNodeWebhook[]
 }
 
 model AnalyticsDetails {
