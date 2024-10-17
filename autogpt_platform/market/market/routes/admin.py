@@ -45,7 +45,10 @@ async def delete_agent(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected error deleting agent: {e}")
-        raise fastapi.HTTPException(status_code=500, detail="An unexpected error occurred")
+        raise fastapi.HTTPException(
+            status_code=500, detail="An unexpected error occurred"
+        )
+
 
 @router.post("/agent", response_model=market.model.AgentResponse)
 async def create_agent_entry(
@@ -154,14 +157,14 @@ async def get_not_featured_agents(
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
-) -> market.model.AgentListResponse:
+) -> market.model.ListResponse[market.model.AgentResponse]:
     """
     A basic endpoint to get all not featured agents in the database.
     """
     try:
         agents = await market.db.get_not_featured_agents(page=page, page_size=page_size)
-        return market.model.AgentListResponse(
-            agents=[
+        return market.model.ListResponse(
+            items=[
                 market.model.AgentResponse(**agent.model_dump()) for agent in agents
             ],
             total_count=len(agents),
@@ -175,7 +178,10 @@ async def get_not_featured_agents(
         raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/agent/submissions", response_model=market.model.AgentListResponse)
+@router.get(
+    "/agent/submissions",
+    response_model=market.model.ListResponse[market.model.AgentResponse],
+)
 async def get_agent_submissions(
     page: int = fastapi.Query(1, ge=1, description="Page number"),
     page_size: int = fastapi.Query(
@@ -203,7 +209,7 @@ async def get_agent_submissions(
     user: autogpt_libs.auth.User = fastapi.Depends(
         autogpt_libs.auth.requires_admin_user
     ),
-):
+) -> market.model.ListResponse[market.model.AgentResponse]:
     logger.info("Getting agent submissions")
     try:
         result = await market.db.get_agents(
@@ -223,8 +229,8 @@ async def get_agent_submissions(
             market.model.AgentResponse(**agent.dict()) for agent in result["agents"]
         ]
 
-        return market.model.AgentListResponse(
-            agents=agents,
+        return market.model.ListResponse(
+            items=agents,
             total_count=result["total_count"],
             page=result["page"],
             page_size=result["page_size"],

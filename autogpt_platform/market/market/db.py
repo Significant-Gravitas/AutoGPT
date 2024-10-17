@@ -55,6 +55,7 @@ class FeaturedAgentResponse(pydantic.BaseModel):
     page_size: int
     total_pages: int
 
+
 async def delete_agent(agent_id: str) -> prisma.models.Agents | None:
     """
     Delete an agent from the database.
@@ -299,7 +300,7 @@ async def search_db(
     sort_by: str = "rank",
     sort_order: typing.Literal["desc"] | typing.Literal["asc"] = "desc",
     submission_status: prisma.enums.SubmissionStatus = prisma.enums.SubmissionStatus.APPROVED,
-) -> typing.List[market.utils.extension_types.AgentsWithRank]:
+) -> market.model.ListResponse[market.utils.extension_types.AgentsWithRank]:
     """Perform a search for agents based on the provided query string.
 
     Args:
@@ -321,7 +322,7 @@ async def search_db(
     try:
         offset = (page - 1) * page_size
 
-        category_filter = ""
+        category_filter = "1=1"
         if categories:
             category_conditions = [f"'{cat}' = ANY(categories)" for cat in categories]
             category_filter = "AND (" + " OR ".join(category_conditions) + ")"
@@ -354,9 +355,15 @@ async def search_db(
             graph,
             "submissionStatus",
             "submissionDate",
-            ts_rank(CAST(search AS tsvector), query.q) AS rank
-        FROM "Agents", query
-        WHERE 1=1 {category_filter} AND {submission_status_filter}
+            CASE 
+                WHEN query.q::text = '' THEN 1.0
+                ELSE COALESCE(ts_rank(CAST(search AS tsvector), query.q), 0.0)
+            END AS rank
+        FROM market."Agents", query
+        WHERE 
+            (query.q::text = '' OR search @@ query.q)
+            AND {category_filter} 
+            AND {submission_status_filter}
         ORDER BY {order_by_clause}
         LIMIT {page_size}
         OFFSET {offset};
@@ -367,7 +374,32 @@ async def search_db(
             model=market.utils.extension_types.AgentsWithRank,
         )
 
-        return results
+        class CountResponse(pydantic.BaseModel):
+            count: int
+
+        count_query = f"""
+        WITH query AS (
+            SELECT to_tsquery(string_agg(lexeme || ':*', ' & ' ORDER BY positions)) AS q 
+            FROM unnest(to_tsvector('{query}'))
+        )
+        SELECT COUNT(*)
+        FROM market."Agents", query
+        WHERE (search @@ query.q OR query.q = '') AND {category_filter} AND {submission_status_filter};
+        """
+
+        total_count = await prisma.client.get_client().query_first(
+            query=count_query,
+            model=CountResponse,
+        )
+        total_count = total_count.count if total_count else 0
+
+        return market.model.ListResponse(
+            items=results,
+            total_count=total_count,
+            page=page,
+            page_size=page_size,
+            total_pages=(total_count + page_size - 1) // page_size,
+        )
 
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
@@ -379,7 +411,7 @@ async def get_top_agents_by_downloads(
     page: int = 1,
     page_size: int = 10,
     submission_status: prisma.enums.SubmissionStatus = prisma.enums.SubmissionStatus.APPROVED,
-) -> TopAgentsDBResponse:
+) -> market.model.ListResponse[prisma.models.AnalyticsTracker]:
     """Retrieve the top agents by download count.
 
     Args:
@@ -406,11 +438,15 @@ async def get_top_agents_by_downloads(
         except prisma.errors.PrismaError as e:
             raise AgentQueryError(f"Database query failed: {str(e)}")
 
-        # Get total count for pagination info
-        total_count = len(analytics)
+        try:
+            total_count = await prisma.models.AnalyticsTracker.prisma().count(
+                where={"agent": {"is": {"submissionStatus": submission_status}}},
+            )
+        except prisma.errors.PrismaError as e:
+            raise AgentQueryError(f"Database query failed: {str(e)}")
 
-        return TopAgentsDBResponse(
-            analytics=analytics,
+        return market.model.ListResponse(
+            items=analytics,
             total_count=total_count,
             page=page,
             page_size=page_size,
@@ -665,7 +701,7 @@ async def get_all_categories() -> market.model.CategoriesResponse:
         return market.model.CategoriesResponse(unique_categories=unique_categories)
     except prisma.errors.PrismaError as e:
         raise AgentQueryError(f"Database query failed: {str(e)}")
-    except Exception as e:
+    except Exception:
         # Return an empty list of categories in case of unexpected errors
         return market.model.CategoriesResponse(unique_categories=[])
 

@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import MarketplaceAPI, {
   AgentResponse,
-  AgentListResponse,
   AgentWithRank,
 } from "@/lib/marketplace-api";
 import {
@@ -192,17 +191,19 @@ const Marketplace: React.FC = () => {
   const [searchResults, setSearchResults] = useState<Agent[]>([]);
   const [featuredAgents, setFeaturedAgents] = useState<Agent[]>([]);
   const [topAgents, setTopAgents] = useState<Agent[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [topAgentsPage, setTopAgentsPage] = useState(1);
+  const [searchPage, setSearchPage] = useState(1);
+  const [topAgentsTotalPages, setTopAgentsTotalPages] = useState(1);
+  const [searchTotalPages, setSearchTotalPages] = useState(1);
 
   const fetchTopAgents = useCallback(
     async (currentPage: number) => {
       setIsLoading(true);
       try {
         const response = await api.getTopDownloadedAgents(currentPage, 9);
-        setTopAgents(response.agents);
-        setTotalPages(response.total_pages);
+        setTopAgents(response.items);
+        setTopAgentsTotalPages(response.total_pages);
       } catch (error) {
         console.error("Error fetching top agents:", error);
       } finally {
@@ -215,19 +216,20 @@ const Marketplace: React.FC = () => {
   const fetchFeaturedAgents = useCallback(async () => {
     try {
       const featured = await api.getFeaturedAgents();
-      setFeaturedAgents(featured.agents);
+      setFeaturedAgents(featured.items);
     } catch (error) {
       console.error("Error fetching featured agents:", error);
     }
   }, [api]);
 
   const searchAgents = useCallback(
-    async (searchTerm: string) => {
+    async (searchTerm: string, currentPage: number) => {
       setIsLoading(true);
       try {
-        const response = await api.searchAgents(searchTerm, 1, 30);
-        const filteredAgents = response.filter((agent) => agent.rank > 0);
+        const response = await api.searchAgents(searchTerm, currentPage, 9);
+        const filteredAgents = response.items.filter((agent) => agent.rank > 0);
         setSearchResults(filteredAgents);
+        setSearchTotalPages(response.total_pages);
       } catch (error) {
         console.error("Error searching agents:", error);
       } finally {
@@ -244,11 +246,11 @@ const Marketplace: React.FC = () => {
 
   useEffect(() => {
     if (searchValue) {
-      debouncedSearch(searchValue);
+      searchAgents(searchValue, searchPage);
     } else {
-      fetchTopAgents(page);
+      fetchTopAgents(topAgentsPage);
     }
-  }, [searchValue, page, debouncedSearch, fetchTopAgents]);
+  }, [searchValue, searchPage, topAgentsPage, searchAgents, fetchTopAgents]);
 
   useEffect(() => {
     fetchFeaturedAgents();
@@ -256,18 +258,30 @@ const Marketplace: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchValue(e.target.value);
-    setPage(1);
+    setSearchPage(1);
   };
 
   const handleNextPage = () => {
-    if (page < totalPages) {
-      setPage(page + 1);
+    if (searchValue) {
+      if (searchPage < searchTotalPages) {
+        setSearchPage(searchPage + 1);
+      }
+    } else {
+      if (topAgentsPage < topAgentsTotalPages) {
+        setTopAgentsPage(topAgentsPage + 1);
+      }
     }
   };
 
   const handlePrevPage = () => {
-    if (page > 1) {
-      setPage(page - 1);
+    if (searchValue) {
+      if (searchPage > 1) {
+        setSearchPage(searchPage - 1);
+      }
+    } else {
+      if (topAgentsPage > 1) {
+        setTopAgentsPage(topAgentsPage - 1);
+      }
     }
   };
 
@@ -283,7 +297,15 @@ const Marketplace: React.FC = () => {
           </div>
         ) : searchValue ? (
           searchResults.length > 0 ? (
-            <AgentGrid agents={searchResults} title="Search Results" />
+            <>
+              <AgentGrid agents={searchResults} title="Search Results" />
+              <Pagination
+                page={searchPage}
+                totalPages={searchTotalPages}
+                onPrevPage={handlePrevPage}
+                onNextPage={handleNextPage}
+              />
+            </>
           ) : (
             <div className="py-12 text-center">
               <p className="text-gray-600">
@@ -302,8 +324,8 @@ const Marketplace: React.FC = () => {
             )}
             <AgentGrid agents={topAgents} title="Top Downloaded Agents" />
             <Pagination
-              page={page}
-              totalPages={totalPages}
+              page={topAgentsPage}
+              totalPages={topAgentsTotalPages}
               onPrevPage={handlePrevPage}
               onNextPage={handleNextPage}
             />
