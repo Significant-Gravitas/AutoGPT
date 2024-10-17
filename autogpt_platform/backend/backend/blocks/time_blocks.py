@@ -3,14 +3,20 @@ from datetime import datetime, timedelta
 from typing import Any, Union
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField as Field
 
 
 class GetCurrentTimeBlock(Block):
     class Input(BlockSchema):
-        trigger: str
+        trigger: str = Field(description="Trigger any data to output the current time")
+        format: str = Field(
+            description="Format of the time to output", default="%H:%M:%S"
+        )
 
     class Output(BlockSchema):
-        time: str
+        time: str = Field(
+            description="Current time in the specified format (default: %H:%M:%S)"
+        )
 
     def __init__(self):
         super().__init__(
@@ -20,25 +26,36 @@ class GetCurrentTimeBlock(Block):
             input_schema=GetCurrentTimeBlock.Input,
             output_schema=GetCurrentTimeBlock.Output,
             test_input=[
-                {"trigger": "Hello", "format": "{time}"},
+                {"trigger": "Hello"},
+                {"trigger": "Hello", "format": "%H:%M"},
             ],
             test_output=[
                 ("time", lambda _: time.strftime("%H:%M:%S")),
+                ("time", lambda _: time.strftime("%H:%M")),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        current_time = time.strftime("%H:%M:%S")
+        current_time = time.strftime(input_data.format)
         yield "time", current_time
 
 
 class GetCurrentDateBlock(Block):
     class Input(BlockSchema):
-        trigger: str
-        offset: Union[int, str]
+        trigger: str = Field(description="Trigger any data to output the current date")
+        offset: Union[int, str] = Field(
+            title="Days Offset",
+            description="Offset in days from the current date",
+            default=0,
+        )
+        format: str = Field(
+            description="Format of the date to output", default="%Y-%m-%d"
+        )
 
     class Output(BlockSchema):
-        date: str
+        date: str = Field(
+            description="Current date in the specified format (default: YYYY-MM-DD)"
+        )
 
     def __init__(self):
         super().__init__(
@@ -48,13 +65,20 @@ class GetCurrentDateBlock(Block):
             input_schema=GetCurrentDateBlock.Input,
             output_schema=GetCurrentDateBlock.Output,
             test_input=[
-                {"trigger": "Hello", "format": "{date}", "offset": "7"},
+                {"trigger": "Hello", "offset": "7"},
+                {"trigger": "Hello", "offset": "7", "format": "%m/%d/%Y"},
             ],
             test_output=[
                 (
                     "date",
                     lambda t: abs(datetime.now() - datetime.strptime(t, "%Y-%m-%d"))
                     < timedelta(days=8),  # 7 days difference + 1 day error margin.
+                ),
+                (
+                    "date",
+                    lambda t: abs(datetime.now() - datetime.strptime(t, "%m/%d/%Y"))
+                    < timedelta(days=8),
+                    # 7 days difference + 1 day error margin.
                 ),
             ],
         )
@@ -65,15 +89,23 @@ class GetCurrentDateBlock(Block):
         except ValueError:
             offset = 0
         current_date = datetime.now() - timedelta(days=offset)
-        yield "date", current_date.strftime("%Y-%m-%d")
+        yield "date", current_date.strftime(input_data.format)
 
 
 class GetCurrentDateAndTimeBlock(Block):
     class Input(BlockSchema):
-        trigger: str
+        trigger: str = Field(
+            description="Trigger any data to output the current date and time"
+        )
+        format: str = Field(
+            description="Format of the date and time to output",
+            default="%Y-%m-%d %H:%M:%S",
+        )
 
     class Output(BlockSchema):
-        date_time: str
+        date_time: str = Field(
+            description="Current date and time in the specified format (default: YYYY-MM-DD HH:MM:SS)"
+        )
 
     def __init__(self):
         super().__init__(
@@ -83,7 +115,8 @@ class GetCurrentDateAndTimeBlock(Block):
             input_schema=GetCurrentDateAndTimeBlock.Input,
             output_schema=GetCurrentDateAndTimeBlock.Output,
             test_input=[
-                {"trigger": "Hello", "format": "{date_time}"},
+                {"trigger": "Hello"},
+                {"trigger": "Hello", "format": "%Y-%m-%d %H:%M"},
             ],
             test_output=[
                 (
@@ -93,24 +126,34 @@ class GetCurrentDateAndTimeBlock(Block):
                     )
                     < timedelta(seconds=10),  # 10 seconds error margin.
                 ),
+                (
+                    "date_time",
+                    lambda t: abs(
+                        datetime.now() - datetime.strptime(t, "%Y-%m-%d %H:%M")
+                    )
+                    < timedelta(seconds=10),  # 10 seconds error margin.
+                ),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        current_date_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        current_date_time = time.strftime(input_data.format)
         yield "date_time", current_date_time
 
 
 class CountdownTimerBlock(Block):
     class Input(BlockSchema):
-        input_message: Any = "timer finished"
-        seconds: Union[int, str] = 0
-        minutes: Union[int, str] = 0
-        hours: Union[int, str] = 0
-        days: Union[int, str] = 0
+        input_message: Any = Field(
+            description="Message to output after the timer finishes",
+            default="timer finished",
+        )
+        seconds: Union[int, str] = Field(description="Duration in seconds", default=0)
+        minutes: Union[int, str] = Field(description="Duration in minutes", default=0)
+        hours: Union[int, str] = Field(description="Duration in hours", default=0)
+        days: Union[int, str] = Field(description="Duration in days", default=0)
 
     class Output(BlockSchema):
-        output_message: str
+        output_message: str = Field(description="Message after the timer finishes")
 
     def __init__(self):
         super().__init__(

@@ -17,11 +17,13 @@ class GetRequest:
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
     class Input(BlockSchema):
-        topic: str
+        topic: str = SchemaField(description="The topic to fetch the summary for")
 
     class Output(BlockSchema):
-        summary: str
-        error: str
+        summary: str = SchemaField(description="The summary of the given topic")
+        error: str = SchemaField(
+            description="Error message if the summary cannot be retrieved"
+        )
 
     def __init__(self):
         super().__init__(
@@ -46,11 +48,13 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
 
 class SearchTheWebBlock(Block, GetRequest):
     class Input(BlockSchema):
-        query: str  # The search query
+        query: str = SchemaField(description="The search query to search the web for")
 
     class Output(BlockSchema):
-        results: str  # The search results including content from top 5 URLs
-        error: str  # Error message if the search fails
+        results: str = SchemaField(
+            description="The search results including content from top 5 URLs"
+        )
+        error: str = SchemaField(description="Error message if the search fails")
 
     def __init__(self):
         super().__init__(
@@ -80,7 +84,7 @@ class SearchTheWebBlock(Block, GetRequest):
 
 class ExtractWebsiteContentBlock(Block, GetRequest):
     class Input(BlockSchema):
-        url: str  # The URL to scrape
+        url: str = SchemaField(description="The URL to scrape the content from")
         raw_content: bool = SchemaField(
             default=False,
             title="Raw Content",
@@ -89,8 +93,10 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         )
 
     class Output(BlockSchema):
-        content: str  # The scraped content from the URL
-        error: str
+        content: str = SchemaField(description="The scraped content from the given URL")
+        error: str = SchemaField(
+            description="Error message if the content cannot be retrieved"
+        )
 
     def __init__(self):
         super().__init__(
@@ -116,15 +122,26 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
 
 class GetWeatherInformationBlock(Block, GetRequest):
     class Input(BlockSchema):
-        location: str
+        location: str = SchemaField(
+            description="Location to get weather information for"
+        )
         api_key: BlockSecret = SecretField(key="openweathermap_api_key")
-        use_celsius: bool = True
+        use_celsius: bool = SchemaField(
+            default=True,
+            description="Whether to use Celsius or Fahrenheit for temperature",
+        )
 
     class Output(BlockSchema):
-        temperature: str
-        humidity: str
-        condition: str
-        error: str
+        temperature: str = SchemaField(
+            description="Temperature in the specified location"
+        )
+        humidity: str = SchemaField(description="Humidity in the specified location")
+        condition: str = SchemaField(
+            description="Weather condition in the specified location"
+        )
+        error: str = SchemaField(
+            description="Error message if the weather information cannot be retrieved"
+        )
 
     def __init__(self):
         super().__init__(

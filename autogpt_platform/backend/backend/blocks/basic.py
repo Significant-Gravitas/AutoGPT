@@ -2,10 +2,10 @@ import re
 from typing import Any, List
 
 from jinja2 import BaseLoader, Environment
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
+from backend.data.model import SchemaField as Field
 from backend.util.mock import MockObject
 
 jinja = Environment(loader=BaseLoader())
@@ -30,7 +30,7 @@ class StoreValueBlock(Block):
         )
 
     class Output(BlockSchema):
-        output: Any
+        output: Any = Field(description="The stored data retained in the block.")
 
     def __init__(self):
         super().__init__(
@@ -56,10 +56,10 @@ class StoreValueBlock(Block):
 
 class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
-        text: str
+        text: str = Field(description="The text to print to the console.")
 
     class Output(BlockSchema):
-        status: str
+        status: str = Field(description="The status of the print operation.")
 
     def __init__(self):
         super().__init__(

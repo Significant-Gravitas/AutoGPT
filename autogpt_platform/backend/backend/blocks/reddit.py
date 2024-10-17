@@ -2,10 +2,12 @@ from datetime import datetime, timezone
 from typing import Iterator
 
 import praw
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SecretField
+from backend.data.model import BlockSecret
+from backend.data.model import SchemaField as Field
+from backend.data.model import SecretField
 from backend.util.mock import MockObject
 
 
@@ -146,7 +148,7 @@ class PostRedditCommentBlock(Block):
         data: RedditComment = Field(description="Reddit comment")
 
     class Output(BlockSchema):
-        comment_id: str
+        comment_id: str = Field(description="Posted comment ID")
 
     def __init__(self):
         super().__init__(

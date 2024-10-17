@@ -2,10 +2,11 @@ import asyncio
 
 import aiohttp
 import discord
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SecretField
+from backend.data.model import BlockSecret
+from backend.data.model import SchemaField as Field
+from backend.data.model import SecretField
 
 
 class ReadDiscordMessagesBlock(Block):

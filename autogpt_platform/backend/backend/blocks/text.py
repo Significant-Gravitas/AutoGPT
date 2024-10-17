@@ -2,9 +2,9 @@ import re
 from typing import Any
 
 from jinja2 import BaseLoader, Environment
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField as Field
 from backend.util import json
 
 jinja = Environment(loader=BaseLoader())
@@ -120,7 +120,7 @@ class FillTextTemplateBlock(Block):
         format: str = Field(description="Template to format the text using `values`")
 
     class Output(BlockSchema):
-        output: str
+        output: str = Field(description="Formatted text")
 
     def __init__(self):
         super().__init__(
