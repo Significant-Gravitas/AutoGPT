@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
@@ -15,6 +15,9 @@ from backend.data.block import BlockInput, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
 from backend.data.execution import ExecutionStatus
 from backend.util import json
+
+if TYPE_CHECKING:
+    from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +57,16 @@ class Node(BaseDbModel):
     input_links: list[Link] = []
     output_links: list[Link] = []
 
+    graph_id: str
+    graph_version: int
+
+    webhook_id: Optional[str] = None
+    webhook: Optional["Webhook"] = None
+
     @staticmethod
     def from_db(node: AgentNode):
+        from .integrations import Webhook
+
         if not node.AgentBlock:
             raise ValueError(f"Invalid node {node.id}, invalid AgentBlock.")
         obj = Node(
@@ -63,6 +74,10 @@ class Node(BaseDbModel):
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
             metadata=json.loads(node.metadata),
+            graph_id=node.agentGraphId,
+            graph_version=node.agentGraphVersion,
+            webhook_id=node.webhookId,
+            webhook=Webhook.from_db(node.Webhook) if node.Webhook else None,
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
@@ -103,6 +118,7 @@ class ExecutionMeta(BaseDbModel):
 
 
 class GraphMeta(BaseDbModel):
+    user_id: str
     version: int = 1
     is_active: bool = True
     is_template: bool = False
@@ -122,6 +138,7 @@ class GraphMeta(BaseDbModel):
 
         return GraphMeta(
             id=graph.id,
+            user_id=graph.userId,
             version=graph.version,
             is_active=graph.isActive,
             is_template=graph.isTemplate,
@@ -373,6 +390,7 @@ class Graph(GraphMeta):
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
+    "Webhook": True,
     "AgentBlock": True,
 }
 
@@ -392,6 +410,21 @@ async def get_node(node_id: str) -> Node:
         where={"id": node_id},
         include=AGENT_NODE_INCLUDE,
     )
+    return Node.from_db(node)
+
+
+async def set_node_webhook(node_id: str, webhook_id: str | None) -> Node:
+    node = await AgentNode.prisma().update(
+        where={"id": node_id},
+        data=(
+            {"Webhook": {"connect": {"id": webhook_id}}}
+            if webhook_id
+            else {"Webhook": {"disconnect": True}}
+        ),
+        include=AGENT_NODE_INCLUDE,
+    )
+    if not node:
+        raise ValueError(f"Node #{node_id} not found")
     return Node.from_db(node)
 
 
