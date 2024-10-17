@@ -73,7 +73,8 @@ const mockMenuItemGroups = [
 const mockAgentInfo = {
   name: "Super SEO Optimizer",
   creator: "AI Labs",
-  description: "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
+  description:
+    "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
   rating: 4.9,
   runs: 100000,
   categories: ["SEO", "Marketing", "Content"],
@@ -89,24 +90,30 @@ const mockAgentImages = [
 const mockOtherAgentsByCreator = [
   {
     agentName: "Content Wizard",
-    agentImage: "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-    description: "Generate high-quality, engaging content for your blog, social media, or marketing campaigns.",
+    agentImage:
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+    description:
+      "Generate high-quality, engaging content for your blog, social media, or marketing campaigns.",
     runs: 75000,
     rating: 4.7,
     avatarSrc: "https://example.com/avatar1.jpg",
   },
   {
     agentName: "Data Analyzer Pro",
-    agentImage: "https://ddz4ak4pa3d19.cloudfront.net/cache/07/78/0778415062f8dff56a046a7eca44567c.jpg",
-    description: "Powerful tool for analyzing large datasets and generating insights.",
+    agentImage:
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/07/78/0778415062f8dff56a046a7eca44567c.jpg",
+    description:
+      "Powerful tool for analyzing large datasets and generating insights.",
     runs: 50000,
     rating: 5,
     avatarSrc: "https://github.com/shadcn.png",
   },
   {
     agentName: "AI Copywriter",
-    agentImage: "https://ddz4ak4pa3d19.cloudfront.net/cache/33/bb/33bb7b3c8252b35a0086d893f7a5790c.jpg",
-    description: "AI-powered copywriting assistant for creating compelling marketing copy.",
+    agentImage:
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/14/9e/149ebb9014aa8c0097e72ed89845af0e.jpg",
+    description:
+      "AI-powered copywriting assistant for creating compelling marketing copy.",
     runs: 62000,
     rating: 4.8,
     avatarSrc: "https://example.com/avatar4.jpg",
@@ -116,24 +123,30 @@ const mockOtherAgentsByCreator = [
 const mockSimilarAgents = [
   {
     agentName: "SEO Master",
-    agentImage: "https://ddz4ak4pa3d19.cloudfront.net/cache/59/b9/59b9415d4044f48f9b9e318c4c5a7984.jpg",
-    description: "Comprehensive SEO tool for website optimization and ranking improvement.",
+    agentImage:
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/59/b9/59b9415d4044f48f9b9e318c4c5a7984.jpg",
+    description:
+      "Comprehensive SEO tool for website optimization and ranking improvement.",
     runs: 80000,
     rating: 4.8,
     avatarSrc: "https://example.com/avatar2.jpg",
   },
   {
     agentName: "Keyword Genius",
-    agentImage: "https://ddz4ak4pa3d19.cloudfront.net/cache/11/47/114784105a9b180e08e117cbf2612e5b.jpg",
-    description: "Advanced keyword research and analysis tool for SEO professionals.",
+    agentImage:
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/11/47/114784105a9b180e08e117cbf2612e5b.jpg",
+    description:
+      "Advanced keyword research and analysis tool for SEO professionals.",
     runs: 60000,
     rating: 4.6,
     avatarSrc: "https://example.com/avatar3.jpg",
   },
   {
     agentName: "Backlink Builder",
-    agentImage: "https://ddz4ak4pa3d19.cloudfront.net/cache/22/cc/22cc7136d7eac435657b316bb16b7e89.jpg",
-    description: "Automated tool for building high-quality backlinks to improve SEO performance.",
+    agentImage:
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/14/9e/149ebb9014aa8c0097e72ed89845af0e.jpg",
+    description:
+      "Automated tool for building high-quality backlinks to improve SEO performance.",
     runs: 55000,
     rating: 4.7,
     avatarSrc: "https://example.com/avatar5.jpg",

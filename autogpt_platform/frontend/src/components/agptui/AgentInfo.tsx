@@ -45,11 +45,11 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   };
 
   return (
-    <div className="flow-root w-[27.5rem]">
-      <div className="font-['PP Neue Montreal TT'] mb-4 text-5xl font-medium leading-9 tracking-wide text-[#272727]">
+    <div className="flow-root w-full lg:w-[27.5rem]">
+      <div className="mb-2 font-neue text-3xl font-medium tracking-wide text-[#272727] md:mb-4 md:text-4xl lg:text-5xl">
         {name}
       </div>
-      <div className="font-['PP Neue Montreal TT'] mb-4 text-[1.1875rem] font-medium leading-9 tracking-tight text-[#878787]">
+      <div className="mb-2 font-neue text-lg font-medium leading-9 tracking-tight text-[#878787] md:mb-4 md:text-xl lg:text-2xl">
         by{" "}
         <Link
           href={`/creator/${creator.replace(/\s+/g, "-")}`}
@@ -64,7 +64,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       <div className="font-['PP Neue Montreal TT'] mb-6 text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#282828]">
         {description}
       </div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 mr-6 flex items-center justify-between">
         <div className="flex items-center">
           <div className="font-['PP Neue Montreal TT'] mr-2 text-xl font-normal tracking-tight text-[#272727]">
             {rating.toFixed(1)}
@@ -72,16 +72,16 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           <div className="flex items-center gap-px">{renderStars(rating)}</div>
         </div>
         <div>
-          <span className="font-['PP Neue Montreal TT'] text-xl font-medium tracking-tight text-[#272727]">
+          <span className="font-neue text-xl font-medium tracking-tight text-[#272727]">
             {runs.toLocaleString()}+
           </span>
-          <span className="font-['PP Neue Montreal TT'] text-xl font-normal tracking-tight text-[#272727]">
+          <span className="font-neue text-xl font-normal tracking-tight text-[#272727]">
             {" "}
             runs
           </span>
         </div>
       </div>
-      <div className="font-['PP Neue Montreal TT'] mb-3 text-lg font-medium leading-9 tracking-tight text-[#282828]">
+      <div className="mb-3 font-neue text-lg font-medium leading-9 tracking-tight text-[#282828]">
         Categories
       </div>
       <div className="mb-6 flex flex-wrap gap-2.5">
@@ -90,19 +90,19 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
             key={index}
             className="flex items-center rounded-[2.125rem] border border-black/50 px-4 py-1.5"
           >
-            <div className="font-['PP Neue Montreal TT'] text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
+            <div className="font-neue text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
               {category}
             </div>
           </div>
         ))}
       </div>
-      <div className="font-['PP Neue Montreal TT'] mb-3 text-lg font-medium leading-9 tracking-tight text-[#282828]">
+      <div className="mb-3 font-neue text-lg font-medium leading-9 tracking-tight text-[#282828]">
         Version history
       </div>
-      <div className="font-['PP Neue Montreal TT'] mb-2 text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
+      <div className="mb-2 font-neue text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
         Last updated {lastUpdated}
       </div>
-      <div className="font-['PP Neue Montreal TT'] text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
+      <div className="font-neue text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#474747]">
         Version {version}
       </div>
     </div>

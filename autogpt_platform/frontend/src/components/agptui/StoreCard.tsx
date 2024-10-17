@@ -66,7 +66,9 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       <div className="-mt-8 flex flex-col px-4">
         <Avatar className="mb-2 h-16 w-16">
           <AvatarImage src={avatarSrc} alt={agentName} />
-          <AvatarFallback className='h-16 w-16'>{agentName.charAt(0)}</AvatarFallback>
+          <AvatarFallback className="h-16 w-16">
+            {agentName.charAt(0)}
+          </AvatarFallback>
         </Avatar>
         <div className="mb-1 font-neue text-xl font-bold tracking-tight text-[#272727]">
           {agentName}
