@@ -19,6 +19,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import Credential
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
+from backend.integrations.providers import ProviderName
 from backend.util import json
 
 from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
@@ -183,6 +184,13 @@ class EmptySchema(BlockSchema):
     pass
 
 
+class BlockWebhookConfig(BaseModel):
+    provider: ProviderName
+    webhook_type: str
+    resource_format: str
+    event_filter_input: str
+
+
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
         self,
@@ -199,6 +207,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         disabled: bool = False,
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
+        webhook_config: Optional[BlockWebhookConfig] = None,
     ):
         """
         Initialize the block with the given schema.
@@ -230,6 +239,24 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.disabled = disabled
         self.static_output = static_output
         self.block_type = block_type
+        self.webhook_config = webhook_config
+
+        # Enforce shape of webhook event filter
+        if self.webhook_config:
+            event_filter_field = self.input_schema.model_fields[
+                self.webhook_config.event_filter_input
+            ]
+            if not (
+                isinstance(event_filter_field.annotation, BaseModel)
+                and all(
+                    field.annotation is bool
+                    for field in event_filter_field.annotation.model_fields.values()
+                )
+            ):
+                raise NotImplementedError(
+                    f"{self.name} has an invalid webhook event selector: "
+                    "field must be a BaseModel and all its fields must be boolean"
+                )
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
@@ -277,23 +304,6 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             if error := self.output_schema.validate_field(output_name, output_data):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
-
-    def on_node_update(
-        self,
-        new_preset_inputs: BlockInput,
-        old_preset_inputs: Optional[BlockInput] = None,
-        *,
-        new_credentials: Optional[Credentials] = None,
-        old_credentials: Optional[Credentials] = None,
-    ) -> None:
-        """Hook to be called when the preset inputs change or the block is created"""
-        pass
-
-    def on_node_delete(
-        self, preset_inputs: BlockInput, *, credentials: Optional[Credentials] = None
-    ) -> None:
-        """Hook to be called when the block is deleted"""
-        pass
 
 
 # ======================= Block Helper Functions ======================= #

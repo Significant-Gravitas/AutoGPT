@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
@@ -14,11 +14,10 @@ from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockInput, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
 from backend.data.execution import ExecutionStatus
-from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.util import json
 
 if TYPE_CHECKING:
-    from autogpt_libs.supabase_integration_credentials_store.types import Credentials
+    from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +57,13 @@ class Node(BaseDbModel):
     input_links: list[Link] = []
     output_links: list[Link] = []
 
+    webhook_id: Optional[str] = None
+    webhook: Optional["Webhook"] = None
+
     @staticmethod
     def from_db(node: AgentNode):
+        from .integrations import Webhook
+
         if not node.AgentBlock:
             raise ValueError(f"Invalid node {node.id}, invalid AgentBlock.")
         obj = Node(
@@ -67,6 +71,8 @@ class Node(BaseDbModel):
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
             metadata=json.loads(node.metadata),
+            webhook_id=node.webhookId,
+            webhook=Webhook.from_db(node.Webhook) if node.Webhook else None,
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
@@ -107,6 +113,7 @@ class ExecutionMeta(BaseDbModel):
 
 
 class GraphMeta(BaseDbModel):
+    user_id: str
     version: int = 1
     is_active: bool = True
     is_template: bool = False
@@ -126,6 +133,7 @@ class GraphMeta(BaseDbModel):
 
         return GraphMeta(
             id=graph.id,
+            user_id=graph.userId,
             version=graph.version,
             is_active=graph.isActive,
             is_template=graph.isTemplate,
@@ -286,98 +294,6 @@ class Graph(GraphMeta):
 
             # TODO: Add type compatibility check here.
 
-    def on_update(
-        self,
-        previous_graph_version: Optional["Graph"] = None,
-        *,
-        get_credentials: Callable[[str], Credentials | None],
-    ):
-        """
-        Hook for graph creation/updation.
-
-        Compares nodes and their preset inputs with a previous graph version, and calls
-        the `on_node_update` and `on_node_delete` hooks of the corresponding blocks
-        where applicable.
-
-        Params:
-            previous_graph_version: The previous graph version to compare to
-            get_credentials: `credentials_id` -> Credentials
-        """
-        # Compare nodes in new_graph_version with previous_graph_version
-        for new_node in self.nodes:
-            if not (block := get_block(new_node.block_id)):
-                raise ValueError(f"Block #{new_node.block_id} not found")
-
-            new_credentials = None
-            if creds_meta := getattr(new_node.input_default, CREDENTIALS_FIELD_NAME):
-                new_credentials = get_credentials(creds_meta["id"])
-                if not new_credentials:
-                    raise ValueError(
-                        f"Node #{new_node.id} updated with non-existent "
-                        f"credentials #{new_credentials}"
-                    )
-
-            if previous_graph_version and (
-                old_node := next(
-                    (
-                        node
-                        for node in previous_graph_version.nodes
-                        if node.id == new_node.id
-                    ),
-                    None,
-                )
-            ):
-                old_credentials = None
-                if creds_meta := getattr(
-                    old_node.input_default, CREDENTIALS_FIELD_NAME
-                ):
-                    old_credentials = get_credentials(creds_meta["id"])
-                    if not old_credentials:
-                        logger.error(
-                            f"Node #{old_node.id} referenced non-existent "
-                            f"credentials #{creds_meta['id']}"
-                        )
-
-                if new_node.input_default != old_node.input_default:
-                    # Input default has changed, call on_node_update
-                    block.on_node_update(
-                        new_node.input_default,
-                        old_node.input_default,
-                        new_credentials=new_credentials,
-                        old_credentials=old_credentials,
-                    )
-            else:
-                # New node added, call on_node_update with only new inputs
-                block.on_node_update(
-                    new_node.input_default, new_credentials=new_credentials
-                )
-
-        if previous_graph_version:
-            # Check for deleted nodes
-            for old_node in previous_graph_version.nodes:
-                if not any(node.id == old_node.id for node in self.nodes):
-                    # Node was deleted, call on_node_delete
-                    if block := get_block(old_node.block_id):
-                        credentials = None
-                        if creds_meta := getattr(
-                            old_node.input_default, CREDENTIALS_FIELD_NAME
-                        ):
-                            credentials = get_credentials(creds_meta["id"])
-                            if not credentials:
-                                logger.error(
-                                    f"Node #{old_node.id} referenced non-existent "
-                                    f"credentials #{creds_meta['id']}"
-                                )
-                        block.on_node_delete(
-                            preset_inputs=old_node.input_default,
-                            credentials=credentials,
-                        )
-                    else:
-                        logger.warning(
-                            f"Can not handle node #{old_node.id} deletion: "
-                            f"block #{old_node.block_id} not found"
-                        )
-
     def get_input_schema(self) -> list[InputSchemaItem]:
         """
         Walks the graph and returns all the inputs that are either not:
@@ -469,6 +385,7 @@ class Graph(GraphMeta):
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
+    "Webhook": True,
     "AgentBlock": True,
 }
 
@@ -488,6 +405,21 @@ async def get_node(node_id: str) -> Node:
         where={"id": node_id},
         include=AGENT_NODE_INCLUDE,
     )
+    return Node.from_db(node)
+
+
+async def set_node_webhook(node_id: str, webhook_id: str | None) -> Node:
+    node = await AgentNode.prisma().update(
+        where={"id": node_id},
+        data=(
+            {"Webhook": {"connect": {"id": webhook_id}}}
+            if webhook_id
+            else {"Webhook": {"disconnect": True}}
+        ),
+        include=AGENT_NODE_INCLUDE,
+    )
+    if not node:
+        raise ValueError(f"Node #{node_id} not found")
     return Node.from_db(node)
 
 

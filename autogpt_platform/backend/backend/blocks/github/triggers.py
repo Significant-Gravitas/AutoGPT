@@ -1,22 +1,19 @@
 import logging
-from typing import Optional
 
-import requests
 from pydantic import BaseModel
 
 from backend.data.block import (
     Block,
     BlockCategory,
-    BlockInput,
     BlockOutput,
     BlockSchema,
+    BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
 
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
-    GithubCredentials,
     GithubCredentialsField,
     GithubCredentialsInput,
 )
@@ -47,76 +44,6 @@ class GitHubBaseTriggerBlock(Block):
         yield "event", input_data.payload["action"]
         yield "payload", input_data.payload
         yield "sender", input_data.payload["sender"]
-
-    @classmethod
-    def create_webhook(
-        cls, credentials: GithubCredentials, repo: str, events: list[str]
-    ):
-        # TODO: Create webhook in DB
-
-        # Create webhook on GitHub
-        api_url = f"https://api.github.com/repos/{repo}/hooks"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-        payload = {
-            "name": "web",
-            "active": True,
-            "events": events,
-            "config": {
-                "url": "YOUR_WEBHOOK_URL",  # Replace with actual webhook URL
-                "content_type": "json",
-                "insecure_ssl": "0",
-            },
-        }
-        response = requests.post(api_url, headers=headers, json=payload)
-        response.raise_for_status()
-
-    @classmethod
-    def update_webhook(
-        cls,
-        credentials: GithubCredentials,
-        repo: str,
-        events: list[str],
-        webhook_id: str,
-    ):
-        # TODO: Update webhook in DB
-
-        # Update webhook on GitHub
-        api_url = f"https://api.github.com/repos/{repo}/hooks/{webhook_id}"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-        payload = {
-            "active": True,
-            "events": events,
-            "config": {
-                "url": "YOUR_WEBHOOK_URL",  # Replace with actual webhook URL
-                "content_type": "json",
-                "insecure_ssl": "0",
-            },
-        }
-        response = requests.patch(api_url, headers=headers, json=payload)
-        response.raise_for_status()
-
-    @classmethod
-    def delete_webhook(cls, webhook_id: str):
-        # TODO: Delete webhook from DB
-        pass
-
-    @classmethod
-    def deregister_webhook(
-        cls, credentials: GithubCredentials, repo: str, github_webhook_id: str
-    ):
-        api_url = f"https://api.github.com/repos/{repo}/hooks/{github_webhook_id}"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-        response = requests.delete(api_url, headers=headers)
-        response.raise_for_status()
 
 
 class GithubPullRequestTriggerBlock(GitHubBaseTriggerBlock):
@@ -157,12 +84,21 @@ class GithubPullRequestTriggerBlock(GitHubBaseTriggerBlock):
         )
 
     def __init__(self):
+        from backend.integrations.providers import ProviderName
+        from backend.integrations.webhooks.github import GithubWebhookType
+
         super().__init__(
             id="6c60ec01-8128-419e-988f-96a063ee2fea",
             description="This block triggers on pull request events and outputs the event type and payload.",
             categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.INPUT},
             input_schema=GithubPullRequestTriggerBlock.Input,
             output_schema=GithubPullRequestTriggerBlock.Output,
+            webhook_config=BlockWebhookConfig(
+                provider=ProviderName.GITHUB,
+                webhook_type=GithubWebhookType.REPO,
+                resource_format="{repo}",
+                event_filter_input="events",
+            ),
             test_input={
                 "repo": "owner/repo",
                 "events": {"opened": True, "synchronize": True},
@@ -193,89 +129,3 @@ class GithubPullRequestTriggerBlock(GitHubBaseTriggerBlock):
         super().run(input_data, **kwargs)
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]
-
-    def on_node_update(
-        self,
-        new_preset_inputs: BlockInput,
-        old_preset_inputs: Optional[BlockInput] = None,
-        *,
-        new_credentials: Optional[GithubCredentials] = None,
-        old_credentials: Optional[GithubCredentials] = None,
-    ) -> None:
-        old_has_all = old_preset_inputs and all(
-            key in old_preset_inputs for key in ["credentials", "repo", "events"]
-        )
-        new_has_all = all(
-            key in new_preset_inputs for key in ["credentials", "repo", "events"]
-        )
-
-        if new_has_all and new_credentials and old_preset_inputs and old_has_all:
-            # Input was and is complete -> update webhook to new config
-
-            # TODO: Get webhook_id from DB
-            webhook_id = "WEBHOOK_ID"  # FIXME: Replace with actual webhook ID
-            github_webhook_id = "GITHUB_WEBHOOK_ID"  # FIXME
-
-            if new_credentials != old_credentials:
-                # Credentials were replaced -> recreate webhook with new credentials
-                if old_credentials:
-                    self.deregister_webhook(
-                        old_credentials,
-                        old_preset_inputs["repo"],
-                        github_webhook_id,
-                    )
-                else:
-                    logger.warning(
-                        f"Cannot deregister webhook #{webhook_id} with unavailable "
-                        f"credentials #{old_preset_inputs['credentials']['id']} "
-                        f"(GitHub webhook ID: {github_webhook_id})"
-                    )
-                self.delete_webhook(webhook_id)
-                self.create_webhook(
-                    new_credentials,
-                    new_preset_inputs["repo"],
-                    new_preset_inputs["events"],
-                )
-            else:
-                self.update_webhook(
-                    new_credentials,
-                    new_preset_inputs["repo"],
-                    new_preset_inputs["events"],
-                    webhook_id,
-                )
-        elif new_has_all and new_credentials and not old_has_all:
-            # Input was incomplete -> create new webhook
-            self.create_webhook(
-                new_credentials,
-                new_preset_inputs["repo"],
-                new_preset_inputs["events"],
-            )
-        elif not new_has_all and old_preset_inputs and old_has_all:
-            # Input has become incomplete -> delete webhook
-            self.on_node_delete(old_preset_inputs, credentials=old_credentials)
-
-    def on_node_delete(
-        self,
-        preset_inputs: BlockInput,
-        *,
-        credentials: Optional[GithubCredentials] = None,
-    ) -> None:
-        # TODO: Get webhook_id from DB
-        webhook_id = "WEBHOOK_ID"  # FIXME: Replace with actual webhook ID
-        github_webhook_id = "GITHUB_WEBHOOK_ID"  # FIXME
-
-        if all(key in preset_inputs for key in ["credentials", "repo", "events"]):
-            if credentials:
-                self.deregister_webhook(
-                    credentials,
-                    preset_inputs["repo"],
-                    github_webhook_id,
-                )
-            else:
-                logger.warning(
-                    f"Cannot deregister webhook #{webhook_id} with "
-                    f"unavailable credentials #{preset_inputs['credentials']['id']} "
-                    f"(GitHub webhook ID: {github_webhook_id})"
-                )
-
-            self.delete_webhook(webhook_id)
