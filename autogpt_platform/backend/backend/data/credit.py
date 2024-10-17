@@ -17,6 +17,7 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.data.block import Block, BlockInput, get_block
 from backend.util.settings import Config
@@ -73,6 +74,10 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AITextSummarizerBlock: llm_cost,
     CreateTalkingAvatarVideoBlock: [
         BlockCost(cost_amount=15, cost_filter={"api_key": None})
+    ],
+    SearchTheWebBlock: [BlockCost(cost_amount=1)],
+    ExtractWebsiteContentBlock: [
+        BlockCost(cost_amount=1, cost_filter={"raw_content": False})
     ],
 }
 
