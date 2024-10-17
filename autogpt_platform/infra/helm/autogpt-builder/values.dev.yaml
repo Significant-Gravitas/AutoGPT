@@ -67,3 +67,4 @@ env:
   NEXT_PUBLIC_AUTH_CALLBACK_URL: "https://dev-server.agpt.co/auth/callback"
   NEXT_PUBLIC_AGPT_WS_SERVER_URL: "wss://dev-ws-server.agpt.co/ws"
   NEXT_PUBLIC_AGPT_MARKETPLACE_URL: "https://dev-market.agpt.co/api/v1/market"
+  NEXT_PUBLIC_BEHAVE_AS: "CLOUD"
