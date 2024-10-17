@@ -669,9 +669,7 @@ class ExecutionManager(AppService):
             SupabaseIntegrationCredentialsStore,
         )
 
-        self.credentials_store = SupabaseIntegrationCredentialsStore(
-            self.supabase, redis.get_redis()
-        )
+        self.credentials_store = SupabaseIntegrationCredentialsStore(redis.get_redis())
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
@@ -714,7 +712,7 @@ class ExecutionManager(AppService):
             raise Exception(f"Graph #{graph_id} not found.")
 
         graph.validate_graph(for_run=True)
-        self._validate_node_input_credentials(graph, user_id)
+        self.run_and_wait(self._validate_node_input_credentials(graph, user_id))
 
         nodes_input = []
         for node in graph.starting_nodes:
@@ -808,7 +806,7 @@ class ExecutionManager(AppService):
                 )
                 self.db_client.send_execution_update(exec_update.model_dump())
 
-    def _validate_node_input_credentials(self, graph: Graph, user_id: str):
+    async def _validate_node_input_credentials(self, graph: Graph, user_id: str):
         """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:
@@ -830,7 +828,7 @@ class ExecutionManager(AppService):
                 node.input_default[CREDENTIALS_FIELD_NAME]
             )
             # Fetch the corresponding Credentials and perform sanity checks
-            credentials = self.credentials_store.get_creds_by_id(
+            credentials = await self.credentials_store.get_creds_by_id(
                 user_id, credentials_meta.id
             )
             if not credentials:

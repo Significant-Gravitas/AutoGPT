@@ -19,6 +19,7 @@ from ..utils import get_user_id
 logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
+
 creds_manager = IntegrationCredentialsManager()
 
 
@@ -99,7 +100,7 @@ async def callback(
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
-    creds_manager.create(user_id, credentials)
+    await creds_manager.create(user_id, credentials)
 
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} and provider {provider}"
@@ -118,7 +119,7 @@ async def list_credentials(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    credentials = creds_manager.store.get_creds_by_provider(user_id, provider)
+    credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -137,7 +138,7 @@ async def get_credential(
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> Credentials:
-    credential = creds_manager.get(user_id, cred_id)
+    credential = await creds_manager.get(user_id, cred_id)
     if not credential:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if credential.provider != provider:
@@ -165,7 +166,7 @@ async def create_api_key_credentials(
     )
 
     try:
-        creds_manager.create(user_id, new_credentials)
+        await creds_manager.create(user_id, new_credentials)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
@@ -189,7 +190,7 @@ async def delete_credentials(
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> CredentialsDeletionResponse:
-    creds = creds_manager.store.get_creds_by_id(user_id, cred_id)
+    creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if creds.provider != provider:
@@ -197,7 +198,7 @@ async def delete_credentials(
             status_code=404, detail="Credentials do not match the specified provider"
         )
 
-    creds_manager.delete(user_id, cred_id)
+    await creds_manager.delete(user_id, cred_id)
 
     tokens_revoked = None
     if isinstance(creds, OAuth2Credentials):
