@@ -3,18 +3,20 @@ from datetime import datetime, timedelta
 from typing import Any, Union
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField as Field
+from backend.data.model import SchemaField
 
 
 class GetCurrentTimeBlock(Block):
     class Input(BlockSchema):
-        trigger: str = Field(description="Trigger any data to output the current time")
-        format: str = Field(
+        trigger: str = SchemaField(
+            description="Trigger any data to output the current time"
+        )
+        format: str = SchemaField(
             description="Format of the time to output", default="%H:%M:%S"
         )
 
     class Output(BlockSchema):
-        time: str = Field(
+        time: str = SchemaField(
             description="Current time in the specified format (default: %H:%M:%S)"
         )
 
@@ -42,18 +44,20 @@ class GetCurrentTimeBlock(Block):
 
 class GetCurrentDateBlock(Block):
     class Input(BlockSchema):
-        trigger: str = Field(description="Trigger any data to output the current date")
-        offset: Union[int, str] = Field(
+        trigger: str = SchemaField(
+            description="Trigger any data to output the current date"
+        )
+        offset: Union[int, str] = SchemaField(
             title="Days Offset",
             description="Offset in days from the current date",
             default=0,
         )
-        format: str = Field(
+        format: str = SchemaField(
             description="Format of the date to output", default="%Y-%m-%d"
         )
 
     class Output(BlockSchema):
-        date: str = Field(
+        date: str = SchemaField(
             description="Current date in the specified format (default: YYYY-MM-DD)"
         )
 
@@ -94,16 +98,16 @@ class GetCurrentDateBlock(Block):
 
 class GetCurrentDateAndTimeBlock(Block):
     class Input(BlockSchema):
-        trigger: str = Field(
+        trigger: str = SchemaField(
             description="Trigger any data to output the current date and time"
         )
-        format: str = Field(
+        format: str = SchemaField(
             description="Format of the date and time to output",
             default="%Y-%m-%d %H:%M:%S",
         )
 
     class Output(BlockSchema):
-        date_time: str = Field(
+        date_time: str = SchemaField(
             description="Current date and time in the specified format (default: YYYY-MM-DD HH:MM:SS)"
         )
 
@@ -135,17 +139,23 @@ class GetCurrentDateAndTimeBlock(Block):
 
 class CountdownTimerBlock(Block):
     class Input(BlockSchema):
-        input_message: Any = Field(
+        input_message: Any = SchemaField(
             description="Message to output after the timer finishes",
             default="timer finished",
         )
-        seconds: Union[int, str] = Field(description="Duration in seconds", default=0)
-        minutes: Union[int, str] = Field(description="Duration in minutes", default=0)
-        hours: Union[int, str] = Field(description="Duration in hours", default=0)
-        days: Union[int, str] = Field(description="Duration in days", default=0)
+        seconds: Union[int, str] = SchemaField(
+            description="Duration in seconds", default=0
+        )
+        minutes: Union[int, str] = SchemaField(
+            description="Duration in minutes", default=0
+        )
+        hours: Union[int, str] = SchemaField(description="Duration in hours", default=0)
+        days: Union[int, str] = SchemaField(description="Duration in days", default=0)
 
     class Output(BlockSchema):
-        output_message: str = Field(description="Message after the timer finishes")
+        output_message: str = SchemaField(
+            description="Message after the timer finishes"
+        )
 
     def __init__(self):
         super().__init__(

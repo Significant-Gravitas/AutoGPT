@@ -5,9 +5,7 @@ import praw
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret
-from backend.data.model import SchemaField as Field
-from backend.data.model import SecretField
+from backend.data.model import BlockSecret, SchemaField, SecretField
 from backend.util.mock import MockObject
 
 
@@ -50,25 +48,25 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 class GetRedditPostsBlock(Block):
     class Input(BlockSchema):
-        subreddit: str = Field(description="Subreddit name")
-        creds: RedditCredentials = Field(
+        subreddit: str = SchemaField(description="Subreddit name")
+        creds: RedditCredentials = SchemaField(
             description="Reddit credentials",
             default=RedditCredentials(),
         )
-        last_minutes: int | None = Field(
+        last_minutes: int | None = SchemaField(
             description="Post time to stop minutes ago while fetching posts",
             default=None,
         )
-        last_post: str | None = Field(
+        last_post: str | None = SchemaField(
             description="Post ID to stop when reached while fetching posts",
             default=None,
         )
-        post_limit: int | None = Field(
+        post_limit: int | None = SchemaField(
             description="Number of posts to fetch", default=10
         )
 
     class Output(BlockSchema):
-        post: RedditPost = Field(description="Reddit post")
+        post: RedditPost = SchemaField(description="Reddit post")
 
     def __init__(self):
         super().__init__(
@@ -142,13 +140,13 @@ class GetRedditPostsBlock(Block):
 
 class PostRedditCommentBlock(Block):
     class Input(BlockSchema):
-        creds: RedditCredentials = Field(
+        creds: RedditCredentials = SchemaField(
             description="Reddit credentials", default=RedditCredentials()
         )
-        data: RedditComment = Field(description="Reddit comment")
+        data: RedditComment = SchemaField(description="Reddit comment")
 
     class Output(BlockSchema):
-        comment_id: str = Field(description="Posted comment ID")
+        comment_id: str = SchemaField(description="Posted comment ID")
 
     def __init__(self):
         super().__init__(
