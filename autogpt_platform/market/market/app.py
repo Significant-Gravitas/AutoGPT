@@ -49,7 +49,8 @@ async def lifespan(app: fastapi.FastAPI):
     yield
     await db_client.disconnect()
 
-docs_url = "/docs" if os.environ.get("APP_ENV") == "local" else None
+
+docs_url = "/docs"
 app = fastapi.FastAPI(
     title="Marketplace API",
     description="AutoGPT Marketplace API is a service that allows users to share AI agents.",
