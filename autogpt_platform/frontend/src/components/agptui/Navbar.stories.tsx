@@ -1,64 +1,99 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Navbar } from "./Navbar";
 import { userEvent, within } from "@storybook/test";
+import { IconType } from "../ui/icons";
 
 const meta = {
   title: "AGPTUI/Navbar",
   component: Navbar,
   parameters: {
-    layout: "centered",
+    layout: "fullscreen",
   },
   tags: ["autodocs"],
   argTypes: {
     userName: { control: "text" },
     links: { control: "object" },
     activeLink: { control: "text" },
-    onProfileClick: { action: "profileClicked" },
+    avatarSrc: { control: "text" },
+    userEmail: { control: "text" },
+    menuItemGroups: { control: "object" },
   },
 } satisfies Meta<typeof Navbar>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const defaultMenuItemGroups = [
+  {
+    items: [
+      { icon: IconType.Edit, text: "Edit profile", href: "/profile/edit" },
+    ],
+  },
+  {
+    items: [
+      {
+        icon: IconType.LayoutDashboard,
+        text: "Creator Dashboard",
+        href: "/dashboard",
+      },
+      {
+        icon: IconType.UploadCloud,
+        text: "Publish an agent",
+        href: "/publish",
+      },
+    ],
+  },
+  {
+    items: [{ icon: IconType.Settings, text: "Settings", href: "/settings" }],
+  },
+  {
+    items: [
+      {
+        icon: IconType.LogOut,
+        text: "Log out",
+        onClick: () => console.log("Logged out"),
+      },
+    ],
+  },
+];
+
+const defaultLinks = [
+  { name: "Marketplace", href: "/marketplace" },
+  { name: "Library", href: "/library" },
+  { name: "Build", href: "/builder" },
+];
+
 export const Default: Story = {
   args: {
     userName: "John Doe",
-    links: [
-      { name: "Marketplace", href: "/" },
-      { name: "Library", href: "/agents" },
-      { name: "Build", href: "/tasks" },
-    ],
-    activeLink: "/",
-    onProfileClick: () => console.log("Profile clicked"),
+    links: defaultLinks,
+    activeLink: "/marketplace",
+    avatarSrc: "https://avatars.githubusercontent.com/u/123456789?v=4",
+    userEmail: "john.doe@example.com",
+    menuItemGroups: defaultMenuItemGroups,
   },
 };
 
 export const WithActiveLink: Story = {
   args: {
     ...Default.args,
-    activeLink: "/agents",
+    activeLink: "/library",
   },
 };
 
 export const LongUserName: Story = {
   args: {
     ...Default.args,
-    userName: "John Doe with a Very Long Name",
+    userName: "Alexander Bartholomew Christopherson III",
+    userEmail: "alexander@example.com",
+    avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
   },
 };
 
-export const ManyLinks: Story = {
+export const NoAvatar: Story = {
   args: {
-    userName: "Jane Smith",
-    links: [
-      { name: "Home", href: "/" },
-      { name: "Agents", href: "/agents" },
-      { name: "Tasks", href: "/tasks" },
-      { name: "Analytics", href: "/analytics" },
-      { name: "Settings", href: "/settings" },
-    ],
-    activeLink: "/analytics",
-    onProfileClick: () => console.log("Profile clicked"),
+    ...Default.args,
+    avatarSrc: undefined,
   },
 };
 
@@ -68,8 +103,11 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const profileElement = canvas.getByText("John Doe");
+    const profileTrigger = canvas.getByRole("button");
 
-    await userEvent.click(profileElement);
+    await userEvent.click(profileTrigger);
+
+    // Wait for the popover to appear
+    await canvas.findByText("Edit profile");
   },
 };
