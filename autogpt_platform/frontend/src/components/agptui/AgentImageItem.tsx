@@ -62,6 +62,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
                 src={`https://www.youtube.com/embed/${getYouTubeVideoId(image)}`}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
+                title="YouTube video player"
               ></iframe>
             ) : (
               <div className="relative h-full w-full overflow-hidden">
@@ -75,6 +76,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
                   onPlay={() => handlePlay(index)}
                   onPause={() => handlePause(index)}
                   autoPlay={false}
+                  title="Video"
                 >
                   <source src={image} type="video/mp4" />
                   Your browser does not support the video tag.

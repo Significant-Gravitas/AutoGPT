@@ -53,6 +53,7 @@
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.5",
     "embla-carousel-react": "^8.3.0",
+    "framer-motion": "^11.11.9",
     "lucide-react": "^0.407.0",
     "moment": "^2.30.1",
     "next": "^14.2.13",
@@ -73,6 +74,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.47.1",
+    "@storybook/addon-a11y": "^8.3.5",
     "@storybook/addon-essentials": "^8.3.5",
     "@storybook/addon-interactions": "^8.3.5",
     "@storybook/addon-links": "^8.3.5",
@@ -86,6 +88,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/react-modal": "^3.16.3",
+    "axe-playwright": "^2.0.3",
     "chromatic": "^11.12.5",
     "concurrently": "^9.0.1",
     "eslint": "^8",
