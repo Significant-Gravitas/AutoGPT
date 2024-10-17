@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 from urllib.parse import quote
 
 import requests
@@ -9,8 +9,8 @@ from backend.data.model import BlockSecret, SchemaField, SecretField
 
 class GetRequest:
     @classmethod
-    def get_request(cls, url: str, json=False) -> Any:
-        response = requests.get(url)
+    def get_request(cls, url: str, json=False, headers: Dict[str, str] = None) -> Any:
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.json() if json else response.text
 
@@ -163,3 +163,59 @@ class GetWeatherInformationBlock(Block, GetRequest):
             yield "condition", weather_data["weather"][0]["description"]
         else:
             raise RuntimeError(f"Expected keys not found in response: {weather_data}")
+
+
+class FactCheckerBlock(Block, GetRequest):
+    class Input(BlockSchema):
+        statement: str
+        api_key: BlockSecret = SecretField(key="jina_api_key")
+
+    class Output(BlockSchema):
+        factuality: float
+        result: bool
+        reason: str
+        error: str
+
+    def __init__(self):
+        super().__init__(
+            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            description="This block checks the factuality of a given statement using Jina AI's Grounding API.",
+            categories={BlockCategory.SEARCH},
+            input_schema=FactCheckerBlock.Input,
+            output_schema=FactCheckerBlock.Output,
+            test_input={"statement": "Jina AI was founded in 2020 in Berlin."},
+            test_output=[
+                ("factuality", 0.95),
+                ("result", True),
+                ("reason", "The statement is supported by multiple sources."),
+            ],
+            test_mock={
+                "get_request": lambda url, json, headers: {
+                    "data": {
+                        "factuality": 0.95,
+                        "result": True,
+                        "reason": "The statement is supported by multiple sources.",
+                    }
+                }
+            },
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        api_key = input_data.api_key.get_secret_value()
+        encoded_statement = quote(input_data.statement)
+        url = f"https://g.jina.ai/{encoded_statement}"
+        
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        response = self.get_request(url, json=True, headers=headers)
+        
+        if "data" in response:
+            data = response["data"]
+            yield "factuality", data["factuality"]
+            yield "result", data["result"]
+            yield "reason", data["reason"]
+        else:
+            raise RuntimeError(f"Expected 'data' key not found in response: {response}")
