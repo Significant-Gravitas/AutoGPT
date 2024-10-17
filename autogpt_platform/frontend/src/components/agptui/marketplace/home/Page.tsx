@@ -9,6 +9,7 @@ import { Separator } from "../../../ui/separator";
 import { IconType } from "../../../ui/icons";
 interface PageProps {
   userName: string;
+  userEmail: string;
   navLinks: { name: string; href: string }[];
   activeLink: string;
   featuredAgents: {
@@ -47,6 +48,7 @@ interface PageProps {
 
 export const Page: React.FC<PageProps> = ({
   userName,
+  userEmail,
   navLinks,
   activeLink,
   featuredAgents,
@@ -83,6 +85,7 @@ export const Page: React.FC<PageProps> = ({
     <div className="mx-auto w-screen max-w-[1360px]">
       <Navbar
         userName={userName}
+        userEmail={userEmail}
         links={navLinks}
         activeLink={activeLink}
         menuItemGroups={menuItemGroups}

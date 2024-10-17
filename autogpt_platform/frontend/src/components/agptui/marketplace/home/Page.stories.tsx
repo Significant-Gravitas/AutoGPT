@@ -238,6 +238,7 @@ const mockFeaturedCreators = [
 export const Default: Story = {
   args: {
     userName: "John Doe",
+    userEmail: "john.doe@example.com",
     navLinks: mockNavLinks,
     activeLink: "/",
     featuredAgents: mockFeaturedAgents,
