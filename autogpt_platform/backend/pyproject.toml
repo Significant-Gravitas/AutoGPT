@@ -70,6 +70,7 @@ cli = "backend.cli:main"
 format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
+migrate = "migrate.run_migrations:main"
 migrate_db = "migrate.run_migrations:main"
 
 [tool.pytest-watcher]

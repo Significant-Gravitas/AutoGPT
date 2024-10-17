@@ -23,12 +23,12 @@ from .types import (
 
 class SupabaseIntegrationCredentialsStore:
     def __init__(self, redis: "Redis"):
-        self.prisma: Prisma = db.prisma
+        self.prisma: Prisma = Prisma()
         self.locks = RedisKeyedMutex(redis)
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         with self.locked_user_metadata(user_id):
-            if self.get_creds_by_id(user_id, credentials.id):
+            if await self.get_creds_by_id(user_id, credentials.id):
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
@@ -43,7 +43,9 @@ class SupabaseIntegrationCredentialsStore:
             user_metadata.model_dump()
         ).integration_credentials
 
-    async def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
+    async def get_creds_by_id(
+        self, user_id: str, credentials_id: str
+    ) -> Credentials | None:
         all_credentials = await self.get_all_creds(user_id)
         return next((c for c in all_credentials if c.id == credentials_id), None)
 
@@ -117,8 +119,11 @@ class SupabaseIntegrationCredentialsStore:
             oauth_states.append(state.model_dump())
             user_metadata.integration_oauth_states = oauth_states
 
+            if not self.prisma.is_connected():
+                await self.prisma.connect()
             await self.prisma.user.update(
-                where={"id": user_id}, data={"metadata": Json(user_metadata.model_dump())}
+                where={"id": user_id},
+                data={"metadata": Json(user_metadata.model_dump())},
             )
 
         return token
@@ -174,6 +179,8 @@ class SupabaseIntegrationCredentialsStore:
                 # Remove the used state
                 oauth_states.remove(valid_state)
                 user_metadata.integration_oauth_states = oauth_states
+                if not self.prisma.is_connected():
+                    await self.prisma.connect()
                 await self.prisma.user.update(
                     where={"id": user_id},
                     data={"metadata": Json(user_metadata.model_dump())},
@@ -187,11 +194,15 @@ class SupabaseIntegrationCredentialsStore:
     ) -> None:
         raw_metadata = await self._get_user_metadata(user_id)
         raw_metadata.integration_credentials = [c.model_dump() for c in credentials]
+        if not self.prisma.is_connected():
+            await self.prisma.connect()
         await self.prisma.user.update(
             where={"id": user_id}, data={"metadata": Json(raw_metadata.model_dump())}
         )
 
     async def _get_user_metadata(self, user_id: str) -> UserMetadataRaw:
+        if not self.prisma.is_connected():
+            await self.prisma.connect()
         user = await self.prisma.user.find_unique(where={"id": user_id})
         if not user:
             raise ValueError(f"User with ID {user_id} not found")
@@ -202,5 +213,5 @@ class SupabaseIntegrationCredentialsStore:
         )
 
     def locked_user_metadata(self, user_id: str):
-        key = ("usermetadatalock", f"user:{user_id}", "metadata")
+        key = (self.prisma, f"user:{user_id}", "metadata")
         return self.locks.locked(key)

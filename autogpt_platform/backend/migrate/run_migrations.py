@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 
+from backend.util.settings import Settings
 import psycopg2
 
 
@@ -17,7 +18,11 @@ def run_prisma_migrations():
 
 
 def run_custom_migrations():
-    db_url = os.environ.get("DIRECT_DATABASE_URL")
+    settings = Settings()
+    db_url = settings.config.direct_database_url
+    if not db_url:
+        logging.error("No Direct DB URL Provided")
+        return
     conn = psycopg2.connect(db_url)
 
     try:
