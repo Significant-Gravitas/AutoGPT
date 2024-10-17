@@ -37,7 +37,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
       <div className="relative -mt-20 ml-4">
         <Avatar className="h-16 w-16">
           <AvatarImage src={avatarSrc} alt={creatorName} />
-          <AvatarFallback>{creatorName.charAt(0)}</AvatarFallback>
+          <AvatarFallback className="h-16 w-16">{creatorName.charAt(0)}</AvatarFallback>
         </Avatar>
       </div>
       <div className="mt-8 font-neue text-xl font-bold tracking-tight text-[#272727]">
