@@ -45,6 +45,7 @@ import RunnerUIWrapper, {
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
 import { forceLoad } from "@sentry/nextjs";
+import { useCopyPaste } from "../hooks/useCopyPaste";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -459,6 +460,8 @@ const FlowEditor: React.FC<{
     history.redo();
   };
 
+  const handleCopyPaste = useCopyPaste(getNextNodeId);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       // Prevent copy/paste if any modal is open or if the focus is on an input element
@@ -470,68 +473,9 @@ const FlowEditor: React.FC<{
 
       if (isAnyModalOpen || isInputField) return;
 
-      if (event.ctrlKey || event.metaKey) {
-        if (event.key === "c" || event.key === "C") {
-          // Copy selected nodes
-          const selectedNodes = nodes.filter((node) => node.selected);
-          const selectedEdges = edges.filter((edge) => edge.selected);
-          setCopiedNodes(selectedNodes);
-          setCopiedEdges(selectedEdges);
-        }
-        if (event.key === "v" || event.key === "V") {
-          // Paste copied nodes
-          if (copiedNodes.length > 0) {
-            const oldToNewNodeIDMap: Record<string, string> = {};
-            const pastedNodes = copiedNodes.map((node, index) => {
-              const newNodeId = (nodeId + index).toString();
-              oldToNewNodeIDMap[node.id] = newNodeId;
-              return {
-                ...node,
-                id: newNodeId,
-                position: {
-                  x: node.position.x + 20, // Offset pasted nodes
-                  y: node.position.y + 20,
-                },
-                data: {
-                  ...node.data,
-                  status: undefined, // Reset status
-                  executionResults: undefined, // Clear output data
-                },
-              };
-            });
-            setNodes((existingNodes) =>
-              // Deselect copied nodes
-              existingNodes.map((node) => ({ ...node, selected: false })),
-            );
-            addNodes(pastedNodes);
-            setNodeId((prevId) => prevId + copiedNodes.length);
-
-            const pastedEdges = copiedEdges.map((edge) => {
-              const newSourceId = oldToNewNodeIDMap[edge.source] ?? edge.source;
-              const newTargetId = oldToNewNodeIDMap[edge.target] ?? edge.target;
-              return {
-                ...edge,
-                id: `${newSourceId}_${edge.sourceHandle}_${newTargetId}_${edge.targetHandle}_${Date.now()}`,
-                source: newSourceId,
-                target: newTargetId,
-              };
-            });
-            addEdges(pastedEdges);
-          }
-        }
-      }
+      handleCopyPaste(event);
     },
-    [
-      isAnyModalOpen,
-      nodes,
-      edges,
-      copiedNodes,
-      setNodes,
-      addNodes,
-      copiedEdges,
-      addEdges,
-      nodeId,
-    ],
+    [isAnyModalOpen, handleCopyPaste],
   );
 
   useEffect(() => {

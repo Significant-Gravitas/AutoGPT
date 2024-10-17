@@ -267,6 +267,7 @@ class AgentServer(AppService):
         app.add_exception_handler(500, self.handle_internal_http_error)
 
         app.include_router(api_router)
+        app.include_router(health_router)
 
         uvicorn.run(
             app,
