@@ -61,7 +61,7 @@ class SupabaseIntegrationCredentialsStore:
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
         with self.locked_user_metadata(user_id):
-            current = self.get_creds_by_id(user_id, updated.id)
+            current = await self.get_creds_by_id(user_id, updated.id)
             if not current:
                 raise ValueError(
                     f"Credentials with ID {updated.id} "
