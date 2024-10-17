@@ -28,7 +28,7 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
       <div className="font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
         Featured creators
       </div>
-      <div className="w-screen">
+      <div className="w-full">
         <Carousel
           className="md:hidden"
           opts={{
@@ -53,7 +53,7 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
             ))}
           </CarouselContent>
         </Carousel>
-        <div className="hidden flex-wrap items-center justify-center gap-5 md:flex lg:justify-start">
+        <div className="hidden flex-wrap items-center justify-center gap-3 md:flex lg:justify-start">
           {featuredCreators.map((creator, index) => (
             <CreatorCard
               key={index}
