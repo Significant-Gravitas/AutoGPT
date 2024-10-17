@@ -22,6 +22,7 @@ model User {
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+  IntegrationWebhooks          IntegrationWebhook[]
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
@@ -78,11 +79,14 @@ model AgentNode {
   // JSON serialized dict[str, str] containing predefined input values.
   constantInput String @default("{}")
 
+  // For webhook-triggered blocks: reference to the webhook that triggers the node
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
+
   // JSON serialized dict[str, str] containing the node metadata.
   metadata String @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
-  AgentNodeWebhook AgentNodeWebhook[]
 }
 
 // This model describes the link between two AgentNodes.
@@ -101,19 +105,6 @@ model AgentNodeLink {
 
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
   isStatic Boolean @default(false)
-}
-
-// One-to-one relation between a webhook-triggered node and the webhook that triggers it
-model AgentNodeWebhook {
-  agentNodeId String
-  webhookId   String
-
-  // Before deleting a linked node from the DB, its webhook has to be
-  // deregistered and deleted if there are no other linked nodes
-  AgentNode          AgentNode          @relation(fields: [agentNodeId], references: [id], onDelete: Restrict)
-  IntegrationWebhook IntegrationWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-
-  @@id(name: "agentNodeWebhookId", [agentNodeId, webhookId])
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -234,14 +225,20 @@ model IntegrationWebhook {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict) // Webhooks must be deregistered before deleting
+
+  provider      String // e.g. 'github'
   credentialsId String // relation to the credentials that the webhook was created with
+  webhookType   String // e.g. 'repo'
+  resource      String // e.g. 'Significant-Gravitas/AutoGPT'
+  events        String[] // e.g. ['created', 'updated']
+  config        Json
+  secret        String // crypto string, used to verify payload authenticity
 
-  provider          String // e.g. 'github'
-  providerWebhookId String
-  config            Json
-  token             String // crypto string, used to verify payload authenticity
+  providerWebhookId String // Webhook ID assigned by the provider
 
-  AgentNodeWebhook AgentNodeWebhook[]
+  AgentNodes AgentNode[]
 }
 
 model AnalyticsDetails {
