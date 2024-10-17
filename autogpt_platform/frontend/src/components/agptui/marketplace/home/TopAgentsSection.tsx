@@ -27,7 +27,7 @@ export const TopAgentsSection: React.FC<TopAgentsSectionProps> = ({
   onCardClick,
 }) => {
   return (
-    <div className="flex flex-col items-center justify-center py-8">
+    <div className="flex flex-col items-center justify-center py-4 lg:py-8">
       <div className="w-full">
         <div className="mb-6 font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
           {sectionTitle}

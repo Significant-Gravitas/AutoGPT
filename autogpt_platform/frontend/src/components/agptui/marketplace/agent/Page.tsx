@@ -6,7 +6,7 @@ import { BecomeACreator } from "../../BecomeACreator";
 import { TopAgentsSection } from "../home/TopAgentsSection";
 import { Separator } from "../../../ui/separator";
 import { IconType } from "../../../ui/icons";
-import Link from "next/link";
+import { BreadCrumbs } from "../../BreadCrumbs";
 
 interface PageProps {
   userName: string;
@@ -77,8 +77,13 @@ export const Page: React.FC<PageProps> = ({
     // Implement become a creator functionality
   };
 
+  const breadcrumbs = [
+    { name: "Marketplace", link: "/marketplace" },
+    { name: agentInfo.name, link: "#" },
+  ];
+
   return (
-    <div className="mx-auto w-screen max-w-[1440px]">
+    <div className="mx-auto w-screen max-w-[1360px]">
       <Navbar
         userName={userName}
         userEmail={userEmail}
@@ -86,41 +91,38 @@ export const Page: React.FC<PageProps> = ({
         activeLink={activeLink}
         menuItemGroups={menuItemGroups}
       />
-      <main className="px-10">
-        <div className="mt-10 mb-6">
-          <Link href="/marketplace" className="text-2xl font-medium text-[#272727]">
-            Marketplace
-          </Link>
-          <span className="mx-2 text-2xl font-medium text-[#272727]">/</span>
-          <span className="text-2xl font-medium text-[#272727]">{agentInfo.name}</span>
-        </div>
-        <div className="flex flex-col lg:flex-row gap-5">
-          <AgentInfo
-            onRunAgent={handleRunAgent}
-            name={agentInfo.name}
-            creator={agentInfo.creator}
-            description={agentInfo.description}
-            rating={agentInfo.rating}
-            runs={agentInfo.runs}
-            categories={agentInfo.categories}
-            lastUpdated={agentInfo.lastUpdated}
-            version={agentInfo.version}
-          />
+      <main className="px-4 md:mt-4 lg:mt-8">
+        <BreadCrumbs items={breadcrumbs} />
+
+        <div className="flex flex-col gap-5 lg:flex-row">
+          <div>
+            <AgentInfo
+              onRunAgent={handleRunAgent}
+              name={agentInfo.name}
+              creator={agentInfo.creator}
+              description={agentInfo.description}
+              rating={agentInfo.rating}
+              runs={agentInfo.runs}
+              categories={agentInfo.categories}
+              lastUpdated={agentInfo.lastUpdated}
+              version={agentInfo.version}
+            />
+          </div>
           <AgentImages images={agentImages} />
         </div>
-        <Separator className="my-12" />
+        <Separator className="my-6" />
         <TopAgentsSection
           topAgents={otherAgentsByCreator}
           onCardClick={handleCardClick}
           sectionTitle={`Other agents by ${agentInfo.creator}`}
         />
-        <Separator className="my-12" />
+        <Separator className="my-6" />
         <TopAgentsSection
           topAgents={similarAgents}
           onCardClick={handleCardClick}
           sectionTitle="Similar agents"
         />
-        <Separator className="my-12" />
+        <Separator className="my-6" />
         <BecomeACreator
           title="Want to contribute?"
           heading="We're always looking for more Creators!"

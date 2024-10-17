@@ -43,11 +43,14 @@ AvatarImage.displayName = AvatarPrimitive.Image.displayName;
  * @returns The size of the avatar in pixels
  */
 const getAvatarSize = (className: string | undefined): number => {
-  if (className?.includes('h-')) {
-    const match = parseInt(className.match(/h-(\d+)/)?.[1] || '16');
+  if (className?.includes("h-")) {
+    const match = parseInt(className.match(/h-(\d+)/)?.[1] || "16");
     if (match) {
-      const size = tailwindConfig.theme.extend.spacing[match as keyof typeof tailwindConfig.theme.extend.spacing];
-      return size ? parseInt(size.replace('rem', '')) * 16 : 40;
+      const size =
+        tailwindConfig.theme.extend.spacing[
+          match as keyof typeof tailwindConfig.theme.extend.spacing
+        ];
+      return size ? parseInt(size.replace("rem", "")) * 16 : 40;
     }
   }
   return 40;

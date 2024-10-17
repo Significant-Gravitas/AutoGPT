@@ -24,7 +24,7 @@ export const AgentImages: React.FC<AgentImagesProps> = ({ images }) => {
   );
 
   return (
-    <div className="w-screen overflow-y-auto px-2 md:w-full lg:w-[56.25rem]">
+    <div className="w-full overflow-y-auto px-2 lg:w-[56.25rem]">
       <div className="space-y-4 sm:space-y-6 md:space-y-[1.875rem]">
         {images.map((image, index) => (
           <AgentImageItem
