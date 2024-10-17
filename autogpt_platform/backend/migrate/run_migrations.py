@@ -2,8 +2,9 @@ import logging
 import os
 import subprocess
 
-from backend.util.settings import Settings
 import psycopg2
+
+from backend.util.settings import Settings
 
 
 def run_prisma_migrations():
