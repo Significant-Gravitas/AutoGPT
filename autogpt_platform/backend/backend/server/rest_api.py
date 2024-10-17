@@ -397,17 +397,15 @@ class AgentServer(AppService):
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graphs
 
-    @classmethod
     async def create_new_graph(
-        cls, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
+        self, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
     ) -> graph_db.Graph:
-        return await cls.create_graph(create_graph, is_template=False, user_id=user_id)
+        return await self.create_graph(create_graph, is_template=False, user_id=user_id)
 
-    @classmethod
     async def create_new_template(
-        cls, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
+        self, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
     ) -> graph_db.Graph:
-        return await cls.create_graph(create_graph, is_template=True, user_id=user_id)
+        return await self.create_graph(create_graph, is_template=True, user_id=user_id)
 
     class DeleteGraphResponse(TypedDict):
         version_counts: int
@@ -420,9 +418,8 @@ class AgentServer(AppService):
             "version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)
         }
 
-    @classmethod
     async def create_graph(
-        cls,
+        self,
         create_graph: CreateGraph,
         is_template: bool,
         # user_id doesn't have to be annotated like on other endpoints,
@@ -454,12 +451,13 @@ class AgentServer(AppService):
         graph.reassign_ids(reassign_graph_id=True)
 
         graph = await graph_db.create_graph(graph, user_id=user_id)
-        graph.on_update()
+        graph.on_update(
+            get_credentials=lambda id: self.integration_creds_manager.get(user_id, id)
+        )
         return graph
 
-    @classmethod
     async def update_graph(
-        cls,
+        self,
         graph_id: str,
         graph: graph_db.Graph,
         user_id: Annotated[str, Depends(get_user_id)],
@@ -488,7 +486,10 @@ class AgentServer(AppService):
         graph.reassign_ids()
 
         new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
-        new_graph_version.on_update(latest_version_graph)
+        new_graph_version.on_update(
+            previous_graph_version=latest_version_graph,
+            get_credentials=lambda id: self.integration_creds_manager.get(user_id, id),
+        )
 
         if new_graph_version.is_active:
             # Ensure new version is the only active version

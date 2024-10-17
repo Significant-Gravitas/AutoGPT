@@ -282,11 +282,16 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self,
         new_preset_inputs: BlockInput,
         old_preset_inputs: Optional[BlockInput] = None,
+        *,
+        new_credentials: Optional[Credentials] = None,
+        old_credentials: Optional[Credentials] = None,
     ) -> None:
         """Hook to be called when the preset inputs change or the block is created"""
         pass
 
-    def on_node_delete(self, preset_inputs: BlockInput) -> None:
+    def on_node_delete(
+        self, preset_inputs: BlockInput, *, credentials: Optional[Credentials] = None
+    ) -> None:
         """Hook to be called when the block is deleted"""
         pass
 

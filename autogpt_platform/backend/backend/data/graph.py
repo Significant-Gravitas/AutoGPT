@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
@@ -14,7 +14,11 @@ from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockInput, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
 from backend.data.execution import ExecutionStatus
+from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.util import json
+
+if TYPE_CHECKING:
+    from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 
 logger = logging.getLogger(__name__)
 
@@ -282,18 +286,36 @@ class Graph(GraphMeta):
 
             # TODO: Add type compatibility check here.
 
-    def on_update(self, previous_graph_version: Optional["Graph"] = None):
+    def on_update(
+        self,
+        previous_graph_version: Optional["Graph"] = None,
+        *,
+        get_credentials: Callable[[str], Credentials | None],
+    ):
         """
         Hook for graph creation/updation.
 
         Compares nodes and their preset inputs with a previous graph version, and calls
         the `on_node_update` and `on_node_delete` hooks of the corresponding blocks
         where applicable.
+
+        Params:
+            previous_graph_version: The previous graph version to compare to
+            get_credentials: `credentials_id` -> Credentials
         """
         # Compare nodes in new_graph_version with previous_graph_version
         for new_node in self.nodes:
             if not (block := get_block(new_node.block_id)):
                 raise ValueError(f"Block #{new_node.block_id} not found")
+
+            new_credentials = None
+            if creds_meta := getattr(new_node.input_default, CREDENTIALS_FIELD_NAME):
+                new_credentials = get_credentials(creds_meta["id"])
+                if not new_credentials:
+                    raise ValueError(
+                        f"Node #{new_node.id} updated with non-existent "
+                        f"credentials #{new_credentials}"
+                    )
 
             if previous_graph_version and (
                 old_node := next(
@@ -305,15 +327,30 @@ class Graph(GraphMeta):
                     None,
                 )
             ):
+                old_credentials = None
+                if creds_meta := getattr(
+                    old_node.input_default, CREDENTIALS_FIELD_NAME
+                ):
+                    old_credentials = get_credentials(creds_meta["id"])
+                    if not old_credentials:
+                        logger.error(
+                            f"Node #{old_node.id} referenced non-existent "
+                            f"credentials #{creds_meta['id']}"
+                        )
+
                 if new_node.input_default != old_node.input_default:
                     # Input default has changed, call on_node_update
                     block.on_node_update(
                         new_node.input_default,
                         old_node.input_default,
+                        new_credentials=new_credentials,
+                        old_credentials=old_credentials,
                     )
             else:
                 # New node added, call on_node_update with only new inputs
-                block.on_node_update(new_node.input_default)
+                block.on_node_update(
+                    new_node.input_default, new_credentials=new_credentials
+                )
 
         if previous_graph_version:
             # Check for deleted nodes
@@ -321,11 +358,24 @@ class Graph(GraphMeta):
                 if not any(node.id == old_node.id for node in self.nodes):
                     # Node was deleted, call on_node_delete
                     if block := get_block(old_node.block_id):
-                        block.on_node_delete(preset_inputs=old_node.input_default)
+                        credentials = None
+                        if creds_meta := getattr(
+                            old_node.input_default, CREDENTIALS_FIELD_NAME
+                        ):
+                            credentials = get_credentials(creds_meta["id"])
+                            if not credentials:
+                                logger.error(
+                                    f"Node #{old_node.id} referenced non-existent "
+                                    f"credentials #{creds_meta['id']}"
+                                )
+                        block.on_node_delete(
+                            preset_inputs=old_node.input_default,
+                            credentials=credentials,
+                        )
                     else:
                         logger.warning(
                             f"Can not handle node #{old_node.id} deletion: "
-                            f"block #{new_node.block_id} not found"
+                            f"block #{old_node.block_id} not found"
                         )
 
     def get_input_schema(self) -> list[InputSchemaItem]:
