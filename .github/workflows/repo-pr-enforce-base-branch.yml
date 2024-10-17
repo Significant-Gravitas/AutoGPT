@@ -1,6 +1,6 @@
 name: Repo - Enforce dev as base branch
 on:
-  pull_request_target:
+  pull_request:
     branches: [ master ]
     types: [ opened, synchronize ]
 
