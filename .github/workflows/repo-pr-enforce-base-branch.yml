@@ -11,5 +11,5 @@ jobs:
       - name: Check if PR is from dev or hotfix
         if: ${{ !(startsWith(github.event.pull_request.head.ref, 'hotfix/') || github.event.pull_request.head.ref == 'dev') }}
         run: |
-          gh pr comment ${{ github.event.number }} --body "This PR targets the `master` branch but does not come from `dev` or a `hotfix/*` branch.\n\nAutomatically setting the base branch to `dev`."
+          gh pr comment ${{ github.event.number }} --body 'This PR targets the `master` branch but does not come from `dev` or a `hotfix/*` branch.\n\nAutomatically setting the base branch to `dev`.'
           gh pr edit ${{ github.event.number }} --base dev
