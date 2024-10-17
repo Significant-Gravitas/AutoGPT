@@ -104,6 +104,7 @@ def execute_node(
 
     Args:
         db_client: The client to send execution updates to the server.
+        creds_manager: The manager to acquire and release credentials.
         data: The execution data for executing the current node.
         execution_stats: The execution statistics to be updated.
 
@@ -209,6 +210,7 @@ def execute_node(
         if creds_lock:
             creds_lock.release()
         if execution_stats is not None:
+            execution_stats.update(node_block.execution_stats)
             execution_stats["input_size"] = input_size
             execution_stats["output_size"] = output_size
 

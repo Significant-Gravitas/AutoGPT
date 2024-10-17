@@ -2,6 +2,7 @@ import importlib
 import os
 import re
 from pathlib import Path
+from typing import Type
 
 from backend.data.block import Block
 
@@ -24,7 +25,7 @@ for module in modules:
     AVAILABLE_MODULES.append(module)
 
 # Load all Block instances from the available modules
-AVAILABLE_BLOCKS = {}
+AVAILABLE_BLOCKS: dict[str, Type[Block]] = {}
 
 
 def all_subclasses(clz):
@@ -76,6 +77,6 @@ for cls in all_subclasses(Block):
     if block.disabled:
         continue
 
-    AVAILABLE_BLOCKS[block.id] = block
+    AVAILABLE_BLOCKS[block.id] = cls
 
 __all__ = ["AVAILABLE_MODULES", "AVAILABLE_BLOCKS"]
