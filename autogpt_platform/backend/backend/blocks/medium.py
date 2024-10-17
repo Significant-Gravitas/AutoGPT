@@ -86,7 +86,7 @@ class PublishToMediumBlock(Block):
                 "tags": ["test", "automation"],
                 "license": "all-rights-reserved",
                 "notify_followers": False,
-                "publish_status": PublishToMediumStatus.DRAFT,
+                "publish_status": PublishToMediumStatus.DRAFT.value,
                 "api_key": "your_test_api_key",
             },
             test_output=[

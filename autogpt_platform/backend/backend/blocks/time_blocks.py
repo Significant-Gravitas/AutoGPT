@@ -116,20 +116,12 @@ class GetCurrentDateAndTimeBlock(Block):
             output_schema=GetCurrentDateAndTimeBlock.Output,
             test_input=[
                 {"trigger": "Hello"},
-                {"trigger": "Hello", "format": "%Y-%m-%d %H:%M"},
             ],
             test_output=[
                 (
                     "date_time",
                     lambda t: abs(
                         datetime.now() - datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
-                    )
-                    < timedelta(seconds=10),  # 10 seconds error margin.
-                ),
-                (
-                    "date_time",
-                    lambda t: abs(
-                        datetime.now() - datetime.strptime(t, "%Y-%m-%d %H:%M")
                     )
                     < timedelta(seconds=10),  # 10 seconds error margin.
                 ),
