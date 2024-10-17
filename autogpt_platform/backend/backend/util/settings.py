@@ -137,6 +137,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    platform_base_url: str = Field(
+        default="",
+        description="Must be set so the application knows where it's hosted at. "
+        "This is necessary to make sure webhooks find their way.",
+    )
+
     frontend_base_url: str = Field(
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
