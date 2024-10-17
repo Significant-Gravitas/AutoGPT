@@ -2,7 +2,7 @@ name: Repo - Enforce dev as base branch
 on:
   pull_request:
     branches: [ master ]
-    types: [ opened ]
+    types: [ opened, synchronize ]
 
 jobs:
   check_pr_target:
