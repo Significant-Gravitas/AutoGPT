@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Page } from "./Page";
 import { userEvent, within } from "@storybook/test";
+import { IconType } from "../../../ui/icons";
 
 const meta = {
   title: "AGPTUI/Marketplace/Home/Page",
@@ -20,6 +21,7 @@ const meta = {
     featuredAgents: { control: "object" },
     topAgents: { control: "object" },
     featuredCreators: { control: "object" },
+    menuItemGroups: { control: "object" },
   },
 } satisfies Meta<typeof Page>;
 
@@ -30,6 +32,40 @@ const mockNavLinks = [
   { name: "Marketplace", href: "/" },
   { name: "Library", href: "/library" },
   { name: "Build", href: "/build" },
+];
+
+const mockMenuItemGroups = [
+  {
+    items: [
+      { icon: IconType.Edit, text: "Edit profile", href: "/profile/edit" },
+    ],
+  },
+  {
+    items: [
+      {
+        icon: IconType.LayoutDashboard,
+        text: "Creator Dashboard",
+        href: "/dashboard",
+      },
+      {
+        icon: IconType.UploadCloud,
+        text: "Publish an agent",
+        href: "/publish",
+      },
+    ],
+  },
+  {
+    items: [{ icon: IconType.Settings, text: "Settings", href: "/settings" }],
+  },
+  {
+    items: [
+      {
+        icon: IconType.LogOut,
+        text: "Log out",
+        onClick: () => console.log("Logged out"),
+      },
+    ],
+  },
 ];
 
 const mockFeaturedAgents = [
@@ -207,6 +243,7 @@ export const Default: Story = {
     featuredAgents: mockFeaturedAgents,
     topAgents: mockTopAgents,
     featuredCreators: mockFeaturedCreators,
+    menuItemGroups: mockMenuItemGroups,
   },
 };
 
@@ -240,6 +277,7 @@ export const EmptyState: Story = {
     featuredAgents: [],
     topAgents: [],
     featuredCreators: [],
+    menuItemGroups: mockMenuItemGroups,
   },
 };
 
