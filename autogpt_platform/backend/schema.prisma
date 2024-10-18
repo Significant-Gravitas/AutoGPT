@@ -19,19 +19,49 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  AgentGraphs                  AgentGraph[]
+  AgentGraphs                  Agent[]
   AgentGraphExecutions         AgentGraphExecution[]
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
+  ConfiguredAgents             ConfiguredAgent[]
+  UserAgents                   UserAgents[]
+
+  // User Group relations
+  groups               UserGroup[]            @relation("GroupUsers")
+  adminGroups          UserGroup[]            @relation("GroupAdminUsers")
+  UserAccounting       UserAccounting[]
+  UserSubscription     UserSubscription[]
+  Profile              Profile[]
+  StoreListing         StoreListing[]
+  StoreListingApproval StoreListingApproval[]
 
   @@index([id])
   @@index([email])
 }
 
+model UserGroup {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name         String
+  description  String
+  groupIconUrl String?
+
+  users      User[] @relation("GroupUsers")
+  adminUsers User[] @relation("GroupAdminUsers")
+
+  agents       Agent[]
+  Profile      Profile[]
+  StoreListing StoreListing[]
+
+  @@index([name])
+}
+
 // This model describes the Agent Graph/Flow (Multi Agent System).
-model AgentGraph {
+model Agent {
   id        String    @default(uuid())
   version   Int       @default(1)
   createdAt DateTime  @default(now())
@@ -39,25 +69,91 @@ model AgentGraph {
 
   name        String?
   description String?
-  isActive    Boolean @default(true)
-  isTemplate  Boolean @default(false)
 
   // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdByUserId String
+  createdByUser   User   @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  isGroupAgent Boolean    @default(false)
+  groupId      String?
+  group        UserGroup? @relation(fields: [groupId], references: [id])
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
+  AgentSubGraphs     Agent[] @relation("AgentSubGraph")
   agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
+  AgentGraphParent   Agent?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
+
+  ConfiguredAgents    ConfiguredAgent[]
+  UserAgents          UserAgents[]
+  UserBlockCredit     UserBlockCredit[]
+  StoreListing        StoreListing[]
+  StoreListingVersion StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
+  @@map("AgentGraph")
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////////////   USER SPECIFIC DATA   ////////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+
+model ConfiguredAgent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String
+  description String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  agentId      String
+  agentVersion Int
+  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  Configuration AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
+  UserAgents    UserAgents[]
+
+  @@index([userId])
+}
+
+model UserAgents {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  agentId      String
+  agentVersion Int
+  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  configuredAgentId String?
+  configuredAgent   ConfiguredAgent? @relation(fields: [configuredAgentId], references: [id])
+
+  isFavorite      Boolean @default(false)
+  isCreatedByUser Boolean @default(false)
+  isPublished     Boolean @default(false)
+  isPublic        Boolean @default(false)
+  isArchived      Boolean @default(false)
+  isDeleted       Boolean @default(false)
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   AGENT DEFINITION AND EXECUTION TABLES    ////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
   id String @id @default(uuid())
@@ -66,8 +162,8 @@ model AgentNode {
   AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id], onUpdate: Cascade)
 
   agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentGraphVersion Int    @default(1)
+  AgentGraph        Agent  @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
   // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeSink")
@@ -136,14 +232,14 @@ model AgentGraphExecution {
   executionStatus AgentExecutionStatus @default(COMPLETED)
 
   agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentGraphVersion Int    @default(1)
+  AgentGraph        Agent  @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
   AgentNodeExecutions AgentNodeExecution[]
 
-  // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // This is so we can track which user executed the agent graph for accounting purposes.
+  executedByUserId String
+  executedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
   stats String? // JSON serialized object
 }
@@ -186,6 +282,9 @@ model AgentNodeExecutionInputOutput {
   referencedByOutputExecId String?
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
+  configuredAgentId String?
+  ConfiguredAgent   ConfiguredAgent? @relation("AgentNodeExecutionInput", fields: [configuredAgentId], references: [id])
+
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
 }
@@ -197,8 +296,8 @@ model AgentGraphExecutionSchedule {
   updatedAt DateTime? @updatedAt
 
   agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentGraphVersion Int    @default(1)
+  AgentGraph        Agent  @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
@@ -239,6 +338,11 @@ model AnalyticsDetails {
   @@index([type])
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   METRICS TRACKING TABLES    ////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model AnalyticsMetrics {
   id        String   @id @default(dbgenerated("gen_random_uuid()"))
   createdAt DateTime @default(now())
@@ -257,9 +361,18 @@ model AnalyticsMetrics {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+
 enum UserBlockCreditType {
   TOP_UP
   USAGE
+  COMMISSION
+  PURCHASE
+  SALE
 }
 
 model UserBlockCredit {
@@ -272,11 +385,212 @@ model UserBlockCredit {
   blockId String?
   block   AgentBlock? @relation(fields: [blockId], references: [id])
 
+  // We need to be able to associate a credit transaction with an agent
+  executedAgentId      String?
+  executedAgentVersion Int?
+  executedAgent        Agent?  @relation(fields: [executedAgentId, executedAgentVersion], references: [id, version])
+
+  // We need to be able to associate a credit transaction with a store listing
+  storeListingId String?
+  storeListing   StoreListing? @relation(fields: [storeListingId], references: [id])
+
   amount Int
   type   UserBlockCreditType
 
-  isActive Boolean @default(true)
-  metadata Json?
+  isActive         Boolean         @default(true)
+  metadata         Json?
+  UserAccounting   UserAccounting? @relation(fields: [userAccountingId], references: [id])
+  userAccountingId String?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+}
+
+// This is the top level accounting table for a user
+model UserAccounting {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions UserBlockCredit[]
+
+  usdBalance Float @default(0.0)
+
+  subscription   UserSubscription? @relation(fields: [subscriptionId], references: [id])
+  subscriptionId String?
+}
+
+// This table tracks a user's subscription to autogpt
+model UserSubscription {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isSubscribed          Boolean   @default(false)
+  subscriptionStartDate DateTime?
+
+  isCancelling        Boolean   @default(false)
+  subscriptionEndDate DateTime?
+
+  subscriptionPlanId String?
+  subscriptionPlan   SubsctiptionPlan? @relation(fields: [subscriptionPlanId], references: [id])
+
+  hasInitiatedChargeBackProcess Boolean          @default(false)
+  chargeBackProcessInitiatedAt  DateTime?
+  UserAccounting                UserAccounting[]
+
+  @@index([isSubscribed, isCancelling])
+}
+
+// This table tracks the different subscription plans available to a user
+model SubsctiptionPlan {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String
+  description String
+  planIconUrl String?
+
+  creditsPerMonth Int
+  usdPrice        Float
+
+  isDeleted        Boolean            @default(false)
+  UserSubscription UserSubscription[]
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   Store TABLES    /////////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+
+model Profile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isGroupProfile Boolean    @default(false)
+  groupId        String?
+  group          UserGroup? @relation(fields: [groupId], references: [id])
+
+  username    String @unique
+  description String
+
+  website  String?
+  github   String?
+  linkedin String?
+  facebook String?
+  twitter  String?
+
+  avatarUrl String?
+
+  @@index([username])
+}
+
+model StoreListing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  isDeleted  Boolean @default(false)
+  // Not needed but makes lookups faster
+  isApproved Boolean @default(false)
+
+  slug        String
+  name        String
+  description String
+
+  agentId      String
+  agentVersion Int
+  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  owningUserId String
+  user         User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
+
+  isGroupListing Boolean    @default(false)
+  owningGroupId  String?
+  owningGroup    UserGroup? @relation(fields: [owningGroupId], references: [id])
+
+  StoreListingVersions StoreListingVersion[]
+  StorePricings        StorePricing[]
+  UserBlockCredit      UserBlockCredit[]
+  StoreListingApproval StoreListingApproval[]
+
+  @@index([isApproved])
+  @@index([agentId])
+  @@index([owningUserId])
+  @@index([owningGroupId])
+}
+
+model StorePricing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Owner can be found from the storeListing
+  storeListingId String
+  storeListing   StoreListing @relation(fields: [storeListingId], references: [id])
+
+  canPurchase   Boolean @default(true)
+  pruchasePrice Float?
+
+  commissionPerRun Float?
+  // We dont ever delete store pricings, j
+  // ust mark them as deleted and add a new entry
+  isDeleted        Boolean @default(false)
+
+  @@index([storeListingId, updatedAt])
+}
+
+model StoreListingVersion {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agentId      String
+  agentVersion Int
+  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  agentGraphVersion Int
+
+  isDeleted            Boolean                @default(false)
+  // Old versions can be made unavailable by the auther if desired
+  isAvailable          Boolean                @default(true)
+  // Not needed but makes lookups faster
+  isApproved           Boolean                @default(false)
+  StoreListing         StoreListing?          @relation(fields: [storeListingId], references: [id])
+  storeListingId       String?
+  StoreListingApproval StoreListingApproval[]
+
+  @@index([agentId, agentGraphVersion, isApproved])
+}
+
+model StoreListingApproval {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  StoreListingId String
+  StoreListing   StoreListing @relation(fields: [StoreListingId], references: [id])
+
+  maketplaceListingVersionId String
+  StoreListingVersion        StoreListingVersion @relation(fields: [maketplaceListingVersionId], references: [id])
+
+  approvedByUserId String
+  approvedByUser   User   @relation(fields: [approvedByUserId], references: [id], onDelete: Cascade)
+
+  isApproved       Boolean @default(false)
+  isDenied         Boolean @default(false)
+  approvalComments String?
+
+  @@index([StoreListingId, approvedByUserId])
 }
