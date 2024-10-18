@@ -10,10 +10,9 @@ from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
 
 from backend.data import redis
+from backend.executor.database import DatabaseManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
-
-from ..server.integrations.utils import get_supabase
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -51,10 +50,12 @@ class IntegrationCredentialsManager:
     cause so much latency that it's worth implementing.
     """
 
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager):
         redis_conn = redis.get_redis()
         self._locks = RedisKeyedMutex(redis_conn)
-        self.store = SupabaseIntegrationCredentialsStore(get_supabase(), redis_conn)
+        self.store = SupabaseIntegrationCredentialsStore(
+            redis=redis_conn, db=db_manager
+        )
 
     def create(self, user_id: str, credentials: Credentials) -> None:
         return self.store.add_creds(user_id, credentials)
@@ -131,7 +132,7 @@ class IntegrationCredentialsManager:
 
     def _acquire_lock(self, user_id: str, credentials_id: str, *args: str) -> RedisLock:
         key = (
-            self.store.supabase.supabase_url,
+            self.store.db_manager,
             f"user:{user_id}",
             f"credentials:{credentials_id}",
             *args,

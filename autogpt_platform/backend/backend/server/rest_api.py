@@ -19,6 +19,7 @@ from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.executor.manager import get_db_client
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.util.cache import thread_cached_property
@@ -97,7 +98,7 @@ class AgentServer(AppService):
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
         )
-        self.integration_creds_manager = IntegrationCredentialsManager()
+        self.integration_creds_manager = IntegrationCredentialsManager(get_db_client())
 
         api_router.include_router(
             backend.server.routers.analytics.router,
