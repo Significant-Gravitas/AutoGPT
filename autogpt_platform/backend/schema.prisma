@@ -111,6 +111,10 @@ model ConfiguredAgent {
   name        String
   description String
 
+  // For agents that can be triggered by webhooks or cronjob
+  // This bool allows use to disable a configured agent without deleting it
+  isActive Boolean @default(true)
+
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
