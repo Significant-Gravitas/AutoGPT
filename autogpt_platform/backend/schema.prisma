@@ -78,20 +78,21 @@ model Agent {
   groupId      String?
   group        UserGroup? @relation(fields: [groupId], references: [id])
 
-  AgentNodes                  AgentNode[]
-  AgentGraphExecution         AgentGraphExecution[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+  AgentNodes          AgentNode[]
+  AgentGraphExecution AgentGraphExecution[]
 
   // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
   AgentSubGraphs     Agent[] @relation("AgentSubGraph")
   agentGraphParentId String?
   AgentGraphParent   Agent?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
 
-  ConfiguredAgents    ConfiguredAgent[]
-  UserAgents          UserAgents[]
-  UserBlockCredit     UserBlockCredit[]
-  StoreListing        StoreListing[]
-  StoreListingVersion StoreListingVersion[]
+  ConfiguredAgents            ConfiguredAgent[]
+  WebhookTrigger              WebhookTrigger[]
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+  UserAgents                  UserAgents[]
+  UserBlockCredit             UserBlockCredit[]
+  StoreListing                StoreListing[]
+  StoreListingVersion         StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
   @@map("AgentGraph")
@@ -122,8 +123,10 @@ model ConfiguredAgent {
   agentVersion Int
   agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  Configuration AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
-  UserAgents    UserAgents[]
+  Configuration               AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
+  UserAgents                  UserAgents[]
+  WebhookTrigger              WebhookTrigger[]
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   @@index([userId])
 }
@@ -299,9 +302,8 @@ model AgentGraphExecutionSchedule {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  agentGraphId      String
-  agentGraphVersion Int    @default(1)
-  AgentGraph        Agent  @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  configuredAgentId String
+  configuredAgent   ConfiguredAgent @relation(fields: [configuredAgentId], references: [id], onDelete: Cascade)
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
@@ -311,12 +313,49 @@ model AgentGraphExecutionSchedule {
   lastUpdated DateTime @updatedAt
 
   // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Agent        Agent?  @relation(fields: [agentId, agentVersion], references: [id, version])
+  agentId      String?
+  agentVersion Int?
 
   @@index([isEnabled])
 }
 
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  PATCH
+}
+
+model WebhookTrigger {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  configuredAgentId String
+  ConfiguredAgent   ConfiguredAgent @relation(fields: [configuredAgentId], references: [id])
+
+  method  HttpMethod
+  urlSlug String
+
+  isActive           Boolean   @default(true)
+  lastReceivedDataAt DateTime?
+  isDeleted          Boolean   @default(false)
+  Agent              Agent?    @relation(fields: [agentId, agentVersion], references: [id, version])
+  agentId            String?
+  agentVersion       Int?
+
+  @@index([configuredAgentId])
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   METRICS TRACKING TABLES    ////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model AnalyticsDetails {
   // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
   // typical uuid() inserts are handled by prisma
@@ -342,11 +381,6 @@ model AnalyticsDetails {
   @@index([type])
 }
 
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
-//////////////   METRICS TRACKING TABLES    ////////////////
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
 model AnalyticsMetrics {
   id        String   @id @default(dbgenerated("gen_random_uuid()"))
   createdAt DateTime @default(now())
