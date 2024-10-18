@@ -6,6 +6,7 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    target-branch: "dev"
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
@@ -13,6 +14,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    target-branch: "dev"
+
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"
@@ -20,6 +23,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    target-branch: "dev"
+
 
   # infra (Terraform)
   - package-ecosystem: "terraform"
@@ -27,6 +32,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    target-branch: "dev"
+
 
   # market (Poetry project)
   - package-ecosystem: "pip"
@@ -34,6 +41,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    target-branch: "dev"
+
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -41,6 +50,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    target-branch: "dev"
+
 
   # Docker
   - package-ecosystem: "docker"
@@ -48,6 +59,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    target-branch: "dev"
+
 
   # Submodules
   - package-ecosystem: "gitsubmodule"
@@ -55,3 +68,13 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 1
+    target-branch: "dev"
+
+
+  # Docs
+  - package-ecosystem: 'pip'
+    directory: "docs/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+    target-branch: "dev"
