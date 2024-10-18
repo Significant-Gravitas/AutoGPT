@@ -1,0 +1,314 @@
+{
+    "id": "64c67d2c-f8c0-4a7d-b060-c50739a612cc",
+    "name": "Financial Analysis Agent: Your Personalized Financial Insights Tool",
+    "links": [
+        {
+            "id": "4aaee596-8ee9-40ab-85e0-9b3e7bddcd02",
+            "sink_id": "0a5c749c-06ae-4c1c-a0b5-82c3e0f7b3b1",
+            "is_static": false,
+            "sink_name": "prompt",
+            "source_id": "44492504-939e-4e07-bb8d-97ca5c9e4ef8",
+            "source_name": "output"
+        },
+        {
+            "id": "67c96e5b-97ec-4a9e-86ac-2b0b97d1e749",
+            "sink_id": "44492504-939e-4e07-bb8d-97ca5c9e4ef8",
+            "is_static": false,
+            "sink_name": "values",
+            "source_id": "9e67d259-99c5-4309-ba6e-f69da44fe223",
+            "source_name": "updated_dictionary"
+        },
+        {
+            "id": "03ed5a41-3b91-46f5-9e75-9fba055b2d6a",
+            "sink_id": "44adde8c-9355-4608-b7fc-fbbeee7b2e15",
+            "is_static": false,
+            "sink_name": "dictionary",
+            "source_id": "bbca8c10-6070-4c1b-ac05-0a6a96b16364",
+            "source_name": "updated_dictionary"
+        },
+        {
+            "id": "0a8a1d66-f463-48f4-8a6c-5703aba10e5e",
+            "sink_id": "9e67d259-99c5-4309-ba6e-f69da44fe223",
+            "is_static": false,
+            "sink_name": "value",
+            "source_id": "2977c6aa-f36f-4d19-b8a9-a0811549c1b2",
+            "source_name": "result"
+        },
+        {
+            "id": "23425de8-2923-4abd-812c-739d5544be00",
+            "sink_id": "d98e97a1-36d0-4a6f-9b46-add0e6a1c9c5",
+            "is_static": false,
+            "sink_name": "value",
+            "source_id": "0820fe90-1e94-4c61-8727-1ea50ab4cd2d",
+            "source_name": "result"
+        },
+        {
+            "id": "d6e82048-ec97-435b-90fa-7d8716a2fa8d",
+            "sink_id": "d98e97a1-36d0-4a6f-9b46-add0e6a1c9c5",
+            "is_static": false,
+            "sink_name": "dictionary",
+            "source_id": "d798fec4-609f-4bbf-aca5-63a493d5cfa8",
+            "source_name": "updated_dictionary"
+        },
+        {
+            "id": "e075a983-6b3c-4dc0-80c1-7cc704870aec",
+            "sink_id": "44adde8c-9355-4608-b7fc-fbbeee7b2e15",
+            "is_static": false,
+            "sink_name": "value",
+            "source_id": "aaf1d08f-d9ea-4fcf-bf29-82f5971f3899",
+            "source_name": "result"
+        },
+        {
+            "id": "c3ef5e32-aa8b-4bca-93f7-1cc1dd20eb6e",
+            "sink_id": "d798fec4-609f-4bbf-aca5-63a493d5cfa8",
+            "is_static": false,
+            "sink_name": "value",
+            "source_id": "729d37e9-51d6-49c6-9c5a-747cd1ccd698",
+            "source_name": "result"
+        },
+        {
+            "id": "2f3bb8ca-6e3f-4c4d-92bc-68b56fac3324",
+            "sink_id": "a468d8d4-cb5e-4735-bdc4-bbcae796d47d",
+            "is_static": false,
+            "sink_name": "value",
+            "source_id": "44492504-939e-4e07-bb8d-97ca5c9e4ef8",
+            "source_name": "output"
+        },
+        {
+            "id": "d4bcffa3-e562-49f9-82c1-6fb8c6d5e29c",
+            "sink_id": "bbca8c10-6070-4c1b-ac05-0a6a96b16364",
+            "is_static": false,
+            "sink_name": "value",
+            "source_id": "7e7c227c-6243-496d-8d8b-9f00ee4b4b92",
+            "source_name": "result"
+        },
+        {
+            "id": "8023edfc-f4f6-4e28-8a30-e23156990b0d",
+            "sink_id": "d798fec4-609f-4bbf-aca5-63a493d5cfa8",
+            "is_static": false,
+            "sink_name": "dictionary",
+            "source_id": "44adde8c-9355-4608-b7fc-fbbeee7b2e15",
+            "source_name": "updated_dictionary"
+        },
+        {
+            "id": "6e632dd8-bcd3-41c5-be61-9aed46e67908",
+            "sink_id": "9e67d259-99c5-4309-ba6e-f69da44fe223",
+            "is_static": false,
+            "sink_name": "dictionary",
+            "source_id": "d98e97a1-36d0-4a6f-9b46-add0e6a1c9c5",
+            "source_name": "updated_dictionary"
+        },
+        {
+            "id": "49ba9ecf-cd7b-49ec-850e-b7376e31d5ba",
+            "sink_id": "4dfc13d8-c855-47c7-b608-bfd61998b849",
+            "is_static": false,
+            "sink_name": "value",
+            "source_id": "0a5c749c-06ae-4c1c-a0b5-82c3e0f7b3b1",
+            "source_name": "response"
+        }
+    ],
+    "nodes": [
+        {
+            "id": "4dfc13d8-c855-47c7-b608-bfd61998b849",
+            "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+            "metadata": {
+                "position": {
+                    "x": 3533.995840713809,
+                    "y": 949.1258855834958
+                }
+            },
+            "input_default": {
+                "name": "Advice"
+            }
+        },
+        {
+            "id": "0a5c749c-06ae-4c1c-a0b5-82c3e0f7b3b1",
+            "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+            "metadata": {
+                "position": {
+                    "x": 2415.719369966296,
+                    "y": 1348.2399127545737
+                }
+            },
+            "input_default": {
+                "model": "gpt-4o",
+                "api_key": "...",
+                "sys_prompt": "Instructions for Financial Analyst:  Scope of Work: - Analyze the client's current financial situation based on the provided briefing. - Develop a comprehensive financial plan to help the client achieve their stated financial goal. - Provide recommendations on investment strategies utilizing the client's available capital. - Assess the client's income and expenses to identify opportunities for increasing savings or reducing costs.  Considerations: - Take into account the economic conditions and financial regulations specific to {{ country }}. - Consider the client's risk tolerance and investment preferences when proposing strategies. - Ensure that any recommendations are compliant with legal and ethical standards within the financial industry. - Factor in any potential tax implications related to investment or financial planning.  Expected Outputs: - A detailed financial plan outlining steps to achieve the client's goal. - An analysis report of the client's current financial health, including strengths and areas for improvement. - Specific recommendations for investment opportunities suitable for the client's capital and goals. - Actionable advice on managing income and expenses to enhance savings potential.  Please ensure that all advice is tailored to the client's unique situation and aligns with their financial objectives.",
+                "prompt_values": {}
+            }
+        },
+        {
+            "id": "9e67d259-99c5-4309-ba6e-f69da44fe223",
+            "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+            "metadata": {
+                "position": {
+                    "x": 899.9313906355574,
+                    "y": 1457.9364531936767
+                }
+            },
+            "input_default": {
+                "key": "capital"
+            }
+        },
+        {
+            "id": "44adde8c-9355-4608-b7fc-fbbeee7b2e15",
+            "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+            "metadata": {
+                "position": {
+                    "x": 877.350070306956,
+                    "y": 93.79000505901234
+                }
+            },
+            "input_default": {
+                "key": "income"
+            }
+        },
+        {
+            "id": "44492504-939e-4e07-bb8d-97ca5c9e4ef8",
+            "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+            "metadata": {
+                "position": {
+                    "x": 1695.5805808682992,
+                    "y": 918.2363585019502
+                }
+            },
+            "input_default": {
+                "format": "Financial Analyst Briefing:\n\nClient Country: {{ country }}\n\nClient's Financial Goal: {{ goal }}\n\nCurrent Capital Available for Investment: {{ capital }}\n\nIncome and Expenses Summary:\n- Income: {{ income }}\n- Expenses: {{ expenses }}\n\nAdvisor Notes:\nThe client aims to achieve the above financial goal with their current capital. Please evaluate their income and expense structure to recommend an optimal strategy for reaching their goal. Focus on ways to maximize the client's investment potential while considering their current financial standing. \n\nEnsure that their expenses are manageable and provide actionable steps to help them achieve better savings or investment returns to align with their goal.\n\nGive clear advise on specifically what there investment capital could be invested in to help them achieve there goals. Consider stocks, rental properties, savings accounts, gold, crypto, pension funds and every other possible investment."
+            }
+        },
+        {
+            "id": "aaf1d08f-d9ea-4fcf-bf29-82f5971f3899",
+            "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+            "metadata": {
+                "position": {
+                    "x": 171.2942539715716,
+                    "y": -30.512927444086387
+                }
+            },
+            "input_default": {
+                "name": "Income",
+                "value": "10000",
+                "description": "What is you annual income in your local currency?"
+            }
+        },
+        {
+            "id": "0820fe90-1e94-4c61-8727-1ea50ab4cd2d",
+            "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+            "metadata": {
+                "position": {
+                    "x": 175.43249130331668,
+                    "y": 790.7562658250306
+                }
+            },
+            "input_default": {
+                "name": "Goal",
+                "value": "I want to maximise the passive income I can gain from my investment capital",
+                "description": "What are your financial goals?"
+            }
+        },
+        {
+            "id": "729d37e9-51d6-49c6-9c5a-747cd1ccd698",
+            "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+            "metadata": {
+                "position": {
+                    "x": 180.77722789594975,
+                    "y": 384.2712961685803
+                }
+            },
+            "input_default": {
+                "name": "Expenses",
+                "value": "6000",
+                "description": "What's your current fixed expenses?"
+            }
+        },
+        {
+            "id": "d98e97a1-36d0-4a6f-9b46-add0e6a1c9c5",
+            "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+            "metadata": {
+                "position": {
+                    "x": 884.1360010186997,
+                    "y": 929.5088732842511
+                }
+            },
+            "input_default": {
+                "key": "goal"
+            }
+        },
+        {
+            "id": "7e7c227c-6243-496d-8d8b-9f00ee4b4b92",
+            "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+            "metadata": {
+                "position": {
+                    "x": 168.72576263452936,
+                    "y": -436.53322204035607
+                }
+            },
+            "input_default": {
+                "name": "Country",
+                "value": "USA",
+                "description": "What Country do you live in?"
+            }
+        },
+        {
+            "id": "2977c6aa-f36f-4d19-b8a9-a0811549c1b2",
+            "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+            "metadata": {
+                "position": {
+                    "x": 174.4312987379065,
+                    "y": 1209.83336705979
+                }
+            },
+            "input_default": {
+                "name": "Investment Capital",
+                "value": "10000",
+                "description": "How much money do you have to invest?"
+            }
+        },
+        {
+            "id": "bbca8c10-6070-4c1b-ac05-0a6a96b16364",
+            "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+            "metadata": {
+                "position": {
+                    "x": 901.5508526475596,
+                    "y": -263.1782978759104
+                }
+            },
+            "input_default": {
+                "key": "country"
+            }
+        },
+        {
+            "id": "d798fec4-609f-4bbf-aca5-63a493d5cfa8",
+            "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+            "metadata": {
+                "position": {
+                    "x": 878.495446124934,
+                    "y": 500.2646877565711
+                }
+            },
+            "input_default": {
+                "key": "expenses"
+            }
+        },
+        {
+            "id": "a468d8d4-cb5e-4735-bdc4-bbcae796d47d",
+            "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+            "metadata": {
+                "position": {
+                    "x": 2465.9560523193677,
+                    "y": 448.60897681592746
+                }
+            },
+            "input_default": {
+                "name": "Your Situation",
+                "description": "Explanation of your current situation"
+            }
+        }
+    ],
+    "version": 10,
+    "is_active": true,
+    "subgraphs": {},
+    "executions": null,
+    "description": "**Disclaimer: The information provided by this agent is for informational purposes only and should not be considered financial advice. Please consult a licensed financial professional for personalized advice.**\n\nThe Financial Guidance Agent is a comprehensive digital solution designed to provide personalized financial insights to users. This agent specializes in analyzing your financial data—including income, expenses, and available capital—to offer tailored suggestions that help you work towards your financial objectives.\n\n**Value Delivered:**\n1. **Personalized Financial Insights**: The agent provides customized insights based on your individual needs and circumstances. By carefully analyzing your financial situation, it offers actionable suggestions to help you optimize your income, manage expenses, and make informed financial decisions.\n\n2. **Comprehensive Analysis**: With an in-depth review of income and expenditure, the agent highlights areas for potential improvement, helping users make informed decisions about their financial situation. It aims to provide efficient use of capital to support your financial objectives.\n\n3. **Investment Considerations**: The agent identifies potential investment opportunities that align with your risk tolerance and financial objectives. However, any final decisions should be made in consultation with a qualified financial advisor.\n\n4. **Goal-Oriented Approach**: Focused on your stated financial goals, the agent provides a clear outline of strategies and tactics that could help you work towards achieving financial success.",
+    "is_template": false
+}
