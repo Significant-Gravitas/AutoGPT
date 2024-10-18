@@ -307,7 +307,9 @@ model AgentGraphExecutionSchedule {
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
-  inputData String // JSON serialized object
+
+  // Allows triggers to be routed down different execution paths in an agent graph
+  triggerIdentifier String
 
   // default and set the value on each update, lastUpdated field has no time zone.
   lastUpdated DateTime @updatedAt
@@ -340,6 +342,9 @@ model WebhookTrigger {
 
   method  HttpMethod
   urlSlug String
+
+  // Allows triggers to be routed down different execution paths in an agent graph
+  triggerIdentifier String
 
   isActive           Boolean   @default(true)
   lastReceivedDataAt DateTime?
