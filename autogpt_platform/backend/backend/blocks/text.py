@@ -2,9 +2,9 @@ import re
 from typing import Any
 
 from jinja2 import BaseLoader, Environment
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 from backend.util import json
 
 jinja = Environment(loader=BaseLoader())
@@ -12,15 +12,17 @@ jinja = Environment(loader=BaseLoader())
 
 class MatchTextPatternBlock(Block):
     class Input(BlockSchema):
-        text: Any = Field(description="Text to match")
-        match: str = Field(description="Pattern (Regex) to match")
-        data: Any = Field(description="Data to be forwarded to output")
-        case_sensitive: bool = Field(description="Case sensitive match", default=True)
-        dot_all: bool = Field(description="Dot matches all", default=True)
+        text: Any = SchemaField(description="Text to match")
+        match: str = SchemaField(description="Pattern (Regex) to match")
+        data: Any = SchemaField(description="Data to be forwarded to output")
+        case_sensitive: bool = SchemaField(
+            description="Case sensitive match", default=True
+        )
+        dot_all: bool = SchemaField(description="Dot matches all", default=True)
 
     class Output(BlockSchema):
-        positive: Any = Field(description="Output data if match is found")
-        negative: Any = Field(description="Output data if match is not found")
+        positive: Any = SchemaField(description="Output data if match is found")
+        negative: Any = SchemaField(description="Output data if match is not found")
 
     def __init__(self):
         super().__init__(
@@ -64,15 +66,17 @@ class MatchTextPatternBlock(Block):
 
 class ExtractTextInformationBlock(Block):
     class Input(BlockSchema):
-        text: Any = Field(description="Text to parse")
-        pattern: str = Field(description="Pattern (Regex) to parse")
-        group: int = Field(description="Group number to extract", default=0)
-        case_sensitive: bool = Field(description="Case sensitive match", default=True)
-        dot_all: bool = Field(description="Dot matches all", default=True)
+        text: Any = SchemaField(description="Text to parse")
+        pattern: str = SchemaField(description="Pattern (Regex) to parse")
+        group: int = SchemaField(description="Group number to extract", default=0)
+        case_sensitive: bool = SchemaField(
+            description="Case sensitive match", default=True
+        )
+        dot_all: bool = SchemaField(description="Dot matches all", default=True)
 
     class Output(BlockSchema):
-        positive: str = Field(description="Extracted text")
-        negative: str = Field(description="Original text")
+        positive: str = SchemaField(description="Extracted text")
+        negative: str = SchemaField(description="Original text")
 
     def __init__(self):
         super().__init__(
@@ -116,11 +120,15 @@ class ExtractTextInformationBlock(Block):
 
 class FillTextTemplateBlock(Block):
     class Input(BlockSchema):
-        values: dict[str, Any] = Field(description="Values (dict) to be used in format")
-        format: str = Field(description="Template to format the text using `values`")
+        values: dict[str, Any] = SchemaField(
+            description="Values (dict) to be used in format"
+        )
+        format: str = SchemaField(
+            description="Template to format the text using `values`"
+        )
 
     class Output(BlockSchema):
-        output: str
+        output: str = SchemaField(description="Formatted text")
 
     def __init__(self):
         super().__init__(
@@ -155,11 +163,13 @@ class FillTextTemplateBlock(Block):
 
 class CombineTextsBlock(Block):
     class Input(BlockSchema):
-        input: list[str] = Field(description="text input to combine")
-        delimiter: str = Field(description="Delimiter to combine texts", default="")
+        input: list[str] = SchemaField(description="text input to combine")
+        delimiter: str = SchemaField(
+            description="Delimiter to combine texts", default=""
+        )
 
     class Output(BlockSchema):
-        output: str = Field(description="Combined text")
+        output: str = SchemaField(description="Combined text")
 
     def __init__(self):
         super().__init__(
