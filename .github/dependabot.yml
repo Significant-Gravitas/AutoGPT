@@ -10,8 +10,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
@@ -23,8 +29,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
 
   # frontend (Next.js project)
@@ -37,8 +49,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
 
   # infra (Terraform)
@@ -51,8 +69,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
 
   # market (Poetry project)
@@ -65,8 +89,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
 
   # GitHub Actions
@@ -79,8 +109,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
 
   # Docker
@@ -93,8 +129,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
 
   # Submodules
@@ -107,8 +149,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
 
 
   # Docs
@@ -121,5 +169,11 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
       development-dependencies:
         dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
