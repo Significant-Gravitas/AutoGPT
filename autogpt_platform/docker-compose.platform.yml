@@ -103,6 +103,7 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
+      - DATABASEMANAGER_HOST=0.0.0.0
     ports:
       - "8002:8000"
     networks:
