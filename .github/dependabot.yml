@@ -7,6 +7,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
@@ -15,6 +20,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
 
   # frontend (Next.js project)
@@ -24,6 +34,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
 
   # infra (Terraform)
@@ -33,6 +48,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
 
   # market (Poetry project)
@@ -42,6 +62,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
 
   # GitHub Actions
@@ -51,6 +76,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
 
   # Docker
@@ -60,6 +90,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
 
   # Submodules
@@ -69,6 +104,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 1
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
 
   # Docs
@@ -78,3 +118,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 1
     target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
