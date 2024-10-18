@@ -29,8 +29,8 @@ model User {
   UserAgents                   UserAgents[]
 
   // User Group relations
-  groups                 UserGroup[]              @relation("GroupUsers")
-  adminGroups            UserGroup[]              @relation("GroupAdminUsers")
+  Groups                 UserGroup[]              @relation("GroupUsers")
+  AdminGroups            UserGroup[]              @relation("GroupAdminUsers")
   UserAccounting         UserAccounting[]
   UserSubscription       UserSubscription[]
   Profile                Profile[]
