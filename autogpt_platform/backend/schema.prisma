@@ -123,7 +123,7 @@ model ConfiguredAgent {
   agentVersion Int
   agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  Configuration               AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
+  InputPresets                AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
   UserAgents                  UserAgents[]
   WebhookTrigger              WebhookTrigger[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
