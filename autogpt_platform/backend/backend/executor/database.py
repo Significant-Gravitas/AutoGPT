@@ -8,7 +8,7 @@ from backend.data.execution import (
     get_execution_results,
     get_incomplete_executions,
     get_latest_execution,
-    get_user,
+    get_user_metadata,
     update_execution_status,
     update_graph_execution_stats,
     update_node_execution_stats,
@@ -77,5 +77,5 @@ class DatabaseManager(AppService):
     )
 
     # User + User Metadata
-    get_user = exposed_run_and_wait(get_user)
+    get_user_metadata = exposed_run_and_wait(get_user_metadata)
     update_user_metadata = exposed_run_and_wait(update_user_metadata)

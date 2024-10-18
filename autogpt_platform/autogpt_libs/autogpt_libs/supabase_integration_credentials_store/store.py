@@ -179,12 +179,8 @@ class SupabaseIntegrationCredentialsStore:
         self.db_manager.update_user_metadata(user_id, raw_metadata)
 
     def _get_user_metadata(self, user_id: str) -> UserMetadataRaw:
-        user = self.db_manager.get_user(user_id=user_id)
-        return (
-            UserMetadataRaw.model_validate(user.metadata)
-            if user.metadata
-            else UserMetadataRaw()
-        )
+        metadata: UserMetadataRaw = self.db_manager.get_user_metadata(user_id=user_id)
+        return metadata
 
     def locked_user_metadata(self, user_id: str):
         key = (self.db_manager, f"user:{user_id}", "metadata")

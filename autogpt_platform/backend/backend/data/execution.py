@@ -482,11 +482,11 @@ async def get_incomplete_executions(
     return [ExecutionResult.from_db(execution) for execution in executions]
 
 
-async def get_user(user_id: str) -> User:
+async def get_user_metadata(user_id: str) -> UserMetadataRaw:
     user = await User.prisma().find_unique_or_raise(
         where={"id": user_id},
     )
-    return user
+    return UserMetadataRaw.model_validate(user.metadata) if user.metadata else UserMetadataRaw()
 
 
 async def update_user_metadata(user_id: str, metadata: UserMetadataRaw):
