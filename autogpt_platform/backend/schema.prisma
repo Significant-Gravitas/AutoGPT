@@ -25,7 +25,7 @@ model User {
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
-  ConfiguredAgents             ConfiguredAgent[]
+  ConfiguredAgents             AgentPreset[]
   UserAgents                   UserAgents[]
 
   // User Group relations
@@ -65,15 +65,15 @@ model UserGroupMembership {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userId    String
-  user      User          @relation(fields: [userId], references: [id])
-  groupId   String
-  userGroup UserGroup     @relation(fields: [groupId], references: [id])
-  role      UserGroupRole @default(MEMBER)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  userGroupId String
+  userGroup   UserGroup     @relation(fields: [userGroupId], references: [id])
+  role        UserGroupRole @default(MEMBER)
 
-  @@unique([userId, groupId])
+  @@unique([userId, userGroupId])
   @@index([userId])
-  @@index([groupId])
+  @@index([userGroupId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -102,7 +102,7 @@ model Agent {
   agentGraphParentVersion Int?
   AgentGraphParent        Agent?  @relation("AgentSubGraph", fields: [agentGraphParentId, agentGraphParentVersion], references: [id, version], onDelete: Cascade)
 
-  ConfiguredAgents            ConfiguredAgent[]
+  ConfiguredAgents            AgentPreset[]
   WebhookTrigger              WebhookTrigger[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
   UserAgents                  UserAgents[]
@@ -120,7 +120,7 @@ model Agent {
 //////////////////////////////////////////////////////////// 
 //////////////////////////////////////////////////////////// 
 
-model ConfiguredAgent {
+model AgentPreset {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -160,7 +160,7 @@ model UserAgents {
   agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
   configuredAgentId String?
-  configuredAgent   ConfiguredAgent? @relation(fields: [configuredAgentId], references: [id])
+  configuredAgent   AgentPreset? @relation(fields: [configuredAgentId], references: [id])
 
   isFavorite      Boolean @default(false)
   isCreatedByUser Boolean @default(false)
@@ -195,10 +195,10 @@ model AgentNode {
   Output AgentNodeLink[] @relation("AgentNodeSource")
 
   // JSON serialized dict[str, str] containing predefined input values.
-  constantInput String @default("{}")
+  constantInput Json @default("{}")
 
   // JSON serialized dict[str, str] containing the node metadata.
-  metadata String @default("{}")
+  metadata Json @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
 }
@@ -228,8 +228,8 @@ model AgentBlock {
 
   // We allow a block to have multiple types of input & output.
   // Serialized object-typed `jsonschema` with top-level properties as input/output name.
-  inputSchema  String
-  outputSchema String
+  inputSchema  Json @default("{}")
+  outputSchema Json @default("{}")
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
@@ -272,7 +272,7 @@ model AgentGraphExecution {
   executedByUserId String
   executedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
-  stats String? // JSON serialized object
+  stats Json? // JSON serialized object
 }
 
 // This model describes the execution of an AgentNode.
@@ -296,7 +296,7 @@ model AgentNodeExecution {
   startedTime     DateTime?
   endedTime       DateTime?
 
-  stats String? // JSON serialized object
+  stats Json? // JSON serialized object
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -314,7 +314,7 @@ model AgentNodeExecutionInputOutput {
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
   configuredAgentId String?
-  ConfiguredAgent   ConfiguredAgent? @relation("AgentNodeExecutionPresets", fields: [configuredAgentId], references: [id])
+  ConfiguredAgent   AgentPreset? @relation("AgentNodeExecutionPresets", fields: [configuredAgentId], references: [id])
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
@@ -327,7 +327,7 @@ model AgentGraphExecutionSchedule {
   updatedAt DateTime? @updatedAt
 
   configuredAgentId String
-  configuredAgent   ConfiguredAgent @relation(fields: [configuredAgentId], references: [id], onDelete: Cascade)
+  configuredAgent   AgentPreset @relation(fields: [configuredAgentId], references: [id], onDelete: Cascade)
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
@@ -362,7 +362,7 @@ model WebhookTrigger {
   updatedAt DateTime @updatedAt
 
   configuredAgentId String
-  ConfiguredAgent   ConfiguredAgent @relation(fields: [configuredAgentId], references: [id])
+  ConfiguredAgent   AgentPreset @relation(fields: [configuredAgentId], references: [id])
 
   method  HttpMethod
   urlSlug String
@@ -666,8 +666,8 @@ model StoreListingSubmission {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  StoreListingId String
-  StoreListing   StoreListing @relation(fields: [StoreListingId], references: [id])
+  storeListingId String
+  storeListing   StoreListing @relation(fields: [storeListingId], references: [id])
 
   storeListingVersionId String
   StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id])
@@ -679,6 +679,6 @@ model StoreListingSubmission {
   isDenied       Boolean          @default(false)
   reviewComments String?
 
-  @@index([StoreListingId])
+  @@index([storeListingId])
   @@index([status])
 }
