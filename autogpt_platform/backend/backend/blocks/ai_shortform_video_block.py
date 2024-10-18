@@ -3,7 +3,6 @@ import time
 from enum import Enum
 
 import requests
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
@@ -129,9 +128,13 @@ class AIShortformVideoCreatorBlock(Block):
             description="""1. Use short and punctuated sentences\n\n2. Use linebreaks to create a new clip\n\n3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat.""",
             placeholder="[close-up of a cat] Meow!",
         )
-        ratio: str = Field(description="Aspect ratio of the video", default="9 / 16")
-        resolution: str = Field(description="Resolution of the video", default="720p")
-        frame_rate: int = Field(description="Frame rate of the video", default=60)
+        ratio: str = SchemaField(
+            description="Aspect ratio of the video", default="9 / 16"
+        )
+        resolution: str = SchemaField(
+            description="Resolution of the video", default="720p"
+        )
+        frame_rate: int = SchemaField(description="Frame rate of the video", default=60)
         generation_preset: GenerationPreset = SchemaField(
             description="Generation preset for visual style - only effects AI generated visuals",
             default=GenerationPreset.LEONARDO,
@@ -154,8 +157,8 @@ class AIShortformVideoCreatorBlock(Block):
         )
 
     class Output(BlockSchema):
-        video_url: str = Field(description="The URL of the created video")
-        error: str = Field(description="Error message if the request failed")
+        video_url: str = SchemaField(description="The URL of the created video")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

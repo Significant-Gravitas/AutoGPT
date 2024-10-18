@@ -2,7 +2,6 @@ import re
 from typing import Any, List
 
 from jinja2 import BaseLoader, Environment
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
@@ -19,18 +18,18 @@ class StoreValueBlock(Block):
     """
 
     class Input(BlockSchema):
-        input: Any = Field(
+        input: Any = SchemaField(
             description="Trigger the block to produce the output. "
             "The value is only used when `data` is None."
         )
-        data: Any = Field(
+        data: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
             default=None,
         )
 
     class Output(BlockSchema):
-        output: Any
+        output: Any = SchemaField(description="The stored data retained in the block.")
 
     def __init__(self):
         super().__init__(
@@ -56,10 +55,10 @@ class StoreValueBlock(Block):
 
 class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
-        text: str
+        text: str = SchemaField(description="The text to print to the console.")
 
     class Output(BlockSchema):
-        status: str
+        status: str = SchemaField(description="The status of the print operation.")
 
     def __init__(self):
         super().__init__(
@@ -79,12 +78,14 @@ class PrintToConsoleBlock(Block):
 
 class FindInDictionaryBlock(Block):
     class Input(BlockSchema):
-        input: Any = Field(description="Dictionary to lookup from")
-        key: str | int = Field(description="Key to lookup in the dictionary")
+        input: Any = SchemaField(description="Dictionary to lookup from")
+        key: str | int = SchemaField(description="Key to lookup in the dictionary")
 
     class Output(BlockSchema):
-        output: Any = Field(description="Value found for the given key")
-        missing: Any = Field(description="Value of the input that missing the key")
+        output: Any = SchemaField(description="Value found for the given key")
+        missing: Any = SchemaField(
+            description="Value of the input that missing the key"
+        )
 
     def __init__(self):
         super().__init__(

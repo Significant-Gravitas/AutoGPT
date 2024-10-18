@@ -4,6 +4,7 @@ from enum import Enum
 import requests
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class HttpMethod(Enum):
@@ -18,15 +19,27 @@ class HttpMethod(Enum):
 
 class SendWebRequestBlock(Block):
     class Input(BlockSchema):
-        url: str
-        method: HttpMethod = HttpMethod.POST
-        headers: dict[str, str] = {}
-        body: object = {}
+        url: str = SchemaField(
+            description="The URL to send the request to",
+            placeholder="https://api.example.com",
+        )
+        method: HttpMethod = SchemaField(
+            description="The HTTP method to use for the request",
+            default=HttpMethod.POST,
+        )
+        headers: dict[str, str] = SchemaField(
+            description="The headers to include in the request",
+            default={},
+        )
+        body: object = SchemaField(
+            description="The body of the request",
+            default={},
+        )
 
     class Output(BlockSchema):
-        response: object
-        client_error: object
-        server_error: object
+        response: object = SchemaField(description="The response from the server")
+        client_error: object = SchemaField(description="The error on 4xx status codes")
+        server_error: object = SchemaField(description="The error on 5xx status codes")
 
     def __init__(self):
         super().__init__(

@@ -75,28 +75,24 @@ class IdeogramModelBlock(Block):
             description="The name of the Image Generation Model, e.g., V_2",
             default=IdeogramModelName.V2,
             title="Image Generation Model",
-            enum=IdeogramModelName,
             advanced=False,
         )
         aspect_ratio: AspectRatio = SchemaField(
             description="Aspect ratio for the generated image",
             default=AspectRatio.ASPECT_1_1,
             title="Aspect Ratio",
-            enum=AspectRatio,
             advanced=False,
         )
         upscale: UpscaleOption = SchemaField(
             description="Upscale the generated image",
             default=UpscaleOption.NO_UPSCALE,
             title="Upscale Image",
-            enum=UpscaleOption,
             advanced=False,
         )
         magic_prompt_option: MagicPromptOption = SchemaField(
             description="Whether to use MagicPrompt for enhancing the request",
             default=MagicPromptOption.AUTO,
             title="Magic Prompt Option",
-            enum=MagicPromptOption,
             advanced=True,
         )
         seed: Optional[int] = SchemaField(
@@ -109,7 +105,6 @@ class IdeogramModelBlock(Block):
             description="Style type to apply, applicable for V_2 and above",
             default=StyleType.AUTO,
             title="Style Type",
-            enum=StyleType,
             advanced=True,
         )
         negative_prompt: Optional[str] = SchemaField(
@@ -122,7 +117,6 @@ class IdeogramModelBlock(Block):
             description="Color palette preset name, choose 'None' to skip",
             default=ColorPalettePreset.NONE,
             title="Color Palette Preset",
-            enum=ColorPalettePreset,
             advanced=True,
         )
 

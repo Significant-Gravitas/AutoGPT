@@ -1,21 +1,49 @@
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import ContributorDetails
+from backend.data.model import ContributorDetails, SchemaField
 
 
 class ReadCsvBlock(Block):
     class Input(BlockSchema):
-        contents: str
-        delimiter: str = ","
-        quotechar: str = '"'
-        escapechar: str = "\\"
-        has_header: bool = True
-        skip_rows: int = 0
-        strip: bool = True
-        skip_columns: list[str] = []
+        contents: str = SchemaField(
+            description="The contents of the CSV file to read",
+            placeholder="a, b, c\n1,2,3\n4,5,6",
+        )
+        delimiter: str = SchemaField(
+            description="The delimiter used in the CSV file",
+            default=",",
+        )
+        quotechar: str = SchemaField(
+            description="The character used to quote fields",
+            default='"',
+        )
+        escapechar: str = SchemaField(
+            description="The character used to escape the delimiter",
+            default="\\",
+        )
+        has_header: bool = SchemaField(
+            description="Whether the CSV file has a header row",
+            default=True,
+        )
+        skip_rows: int = SchemaField(
+            description="The number of rows to skip from the start of the file",
+            default=0,
+        )
+        strip: bool = SchemaField(
+            description="Whether to strip whitespace from the values",
+            default=True,
+        )
+        skip_columns: list[str] = SchemaField(
+            description="The columns to skip from the start of the row",
+            default=[],
+        )
 
     class Output(BlockSchema):
-        row: dict[str, str]
-        all_data: list[dict[str, str]]
+        row: dict[str, str] = SchemaField(
+            description="The data produced from each row in the CSV file"
+        )
+        all_data: list[dict[str, str]] = SchemaField(
+            description="All the data in the CSV file as a list of rows"
+        )
 
     def __init__(self):
         super().__init__(
