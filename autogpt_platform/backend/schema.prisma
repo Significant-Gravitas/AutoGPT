@@ -29,13 +29,13 @@ model User {
   UserAgents                   UserAgents[]
 
   // User Group relations
-  groups               UserGroup[]            @relation("GroupUsers")
-  adminGroups          UserGroup[]            @relation("GroupAdminUsers")
-  UserAccounting       UserAccounting[]
-  UserSubscription     UserSubscription[]
-  Profile              Profile[]
-  StoreListing         StoreListing[]
-  StoreListingApproval StoreListingApproval[]
+  groups                 UserGroup[]              @relation("GroupUsers")
+  adminGroups            UserGroup[]              @relation("GroupAdminUsers")
+  UserAccounting         UserAccounting[]
+  UserSubscription       UserSubscription[]
+  Profile                Profile[]
+  StoreListing           StoreListing[]
+  StoreListingSubmission StoreListingSubmission[]
 
   @@index([id])
   @@index([email])
@@ -520,10 +520,10 @@ model StoreListing {
   owningGroupId  String?
   owningGroup    UserGroup? @relation(fields: [owningGroupId], references: [id])
 
-  StoreListingVersions StoreListingVersion[]
-  StorePricings        StorePricing[]
-  UserBlockCredit      UserBlockCredit[]
-  StoreListingApproval StoreListingApproval[]
+  StoreListingVersions   StoreListingVersion[]
+  StorePricings          StorePricing[]
+  UserBlockCredit        UserBlockCredit[]
+  StoreListingSubmission StoreListingSubmission[]
 
   @@index([isApproved])
   @@index([agentId])
@@ -560,21 +560,28 @@ model StoreListingVersion {
   agentVersion Int
   agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  agentGraphVersion Int
+  isFeatured Boolean  @default(false)
+  categories String[]
 
-  isDeleted            Boolean                @default(false)
+  isDeleted              Boolean                  @default(false)
   // Old versions can be made unavailable by the auther if desired
-  isAvailable          Boolean                @default(true)
+  isAvailable            Boolean                  @default(true)
   // Not needed but makes lookups faster
-  isApproved           Boolean                @default(false)
-  StoreListing         StoreListing?          @relation(fields: [storeListingId], references: [id])
-  storeListingId       String?
-  StoreListingApproval StoreListingApproval[]
+  isApproved             Boolean                  @default(false)
+  StoreListing           StoreListing?            @relation(fields: [storeListingId], references: [id])
+  storeListingId         String?
+  StoreListingSubmission StoreListingSubmission[]
 
-  @@index([agentId, agentGraphVersion, isApproved])
+  @@index([agentId, agentVersion, isApproved])
 }
 
-model StoreListingApproval {
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model StoreListingSubmission {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -585,12 +592,13 @@ model StoreListingApproval {
   maketplaceListingVersionId String
   StoreListingVersion        StoreListingVersion @relation(fields: [maketplaceListingVersionId], references: [id])
 
-  approvedByUserId String
-  approvedByUser   User   @relation(fields: [approvedByUserId], references: [id], onDelete: Cascade)
+  reviewByUserId String
+  reviewByUser   User   @relation(fields: [reviewByUserId], references: [id], onDelete: Cascade)
 
-  isApproved       Boolean @default(false)
-  isDenied         Boolean @default(false)
-  approvalComments String?
+  status         SubmissionStatus @default(PENDING)
+  isDenied       Boolean          @default(false)
+  reviewComments String?
 
-  @@index([StoreListingId, approvedByUserId])
+  @@index([StoreListingId])
+  @@index([status])
 }
