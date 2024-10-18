@@ -47,6 +47,7 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
 class SearchTheWebBlock(Block, GetRequest):
     class Input(BlockSchema):
         query: str  # The search query
+        api_key: BlockSecret = SecretField(key="jina_api_key")
 
     class Output(BlockSchema):
         results: str  # The search results including content from top 5 URLs
@@ -59,9 +60,9 @@ class SearchTheWebBlock(Block, GetRequest):
             categories={BlockCategory.SEARCH},
             input_schema=SearchTheWebBlock.Input,
             output_schema=SearchTheWebBlock.Output,
-            test_input={"query": "Artificial Intelligence"},
+            test_input={"query": "Artificial Intelligence", "api_key": "YOUR_API_KEY"},
             test_output=("results", "search content"),
-            test_mock={"get_request": lambda url, json: "search content"},
+            test_mock={"get_request": lambda url, json, headers: "search content"},
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -71,8 +72,13 @@ class SearchTheWebBlock(Block, GetRequest):
         # Prepend the Jina Search URL to the encoded query
         jina_search_url = f"https://s.jina.ai/{encoded_query}"
 
+        # Prepare headers with API key
+        headers = {
+            "Authorization": f"Bearer {input_data.api_key.get_secret_value()}"
+        }
+
         # Make the request to Jina Search
-        response = self.get_request(jina_search_url, json=False)
+        response = self.get_request(jina_search_url, json=False, headers=headers)
 
         # Output the search results
         yield "results", response
@@ -81,6 +87,7 @@ class SearchTheWebBlock(Block, GetRequest):
 class ExtractWebsiteContentBlock(Block, GetRequest):
     class Input(BlockSchema):
         url: str  # The URL to scrape
+        api_key: BlockSecret = SecretField(key="jina_api_key")
         raw_content: bool = SchemaField(
             default=False,
             title="Raw Content",
@@ -99,9 +106,9 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             categories={BlockCategory.SEARCH},
             input_schema=ExtractWebsiteContentBlock.Input,
             output_schema=ExtractWebsiteContentBlock.Output,
-            test_input={"url": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
+            test_input={"url": "https://en.wikipedia.org/wiki/Artificial_intelligence", "api_key": "YOUR_API_KEY"},
             test_output=("content", "scraped content"),
-            test_mock={"get_request": lambda url, json: "scraped content"},
+            test_mock={"get_request": lambda url, json, headers: "scraped content"},
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -110,7 +117,12 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         else:
             url = f"https://r.jina.ai/{input_data.url}"
 
-        content = self.get_request(url, json=False)
+        # Prepare headers with API key
+        headers = {
+            "Authorization": f"Bearer {input_data.api_key.get_secret_value()}"
+        }
+
+        content = self.get_request(url, json=False, headers=headers)
         yield "content", content
 
 
