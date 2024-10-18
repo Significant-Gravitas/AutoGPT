@@ -196,7 +196,7 @@ class BlockWithAPIKeyAndOAuth(Block):
 
 The credentials will be automagically injected by the executor in the back end.
 
-The `APIKeyCredentials` and `OAuth2Credentials` models are defined [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/rnd/autogpt_libs/autogpt_libs/supabase_integration_credentials_store/types.py).
+The `APIKeyCredentials` and `OAuth2Credentials` models are defined [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/autogpt_libs/autogpt_libs/supabase_integration_credentials_store/types.py).
 To use them in e.g. an API request, you can either access the token directly:
 
 ```python
