@@ -500,12 +500,18 @@ model UserSubscription {
 
   isSubscribed          Boolean   @default(false)
   subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  isCancelling          Boolean   @default(false)
 
-  isCancelling        Boolean   @default(false)
-  subscriptionEndDate DateTime?
+  subscriptionPlanId String
+  subscriptionPlan   SubscriptionPlan @relation(fields: [subscriptionPlanId], references: [id])
 
-  subscriptionPlanId String?
-  subscriptionPlan   SubscriptionPlan? @relation(fields: [subscriptionPlanId], references: [id])
+  // Stripe Integration Fields
+  stripeCustomerId         String?
+  stripeSubscriptionId     String?
+  stripePaymentMethodId    String?
+  stripeSubscriptionStatus String?
+  currentPeriodEnd         DateTime?
 
   hasInitiatedChargeBackProcess Boolean          @default(false)
   chargeBackProcessInitiatedAt  DateTime?
@@ -527,8 +533,19 @@ model SubscriptionPlan {
   creditsPerMonth Int
   usdPrice        Float
 
+  // Stripe Integration Field
+  stripePriceId String?
+
   isDeleted        Boolean            @default(false)
   UserSubscription UserSubscription[]
+}
+
+model StripeEvent {
+  id          String    @id @default(uuid())
+  eventId     String    @unique
+  eventType   String
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
 }
 
 //////////////////////////////////////////////////////////// 
