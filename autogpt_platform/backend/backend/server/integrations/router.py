@@ -10,6 +10,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.executor.manager import get_db_client
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
 
-creds_manager = IntegrationCredentialsManager()
+creds_manager = IntegrationCredentialsManager(db_manager=get_db_client())
 
 
 class LoginResponse(BaseModel):
@@ -42,7 +43,7 @@ async def login(
     requested_scopes = scopes.split(",") if scopes else []
 
     # Generate and store a secure random state token along with the scopes
-    state_token = await creds_manager.store.store_state_token(
+    state_token = creds_manager.store.store_state_token(
         user_id, provider, requested_scopes
     )
 
@@ -71,12 +72,12 @@ async def callback(
     handler = _get_provider_oauth_handler(request, provider)
 
     # Verify the state token
-    if not await creds_manager.store.verify_state_token(user_id, state_token, provider):
+    if not creds_manager.store.verify_state_token(user_id, state_token, provider):
         logger.warning(f"Invalid or expired state token for user {user_id}")
         raise HTTPException(status_code=400, detail="Invalid or expired state token")
 
     try:
-        scopes = await creds_manager.store.get_any_valid_scopes_from_state_token(
+        scopes = creds_manager.store.get_any_valid_scopes_from_state_token(
             user_id, state_token, provider
         )
         logger.debug(f"Retrieved scopes from state token: {scopes}")
@@ -100,7 +101,7 @@ async def callback(
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
-    await creds_manager.create(user_id, credentials)
+    creds_manager.create(user_id, credentials)
 
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} and provider {provider}"
@@ -119,7 +120,7 @@ async def list_credentials(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
+    credentials = creds_manager.store.get_creds_by_provider(user_id, provider)
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -138,7 +139,7 @@ async def get_credential(
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> Credentials:
-    credential = await creds_manager.get(user_id, cred_id)
+    credential = creds_manager.get(user_id, cred_id)
     if not credential:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if credential.provider != provider:
@@ -166,7 +167,7 @@ async def create_api_key_credentials(
     )
 
     try:
-        await creds_manager.create(user_id, new_credentials)
+        creds_manager.create(user_id, new_credentials)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
@@ -190,7 +191,7 @@ async def delete_credentials(
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> CredentialsDeletionResponse:
-    creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
+    creds = creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if creds.provider != provider:
@@ -198,7 +199,7 @@ async def delete_credentials(
             status_code=404, detail="Credentials do not match the specified provider"
         )
 
-    await creds_manager.delete(user_id, cred_id)
+    creds_manager.delete(user_id, cred_id)
 
     tokens_revoked = None
     if isinstance(creds, OAuth2Credentials):

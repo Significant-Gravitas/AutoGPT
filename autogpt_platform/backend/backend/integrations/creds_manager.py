@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import contextmanager
 from datetime import datetime
@@ -11,6 +10,7 @@ from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
 
 from backend.data import redis
+from backend.executor.database import DatabaseManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
 
@@ -50,21 +50,23 @@ class IntegrationCredentialsManager:
     cause so much latency that it's worth implementing.
     """
 
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager):
         redis_conn = redis.get_redis()
         self._locks = RedisKeyedMutex(redis_conn)
-        self.store = SupabaseIntegrationCredentialsStore(redis_conn)
+        self.store = SupabaseIntegrationCredentialsStore(
+            redis=redis_conn, db=db_manager
+        )
 
-    async def create(self, user_id: str, credentials: Credentials) -> None:
-        return await self.store.add_creds(user_id, credentials)
+    def create(self, user_id: str, credentials: Credentials) -> None:
+        return self.store.add_creds(user_id, credentials)
 
-    async def exists(self, user_id: str, credentials_id: str) -> bool:
+    def exists(self, user_id: str, credentials_id: str) -> bool:
         return self.store.get_creds_by_id(user_id, credentials_id) is not None
 
-    async def get(
+    def get(
         self, user_id: str, credentials_id: str, lock: bool = True
     ) -> Credentials | None:
-        credentials = await self.store.get_creds_by_id(user_id, credentials_id)
+        credentials = self.store.get_creds_by_id(user_id, credentials_id)
         if not credentials:
             return None
 
@@ -89,7 +91,7 @@ class IntegrationCredentialsManager:
                         _lock = self._acquire_lock(user_id, credentials_id)
 
                     fresh_credentials = oauth_handler.refresh_tokens(credentials)
-                    await self.store.update_creds(user_id, fresh_credentials)
+                    self.store.update_creds(user_id, fresh_credentials)
                     if _lock:
                         _lock.release()
 
@@ -111,26 +113,26 @@ class IntegrationCredentialsManager:
         # to allow priority access for refreshing/updating the tokens.
         with self._locked(user_id, credentials_id, "!time_sensitive"):
             lock = self._acquire_lock(user_id, credentials_id)
-        credentials = asyncio.run(self.get(user_id, credentials_id, lock=False))
+        credentials = self.get(user_id, credentials_id, lock=False)
         if not credentials:
             raise ValueError(
                 f"Credentials #{credentials_id} for user #{user_id} not found"
             )
         return credentials, lock
 
-    async def update(self, user_id: str, updated: Credentials) -> None:
+    def update(self, user_id: str, updated: Credentials) -> None:
         with self._locked(user_id, updated.id):
-            await self.store.update_creds(user_id, updated)
+            self.store.update_creds(user_id, updated)
 
-    async def delete(self, user_id: str, credentials_id: str) -> None:
+    def delete(self, user_id: str, credentials_id: str) -> None:
         with self._locked(user_id, credentials_id):
-            await self.store.delete_creds_by_id(user_id, credentials_id)
+            self.store.delete_creds_by_id(user_id, credentials_id)
 
     # -- Locking utilities -- #
 
     def _acquire_lock(self, user_id: str, credentials_id: str, *args: str) -> RedisLock:
         key = (
-            self.store.prisma,
+            self.store.db_manager,
             f"user:{user_id}",
             f"credentials:{credentials_id}",
             *args,

@@ -8,9 +8,11 @@ from backend.data.execution import (
     get_execution_results,
     get_incomplete_executions,
     get_latest_execution,
+    get_user,
     update_execution_status,
     update_graph_execution_stats,
     update_node_execution_stats,
+    update_user_metadata,
     upsert_execution_input,
     upsert_execution_output,
 )
@@ -73,3 +75,7 @@ class DatabaseManager(AppService):
         Callable[[Any, str, int, str, dict[str, str], float, float], int],
         exposed_run_and_wait(user_credit_model.spend_credits),
     )
+
+    # User + User Metadata
+    get_user = exposed_run_and_wait(get_user)
+    update_user_metadata = exposed_run_and_wait(update_user_metadata)

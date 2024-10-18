@@ -1,14 +1,10 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import cast
-from backend.data import db
-from prisma import Json, Prisma
-from prisma.models import User
-import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from redis import Redis
+    from backend.executor.database import DatabaseManager
 
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
@@ -22,46 +18,42 @@ from .types import (
 
 
 class SupabaseIntegrationCredentialsStore:
-    def __init__(self, redis: "Redis"):
-        self.prisma: Prisma = Prisma()
+    def __init__(self, redis: "Redis", db: "DatabaseManager"):
+        self.db_manager: DatabaseManager = db
         self.locks = RedisKeyedMutex(redis)
 
-    async def add_creds(self, user_id: str, credentials: Credentials) -> None:
+    def add_creds(self, user_id: str, credentials: Credentials) -> None:
         with self.locked_user_metadata(user_id):
-            if await self.get_creds_by_id(user_id, credentials.id):
+            if self.get_creds_by_id(user_id, credentials.id):
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
-            await self._set_user_integration_creds(
-                user_id, [*await self.get_all_creds(user_id), credentials]
+            self._set_user_integration_creds(
+                user_id, [*self.get_all_creds(user_id), credentials]
             )
 
-    async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        user_metadata = await self._get_user_metadata(user_id)
+    def get_all_creds(self, user_id: str) -> list[Credentials]:
+        user_metadata = self._get_user_metadata(user_id)
         return UserMetadata.model_validate(
             user_metadata.model_dump()
         ).integration_credentials
 
-    async def get_creds_by_id(
-        self, user_id: str, credentials_id: str
-    ) -> Credentials | None:
-        all_credentials = await self.get_all_creds(user_id)
+    def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
+        all_credentials = self.get_all_creds(user_id)
         return next((c for c in all_credentials if c.id == credentials_id), None)
 
-    async def get_creds_by_provider(
-        self, user_id: str, provider: str
-    ) -> list[Credentials]:
-        credentials = await self.get_all_creds(user_id)
+    def get_creds_by_provider(self, user_id: str, provider: str) -> list[Credentials]:
+        credentials = self.get_all_creds(user_id)
         return [c for c in credentials if c.provider == provider]
 
-    async def get_authorized_providers(self, user_id: str) -> list[str]:
-        credentials = await self.get_all_creds(user_id)
+    def get_authorized_providers(self, user_id: str) -> list[str]:
+        credentials = self.get_all_creds(user_id)
         return list(set(c.provider for c in credentials))
 
-    async def update_creds(self, user_id: str, updated: Credentials) -> None:
+    def update_creds(self, user_id: str, updated: Credentials) -> None:
         with self.locked_user_metadata(user_id):
-            current = await self.get_creds_by_id(user_id, updated.id)
+            current = self.get_creds_by_id(user_id, updated.id)
             if not current:
                 raise ValueError(
                     f"Credentials with ID {updated.id} "
@@ -89,20 +81,18 @@ class SupabaseIntegrationCredentialsStore:
             # Update the credentials
             updated_credentials_list = [
                 updated if c.id == updated.id else c
-                for c in await self.get_all_creds(user_id)
+                for c in self.get_all_creds(user_id)
             ]
-            await self._set_user_integration_creds(user_id, updated_credentials_list)
+            self._set_user_integration_creds(user_id, updated_credentials_list)
 
-    async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
+    def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
         with self.locked_user_metadata(user_id):
             filtered_credentials = [
-                c for c in await self.get_all_creds(user_id) if c.id != credentials_id
+                c for c in self.get_all_creds(user_id) if c.id != credentials_id
             ]
-            await self._set_user_integration_creds(user_id, filtered_credentials)
+            self._set_user_integration_creds(user_id, filtered_credentials)
 
-    async def store_state_token(
-        self, user_id: str, provider: str, scopes: list[str]
-    ) -> str:
+    def store_state_token(self, user_id: str, provider: str, scopes: list[str]) -> str:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
@@ -114,21 +104,18 @@ class SupabaseIntegrationCredentialsStore:
         )
 
         with self.locked_user_metadata(user_id):
-            user_metadata = await self._get_user_metadata(user_id)
+            user_metadata = self._get_user_metadata(user_id)
             oauth_states = user_metadata.integration_oauth_states
             oauth_states.append(state.model_dump())
             user_metadata.integration_oauth_states = oauth_states
 
-            if not self.prisma.is_connected():
-                await self.prisma.connect()
-            await self.prisma.user.update(
-                where={"id": user_id},
-                data={"metadata": Json(user_metadata.model_dump())},
+            self.db_manager.update_user_metadata(
+                user_id=user_id, metadata=user_metadata
             )
 
         return token
 
-    async def get_any_valid_scopes_from_state_token(
+    def get_any_valid_scopes_from_state_token(
         self, user_id: str, token: str, provider: str
     ) -> list[str]:
         """
@@ -138,7 +125,7 @@ class SupabaseIntegrationCredentialsStore:
         IS TO CHECK IF THE USER HAS GIVEN PERMISSIONS TO THE APPLICATION BEFORE EXCHANGING
         THE CODE FOR TOKENS.
         """
-        user_metadata = await self._get_user_metadata(user_id)
+        user_metadata = self._get_user_metadata(user_id)
         oauth_states = user_metadata.integration_oauth_states
 
         now = datetime.now(timezone.utc)
@@ -158,9 +145,9 @@ class SupabaseIntegrationCredentialsStore:
 
         return []
 
-    async def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
+    def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
         with self.locked_user_metadata(user_id):
-            user_metadata = await self._get_user_metadata(user_id)
+            user_metadata = self._get_user_metadata(user_id)
             oauth_states = user_metadata.integration_oauth_states
 
             now = datetime.now(timezone.utc)
@@ -179,33 +166,20 @@ class SupabaseIntegrationCredentialsStore:
                 # Remove the used state
                 oauth_states.remove(valid_state)
                 user_metadata.integration_oauth_states = oauth_states
-                if not self.prisma.is_connected():
-                    await self.prisma.connect()
-                await self.prisma.user.update(
-                    where={"id": user_id},
-                    data={"metadata": Json(user_metadata.model_dump())},
-                )
+                self.db_manager.update_user_metadata(user_id, user_metadata)
                 return True
 
         return False
 
-    async def _set_user_integration_creds(
+    def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
-        raw_metadata = await self._get_user_metadata(user_id)
+        raw_metadata = self._get_user_metadata(user_id)
         raw_metadata.integration_credentials = [c.model_dump() for c in credentials]
-        if not self.prisma.is_connected():
-            await self.prisma.connect()
-        await self.prisma.user.update(
-            where={"id": user_id}, data={"metadata": Json(raw_metadata.model_dump())}
-        )
+        self.db_manager.update_user_metadata(user_id, raw_metadata)
 
-    async def _get_user_metadata(self, user_id: str) -> UserMetadataRaw:
-        if not self.prisma.is_connected():
-            await self.prisma.connect()
-        user = await self.prisma.user.find_unique(where={"id": user_id})
-        if not user:
-            raise ValueError(f"User with ID {user_id} not found")
+    def _get_user_metadata(self, user_id: str) -> UserMetadataRaw:
+        user = self.db_manager.get_user(user_id=user_id)
         return (
             UserMetadataRaw.model_validate(user.metadata)
             if user.metadata
@@ -213,5 +187,5 @@ class SupabaseIntegrationCredentialsStore:
         )
 
     def locked_user_metadata(self, user_id: str):
-        key = (self.prisma, f"user:{user_id}", "metadata")
+        key = (self.db_manager, f"user:{user_id}", "metadata")
         return self.locks.locked(key)
