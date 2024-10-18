@@ -29,8 +29,7 @@ model User {
   UserAgents                   UserAgents[]
 
   // User Group relations
-  Groups                 UserGroup[]              @relation("GroupUsers")
-  AdminGroups            UserGroup[]              @relation("GroupAdminUsers")
+  UserGroupMemberships   UserGroupMembership[]
   UserAccounting         UserAccounting[]
   UserSubscription       UserSubscription[]
   Profile                Profile[]
@@ -50,14 +49,34 @@ model UserGroup {
   description  String
   groupIconUrl String?
 
-  users      User[] @relation("GroupUsers")
-  adminUsers User[] @relation("GroupAdminUsers")
+  UserGroupMemberships UserGroupMembership[]
 
   agents       Agent[]
   Profile      Profile[]
   StoreListing StoreListing[]
 
   @@index([name])
+}
+
+enum UserGroupRole {
+  MEMBER
+  OWNER
+}
+
+model UserGroupMembership {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  groupId   String
+  userGroup UserGroup     @relation(fields: [groupId], references: [id])
+  role      UserGroupRole @default(MEMBER)
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -74,9 +93,8 @@ model Agent {
   createdByUserId String
   createdByUser   User   @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
 
-  isGroupAgent Boolean    @default(false)
-  groupId      String?
-  group        UserGroup? @relation(fields: [groupId], references: [id])
+  groupId String?
+  group   UserGroup? @relation(fields: [groupId], references: [id])
 
   AgentNodes          AgentNode[]
   AgentGraphExecution AgentGraphExecution[]
@@ -113,7 +131,7 @@ model ConfiguredAgent {
   description String
 
   // For agents that can be triggered by webhooks or cronjob
-  // This bool allows use to disable a configured agent without deleting it
+  // This bool allows us to disable a configured agent without deleting it
   isActive Boolean @default(true)
 
   userId String
@@ -123,7 +141,7 @@ model ConfiguredAgent {
   agentVersion Int
   agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  InputPresets                AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
+  InputPresets                AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionPresets")
   UserAgents                  UserAgents[]
   WebhookTrigger              WebhookTrigger[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
@@ -229,12 +247,20 @@ enum AgentExecutionStatus {
   FAILED
 }
 
+// Enum for execution trigger types
+enum ExecutionTriggerType {
+  MANUAL
+  SCHEDULE
+  WEBHOOK
+}
+
 // This model describes the execution of an AgentGraph.
 model AgentGraphExecution {
-  id        String    @id @default(uuid())
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
-  startedAt DateTime?
+  id                   String               @id @default(uuid())
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime?            @updatedAt
+  startedAt            DateTime?
+  executionTriggerType ExecutionTriggerType @default(MANUAL)
 
   executionStatus AgentExecutionStatus @default(COMPLETED)
 
@@ -244,7 +270,7 @@ model AgentGraphExecution {
 
   AgentNodeExecutions AgentNodeExecution[]
 
-  // This is so we can track which user executed the agent graph for accounting purposes.
+  // This is so we can track which user executed the agent.
   executedByUserId String
   executedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
@@ -290,7 +316,7 @@ model AgentNodeExecutionInputOutput {
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
   configuredAgentId String?
-  ConfiguredAgent   ConfiguredAgent? @relation("AgentNodeExecutionInput", fields: [configuredAgentId], references: [id])
+  ConfiguredAgent   ConfiguredAgent? @relation("AgentNodeExecutionPresets", fields: [configuredAgentId], references: [id])
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
@@ -481,7 +507,7 @@ model UserSubscription {
   subscriptionEndDate DateTime?
 
   subscriptionPlanId String?
-  subscriptionPlan   SubsctiptionPlan? @relation(fields: [subscriptionPlanId], references: [id])
+  subscriptionPlan   SubscriptionPlan? @relation(fields: [subscriptionPlanId], references: [id])
 
   hasInitiatedChargeBackProcess Boolean          @default(false)
   chargeBackProcessInitiatedAt  DateTime?
@@ -491,7 +517,7 @@ model UserSubscription {
 }
 
 // This table tracks the different subscription plans available to a user
-model SubsctiptionPlan {
+model SubscriptionPlan {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -584,11 +610,11 @@ model StorePricing {
   storeListing   StoreListing @relation(fields: [storeListingId], references: [id])
 
   canPurchase   Boolean @default(true)
-  pruchasePrice Float?
+  purchasePrice Float?
 
   commissionPerRun Float?
-  // We dont ever delete store pricings, j
-  // ust mark them as deleted and add a new entry
+  // We don't ever delete store pricings,
+  // just mark them as deleted and add a new entry
   isDeleted        Boolean @default(false)
 
   @@index([storeListingId, updatedAt])
@@ -607,7 +633,7 @@ model StoreListingVersion {
   categories String[]
 
   isDeleted              Boolean                  @default(false)
-  // Old versions can be made unavailable by the auther if desired
+  // Old versions can be made unavailable by the author if desired
   isAvailable            Boolean                  @default(true)
   // Not needed but makes lookups faster
   isApproved             Boolean                  @default(false)
@@ -632,8 +658,8 @@ model StoreListingSubmission {
   StoreListingId String
   StoreListing   StoreListing @relation(fields: [StoreListingId], references: [id])
 
-  maketplaceListingVersionId String
-  StoreListingVersion        StoreListingVersion @relation(fields: [maketplaceListingVersionId], references: [id])
+  storeListingVersionId String
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id])
 
   reviewByUserId String
   reviewByUser   User   @relation(fields: [reviewByUserId], references: [id], onDelete: Cascade)
