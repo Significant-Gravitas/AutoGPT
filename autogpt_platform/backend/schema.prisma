@@ -36,8 +36,6 @@ model User {
   StoreListing           StoreListing[]
   StoreListingSubmission StoreListingSubmission[]
 
-  @@index([id])
-  @@index([email])
 }
 
 model UserGroup {
@@ -51,7 +49,7 @@ model UserGroup {
 
   UserGroupMemberships UserGroupMembership[]
 
-  agents       Agent[]
+  Agents       Agent[]
   Profile      Profile[]
   StoreListing StoreListing[]
 
@@ -102,7 +100,8 @@ model Agent {
   // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
   AgentSubGraphs     Agent[] @relation("AgentSubGraph")
   agentGraphParentId String?
-  AgentGraphParent   Agent?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
+  agentGraphParentVersion Int?
+  AgentGraphParent   Agent?  @relation("AgentSubGraph", fields: [agentGraphParentId, agentGraphParentVersion], references: [id, version], onDelete: Cascade)
 
   ConfiguredAgents            ConfiguredAgent[]
   WebhookTrigger              WebhookTrigger[]
@@ -554,11 +553,7 @@ model Profile {
   username    String @unique
   description String
 
-  website  String?
-  github   String?
-  linkedin String?
-  facebook String?
-  twitter  String?
+  links String[]
 
   avatarUrl String?
 
