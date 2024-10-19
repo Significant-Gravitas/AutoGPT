@@ -148,7 +148,7 @@ export function CustomNode({
       <div key={key}>
         <NodeHandle
           keyName={key}
-          isConnected={isHandleConnected(key)}
+          isConnected={isOutputHandleConnected(key)}
           schema={schema.properties[key]}
           side="right"
         />
@@ -167,7 +167,7 @@ export function CustomNode({
         // For INPUT blocks, dont include connection handles
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
+          const isConnected = isInputHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
@@ -217,7 +217,7 @@ export function CustomNode({
         // For OUTPUT blocks, only show the 'value' property
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
+          const isConnected = isInputHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || !isAdvanced) && (
@@ -256,7 +256,7 @@ export function CustomNode({
       default:
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
+          const isConnected = isInputHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
@@ -378,21 +378,28 @@ export function CustomNode({
     }, data.hardcodedValues as any);
   };
 
-  const isHandleConnected = (key: string) => {
+  const isInputHandleConnected = (key: string) => {
     return (
       data.connections &&
       data.connections.some((conn: any) => {
         if (typeof conn === "string") {
-          const [source, target] = conn.split(" -> ");
-          return (
-            (target.includes(key) && target.includes(data.title)) ||
-            (source.includes(key) && source.includes(data.title))
-          );
+          const [_source, target] = conn.split(" -> ");
+          return target.includes(key) && target.includes(data.title);
         }
-        return (
-          (conn.target === id && conn.targetHandle === key) ||
-          (conn.source === id && conn.sourceHandle === key)
-        );
+        return conn.target === id && conn.targetHandle === key;
+      })
+    );
+  };
+
+  const isOutputHandleConnected = (key: string) => {
+    return (
+      data.connections &&
+      data.connections.some((conn: any) => {
+        if (typeof conn === "string") {
+          const [source, _target] = conn.split(" -> ");
+          return source.includes(key) && source.includes(data.title);
+        }
+        return conn.source === id && conn.sourceHandle === key;
       })
     );
   };
