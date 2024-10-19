@@ -26,7 +26,7 @@ class Webhook(BaseDbModel):
 
     provider_webhook_id: str
 
-    attached_nodes: Optional[list[Node]] = None
+    attached_nodes: Optional[list["Node"]] = None
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):

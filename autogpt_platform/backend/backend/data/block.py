@@ -248,7 +248,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 self.webhook_config.event_filter_input
             ]
             if not (
-                isinstance(event_filter_field.annotation, BaseModel)
+                isinstance(event_filter_field.annotation, type)
+                and issubclass(event_filter_field.annotation, BaseModel)
                 and all(
                     field.annotation is bool
                     for field in event_filter_field.annotation.model_fields.values()

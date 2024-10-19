@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import Any, Literal, Optional
 
 import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
@@ -11,13 +11,12 @@ from pydantic import BaseModel
 from pydantic_core import PydanticUndefinedType
 
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
-from backend.data.block import BlockInput, get_block, get_blocks
-from backend.data.db import BaseDbModel, transaction
-from backend.data.execution import ExecutionStatus
 from backend.util import json
 
-if TYPE_CHECKING:
-    from .integrations import Webhook
+from .block import BlockInput, get_block, get_blocks
+from .db import BaseDbModel, transaction
+from .execution import ExecutionStatus
+from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +60,10 @@ class Node(BaseDbModel):
     graph_version: int
 
     webhook_id: Optional[str] = None
-    webhook: Optional["Webhook"] = None
+    webhook: Optional[Webhook] = None
 
     @staticmethod
     def from_db(node: AgentNode):
-        from .integrations import Webhook
-
         if not node.AgentBlock:
             raise ValueError(f"Invalid node {node.id}, invalid AgentBlock.")
         obj = Node(

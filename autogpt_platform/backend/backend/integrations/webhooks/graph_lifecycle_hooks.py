@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 async def on_graph_activate(
-    graph: "Graph", get_credentials: Callable[[str], Credentials | None]
+    graph: "Graph", get_credentials: Callable[[str], "Credentials | None"]
 ):
     """
     Hook to be called when a graph is activated/created.
@@ -50,7 +50,7 @@ async def on_graph_activate(
 
 
 async def on_graph_deactivate(
-    graph: "Graph", get_credentials: Callable[[str], Credentials | None]
+    graph: "Graph", get_credentials: Callable[[str], "Credentials | None"]
 ):
     """
     Hook to be called when a graph is deactivated/deleted.
@@ -83,7 +83,7 @@ async def on_node_activate(
     user_id: str,
     node: "Node",
     *,
-    credentials: Optional[Credentials] = None,
+    credentials: Optional["Credentials"] = None,
 ) -> "Node":
     """Hook to be called when the node is activated/created"""
 
@@ -137,7 +137,7 @@ async def on_node_activate(
 async def on_node_deactivate(
     node: "Node",
     *,
-    credentials: Optional[Credentials] = None,
+    credentials: Optional["Credentials"] = None,
     webhooks_manager: Optional["BaseWebhooksManager"] = None,
 ) -> "Node":
     """Hook to be called when node is deactivated/deleted"""

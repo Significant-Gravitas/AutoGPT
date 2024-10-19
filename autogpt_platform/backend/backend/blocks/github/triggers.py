@@ -21,7 +21,7 @@ from ._auth import (
 logger = logging.getLogger(__name__)
 
 
-class GitHubBaseTriggerBlock(Block):
+class GitHubTriggerBase:
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
@@ -46,8 +46,8 @@ class GitHubBaseTriggerBlock(Block):
         yield "sender", input_data.payload["sender"]
 
 
-class GithubPullRequestTriggerBlock(GitHubBaseTriggerBlock):
-    class Input(GitHubBaseTriggerBlock.Input):
+class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
+    class Input(GitHubTriggerBase.Input):
         class EventsFilter(BaseModel):
             """
             https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request
@@ -77,7 +77,7 @@ class GithubPullRequestTriggerBlock(GitHubBaseTriggerBlock):
 
         events: EventsFilter = SchemaField(description="The events to subscribe to")
 
-    class Output(GitHubBaseTriggerBlock.Output):
+    class Output(GitHubTriggerBase.Output):
         number: int = SchemaField(description="The number of the affected pull request")
         pull_request: dict = SchemaField(
             description="Object representing the pull request"

@@ -52,8 +52,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             await integrations.delete_webhook(webhook.id)
 
     # --8<-- [start:BaseWebhooksManager3]
-    @abstractmethod
     @classmethod
+    @abstractmethod
     async def validate_payload(
         cls, webhook: integrations.Webhook, request: Request
     ) -> dict: ...
