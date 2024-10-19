@@ -69,6 +69,17 @@ for cls in all_subclasses(Block):
             f"{block.name} `error` field in output_schema must be a string"
         )
 
+    # Make sure all fields in input_schema and output_schema are annotated and has a value
+    for field_name, field in [*input_schema.items(), *output_schema.items()]:
+        if field.annotation is None:
+            raise ValueError(
+                f"{block.name} has a field {field_name} that is not annotated"
+            )
+        if field.json_schema_extra is None:
+            raise ValueError(
+                f"{block.name} has a field {field_name} not defined as SchemaField"
+            )
+
     for field in block.input_schema.model_fields.values():
         if field.annotation is bool and field.default not in (True, False):
             raise ValueError(f"{block.name} has a boolean field with no default value")
