@@ -232,6 +232,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.execution_stats = {}
 
+    @classmethod
+    def create(cls: Type["Block"]) -> "Block":
+        return cls()
+
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
         """
