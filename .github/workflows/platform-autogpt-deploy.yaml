@@ -81,7 +81,7 @@ jobs:
         context: ./autogpt_platform
         file: ./autogpt_platform/backend/Dockerfile
         push: true
-        tags: gcr.io/${{ env.PROJECT_ID }}/autogpt-backend:${{ github.sha }}
+        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-backend-dev/agpt-backend-dev:${{ github.sha }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -92,7 +92,7 @@ jobs:
         context: ./autogpt_platform
         file: ./autogpt_platform/frontend/Dockerfile
         push: true
-        tags: gcr.io/${{ env.PROJECT_ID }}/autogpt-frontend:${{ github.sha }}
+        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-frontend-dev/agpt-frontend-dev:${{ github.sha }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -103,7 +103,7 @@ jobs:
         context: ./autogpt_platform
         file: ./autogpt_platform/market/Dockerfile
         push: true
-        tags: gcr.io/${{ env.PROJECT_ID }}/autogpt-market:${{ github.sha }}
+        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-market-dev/agpt-market-dev:${{ github.sha }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
