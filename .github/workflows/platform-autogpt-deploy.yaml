@@ -34,7 +34,7 @@ jobs:
     - id: 'auth'
       uses: 'google-github-actions/auth@v1'
       with:
-        workload_identity_provider: 'projects/agpt-dev/locations/global/workloadIdentityPools/dev-pool/providers/github-identity-provider'
+        workload_identity_provider: 'projects/638488734936/locations/global/workloadIdentityPools/dev-pool/providers/github'
         service_account: 'dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com'
         token_format: 'access_token'
         create_credentials_file: true
