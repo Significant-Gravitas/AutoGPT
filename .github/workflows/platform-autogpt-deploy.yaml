@@ -44,7 +44,7 @@ jobs:
 
     - name: 'Configure Docker'
       run: |
-        gcloud auth configure-docker gcr.io
+        gcloud auth configure-docker us-east1-docker.pkg.dev
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
