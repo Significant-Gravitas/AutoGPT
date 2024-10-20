@@ -5,7 +5,7 @@ on:
   push:
     branches: [ dev, aarushikansal/secrt-944-set-up-deploys-from-dev ]
     paths:
-      - '*'
+      - '**'
       - 'autogpt_platform/backend/**'
       - 'autogpt_platform/frontend/**'
       - 'autogpt_platform/market/**'
