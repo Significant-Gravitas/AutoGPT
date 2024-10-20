@@ -34,8 +34,11 @@ jobs:
     - id: 'auth'
       uses: 'google-github-actions/auth@v1'
       with:
-        workload_identity_provider: 'projects/agpt-dev/locations/global/workloadIdentityPools/dev-pool/providers/github'
+        workload_identity_provider: 'projects/agpt-dev/locations/global/workloadIdentityPools/dev-pool/providers/github-identity-provider'
         service_account: 'dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com'
+        token_format: 'access_token'
+        create_credentials_file: true
+        audience: 'https://container.googleapis.com/v1/projects/agpt-dev/locations/us-central1-a/clusters/dev-gke-cluster'
 
     - name: 'Set up Cloud SDK'
       uses: 'google-github-actions/setup-gcloud@v1'
