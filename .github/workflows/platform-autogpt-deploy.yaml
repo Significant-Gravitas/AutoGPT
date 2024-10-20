@@ -78,7 +78,7 @@ jobs:
       if: steps.check_changes.outputs.backend_changed == 'false'
       uses: docker/build-push-action@v2
       with:
-        context: ./autogpt_platform
+        context: .
         file: ./autogpt_platform/backend/Dockerfile
         push: true
         tags: us-east1-docker.pkg.dev/agpt-dev/agpt-backend-dev/agpt-backend-dev:${{ github.sha }}
@@ -89,7 +89,7 @@ jobs:
       if: steps.check_changes.outputs.frontend_changed == 'true'
       uses: docker/build-push-action@v2
       with:
-        context: ./autogpt_platform
+        context: .
         file: ./autogpt_platform/frontend/Dockerfile
         push: true
         tags: us-east1-docker.pkg.dev/agpt-dev/agpt-frontend-dev/agpt-frontend-dev:${{ github.sha }}
@@ -100,7 +100,7 @@ jobs:
       if: steps.check_changes.outputs.market_changed == 'false'
       uses: docker/build-push-action@v2
       with:
-        context: ./autogpt_platform
+        context: .
         file: ./autogpt_platform/market/Dockerfile
         push: true
         tags: us-east1-docker.pkg.dev/agpt-dev/agpt-market-dev/agpt-market-dev:${{ github.sha }}
