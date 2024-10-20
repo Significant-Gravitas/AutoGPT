@@ -164,6 +164,7 @@ export function CustomNode({
     let keys = Object.entries(schema.properties);
     switch (nodeType) {
       case BlockUIType.INPUT:
+      case BlockUIType.WEBHOOK:
         // For INPUT blocks, dont include connection handles
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
@@ -173,23 +174,25 @@ export function CustomNode({
             (isRequired || isAdvancedOpen || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
                 <span className="text-m green mb-0 text-gray-900">
-                  {propSchema.title || beautifyString(propKey)}
+                  {
+                    "credentials_provider" in propSchema
+                      ? "Credentials"
+                      : propSchema.title || beautifyString(propKey)
+                }
                 </span>
-                <div key={propKey}>
-                  {!isConnected && (
-                    <NodeGenericInputField
-                      nodeId={id}
-                      propKey={propKey}
-                      propSchema={propSchema}
-                      currentValue={getValue(propKey)}
-                      connections={data.connections}
-                      handleInputChange={handleInputChange}
-                      handleInputClick={handleInputClick}
-                      errors={data.errors ?? {}}
-                      displayName={propSchema.title || beautifyString(propKey)}
-                    />
-                  )}
-                </div>
+                {!isConnected && (
+                  <NodeGenericInputField
+                    nodeId={id}
+                    propKey={propKey}
+                    propSchema={propSchema}
+                    currentValue={getValue(propKey)}
+                    connections={data.connections}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                    errors={data.errors ?? {}}
+                    displayName={propSchema.title || beautifyString(propKey)}
+                  />
+                )}
               </div>
             )
           );

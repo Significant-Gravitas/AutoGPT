@@ -277,6 +277,7 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  WEBHOOK = "Webhook",
 }
 
 export type AnalyticsMetrics = {
