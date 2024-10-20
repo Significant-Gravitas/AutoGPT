@@ -111,6 +111,10 @@ role_bindings = {
   "roles/container.viewer" = [
     "serviceAccount:dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com"
   ],
+  "roles/iam.serviceAccountTokenCreator" = [
+    "principalSet://iam.googleapis.com/projects/638488734936/locations/global/workloadIdentityPools/dev-pool/*",
+    "serviceAccount:dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com"
+  ]
 }
 
 pods_ip_cidr_range     = "10.1.0.0/16"

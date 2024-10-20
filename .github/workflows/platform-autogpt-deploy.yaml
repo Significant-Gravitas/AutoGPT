@@ -75,7 +75,7 @@ jobs:
         location: ${{ env.GKE_ZONE }}
 
     - name: Build and Push Backend
-      if: steps.check_changes.outputs.backend_changed == 'true'
+      if: steps.check_changes.outputs.backend_changed == 'false'
       uses: docker/build-push-action@v2
       with:
         context: ./autogpt_platform
@@ -97,7 +97,7 @@ jobs:
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
     - name: Build and Push Market
-      if: steps.check_changes.outputs.market_changed == 'true'
+      if: steps.check_changes.outputs.market_changed == 'false'
       uses: docker/build-push-action@v2
       with:
         context: ./autogpt_platform
