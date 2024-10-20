@@ -1,4 +1,4 @@
-name: AutoGPT Platform - Build, Push, and Deploy Dev
+name: AutoGPT Platform - Build, Push, and Deploy Dev Environment
 
 on:
   workflow_dispatch:
