@@ -417,7 +417,7 @@ class Executor:
         redis.connect()
         cls.pid = os.getpid()
         cls.db_client = get_db_client()
-        cls.creds_manager = IntegrationCredentialsManager()
+        cls.creds_manager = IntegrationCredentialsManager(db_manager=cls.db_client)
 
         # Set up shutdown handlers
         cls.shutdown_lock = threading.Lock()
@@ -670,7 +670,7 @@ class ExecutionManager(AppService):
         )
 
         self.credentials_store = SupabaseIntegrationCredentialsStore(
-            self.supabase, redis.get_redis()
+            redis=redis.get_redis(), db=self.db_client
         )
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
