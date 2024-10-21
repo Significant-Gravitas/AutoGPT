@@ -4,14 +4,14 @@ on:
   push:
     branches: [ master, dev, ci-test* ]
     paths:
-      - 'classic/benchmark/**'
-      - '!classic/benchmark/reports/**'
+      - "classic/benchmark/**"
+      - "!classic/benchmark/reports/**"
       - .github/workflows/classic-benchmark-ci.yml
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
-      - 'classic/benchmark/**'
-      - '!classic/benchmark/reports/**'
+      - "classic/benchmark/**"
+      - "!classic/benchmark/reports/**"
       - .github/workflows/classic-benchmark-ci.yml
 
 concurrency:
@@ -23,7 +23,7 @@ defaults:
     shell: bash
 
 env:
-  min-python-version: '3.10'
+  min-python-version: "3.10"
 
 jobs:
   test:
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [ forge ]
+        agent-name: [forge]
       fail-fast: false
     timeout-minutes: 20
     steps:
