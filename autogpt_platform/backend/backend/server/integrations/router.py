@@ -240,8 +240,11 @@ async def webhook_ingress_generic(
     )
     publish_webhook_event(webhook_event)
 
+    if not webhook.attached_nodes:
+        return
+
     executor = get_service_client(ExecutionManager, Config().execution_manager_port)
-    for node in webhook.attached_nodes or []:
+    for node in webhook.attached_nodes:
         if not node.is_triggered_by_event_type(event_type):
             continue
         executor.add_execution(
