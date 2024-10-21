@@ -228,9 +228,12 @@ async def webhook_ingress_generic(
     ],
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
+    logger.debug(f"Received {provider} webhook ingress for ID {webhook_id}")
     webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
     webhook = await get_webhook(webhook_id)
+    logger.debug(f"Webhook #{webhook_id}: {webhook}")
     payload, event_type = await webhook_manager.validate_payload(webhook, request)
+    logger.debug(f"Validated {provider} {event_type} event with payload {payload}")
 
     webhook_event = WebhookEvent(
         provider=provider,
@@ -239,14 +242,18 @@ async def webhook_ingress_generic(
         payload=payload,
     )
     publish_webhook_event(webhook_event)
+    logger.debug(f"Webhook event published: {webhook_event}")
 
     if not webhook.attached_nodes:
         return
 
     executor = get_service_client(ExecutionManager, Config().execution_manager_port)
     for node in webhook.attached_nodes:
+        logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
+            logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
             continue
+        logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
         executor.add_execution(
             node.graph_id,
             data={f"webhook_{webhook_id}_payload": payload},

@@ -96,12 +96,19 @@ async def on_node_activate(
     if not block.webhook_config:
         return node
 
+    logger.debug(
+        f"Activating webhook node #{node.id} with config {block.webhook_config}"
+    )
+
     webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[block.webhook_config.provider]()
 
     try:
         resource = block.webhook_config.resource_format.format(**node.input_default)
     except KeyError:
         resource = None
+    logger.debug(
+        f"Constructed resource string {resource} from input {node.input_default}"
+    )
 
     event_filter_input_name = block.webhook_config.event_filter_input
     has_everything_for_webhook = resource is not None and all(
@@ -110,6 +117,7 @@ async def on_node_activate(
     )
 
     if has_everything_for_webhook and resource:
+        logger.debug(f"Node #{node} has everything for a webhook!")
         if not credentials:
             credentials_meta = node.input_default[CREDENTIALS_FIELD_NAME]
             raise ValueError(
@@ -120,6 +128,7 @@ async def on_node_activate(
         # Shape of the event filter is enforced in Block.__init__
         event_filter = cast(dict, node.input_default[event_filter_input_name])
         events = [event for event, enabled in event_filter.items() if enabled is True]
+        logger.debug(f"Webhook events to subscribe to: {', '.join(events)}")
 
         # Find/make and attach a suitable webhook to the node
         new_webhook = await webhooks_manager.get_suitable_webhook(
@@ -129,6 +138,7 @@ async def on_node_activate(
             resource,
             events,
         )
+        logger.debug(f"Acquired webhook: {new_webhook}")
         return await set_node_webhook(node.id, new_webhook.id)
 
     return node
@@ -142,6 +152,7 @@ async def on_node_deactivate(
 ) -> "Node":
     """Hook to be called when node is deactivated/deleted"""
 
+    logger.debug(f"Deactivating node #{node.id}")
     block = get_block(node.block_id)
     if not block:
         raise ValueError(
@@ -154,15 +165,20 @@ async def on_node_deactivate(
     webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[block.webhook_config.provider]()
 
     if node.webhook_id:
+        logger.debug(f"Node #{node.id} has webhook_id {node.webhook_id}")
         if not node.webhook:
+            logger.error(f"Node #{node.id} has webhook_id but no webhook object")
             raise ValueError("node.webhook not included")
 
         # Detach webhook from node
+        logger.debug(f"Detaching webhook from node #{node.id}")
         updated_node = await set_node_webhook(node.id, None)
 
         # Prune and deregister the webhook if it is no longer used anywhere
+        logger.debug("Pruning and deregistering webhook if dangling")
         webhook = node.webhook
         if credentials:
+            logger.debug(f"Pruning webhook #{webhook.id} with credentials")
             await webhooks_manager.prune_webhook_if_dangling(webhook.id, credentials)
         else:
             logger.warning(
@@ -172,4 +188,5 @@ async def on_node_deactivate(
             )
         return updated_node
 
+    logger.debug(f"Node #{node.id} has no webhook_id, returning")
     return node
