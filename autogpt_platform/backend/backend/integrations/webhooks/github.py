@@ -1,11 +1,11 @@
 import hashlib
 import hmac
 import logging
-from enum import Enum
 
 import requests
 from autogpt_libs.supabase_integration_credentials_store import Credentials
 from fastapi import HTTPException, Request
+from strenum import StrEnum
 
 from backend.data import integrations
 from backend.integrations.providers import ProviderName
@@ -15,7 +15,7 @@ from .base import BaseWebhooksManager
 logger = logging.getLogger(__name__)
 
 
-class GithubWebhookType(str, Enum):
+class GithubWebhookType(StrEnum):
     REPO = "repo"
 
 
@@ -63,9 +63,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         }
 
         repo, github_hook_id = webhook.resource, webhook.provider_webhook_id
-        ping_url = (
-            f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{github_hook_id}/pings"
-        )
+        ping_url = f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{github_hook_id}/pings"
 
         response = requests.post(ping_url, headers=headers)
 
@@ -82,7 +80,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         secret: str,
     ) -> tuple[str, dict]:
         if webhook_type == self.WebhookType.REPO and resource.count("/") > 1:
-            raise ValueError("Invalid resource format: expected 'owner/repo'")
+            raise ValueError("Invalid repo format: expected 'owner/repo'")
 
         headers = {
             **self.GITHUB_API_DEFAULT_HEADERS,

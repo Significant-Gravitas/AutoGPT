@@ -1,12 +1,12 @@
 import logging
 import secrets
 from abc import ABC, abstractmethod
-from enum import Enum
 from typing import ClassVar, Generic, TypeVar
 from uuid import uuid4
 
 from autogpt_libs.supabase_integration_credentials_store import Credentials
 from fastapi import Request
+from strenum import StrEnum
 
 from backend.data import integrations
 from backend.integrations.providers import ProviderName
@@ -15,7 +15,7 @@ from backend.util.settings import Config
 logger = logging.getLogger(__name__)
 app_config = Config()
 
-WT = TypeVar("WT", bound=Enum)
+WT = TypeVar("WT", bound=StrEnum)
 
 
 class BaseWebhooksManager(ABC, Generic[WT]):
@@ -34,7 +34,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         events: list[str],
     ) -> integrations.Webhook:
         if webhook := await integrations.find_webhook(
-            credentials.id, webhook_type.value, resource, events
+            credentials.id, webhook_type, resource, events
         ):
             return webhook
         return await self._create_webhook(
@@ -144,7 +144,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
                 user_id=user_id,
                 provider=provider_name,
                 credentials_id=credentials.id,
-                webhook_type=webhook_type.value,
+                webhook_type=webhook_type,
                 resource=resource,
                 events=events,
                 provider_webhook_id=provider_webhook_id,
