@@ -99,7 +99,7 @@ async def on_node_activate(
     webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[block.webhook_config.provider]()
 
     try:
-        resource = block.webhook_config.resource_format.format(node.input_default)
+        resource = block.webhook_config.resource_format.format(**node.input_default)
     except KeyError:
         resource = None
 
