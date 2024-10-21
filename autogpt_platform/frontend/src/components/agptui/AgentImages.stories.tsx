@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { AgentImages } from "./AgentImages";
 
 const meta = {
-  title: "AGPT UI/AgentImages",
+  title: "AGPT UI/Agent Images",
   component: AgentImages,
   parameters: {
     layout: {

@@ -19,11 +19,13 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
   onClick,
   avatarSrc,
 }) => {
+  const avatarSizeClasses = "h-16 w-16";
+
   return (
     <div
       className="flex h-96 w-[13.125rem] flex-col rounded-xl transition-shadow duration-300 hover:shadow-lg"
       onClick={onClick}
-      role="creator-card"
+      data-testid="creator-card"
     >
       <div className="relative aspect-[210/238] w-full">
         <Image
@@ -35,9 +37,9 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         />
       </div>
       <div className="relative -mt-20 ml-4">
-        <Avatar className="h-16 w-16">
-          <AvatarImage src={avatarSrc} alt={creatorName} />
-          <AvatarFallback className="h-16 w-16">
+        <Avatar className={avatarSizeClasses}>
+          <AvatarImage src={avatarSrc} alt={`${creatorName}'s avatar`} />
+          <AvatarFallback className={avatarSizeClasses}>
             {creatorName.charAt(0)}
           </AvatarFallback>
         </Avatar>

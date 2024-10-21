@@ -4,7 +4,7 @@ import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
 
 const meta = {
-  title: "AGPT UI/MobileNavBar",
+  title: "AGPT UI/Mobile Nav Bar",
   component: MobileNavBar,
   parameters: {
     layout: "centered",

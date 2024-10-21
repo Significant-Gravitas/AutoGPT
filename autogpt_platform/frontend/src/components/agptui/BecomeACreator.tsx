@@ -24,7 +24,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       <div className="max-w-full text-center font-neue text-4xl font-medium tracking-wide text-[#272727] md:text-5xl">
         {heading}
       </div>
-      <div className="max-w-full text-center font-neue text-xl font-medium tracking-tight text-[#878787] md:text-[26px]">
+      <div className="max-w-full text-center font-neue text-xl font-medium tracking-tight text-[#737373] md:text-[26px]">
         {description}
       </div>
       <Button onClick={onButtonClick} className="mt-8">

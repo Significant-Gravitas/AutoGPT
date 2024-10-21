@@ -3,7 +3,7 @@ import { AgentInfo } from "./AgentInfo";
 import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/AgentInfo",
+  title: "AGPT UI/Agent Info",
   component: AgentInfo,
   parameters: {
     layout: "centered",

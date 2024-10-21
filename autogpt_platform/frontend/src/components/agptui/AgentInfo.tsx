@@ -25,13 +25,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   lastUpdated,
   version,
 }) => {
-
   return (
     <div className="flow-root w-full lg:w-[27.5rem]">
       <div className="mb-2 font-neue text-3xl font-medium tracking-wide text-[#272727] md:mb-4 md:text-4xl lg:text-5xl">
         {name}
       </div>
-      <div className="mb-2 font-neue text-lg font-medium leading-9 tracking-tight text-[#878787] md:mb-4 md:text-xl lg:text-2xl">
+      <div className="mb-2 font-neue text-lg font-medium leading-9 tracking-tight text-[#737373] md:mb-4 md:text-xl lg:text-2xl">
         by{" "}
         <Link
           href={`/creator/${creator.replace(/\s+/g, "-")}`}
@@ -51,7 +50,9 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           <div className="font-['PP Neue Montreal TT'] mr-2 text-xl font-normal tracking-tight text-[#272727]">
             {rating.toFixed(1)}
           </div>
-          <div className="flex items-center gap-px">{StarRatingIcons(rating)}</div>
+          <div className="flex items-center gap-px">
+            {StarRatingIcons(rating)}
+          </div>
         </div>
         <div>
           <span className="font-neue text-xl font-medium tracking-tight text-[#272727]">

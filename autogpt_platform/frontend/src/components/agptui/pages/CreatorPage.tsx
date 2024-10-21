@@ -71,7 +71,7 @@ export const CreatorPage: React.FC<CreatorPageProps> = ({
         activeLink={activeLink}
         menuItemGroups={menuItemGroups}
       />
-      <main className="px-10 py-8 w-full">
+      <main className="w-full px-10 py-8">
         <BreadCrumbs items={breadcrumbs} />
         <div className="mt-8">
           <CreatorDetails

@@ -34,8 +34,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
     <div
       className="flex h-96 w-64 flex-col rounded-xl pb-2 transition-shadow duration-300 hover:shadow-lg sm:w-64 md:w-80 xl:w-110"
       onClick={handleClick}
-      role="store-card"
-      aria-pressed={isPressed}
+      data-testid="store-card"
     >
       <div className="relative h-48 w-full">
         <Image

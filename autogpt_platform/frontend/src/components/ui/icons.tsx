@@ -937,7 +937,6 @@ export const IconLibrary = createIcon((props) => (
   </svg>
 ));
 
-
 export const IconStar = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -1231,26 +1230,29 @@ export enum IconType {
   Settings,
   LogOut,
 }
-export function getIconForSocial(url: string, props: IconProps): React.ReactNode {
+export function getIconForSocial(
+  url: string,
+  props: IconProps,
+): React.ReactNode {
   const lowerCaseUrl = url.toLowerCase();
 
-  if (lowerCaseUrl.includes('facebook.com')) {
+  if (lowerCaseUrl.includes("facebook.com")) {
     return <IconFacebook {...props} />;
-  } else if (lowerCaseUrl.includes('twitter.com')) {
+  } else if (lowerCaseUrl.includes("twitter.com")) {
     return <IconX {...props} />;
-  } else if (lowerCaseUrl.includes('x.com')) {
+  } else if (lowerCaseUrl.includes("x.com")) {
     return <IconX {...props} />;
-  } else if (lowerCaseUrl.includes('instagram.com')) {
+  } else if (lowerCaseUrl.includes("instagram.com")) {
     return <IconInstagram {...props} />;
-  } else if (lowerCaseUrl.includes('linkedin.com')) {
+  } else if (lowerCaseUrl.includes("linkedin.com")) {
     return <IconLinkedin {...props} />;
-  } else if (lowerCaseUrl.includes('github.com')) {
+  } else if (lowerCaseUrl.includes("github.com")) {
     return <IconGithub {...props} />;
-  } else if (lowerCaseUrl.includes('youtube.com')) {
+  } else if (lowerCaseUrl.includes("youtube.com")) {
     return <IconYoutube {...props} />;
-  } else if (lowerCaseUrl.includes('tiktok.com')) {
+  } else if (lowerCaseUrl.includes("tiktok.com")) {
     return <IconTiktok {...props} />;
-  } else if (lowerCaseUrl.includes('medium.com')) {
+  } else if (lowerCaseUrl.includes("medium.com")) {
     return <IconMedium {...props} />;
   } else {
     return <IconGlobe {...props} />;

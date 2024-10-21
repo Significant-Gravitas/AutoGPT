@@ -4,7 +4,7 @@ import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
 
 const meta = {
-  title: "AGPT UI/ProfilePopoutMenu",
+  title: "AGPT UI/Profile Popout Menu",
   component: ProfilePopoutMenu,
   parameters: {
     layout: "centered",
