@@ -10,7 +10,12 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
-from backend.data.integrations import get_webhook
+from backend.data.integrations import (
+    WebhookEvent,
+    get_webhook,
+    listen_for_webhook_event,
+    publish_webhook_event,
+)
 from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
@@ -227,6 +232,14 @@ async def webhook_ingress_generic(
     webhook = await get_webhook(webhook_id)
     payload, event_type = await webhook_manager.validate_payload(webhook, request)
 
+    webhook_event = WebhookEvent(
+        provider=provider,
+        webhook_id=webhook_id,
+        event_type=event_type,
+        payload=payload,
+    )
+    publish_webhook_event(webhook_event)
+
     executor = get_service_client(ExecutionManager, Config().execution_manager_port)
     for node in webhook.attached_nodes or []:
         if not node.is_triggered_by_event_type(event_type):
@@ -236,6 +249,22 @@ async def webhook_ingress_generic(
             data={f"webhook_{webhook_id}_payload": payload},
             user_id=webhook.user_id,
         )
+
+
+@router.post("/{provider}/webhooks/{webhook_id}/ping")
+async def webhook_ping(
+    provider: Annotated[
+        ProviderName, Path(title="Provider where the webhook was registered")
+    ],
+    webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
+    user_id: Annotated[str, Depends(get_user_id)],
+):
+    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
+    webhook = await get_webhook(webhook_id)
+
+    with listen_for_webhook_event(webhook_id, event_type="ping") as ping_event:
+        await webhook_manager.trigger_ping(webhook)
+        await ping_event
 
 
 # --------------------------- UTILITIES ---------------------------- #

@@ -56,6 +56,22 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         return payload, event_type
 
+    async def trigger_ping(self, webhook: integrations.Webhook) -> None:
+        headers = {
+            **self.GITHUB_API_DEFAULT_HEADERS,
+            "Authorization": f"Bearer {webhook.config.get('access_token')}",
+        }
+
+        repo, github_hook_id = webhook.resource, webhook.provider_webhook_id
+        ping_url = (
+            f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{github_hook_id}/pings"
+        )
+
+        response = requests.post(ping_url, headers=headers)
+
+        if response.status_code != 204:
+            raise Exception(f"Failed to ping GitHub webhook: {response.text}")
+
     async def _register_webhook(
         self,
         credentials: Credentials,

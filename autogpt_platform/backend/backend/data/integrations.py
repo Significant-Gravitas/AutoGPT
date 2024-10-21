@@ -1,10 +1,15 @@
+import asyncio
 import logging
-from typing import TYPE_CHECKING, Optional
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Optional, cast
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
 from prisma.types import IntegrationWebhookInclude
 from pydantic import Field
+
+from backend.data import redis
+from backend.integrations.providers import ProviderName
 
 from .db import BaseDbModel
 
@@ -113,3 +118,60 @@ async def delete_webhook(webhook_id: str) -> None:
     deleted = await IntegrationWebhook.prisma().delete(where={"id": webhook_id})
     if not deleted:
         raise ValueError(f"Webhook #{webhook_id} not found")
+
+
+# --------------------- WEBHOOK EVENTS --------------------- #
+
+
+class WebhookEvent(BaseDbModel):
+    provider: ProviderName
+    webhook_id: str
+    event_type: str
+    payload: dict
+
+
+def publish_webhook_event(event: WebhookEvent):
+    n_receipts = redis.get_redis().publish(
+        channel=f"webhooks/{event.webhook_id}/{event.event_type}",
+        message=event.model_dump_json(),
+    )
+    return cast(int, n_receipts)
+
+
+def wait_for_webhook_event(
+    webhook_id: str, timeout: Optional[float] = None, event_type: Optional[str] = None
+) -> WebhookEvent:
+    redis_client = redis.get_redis()
+    pubsub = redis_client.pubsub()
+    channel = f"webhooks/{webhook_id}"
+    if event_type:
+        channel += f"/{event_type}"
+        pubsub.subscribe(channel)
+    else:
+        channel += "/*"
+        pubsub.psubscribe(channel)
+
+    try:
+        while message := pubsub.get_message(
+            ignore_subscribe_messages=True,
+            timeout=timeout,  # type: ignore - timeout param isn't typed correctly
+        ):
+            if message["type"] == "message":
+                return WebhookEvent.model_validate_json(message["data"])
+    finally:
+        pubsub.unsubscribe(channel)
+
+    raise TimeoutError(f"No message arrived on {channel} after {timeout} seconds")
+
+
+@contextmanager
+def listen_for_webhook_event(
+    webhook_id: str, timeout: Optional[float] = None, event_type: Optional[str] = None
+):
+    webhook_event = asyncio.Future()
+    yield webhook_event
+    try:
+        result = wait_for_webhook_event(webhook_id, timeout, event_type)
+        webhook_event.set_result(result)
+    except TimeoutError as e:
+        webhook_event.set_exception(e)

@@ -71,6 +71,17 @@ class BaseWebhooksManager(ABC, Generic[WT]):
 
     # --8<-- [end:BaseWebhooksManager3]
 
+    # --8<-- [start:BaseWebhooksManager5]
+    async def trigger_ping(self, webhook: integrations.Webhook) -> None:
+        """
+        Triggers a ping to the given webhook.
+
+        Raises:
+            NotImplementedError: if the provider doesn't support pinging
+        """
+        # --8<-- [end:BaseWebhooksManager5]
+        raise NotImplementedError(f"{self.__class__.__name__} doesn't support pinging")
+
     # --8<-- [start:BaseWebhooksManager2]
     @abstractmethod
     async def _register_webhook(
