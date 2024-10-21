@@ -132,7 +132,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         secret = secrets.token_hex(32)
         provider_name = self.PROVIDER_NAME.value
         ingress_url = (
-            f"{app_config.platform_base_url}/integrations/{provider_name}"
+            f"{app_config.platform_base_url}/api/integrations/{provider_name}"
             f"/webhooks/{id}/ingress"
         )
         provider_webhook_id, config = await self._register_webhook(
