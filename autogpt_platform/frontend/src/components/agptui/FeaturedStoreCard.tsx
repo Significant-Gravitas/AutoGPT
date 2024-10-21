@@ -1,7 +1,6 @@
 import * as React from "react";
-import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
 import Image from "next/image";
-
+import { StarRatingIcons } from "../ui/icons";
 interface FeaturedStoreCardProps {
   agentName: string;
   agentImage: string;
@@ -21,23 +20,6 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
   rating,
   onClick,
 }) => {
-  const renderStars = () => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-    const stars = [];
-
-    for (let i = 0; i < 5; i++) {
-      if (i < fullStars) {
-        stars.push(<StarFilledIcon key={i} className="text-black" />);
-      } else if (i === fullStars && hasHalfStar) {
-        stars.push(<StarIcon key={i} className="text-black" />);
-      } else {
-        stars.push(<StarIcon key={i} className="text-black" />);
-      }
-    }
-
-    return stars;
-  };
 
   return (
     <div
@@ -76,7 +58,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
           <div className="flex items-center gap-2">
             <div className="font-normal">{rating.toFixed(1)}</div>
             <div className="flex items-center justify-start gap-px">
-              {renderStars()}
+              {StarRatingIcons(rating)}
             </div>
           </div>
         </div>

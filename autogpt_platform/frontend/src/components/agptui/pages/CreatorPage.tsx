@@ -21,6 +21,7 @@ interface CreatorPageProps {
   }[];
   creatorInfo: {
     name: string;
+    avatarSrc: string;
     username: string;
     description: string;
     avgRating: number;
@@ -70,10 +71,11 @@ export const CreatorPage: React.FC<CreatorPageProps> = ({
         activeLink={activeLink}
         menuItemGroups={menuItemGroups}
       />
-      <main className="px-10 py-8">
+      <main className="px-10 py-8 w-full">
         <BreadCrumbs items={breadcrumbs} />
         <div className="mt-8">
           <CreatorDetails
+            avatarSrc={creatorInfo.avatarSrc}
             name={creatorInfo.name}
             username={creatorInfo.username}
             description={creatorInfo.description}
