@@ -1,9 +1,9 @@
 # dev values, overwrite base values as needed.
 
 image:
-  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-builder-dev/agpt-builder-dev
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-frontend-dev/agpt-frontend-dev
   pullPolicy: Always
-  tag: "fe3d2a9"
+  tag: "latest"
 
 serviceAccount:
   annotations:
