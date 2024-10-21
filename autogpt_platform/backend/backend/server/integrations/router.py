@@ -225,10 +225,12 @@ async def webhook_ingress_generic(
 ):
     webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
     webhook = await get_webhook(webhook_id)
-    payload = await webhook_manager.validate_payload(webhook, request)
+    payload, event_type = await webhook_manager.validate_payload(webhook, request)
 
     executor = get_service_client(ExecutionManager, Config().execution_manager_port)
     for node in webhook.attached_nodes or []:
+        if not node.is_triggered_by_event_type(event_type):
+            continue
         executor.add_execution(
             node.graph_id,
             data={f"webhook_{webhook_id}_payload": payload},

@@ -80,6 +80,16 @@ class Node(BaseDbModel):
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
         return obj
 
+    def is_triggered_by_event_type(self, event_type: str) -> bool:
+        if not (block := get_block(self.block_id)):
+            raise ValueError(f"Block #{self.block_id} not found for node #{self.id}")
+        if not block.webhook_config:
+            raise TypeError("This method can't be used on non-webhook blocks")
+        event_filter = self.input_default.get(block.webhook_config.event_filter_input)
+        if not event_filter:
+            raise ValueError(f"Event filter is not configured on node #{self.id}")
+        return bool(event_filter.get(event_type))
+
 
 class ExecutionMeta(BaseDbModel):
     execution_id: str

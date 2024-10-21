@@ -56,7 +56,18 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     @abstractmethod
     async def validate_payload(
         cls, webhook: integrations.Webhook, request: Request
-    ) -> dict: ...
+    ) -> tuple[dict, str]:
+        """
+        Validates an incoming webhook request and returns its payload and type.
+
+        Params:
+            webhook: Object representing the configured webhook and its properties in our system.
+            request: Incoming FastAPI `Request`
+
+        Returns:
+            dict: The validated payload
+            str: The event type associated with the payload
+        """
 
     # --8<-- [end:BaseWebhooksManager3]
 

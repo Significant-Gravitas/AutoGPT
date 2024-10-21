@@ -30,18 +30,20 @@ class GithubWebhooksManager(BaseWebhooksManager):
     @classmethod
     async def validate_payload(
         cls, webhook: integrations.Webhook, request: Request
-    ) -> dict:
-        payload_body = await request.body()
-        signature_header = request.headers.get("x-hub-signature-256")
-        secret_token = webhook.secret
-
-        if not signature_header:
+    ) -> tuple[dict, str]:
+        if not (event_type := request.headers.get("X-GitHub-Event")):
             raise HTTPException(
-                status_code=403, detail="x-hub-signature-256 header is missing!"
+                status_code=400, detail="X-GitHub-Event header is missing!"
             )
 
+        if not (signature_header := request.headers.get("X-Hub-Signature-256")):
+            raise HTTPException(
+                status_code=403, detail="X-Hub-Signature-256 header is missing!"
+            )
+
+        payload_body = await request.body()
         hash_object = hmac.new(
-            secret_token.encode("utf-8"), msg=payload_body, digestmod=hashlib.sha256
+            webhook.secret.encode("utf-8"), msg=payload_body, digestmod=hashlib.sha256
         )
         expected_signature = "sha256=" + hash_object.hexdigest()
 
@@ -50,7 +52,9 @@ class GithubWebhooksManager(BaseWebhooksManager):
                 status_code=403, detail="Request signatures didn't match!"
             )
 
-        return await request.json()
+        payload = await request.json()
+
+        return payload, event_type
 
     async def _register_webhook(
         self,
