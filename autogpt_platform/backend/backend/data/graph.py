@@ -49,18 +49,20 @@ class Link(BaseDbModel):
         return hash((self.source_id, self.sink_id, self.source_name, self.sink_name))
 
 
-class Node(BaseDbModel):
+class CreatableNode(BaseDbModel):
     block_id: str
     input_default: BlockInput = {}  # dict[input_name, default_value]
     metadata: dict[str, Any] = {}
     input_links: list[Link] = []
     output_links: list[Link] = []
 
-    graph_id: str
-    graph_version: int
-
     webhook_id: Optional[str] = None
     webhook: Optional[Webhook] = None
+
+
+class Node(CreatableNode):
+    graph_id: str
+    graph_version: int
 
     @staticmethod
     def from_db(node: AgentNode):
@@ -124,14 +126,17 @@ class ExecutionMeta(BaseDbModel):
         )
 
 
-class GraphMeta(BaseDbModel):
-    user_id: str
+class CreatableGraphMeta(BaseDbModel):
     version: int = 1
     is_active: bool = True
     is_template: bool = False
     name: str
     description: str
     executions: list[ExecutionMeta] | None = None
+
+
+class GraphMeta(CreatableGraphMeta):
+    user_id: str
 
     @staticmethod
     def from_db(graph: AgentGraph):
@@ -155,10 +160,14 @@ class GraphMeta(BaseDbModel):
         )
 
 
-class Graph(GraphMeta):
-    nodes: list[Node]
+class CreatableGraph(CreatableGraphMeta):
+    nodes: list[CreatableNode]
     links: list[Link]
     subgraphs: dict[str, list[str]] = {}  # subgraph_id -> [node_id]
+
+
+class Graph(CreatableGraph, GraphMeta):
+    nodes: list[Node]
 
     @property
     def starting_nodes(self) -> list[Node]:
@@ -409,7 +418,7 @@ AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
 }
 
 
-# --------------------- Model functions --------------------- #
+# --------------------- CRUD functions --------------------- #
 
 
 async def get_node(node_id: str) -> Node:
@@ -639,4 +648,33 @@ async def __create_graph(tx, graph: Graph, user_id: str):
             )
             for link in graph.links
         ]
+    )
+
+
+# ------------------------ UTILITIES ------------------------ #
+
+
+def graph_from_creatable(creatable_graph: CreatableGraph, user_id: str) -> Graph:
+    """
+    Convert a CreatableGraph to a Graph, setting graph_id and graph_version on all nodes.
+
+    Args:
+        creatable_graph (CreatableGraph): The creatable graph to convert.
+        user_id (str): The ID of the user creating the graph.
+
+    Returns:
+        Graph: The converted Graph object.
+    """
+    # Create a new Graph object, inheriting properties from CreatableGraph
+    return Graph(
+        **creatable_graph.model_dump(exclude={"nodes"}),
+        user_id=user_id,
+        nodes=[
+            Node(
+                **creatable_node.model_dump(),
+                graph_id=creatable_graph.id,
+                graph_version=creatable_graph.version,
+            )
+            for creatable_node in creatable_graph.nodes
+        ],
     )
