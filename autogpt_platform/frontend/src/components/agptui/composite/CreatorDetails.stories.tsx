@@ -16,6 +16,7 @@ const meta = {
     agentCount: { control: "number" },
     topCategories: { control: "object" },
     otherLinks: { control: "object" },
+    avatarSrc: { control: "text" }, // Added avatarSrc to argTypes
   },
 } satisfies Meta<typeof CreatorDetails>;
 
@@ -27,7 +28,7 @@ export const Default: Story = {
     name: "John Doe",
     username: "johndoe",
     description:
-      "Experienced AI developer specializing in natural language processing and machine learning algorithms.",
+      "Our agents are designed to bring happiness and positive vibes to your daily routine. Each template helps you create and live the life of your dreams while guiding you to become your best every day",
     avgRating: 4.5,
     agentCount: 10,
     topCategories: ["AI", "NLP", "Machine Learning"],
@@ -35,7 +36,11 @@ export const Default: Story = {
       website: "https://johndoe.com",
       github: "https://github.com/johndoe",
       linkedin: "https://linkedin.com/in/johndoe",
+      medium: "https://medium.com/@johndoe",
+      youtube: "https://youtube.com/@johndoe",
+      tiktok: "https://tiktok.com/@johndoe",
     },
+    avatarSrc: "https://github.com/shadcn.png", // Added avatarSrc to Default args
   },
 };
 
@@ -50,8 +55,9 @@ export const NewCreator: Story = {
     agentCount: 2,
     topCategories: ["Computer Vision", "Image Processing"],
     otherLinks: {
-      github: "https://github.com/janesmith",
+      tiktok: "https://tiktok.com/@johndoe",
     },
+    avatarSrc: "https://example.com/avatar2.jpg", // Added avatarSrc to NewCreator args
   },
 };
 
@@ -70,6 +76,7 @@ export const ExperiencedCreator: Story = {
       github: "https://github.com/ailabs",
       linkedin: "https://linkedin.com/company/ailabs",
     },
+    avatarSrc: "https://example.com/avatar3.jpg", // Added avatarSrc to ExperiencedCreator args
   },
 };
 
@@ -85,8 +92,24 @@ export const LongDescription: Story = {
     topCategories: ["AI", "Innovation", "Research", "Deep Learning"],
     otherLinks: {
       website: "https://techinnovations.ai",
-      github: "https://github.com/techinnovations",
+      facebook: "https://facebook.com/techinnovations",
       linkedin: "https://linkedin.com/company/techinnovations",
     },
+    avatarSrc: "https://example.com/avatar4.jpg", // Added avatarSrc to LongDescription args
+  },
+};
+
+export const NoLinks: Story = {
+  args: {
+    ...Default.args,
+    name: "Tech Innovations",
+    username: "techinnovations",
+    description:
+      "We are a team of passionate developers and researchers dedicated to pushing the boundaries of artificial intelligence. Our focus spans across multiple domains including natural language processing, computer vision, and reinforcement learning. With years of experience in both academia and industry, we strive to create AI agents that are not only powerful but also ethical and user-friendly.",
+    avgRating: 4.7,
+    agentCount: 25,
+    otherLinks: {},
+    topCategories: ["AI", "Innovation", "Research", "Deep Learning"],
+    avatarSrc: "https://example.com/avatar4.jpg", // Added avatarSrc to LongDescription args
   },
 };

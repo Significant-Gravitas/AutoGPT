@@ -1,8 +1,7 @@
 import * as React from "react";
-import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
-
+import { StarRatingIcons } from "../ui/icons";
 interface StoreCardProps {
   agentName: string;
   agentImage: string;
@@ -29,24 +28,6 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   const handleClick = () => {
     setIsPressed(!isPressed);
     onClick();
-  };
-
-  const renderStars = () => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-    const stars = [];
-
-    for (let i = 0; i < 5; i++) {
-      if (i < fullStars) {
-        stars.push(<StarFilledIcon key={i} className="text-black" />);
-      } else if (i === fullStars && hasHalfStar) {
-        stars.push(<StarIcon key={i} className="text-black" />);
-      } else {
-        stars.push(<StarIcon key={i} className="text-black" />);
-      }
-    }
-
-    return stars;
   };
 
   return (
@@ -91,7 +72,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
               {rating.toFixed(1)}
             </div>
             <div className="inline-flex items-center justify-start gap-px">
-              {renderStars()}
+              {StarRatingIcons(rating)}
             </div>
           </div>
         </div>

@@ -1,8 +1,7 @@
 import * as React from "react";
 import { Button } from "./Button";
-import { StarIcon, StarFilledIcon } from "@radix-ui/react-icons";
 import Link from "next/link";
-
+import { StarRatingIcons } from "../ui/icons";
 interface AgentInfoProps {
   onRunAgent: () => void;
   name: string;
@@ -26,23 +25,6 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   lastUpdated,
   version,
 }) => {
-  const renderStars = (rating: number) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-    const stars = [];
-
-    for (let i = 0; i < 5; i++) {
-      if (i < fullStars) {
-        stars.push(<StarFilledIcon key={i} className="text-black" />);
-      } else if (i === fullStars && hasHalfStar) {
-        stars.push(<StarIcon key={i} className="text-black" />);
-      } else {
-        stars.push(<StarIcon key={i} className="text-black" />);
-      }
-    }
-
-    return stars;
-  };
 
   return (
     <div className="flow-root w-full lg:w-[27.5rem]">
@@ -69,7 +51,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           <div className="font-['PP Neue Montreal TT'] mr-2 text-xl font-normal tracking-tight text-[#272727]">
             {rating.toFixed(1)}
           </div>
-          <div className="flex items-center gap-px">{renderStars(rating)}</div>
+          <div className="flex items-center gap-px">{StarRatingIcons(rating)}</div>
         </div>
         <div>
           <span className="font-neue text-xl font-medium tracking-tight text-[#272727]">
