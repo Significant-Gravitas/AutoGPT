@@ -1,8 +1,8 @@
 name: AutoGPT Platform - Build, Push, and Deploy Prod Environment
 
 on:
-  release:
-    types: [created]
+  push:
+    branches: [ master ]
 
 permissions:
   contents: 'read'
@@ -15,17 +15,8 @@ env:
   NAMESPACE: prod-agpt
 
 jobs:
-  approval:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Pending approval
-        uses: softprops/action-gh-release@v1
-        with:
-          prerelease: false
-          draft: true
-
   build-push-deploy:
-    needs: [approval]
+    environment: production
     name: Build, Push, and Deploy
     runs-on: ubuntu-latest
 
