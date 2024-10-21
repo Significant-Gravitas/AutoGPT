@@ -1,11 +1,9 @@
 name: AutoGPT Platform - Build, Push, and Deploy Dev Environment
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ dev, aarushikansal/secrt-944-set-up-deploys-from-dev ]
+    branches: [ dev ]
     paths:
-      - '**'
       - 'autogpt_platform/backend/**'
       - 'autogpt_platform/frontend/**'
       - 'autogpt_platform/market/**'
@@ -75,7 +73,7 @@ jobs:
         location: ${{ env.GKE_ZONE }}
 
     - name: Build and Push Backend
-      if: steps.check_changes.outputs.backend_changed == 'false'
+      if: steps.check_changes.outputs.backend_changed == 'true'
       uses: docker/build-push-action@v2
       with:
         context: .
@@ -97,7 +95,7 @@ jobs:
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
     - name: Build and Push Market
-      if: steps.check_changes.outputs.market_changed == 'false'
+      if: steps.check_changes.outputs.market_changed == 'true'
       uses: docker/build-push-action@v2
       with:
         context: .
