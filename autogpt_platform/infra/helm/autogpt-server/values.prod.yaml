@@ -80,7 +80,7 @@ livenessProbe:
   failureThreshold: 6
 readinessProbe:
   httpGet:
-    path: /heath
+    path: /health
     port: 8006
   initialDelaySeconds: 30
   periodSeconds: 10
