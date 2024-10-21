@@ -34,7 +34,7 @@ class SubscriptionDetails(pydantic.BaseModel):
 class CreateGraph(pydantic.BaseModel):
     template_id: str | None = None
     template_version: int | None = None
-    graph: backend.data.graph.Graph | None = None
+    graph: backend.data.graph.CreatableGraph | None = None
 
 
 class SetGraphActiveVersion(pydantic.BaseModel):
