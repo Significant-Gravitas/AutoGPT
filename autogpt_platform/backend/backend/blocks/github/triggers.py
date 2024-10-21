@@ -98,6 +98,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
                 webhook_type=GithubWebhookType.REPO,
                 resource_format="{repo}",
                 event_filter_input="events",
+                event_format="pull_request.{event}",
             ),
             test_input={
                 "repo": "owner/repo",

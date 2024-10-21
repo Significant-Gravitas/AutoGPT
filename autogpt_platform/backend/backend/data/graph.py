@@ -90,7 +90,11 @@ class Node(CreatableNode):
         event_filter = self.input_default.get(block.webhook_config.event_filter_input)
         if not event_filter:
             raise ValueError(f"Event filter is not configured on node #{self.id}")
-        return bool(event_filter.get(event_type))
+        return event_type in [
+            block.webhook_config.event_format.format(event=k)
+            for k in event_filter
+            if event_filter[k] is True
+        ]
 
 
 class ExecutionMeta(BaseDbModel):

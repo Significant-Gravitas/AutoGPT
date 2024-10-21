@@ -53,6 +53,8 @@ class GithubWebhooksManager(BaseWebhooksManager):
             )
 
         payload = await request.json()
+        if action := payload.get("action"):
+            event_type += f".{action}"
 
         return payload, event_type
 
@@ -82,6 +84,9 @@ class GithubWebhooksManager(BaseWebhooksManager):
         if webhook_type == self.WebhookType.REPO and resource.count("/") > 1:
             raise ValueError("Invalid repo format: expected 'owner/repo'")
 
+        # Extract main event, e.g. `pull_request.opened` -> `pull_request`
+        github_events = list({event.split(".")[0] for event in events})
+
         headers = {
             **self.GITHUB_API_DEFAULT_HEADERS,
             "Authorization": credentials.bearer(),
@@ -89,7 +94,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         webhook_data = {
             "name": "web",
             "active": True,
-            "events": events,
+            "events": github_events,
             "config": {
                 "url": ingress_url,
                 "content_type": "json",

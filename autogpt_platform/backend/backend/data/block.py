@@ -190,6 +190,7 @@ class BlockWebhookConfig(BaseModel):
     webhook_type: str
     resource_format: str
     event_filter_input: str
+    event_format: str
 
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
