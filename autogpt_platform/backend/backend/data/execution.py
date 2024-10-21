@@ -486,7 +486,11 @@ async def get_user_metadata(user_id: str) -> UserMetadataRaw:
     user = await User.prisma().find_unique_or_raise(
         where={"id": user_id},
     )
-    return UserMetadataRaw.model_validate(user.metadata) if user.metadata else UserMetadataRaw()
+    return (
+        UserMetadataRaw.model_validate(user.metadata)
+        if user.metadata
+        else UserMetadataRaw()
+    )
 
 
 async def update_user_metadata(user_id: str, metadata: UserMetadataRaw):
