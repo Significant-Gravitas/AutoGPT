@@ -17,7 +17,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         <h1 className="mb-2 text-center font-neue text-3xl font-medium leading-tight tracking-wide text-[#272727] sm:mb-3 sm:text-4xl md:mb-4 md:text-5xl">
           Discover our community made AI Agents
         </h1>
-        <p className="mb-4 text-center font-neue text-lg font-medium leading-7 tracking-tight text-[#878787] sm:mb-6 sm:text-xl sm:leading-8 md:mb-8 md:text-2xl md:leading-9 lg:text-[26px]">
+        <p className="mb-4 text-center font-neue text-lg font-medium leading-7 tracking-tight text-[#737373] sm:mb-6 sm:text-xl sm:leading-8 md:mb-8 md:text-2xl md:leading-9 lg:text-[26px]">
           Speed up your workflow with your curated agents
         </p>
         <div className="mb-4 sm:mb-5 md:mb-6">

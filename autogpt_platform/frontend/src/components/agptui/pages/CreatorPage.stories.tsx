@@ -71,7 +71,8 @@ const mockMenuItemGroups = [
 const mockCreatorInfo = {
   name: "AI Labs",
   username: "ailabs",
-  description: "Our agents are designed to bring happiness and positive vibes to your daily routine. Each template helps you create and live the life of your dreams while guiding you to become your best every day",
+  description:
+    "Our agents are designed to bring happiness and positive vibes to your daily routine. Each template helps you create and live the life of your dreams while guiding you to become your best every day",
   avgRating: 4.8,
   agentCount: 15,
   topCategories: ["SEO", "Marketing", "Data Analysis"],

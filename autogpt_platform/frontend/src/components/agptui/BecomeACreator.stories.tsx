@@ -3,7 +3,7 @@ import { BecomeACreator } from "./BecomeACreator";
 import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/BecomeACreator",
+  title: "AGPT UI/Become A Creator",
   component: BecomeACreator,
   parameters: {
     layout: "centered",

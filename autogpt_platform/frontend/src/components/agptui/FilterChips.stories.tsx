@@ -3,7 +3,7 @@ import { FilterChips } from "./FilterChips";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/FilterChips",
+  title: "AGPT UI/Filter Chips",
   component: FilterChips,
   parameters: {
     layout: "centered",
