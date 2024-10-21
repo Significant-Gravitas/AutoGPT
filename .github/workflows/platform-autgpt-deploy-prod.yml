@@ -1,8 +1,8 @@
 name: AutoGPT Platform - Build, Push, and Deploy Prod Environment
 
 on:
-  push:
-    branches: [ master ]
+  release:
+    types: [published]
 
 permissions:
   contents: 'read'
