@@ -3,7 +3,7 @@ import { HeroSection } from "./HeroSection";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPTUI/Marketplace/Home/HeroSection",
+  title: "AGPT UI/Composite/Hero Section",
   component: HeroSection,
   parameters: {
     layout: {

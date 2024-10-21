@@ -1,12 +1,12 @@
 import * as React from "react";
-import { Navbar } from "../../Navbar";
-import { HeroSection } from "./HeroSection";
-import { FeaturedSection } from "./FeaturedSection";
-import { AgentsSection } from "../../AgentsSection";
-import { BecomeACreator } from "../../BecomeACreator";
-import { FeaturedCreators } from "./FeaturedCreators";
-import { Separator } from "../../../ui/separator";
-import { IconType } from "../../../ui/icons";
+import { Navbar } from "../Navbar";
+import { HeroSection } from "../composite/HeroSection";
+import { FeaturedSection } from "../composite/FeaturedSection";
+import { AgentsSection } from "../composite/AgentsSection";
+import { BecomeACreator } from "../BecomeACreator";
+import { FeaturedCreators } from "../composite/FeaturedCreators";
+import { Separator } from "../../ui/separator";
+import { IconType } from "../../ui/icons";
 interface PageProps {
   userName: string;
   userEmail: string;

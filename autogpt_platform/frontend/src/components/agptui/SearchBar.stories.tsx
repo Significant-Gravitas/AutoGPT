@@ -3,7 +3,7 @@ import { SearchBar } from "./SearchBar";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPTUI/SearchBar",
+  title: "AGPT UI/SearchBar",
   component: SearchBar,
   parameters: {
     layout: {

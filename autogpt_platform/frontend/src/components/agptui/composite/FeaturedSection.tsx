@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FeaturedStoreCard } from "../../FeaturedStoreCard";
+import { FeaturedStoreCard } from "../FeaturedStoreCard";
 
 interface FeaturedAgent {
   agentName: string;

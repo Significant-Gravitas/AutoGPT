@@ -4,7 +4,7 @@ import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
 
 const meta = {
-  title: "AGPTUI/Navbar",
+  title: "AGPT UI/Navbar",
   component: Navbar,
   parameters: {
     layout: "fullscreen",

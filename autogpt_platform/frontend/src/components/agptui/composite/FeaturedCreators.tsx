@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CreatorCard } from "../../CreatorCard";
+import { CreatorCard } from "../CreatorCard";
 import {
   Carousel,
   CarouselContent,
