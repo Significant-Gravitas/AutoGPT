@@ -28,6 +28,11 @@ service_accounts = {
    "prod-agpt-market-sa" = {
     display_name = "AutoGPT prod Market backend Account"
     description  = "Service account for agpt prod market backend"
+  },
+  "prod-github-actions-workload-identity" = {
+    service_account_name = "prod-github-actions-sa"
+    namespace            = "prod-agpt"
+    ksa_name             = "prod-github-actions-sa"
   }
 }
 
@@ -59,7 +64,8 @@ role_bindings = {
     "serviceAccount:prod-agpt-backend-sa@agpt-prod.iam.gserviceaccount.com",
     "serviceAccount:prod-agpt-frontend-sa@agpt-prod.iam.gserviceaccount.com",
     "serviceAccount:prod-agpt-ws-backend-sa@agpt-prod.iam.gserviceaccount.com",
-    "serviceAccount:prod-agpt-market-sa@agpt-prod.iam.gserviceaccount.com"
+    "serviceAccount:prod-agpt-market-sa@agpt-prod.iam.gserviceaccount.com",
+    "serviceAccount:prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.client" = [
     "serviceAccount:prod-agpt-backend-sa@agpt-prod.iam.gserviceaccount.com",
@@ -80,7 +86,8 @@ role_bindings = {
     "serviceAccount:prod-agpt-backend-sa@agpt-prod.iam.gserviceaccount.com",
     "serviceAccount:prod-agpt-frontend-sa@agpt-prod.iam.gserviceaccount.com",
     "serviceAccount:prod-agpt-ws-backend-sa@agpt-prod.iam.gserviceaccount.com",
-    "serviceAccount:prod-agpt-market-sa@agpt-prod.iam.gserviceaccount.com"
+    "serviceAccount:prod-agpt-market-sa@agpt-prod.iam.gserviceaccount.com",
+    "serviceAccount:prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com"
   ]
   "roles/compute.networkUser" = [
     "serviceAccount:prod-agpt-backend-sa@agpt-prod.iam.gserviceaccount.com",
@@ -93,6 +100,16 @@ role_bindings = {
     "serviceAccount:prod-agpt-frontend-sa@agpt-prod.iam.gserviceaccount.com",
     "serviceAccount:prod-agpt-ws-backend-sa@agpt-prod.iam.gserviceaccount.com",
     "serviceAccount:prod-agpt-market-sa@agpt-prod.iam.gserviceaccount.com"
+  ],
+  "roles/artifactregistry.writer" = [
+    "serviceAccount:prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com"
+  ],
+  "roles/container.viewer" = [
+    "serviceAccount:prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com"
+  ],
+  "roles/iam.serviceAccountTokenCreator" = [
+    "principalSet://iam.googleapis.com/projects/638488734936/locations/global/workloadIdentityPools/prod-pool/*",
+    "serviceAccount:prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com"
   ]
 }
 
@@ -102,3 +119,24 @@ services_ip_cidr_range = "10.2.0.0/20"
 public_bucket_names = ["website-artifacts"]
 standard_bucket_names = []
 bucket_admins = ["gcp-devops-agpt@agpt.co", "gcp-developers@agpt.co"]
+
+workload_identity_pools = {
+  "dev-pool" = {
+    display_name = "Production Identity Pool"
+    providers = {
+      "github" = {
+        issuer_uri = "https://token.actions.githubusercontent.com"
+        attribute_mapping = {
+          "google.subject" = "assertion.sub"
+          "attribute.repository" = "assertion.repository"
+          "attribute.repository_owner" = "assertion.repository_owner"
+        }
+      }
+    }
+    service_accounts = {
+      "prod-github-actions-sa" = [
+        "Significant-Gravitas/AutoGPT"
+      ]
+    }
+  }
+}
