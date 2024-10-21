@@ -3,7 +3,7 @@ import { Button } from "./Button";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPTUI/Button",
+  title: "AGPT UI/Button",
   component: Button,
   parameters: {
     layout: "centered",

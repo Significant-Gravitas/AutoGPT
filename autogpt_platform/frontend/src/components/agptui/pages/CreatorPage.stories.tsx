@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorPage } from "./CreatorPage";
 import { userEvent, within } from "@storybook/test";
-import { IconType } from "../../../ui/icons";
+import { IconType } from "../../ui/icons";
 
 const meta = {
-  title: "AGPTUI/Marketplace/Creator/CreatorPage",
+  title: "AGPT UI/Agent Store/Creator Page",
   component: CreatorPage,
   parameters: {
     layout: {

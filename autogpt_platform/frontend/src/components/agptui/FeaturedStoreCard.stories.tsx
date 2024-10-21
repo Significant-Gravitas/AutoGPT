@@ -3,7 +3,7 @@ import { FeaturedStoreCard } from "./FeaturedStoreCard";
 import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPTUI/FeaturedStoreCard",
+  title: "AGPT UI/FeaturedStoreCard",
   component: FeaturedStoreCard,
   parameters: {
     layout: {

@@ -3,7 +3,7 @@ import { BreadCrumbs } from "./BreadCrumbs";
 import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPTUI/BreadCrumbs",
+  title: "AGPT UI/BreadCrumbs",
   component: BreadCrumbs,
   parameters: {
     layout: "centered",

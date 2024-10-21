@@ -1,9 +1,9 @@
 import * as React from "react";
-import { Navbar } from "../../Navbar";
-import { CreatorDetails } from "./CreatorDetails";
-import { AgentsSection } from "../../AgentsSection";
-import { BreadCrumbs } from "../../BreadCrumbs";
-import { IconType } from "../../../ui/icons";
+import { Navbar } from "../Navbar";
+import { CreatorDetails } from "../composite/CreatorDetails";
+import { AgentsSection } from "../composite/AgentsSection";
+import { BreadCrumbs } from "../BreadCrumbs";
+import { IconType } from "../../ui/icons";
 
 interface CreatorPageProps {
   userName: string;

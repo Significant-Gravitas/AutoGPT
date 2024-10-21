@@ -1,6 +1,6 @@
 import * as React from "react";
-import { SearchBar } from "../../SearchBar";
-import { FilterChips } from "../../FilterChips";
+import { SearchBar } from "../SearchBar";
+import { FilterChips } from "../FilterChips";
 
 interface HeroSectionProps {
   onSearch: (query: string) => void;

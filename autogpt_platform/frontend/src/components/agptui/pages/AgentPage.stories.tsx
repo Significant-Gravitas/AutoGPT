@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Page } from "./Page";
+import { AgentPage } from "./AgentPage";
 import { userEvent, within } from "@storybook/test";
-import { IconType } from "../../../ui/icons";
+import { IconType } from "../../ui/icons";
 
 const meta = {
-  title: "AGPTUI/Marketplace/Agent/Page",
-  component: Page,
+  title: "AGPT UI/Agent Store/Agent Page",
+  component: AgentPage,
   parameters: {
     layout: {
       center: true,
@@ -25,7 +25,7 @@ const meta = {
     otherAgentsByCreator: { control: "object" },
     similarAgents: { control: "object" },
   },
-} satisfies Meta<typeof Page>;
+} satisfies Meta<typeof AgentPage>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

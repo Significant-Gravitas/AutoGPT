@@ -1,14 +1,14 @@
 import * as React from "react";
-import { Navbar } from "../../Navbar";
-import { AgentInfo } from "../../AgentInfo";
-import { AgentImages } from "../../AgentImages";
-import { BecomeACreator } from "../../BecomeACreator";
-import { AgentsSection } from "../../AgentsSection";
-import { Separator } from "../../../ui/separator";
-import { IconType } from "../../../ui/icons";
-import { BreadCrumbs } from "../../BreadCrumbs";
+import { Navbar } from "../Navbar";
+import { AgentInfo } from "../AgentInfo";
+import { AgentImages } from "../AgentImages";
+import { BecomeACreator } from "../BecomeACreator";
+import { AgentsSection } from "../composite/AgentsSection";
+import { Separator } from "../../ui/separator";
+import { IconType } from "../../ui/icons";
+import { BreadCrumbs } from "../BreadCrumbs";
 
-interface PageProps {
+interface AgentPageProps {
   userName: string;
   userEmail: string;
   navLinks: { name: string; href: string }[];
@@ -51,7 +51,7 @@ interface PageProps {
   }[];
 }
 
-export const Page: React.FC<PageProps> = ({
+export const AgentPage: React.FC<AgentPageProps> = ({
   userName,
   userEmail,
   navLinks,

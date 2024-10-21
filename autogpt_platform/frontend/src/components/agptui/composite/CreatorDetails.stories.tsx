@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorDetails } from "./CreatorDetails";
 
 const meta = {
-  title: "AGPTUI/Marketplace/Creator/CreatorDetails",
+  title: "AGPT UI/Composite/Creator Details",
   component: CreatorDetails,
   parameters: {
     layout: "centered",
