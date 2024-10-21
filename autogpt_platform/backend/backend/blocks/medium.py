@@ -1,9 +1,16 @@
+from enum import Enum
 from typing import List
 
 import requests
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
+
+
+class PublishToMediumStatus(str, Enum):
+    PUBLIC = "public"
+    DRAFT = "draft"
+    UNLISTED = "unlisted"
 
 
 class PublishToMediumBlock(Block):
@@ -34,9 +41,9 @@ class PublishToMediumBlock(Block):
             description="The original home of this content, if it was originally published elsewhere",
             placeholder="https://yourblog.com/original-post",
         )
-        publish_status: str = SchemaField(
-            description="The publish status: 'public', 'draft', or 'unlisted'",
-            placeholder="public",
+        publish_status: PublishToMediumStatus = SchemaField(
+            description="The publish status",
+            placeholder=PublishToMediumStatus.DRAFT,
         )
         license: str = SchemaField(
             default="all-rights-reserved",
@@ -79,7 +86,7 @@ class PublishToMediumBlock(Block):
                 "tags": ["test", "automation"],
                 "license": "all-rights-reserved",
                 "notify_followers": False,
-                "publish_status": "draft",
+                "publish_status": PublishToMediumStatus.DRAFT.value,
                 "api_key": "your_test_api_key",
             },
             test_output=[
