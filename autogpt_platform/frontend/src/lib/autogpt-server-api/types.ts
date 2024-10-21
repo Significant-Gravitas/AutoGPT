@@ -54,6 +54,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  hidden?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {

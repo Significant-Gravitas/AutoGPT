@@ -28,7 +28,7 @@ class GitHubTriggerBase:
             description="Repository to subscribe to",
             placeholder="{owner}/{repo}",
         )
-        payload: dict = SchemaField(description="Webhook payload", exclude=True)
+        payload: dict = SchemaField(hidden=True)
 
     class Output(BlockSchema):
         event: str = SchemaField(description="The event that triggered the webhook")

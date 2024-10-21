@@ -185,6 +185,7 @@ export function CustomNode({
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
           const isAdvanced = propSchema.advanced;
+          const isHidden = propSchema.hidden;
           const isConnectable =
             // No input connection handles on INPUT and WEBHOOK blocks
             ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
@@ -194,6 +195,7 @@ export function CustomNode({
             !(nodeType == BlockUIType.OUTPUT && propKey == "value");
           const isConnected = isInputHandleConnected(propKey);
           return (
+            !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
                 {isConnectable ? (
