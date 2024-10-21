@@ -38,28 +38,6 @@ class NodeExecution(BaseModel):
 
 ExecutionStatus = AgentExecutionStatus
 
-T = TypeVar("T")
-
-
-class ExecutionQueue(Generic[T]):
-    """
-    Queue for managing the execution of agents.
-    This will be shared between different processes
-    """
-
-    def __init__(self):
-        self.queue = Manager().Queue()
-
-    def add(self, execution: T) -> T:
-        self.queue.put(execution)
-        return execution
-
-    def get(self) -> T:
-        return self.queue.get()
-
-    def empty(self) -> bool:
-        return self.queue.empty()
-
 
 class ExecutionResult(BaseModel):
     graph_id: str

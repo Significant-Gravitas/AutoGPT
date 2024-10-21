@@ -2,12 +2,14 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any, Generic, TypeVar
 
 from backend.data import redis
 from backend.data.execution import ExecutionResult
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, o):
@@ -48,3 +50,21 @@ class RedisEventQueue(AbstractEventQueue):
         elif message is not None:
             logger.error(f"Failed to get execution result from Redis {message}")
         return None
+
+
+class ExecutionQueue(Generic[T]):
+    def __init__(self, queue_name: str):
+        self.redis = redis.get_redis()
+        self.queue_name = queue_name
+
+    def add(self, item: T):
+        message = json.dumps(item.model_dump(), default=str)
+        self.redis.lpush(self.queue_name, message)
+
+    def get(self) -> T:
+        while True:
+            _, message = self.redis.brpop(self.queue_name)
+            return T.model_validate(json.loads(message))
+
+    def empty(self) -> bool:
+        return self.redis.llen(self.queue_name) == 0
