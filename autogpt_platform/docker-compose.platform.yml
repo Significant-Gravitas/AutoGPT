@@ -4,7 +4,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["sh", "-c", "poetry run migrate_db"]
+    command: ["sh", "-c", "poetry run prisma migrate deploy"]
     develop:
       watch:
         - path: ./
@@ -15,7 +15,6 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-      - DIRECT_DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60
     networks:
       - app-network
     restart: on-failure

@@ -70,7 +70,6 @@ services:
 #      service: frontend
 
   # Supabase services
-  # Supabase services
   studio:
     <<: *supabase-services
     extends:
