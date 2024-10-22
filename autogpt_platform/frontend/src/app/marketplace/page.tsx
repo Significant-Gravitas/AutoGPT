@@ -118,7 +118,7 @@ const AgentCard: React.FC<{ agent: Agent; featured?: boolean }> = ({
           {agent.description}
         </p>
         <div className="mb-2 text-xs text-gray-400">
-          Categories: {agent.categories.join(", ")}
+          Categories: {agent.categories?.join(", ")}
         </div>
       </div>
       <div className="flex items-end justify-between">
@@ -315,14 +315,27 @@ const Marketplace: React.FC = () => {
           )
         ) : (
           <>
-            {featuredAgents.length > 0 && (
+            {featuredAgents?.length > 0 ? (
               <AgentGrid
                 agents={featuredAgents}
                 title="Featured Agents"
                 featured={true}
               />
+            ) : (
+              <div className="py-12 text-center">
+                <p className="text-gray-600">No Featured Agents found</p>
+              </div>
             )}
-            <AgentGrid agents={topAgents} title="Top Downloaded Agents" />
+
+            <hr />
+
+            {topAgents?.length > 0 ? (
+              <AgentGrid agents={topAgents} title="Top Downloaded Agents" />
+            ) : (
+              <div className="py-12 text-center">
+                <p className="text-gray-600">No Top Downloaded Agents found</p>
+              </div>
+            )}
             <Pagination
               page={topAgentsPage}
               totalPages={topAgentsTotalPages}
