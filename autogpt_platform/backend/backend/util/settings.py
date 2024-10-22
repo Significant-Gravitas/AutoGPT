@@ -148,11 +148,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="What environment to behave as: local or cloud",
     )
 
-    direct_database_url: str = Field(
-        default="",
-        description="The URL for the direct database. This is used to run migrations.",
-    )
-
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
 
     @field_validator("backend_cors_allow_origins")

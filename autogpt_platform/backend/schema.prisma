@@ -17,6 +17,7 @@ model User {
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  metadata  Json?
 
   // Relations
   AgentGraphs                  AgentGraph[]
@@ -25,8 +26,6 @@ model User {
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
-
-  metadata Json?
 
   @@index([id])
   @@index([email])
