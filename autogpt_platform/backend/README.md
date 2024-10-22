@@ -59,7 +59,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 
    ```sh
    docker compose up db redis -d
-   poetry run prisma migrate dev 
+   poetry run prisma migrate deploy
    ```
 
 ## Running The Server

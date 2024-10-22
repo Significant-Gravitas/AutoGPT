@@ -1,6 +1,8 @@
 from typing import Optional
 
+from autogpt_libs.supabase_integration_credentials_store.types import UserMetadataRaw
 from fastapi import HTTPException
+from prisma import Json
 from prisma.models import User
 
 from backend.data.db import prisma
@@ -48,3 +50,21 @@ async def create_default_user(enable_auth: str) -> Optional[User]:
             )
         return User.model_validate(user)
     return None
+
+
+async def get_user_metadata(user_id: str) -> UserMetadataRaw:
+    user = await User.prisma().find_unique_or_raise(
+        where={"id": user_id},
+    )
+    return (
+        UserMetadataRaw.model_validate(user.metadata)
+        if user.metadata
+        else UserMetadataRaw()
+    )
+
+
+async def update_user_metadata(user_id: str, metadata: UserMetadataRaw):
+    await User.prisma().update(
+        where={"id": user_id},
+        data={"metadata": Json(metadata.model_dump())},
+    )
