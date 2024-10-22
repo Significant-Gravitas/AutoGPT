@@ -202,20 +202,10 @@ class AgentOutputBlock(Block):
     """
     Records the output of the graph for users to see.
 
-    Attributes:
-        recorded_value: The value to be recorded as output.
-        name: The name of the output.
-        description: The description of the output.
-        fmt_string: The format string to be used to format the recorded_value.
-
-    Outputs:
-        output: The formatted recorded_value if fmt_string is provided and the recorded_value
-                can be formatted, otherwise the raw recorded_value.
-
     Behavior:
-        If fmt_string is provided and the recorded_value is of a type that can be formatted,
-        the block attempts to format the recorded_value using the fmt_string.
-        If formatting fails or no fmt_string is provided, the raw recorded_value is output.
+        If `format` is provided and the `value` is of a type that can be formatted,
+        the block attempts to format the recorded_value using the `format`.
+        If formatting fails or no `format` is provided, the raw `value` is output.
     """
 
     class Input(BlockSchema):
@@ -238,7 +228,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description=("Stores the output of the graph for users to see."),
+            description="Stores the output of the graph for users to see.",
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[

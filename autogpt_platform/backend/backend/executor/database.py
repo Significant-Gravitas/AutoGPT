@@ -32,8 +32,8 @@ class DatabaseManager(AppService):
         self.event_queue = RedisEventBus()
 
     @expose
-    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        self.event_queue.publish(ExecutionResult(**execution_result_dict))
+    def send_execution_update(self, execution_result: ExecutionResult):
+        self.event_queue.publish(execution_result)
 
     @staticmethod
     def exposed_run_and_wait(

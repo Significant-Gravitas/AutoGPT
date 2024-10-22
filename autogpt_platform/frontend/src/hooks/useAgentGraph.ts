@@ -268,6 +268,7 @@ export default function useAgentGraph(
 
   const updateNodesWithExecutionData = useCallback(
     (executionData: NodeExecutionResult) => {
+      if (!executionData.node_id) return;
       if (passDataToBeads) {
         updateEdgeBeads(executionData);
       }
