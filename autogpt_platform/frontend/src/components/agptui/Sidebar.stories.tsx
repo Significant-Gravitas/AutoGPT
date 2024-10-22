@@ -18,9 +18,7 @@ type Story = StoryObj<typeof meta>;
 
 const defaultLinkGroups = [
   {
-    links: [
-      { text: "Integrations", href: "/integrations" },
-    ],
+    links: [{ text: "Integrations", href: "/integrations" }],
   },
   {
     links: [
@@ -67,8 +65,14 @@ export const LongLinkTexts: Story = {
     linkGroups: [
       {
         links: [
-          { text: "This is a very long link text that might wrap", href: "/long-link-1" },
-          { text: "Another extremely long link text for testing purposes", href: "/long-link-2" },
+          {
+            text: "This is a very long link text that might wrap",
+            href: "/long-link-1",
+          },
+          {
+            text: "Another extremely long link text for testing purposes",
+            href: "/long-link-2",
+          },
         ],
       },
       ...defaultLinkGroups,
