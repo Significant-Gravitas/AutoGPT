@@ -1,21 +1,27 @@
 import threading
 from functools import wraps
-from typing import Callable, TypeVar
+from typing import Callable, ParamSpec, TypeVar
 
 T = TypeVar("T")
+P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def thread_cached_property(func: Callable[[T], R]) -> property:
-    local_cache = threading.local()
+def thread_cached(func: Callable[P, R]) -> Callable[P, R]:
+    thread_local = threading.local()
 
     @wraps(func)
-    def wrapper(self: T) -> R:
-        if not hasattr(local_cache, "cache"):
-            local_cache.cache = {}
-        key = id(self)
-        if key not in local_cache.cache:
-            local_cache.cache[key] = func(self)
-        return local_cache.cache[key]
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        cache = getattr(thread_local, "cache", None)
+        if cache is None:
+            cache = thread_local.cache = {}
+        key = (args, tuple(sorted(kwargs.items())))
+        if key not in cache:
+            cache[key] = func(*args, **kwargs)
+        return cache[key]
 
-    return property(wrapper)
+    return wrapper
+
+
+def thread_cached_property(func: Callable[[T], R]) -> property:
+    return property(thread_cached(func))
