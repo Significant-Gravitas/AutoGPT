@@ -273,7 +273,7 @@ export default class BaseAutoGPTServerAPI {
 
       if (
         response.status === 403 &&
-        response.statusText === "Not authenticated" &&
+        // response.statusText === "Not authenticated" && // there might be a possibility that status text is different
         typeof window !== "undefined" // Check if in browser environment
       ) {
         window.location.href = "/login";
