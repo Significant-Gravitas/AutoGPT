@@ -7,14 +7,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- CreateSchema & CreateTable
--- Note: these CREATE commands are dev-only, where full-fledged Supabase can be missing.
-CREATE SCHEMA IF NOT EXISTS auth;
-CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY, email TEXT);
+DO $$
+BEGIN
+    -- Check if the auth schema and users table exist
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'auth'
+        AND table_name = 'users'
+    ) THEN
+        -- Drop the trigger if it exists
+        DROP TRIGGER IF EXISTS user_added_to_platform ON auth.users;
 
--- DropTigger
-DROP TRIGGER IF EXISTS user_added_to_platform ON auth.users;
-
---CreateTrigger
-CREATE TRIGGER user_added_to_platform AFTER INSERT ON auth.users
-FOR EACH ROW EXECUTE FUNCTION add_user_to_platform();
+        -- Create the trigger
+        CREATE TRIGGER user_added_to_platform
+        AFTER INSERT ON auth.users
+        FOR EACH ROW EXECUTE FUNCTION add_user_to_platform();
+    END IF;
+END $$;
