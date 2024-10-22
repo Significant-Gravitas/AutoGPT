@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Button } from "./Button";
 import Image from "next/image";
 
 interface Agent {
@@ -13,6 +12,7 @@ interface PublishAgentSelectProps {
   onSelect: (agentName: string) => void;
   onCancel: () => void;
   onNext: () => void;
+  onClose: () => void;
   onOpenBuilder: () => void;
 }
 
@@ -21,6 +21,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   onSelect,
   onCancel,
   onNext,
+  onClose,
   onOpenBuilder,
 }) => {
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
@@ -31,93 +32,100 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-[749px] bg-white rounded-lg shadow border border-slate-200">
-      <div className="px-6 py-6 flex-col justify-start items-center gap-3 flex">
-        <h2 className="text-slate-950 text-2xl font-semibold font-['Inter'] leading-normal">
-          Publish Agent
-        </h2>
-        <p className="text-center text-slate-500 text-sm font-normal font-['Inter'] leading-tight">
-          Select your project that you'd like to publish
-        </p>
-      </div>
-      {agents.length === 0 ? (
-        <div className="flex-grow px-6 pb-6 flex-col justify-center items-center gap-4 flex">
-          <p className="w-[573px] text-center text-neutral-600 text-xl font-normal font-['Geist'] leading-7">
-            Uh-oh.. It seems like you don't have any agents in your library. We'd suggest you to create an agent in our builder first
-          </p>
-          <Button
-            variant="default"
-            className="px-4 py-2 bg-neutral-800 text-white hover:bg-neutral-700 rounded-[59px]"
-            onClick={onOpenBuilder}
+    <div className="w-[900px] bg-white rounded-3xl shadow-lg flex flex-col">
+      <div className="p-6 border-b border-slate-200 relative">
+        <div className="absolute top-4 right-4">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+            aria-label="Close"
           >
-            Open builder
-          </Button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M1 1L13 13M1 13L13 1"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+        <h2 className="text-neutral-900 text-2xl font-semibold font-['Poppins'] leading-loose text-center mb-2">Publish Agent</h2>
+        <p className="text-neutral-600 text-base font-normal font-['Geist'] leading-7 text-center">Select your project that you'd like to publish</p>
+      </div>
+      
+      {agents.length === 0 ? (
+        <div className="h-[370px] px-6 py-5 flex-col justify-center items-center gap-[29px] inline-flex">
+          <div className="w-[573px] text-center text-neutral-600 text-xl font-normal font-['Geist'] leading-7">
+            Uh-oh.. It seems like you don't have any agents in your library. We'd suggest you to create an agent in our builder first
+          </div>
+          <button
+            onClick={onOpenBuilder}
+            className="w-[141px] h-[47px] px-4 py-2 bg-neutral-800 rounded-[59px] justify-center items-center gap-2.5 inline-flex"
+          >
+            <span className="text-slate-50 text-sm font-medium font-['Inter'] leading-normal">Open builder</span>
+          </button>
         </div>
       ) : (
         <>
-          <div 
-            className="flex-grow px-6 pb-6 overflow-y-auto h-[calc(100%-180px)]"
-            tabIndex={0}
-            role="region"
-            aria-label="Agent selection"
-          >
-            <div className="grid grid-cols-3 gap-4 pb-4">
-              {agents.map((agent) => (
-                <div
-                  key={agent.name}
-                  className={`flex flex-col cursor-pointer rounded-[10px] ${
-                    selectedAgent === agent.name ? "border-2 border-gray-600" : ""
-                  }`}
-                  onClick={() => handleAgentClick(agent.name)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      handleAgentClick(agent.name);
-                    }
-                  }}
-                  tabIndex={0}
-                  role="button"
-                  aria-pressed={selectedAgent === agent.name}
-                >
-                  <div className="w-full aspect-[235/158] bg-[#d9d9d9] rounded-[10px] relative overflow-hidden">
-                    <Image
-                      src={agent.imageSrc}
-                      alt={agent.name}
-                      layout="fill"
-                      objectFit="cover"
-                    />
-                  </div>
-                  <div className="mt-2 flex-col justify-start items-start gap-0.5 flex bg-white p-2 rounded-b-[10px]">
-                    <div className="text-slate-900 text-sm font-medium font-['Inter'] leading-normal">
-                      {agent.name}
+          <div className="flex-grow p-4 overflow-hidden">
+            <div className="h-[500px] overflow-y-auto pr-2">
+              <div className="p-2">
+                <div className="grid grid-cols-3 gap-4">
+                  {agents.map((agent) => (
+                    <div
+                      key={agent.name}
+                      className={`rounded-2xl overflow-hidden cursor-pointer transition-all ${
+                        selectedAgent === agent.name 
+                          ? "ring-4 ring-violet-600 shadow-lg" 
+                          : "hover:shadow-md"
+                      }`}
+                      onClick={() => handleAgentClick(agent.name)}
+                    >
+                      <div className="relative h-40 bg-gray-100">
+                        <Image
+                          src={agent.imageSrc}
+                          alt={agent.name}
+                          layout="fill"
+                          objectFit="cover"
+                        />
+                      </div>
+                      <div className="p-3">
+                        <h3 className="text-neutral-800 text-base font-medium font-['Geist'] leading-normal">{agent.name}</h3>
+                        <p className="text-neutral-500 text-sm font-normal font-['Geist'] leading-[14px]">Edited {agent.lastEdited}</p>
+                      </div>
                     </div>
-                    <div className="text-slate-600 text-sm font-normal font-['Inter'] leading-normal">
-                      Edited {agent.lastEdited}
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
-          <div className="px-6 pb-4 pt-4 flex justify-center items-center gap-4">
-            <Button
-              variant="outline"
+          
+          <div className="p-6 border-t border-slate-200 flex justify-between gap-4">
+            <button
               onClick={onCancel}
-              className="w-[400px] h-10 px-4 py-2 bg-white rounded-md border border-slate-200 justify-center items-center gap-2.5 inline-flex"
+              className="flex-grow h-10 px-4 py-2 bg-white rounded-[59px] border border-neutral-900 justify-center items-center gap-2.5 inline-flex"
             >
-              <span className="text-slate-950 text-sm font-medium font-['Inter'] leading-normal">
+              <span className="text-right text-neutral-800 text-sm font-medium font-['Geist'] leading-normal">
                 Back
               </span>
-            </Button>
-            <Button
-              variant="default"
+            </button>
+            <button
               onClick={onNext}
               disabled={!selectedAgent}
-              className="w-[400px] h-10 px-4 py-2 bg-slate-900 rounded-md justify-center items-center gap-2.5 inline-flex disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800"
+              className="flex-grow h-10 px-4 py-2 bg-neutral-400 rounded-[59px] justify-center items-center gap-2.5 inline-flex disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span className="text-slate-50 text-sm font-medium font-['Inter'] leading-normal group-hover:text-white">
+              <span className="text-right text-white text-sm font-medium font-['Geist'] leading-normal">
                 Next
               </span>
-            </Button>
+            </button>
           </div>
         </>
       )}
