@@ -34,6 +34,7 @@ class BlockType(Enum):
     INPUT = "Input"
     OUTPUT = "Output"
     NOTE = "Note"
+    AGENT = "Agent"
 
 
 class BlockCategory(Enum):
@@ -274,7 +275,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         ):
             if output_name == "error":
                 raise RuntimeError(output_data)
-            if error := self.output_schema.validate_field(output_name, output_data):
+            if self.block_type == BlockType.STANDARD and (
+                error := self.output_schema.validate_field(output_name, output_data)
+            ):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
 

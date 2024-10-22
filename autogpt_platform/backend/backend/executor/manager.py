@@ -693,7 +693,7 @@ class ExecutionManager(AppService):
             )
             self.active_graph_runs[graph_exec_id] = (future, cancel_event)
             future.add_done_callback(
-                lambda _: self.active_graph_runs.pop(graph_exec_id)
+                lambda _: self.active_graph_runs.pop(graph_exec_id, None)
             )
 
     def cleanup(self):

@@ -50,6 +50,7 @@ class AgentExecutorBlock(Block):
             description="Executes an existing agent inside your agent",
             input_schema=AgentExecutorBlock.Input,
             output_schema=AgentExecutorBlock.Output,
+            block_type=BlockType.AGENT,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -68,6 +69,10 @@ class AgentExecutorBlock(Block):
         for event in event_bus.listen(
             graph_id=graph_exec.graph_id, execution_id=graph_exec.graph_exec_id
         ):
+            logger.info(
+                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
+            )
+
             if not event.node_id:
                 if event.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]:
                     logger.info(f"Execution {log_id} ended with status {event.status}")
