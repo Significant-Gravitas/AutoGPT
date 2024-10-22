@@ -2,9 +2,8 @@ name: AutoGPT Platform - Build, Push, and Deploy Dev Environment
 
 on:
   push:
-    branches: [ dev, aarushikansal/secrt-947-run-migrations-in-ci-for-dev ]
+    branches: [ dev ]
     paths:
-      - '**'
       - 'autogpt_platform/backend/**'
       - 'autogpt_platform/frontend/**'
       - 'autogpt_platform/market/**'
@@ -49,7 +48,7 @@ jobs:
           echo "market_changed=$MARKET_CHANGED" >> $GITHUB_OUTPUT
 
       - name: Run Backend Migrations
-        if: steps.check_changes.outputs.backend_changed == 'false'
+        if: steps.check_changes.outputs.backend_changed == 'true'
         working-directory: ./autogpt_platform/backend
         run: |
           python -m prisma migrate deploy
@@ -57,7 +56,7 @@ jobs:
           DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
       - name: Run Market Migrations
-        if: steps.check_changes.outputs.market_changed == 'false'
+        if: steps.check_changes.outputs.market_changed == 'true'
         working-directory: ./autogpt_platform/market
         run: |
           python -m prisma migrate deploy
@@ -66,6 +65,7 @@ jobs:
 
   build-push-deploy:
     name: Build, Push, and Deploy
+    needs: migrate
     runs-on: ubuntu-latest
 
     steps:
