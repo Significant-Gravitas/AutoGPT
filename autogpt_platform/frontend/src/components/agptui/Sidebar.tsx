@@ -22,7 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         <SheetTrigger asChild>
           <button
             aria-label="Open sidebar menu"
-            className="fixed left-0 top-1/2 rounded-r-xl border border-neutral-500 bg-neutral-200 p-1 md:hidden"
+            className="fixed left-0 top-1/2 rounded-r-xl border border-neutral-500 bg-neutral-200 p-1 lg:hidden"
           >
             <Menu className="h-6 w-6" />
             <span className="sr-only">Open sidebar menu</span>
@@ -55,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
           </div>
         </SheetContent>
       </Sheet>
-      <div className="relative hidden h-[934px] w-[280px] md:block">
+      <div className="relative hidden h-[934px] w-[280px] lg:block">
         <div className="absolute left-0 top-0 h-full w-full bg-neutral-100" />
         <div className="absolute left-10 top-[63px] flex w-[210px] flex-col items-start justify-start gap-[30px]">
           <h2 className="self-stretch font-neue text-xl font-normal leading-7 tracking-tight text-neutral-900 hover:text-neutral-700">
