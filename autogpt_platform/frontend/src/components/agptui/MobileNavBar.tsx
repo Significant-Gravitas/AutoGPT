@@ -24,7 +24,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 
 interface MobileNavBarProps {
-  userName: string;
+  userName?: string;
   userEmail?: string;
   activeLink: string;
   avatarSrc?: string;
@@ -142,15 +142,20 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
               >
                 <div className="mb-4 inline-flex items-end justify-start gap-4">
                   <Avatar className="h-14 w-14 border border-[#474747]">
-                    <AvatarImage src={avatarSrc} alt={userName} />
-                    <AvatarFallback>{userName.charAt(0)}</AvatarFallback>
+                    <AvatarImage
+                      src={avatarSrc}
+                      alt={userName || "Unknown User"}
+                    />
+                    <AvatarFallback>
+                      {userName?.charAt(0) || "U"}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="relative h-14 w-[153px]">
                     <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747]">
-                      {userName}
+                      {userName || "Unknown User"}
                     </div>
                     <div className="absolute left-0 top-6 font-['Inter'] text-base font-normal leading-7 text-[#474747]">
-                      {userEmail}
+                      {userEmail || "No Email Set"}
                     </div>
                   </div>
                 </div>

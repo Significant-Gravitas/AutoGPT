@@ -11,6 +11,7 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
+    isLoggedIn: { control: "boolean" },
     userName: { control: "text" },
     links: { control: "object" },
     activeLink: { control: "text" },
@@ -65,6 +66,7 @@ const defaultLinks = [
 
 export const Default: Story = {
   args: {
+    isLoggedIn: true,
     userName: "John Doe",
     links: defaultLinks,
     activeLink: "/marketplace",
@@ -109,5 +111,15 @@ export const WithInteraction: Story = {
 
     // Wait for the popover to appear
     await canvas.findByText("Edit profile");
+  },
+};
+
+export const NotLoggedIn: Story = {
+  args: {
+    ...Default.args,
+    isLoggedIn: false,
+    userName: undefined,
+    userEmail: undefined,
+    avatarSrc: undefined,
   },
 };
