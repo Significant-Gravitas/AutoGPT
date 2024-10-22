@@ -1,7 +1,7 @@
 replicaCount: 1 # not scaling websocket server for now
 
 image:
-  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-backend-dev/agpt-backend-dev
   tag: latest
   pullPolicy: Always
 

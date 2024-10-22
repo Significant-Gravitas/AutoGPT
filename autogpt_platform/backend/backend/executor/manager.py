@@ -31,7 +31,7 @@ from backend.data.graph import Graph, Link, Node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
-from backend.util.cache import thread_cached_property
+from backend.util.cache import thread_cached
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
@@ -417,7 +417,7 @@ class Executor:
         redis.connect()
         cls.pid = os.getpid()
         cls.db_client = get_db_client()
-        cls.creds_manager = IntegrationCredentialsManager()
+        cls.creds_manager = IntegrationCredentialsManager(db_manager=cls.db_client)
 
         # Set up shutdown handlers
         cls.shutdown_lock = threading.Lock()
@@ -671,7 +671,7 @@ class ExecutionManager(AppService):
         )
 
         self.credentials_store = SupabaseIntegrationCredentialsStore(
-            self.supabase, redis.get_redis()
+            redis=redis.get_redis(), db=self.db_client
         )
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
@@ -702,7 +702,7 @@ class ExecutionManager(AppService):
 
         super().cleanup()
 
-    @thread_cached_property
+    @property
     def db_client(self) -> "DatabaseManager":
         return get_db_client()
 
@@ -712,7 +712,7 @@ class ExecutionManager(AppService):
         graph_id: str,
         data: BlockInput,
         user_id: str,
-        graph_version: str | None = None,
+        graph_version: int | None = None,
     ) -> GraphExecution:
         graph: Graph | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -864,6 +864,7 @@ class ExecutionManager(AppService):
 # ------- UTILITIES ------- #
 
 
+@thread_cached
 def get_db_client() -> "DatabaseManager":
     from backend.executor import DatabaseManager
 
