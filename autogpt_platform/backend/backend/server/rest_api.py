@@ -331,9 +331,9 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        blocks = block.get_blocks()
+        blocks = [cls() for cls in block.get_blocks().values()]
         costs = get_block_costs()
-        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks.values()]
+        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks]
 
     @classmethod
     def execute_graph_block(
