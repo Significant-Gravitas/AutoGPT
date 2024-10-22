@@ -2,8 +2,9 @@ name: AutoGPT Platform - Build, Push, and Deploy Dev Environment
 
 on:
   push:
-    branches: [ dev ]
+    branches: [ dev, aarushikansal/secrt-947-run-migrations-in-ci-for-dev ]
     paths:
+      - '**'
       - 'autogpt_platform/backend/**'
       - 'autogpt_platform/frontend/**'
       - 'autogpt_platform/market/**'
@@ -20,7 +21,7 @@ env:
 
 jobs:
   migrate:
-    environment: production
+    environment: develop
     name: Run migrations for AutoGPT Platform
     runs-on: ubuntu-latest
 
