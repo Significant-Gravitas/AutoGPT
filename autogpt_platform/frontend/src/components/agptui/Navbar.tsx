@@ -1,16 +1,17 @@
 import * as React from "react";
 import Link from "next/link";
 import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import { IconType } from "../ui/icons";
+import { IconType, IconLogIn } from "../ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
-
+import { Button } from "./Button";
 interface NavLink {
   name: string;
   href: string;
 }
 
 interface NavbarProps {
-  userName: string;
+  isLoggedIn: boolean;
+  userName?: string;
   links: NavLink[];
   activeLink: string;
   avatarSrc?: string;
@@ -27,6 +28,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
+  isLoggedIn,
   userName,
   links,
   activeLink,
@@ -54,37 +56,69 @@ export const Navbar: React.FC<NavbarProps> = ({
           ))}
         </div>
         {/* Profile section */}
-        <ProfilePopoutMenu
-          menuItemGroups={menuItemGroups}
-          userName={userName}
-          userEmail={userEmail}
-          avatarSrc={avatarSrc}
-        />
+        {isLoggedIn ? (
+          <ProfilePopoutMenu
+            menuItemGroups={menuItemGroups}
+            userName={userName}
+            userEmail={userEmail}
+            avatarSrc={avatarSrc}
+          />
+        ) : (
+          <Link href="/login">
+            <Button
+              variant="default"
+              size="sm"
+              className="flex items-center justify-end space-x-2"
+            >
+              <IconLogIn className="h-5 w-5" />
+              <span>Log In</span>
+            </Button>
+          </Link>
+        )}
       </nav>
-      <MobileNavBar
-        userName={userName}
-        activeLink={activeLink}
-        menuItemGroups={[
-          {
-            groupName: "Navigation",
-            items: links.map((link) => ({
-              icon:
-                link.name === "Marketplace"
-                  ? IconType.Marketplace
-                  : link.name === "Library"
-                    ? IconType.Library
-                    : link.name === "Build"
-                      ? IconType.Builder
-                      : IconType.LayoutDashboard,
-              text: link.name,
-              href: link.href,
-            })),
-          },
-          ...menuItemGroups,
-        ]}
-        userEmail={userEmail}
-        avatarSrc={avatarSrc}
-      />
+      {/* Mobile Navbar */}
+      <>
+        {isLoggedIn ? (
+          <MobileNavBar
+            userName={userName}
+            activeLink={activeLink}
+            menuItemGroups={[
+              {
+                groupName: "Navigation",
+                items: links.map((link) => ({
+                  icon:
+                    link.name === "Marketplace"
+                      ? IconType.Marketplace
+                      : link.name === "Library"
+                        ? IconType.Library
+                        : link.name === "Build"
+                          ? IconType.Builder
+                          : IconType.LayoutDashboard,
+                  text: link.name,
+                  href: link.href,
+                })),
+              },
+              ...menuItemGroups,
+            ]}
+            userEmail={userEmail}
+            avatarSrc={avatarSrc}
+          />
+        ) : (
+          <Link
+            href="/login"
+            className="z-50 mt-4 inline-flex h-8 w-screen items-center justify-end rounded-lg pr-4 md:hidden"
+          >
+            <Button
+              variant="default"
+              size="sm"
+              className="flex items-center space-x-2"
+            >
+              <IconLogIn className="h-5 w-5" />
+              <span>Log In</span>
+            </Button>
+          </Link>
+        )}
+      </>
     </>
   );
 };
