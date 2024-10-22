@@ -17,6 +17,7 @@ import { Connection, MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useToast } from "@/components/ui/use-toast";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -36,6 +37,7 @@ export default function useAgentGraph(
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
+  const { toast } = useToast();
   /**
    * User `request` to save or save&run the agent, or to stop the active run.
    * `state` is used to track the request status:
@@ -413,10 +415,25 @@ export default function useAgentGraph(
     if (saveRunRequest.state === "error") {
       if (saveRunRequest.request === "save") {
         console.error("Error saving agent");
+        toast({
+          variant: "destructive",
+          title: `Error saving agent`,
+          duration: 2000,
+        });
       } else if (saveRunRequest.request === "run") {
+        toast({
+          variant: "destructive",
+          title: `Error saving&running agent`,
+          duration: 2000,
+        });
         console.error(`Error saving&running agent`);
       } else if (saveRunRequest.request === "stop") {
         console.error(`Error stopping agent`);
+        toast({
+          variant: "destructive",
+          title: `Error stopping agent`,
+          duration: 2000,
+        });
       }
       // Reset request
       setSaveRunRequest({
@@ -441,6 +458,11 @@ export default function useAgentGraph(
       } else if (saveRunRequest.request === "run") {
         if (!validateNodes()) {
           console.error("Validation failed; aborting run");
+          toast({
+            title: "Invalid credentials or inputs",
+            variant: "destructive",
+            duration: 2000,
+          });
           setSaveRunRequest({
             request: "none",
             state: "none",
