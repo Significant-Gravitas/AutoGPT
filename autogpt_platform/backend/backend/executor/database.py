@@ -8,16 +8,15 @@ from backend.data.execution import (
     get_execution_results,
     get_incomplete_executions,
     get_latest_execution,
-    get_user_metadata,
     update_execution_status,
     update_graph_execution_stats,
     update_node_execution_stats,
-    update_user_metadata,
     upsert_execution_input,
     upsert_execution_output,
 )
 from backend.data.graph import get_graph, get_node
 from backend.data.queue import RedisEventQueue
+from backend.data.user import get_user_metadata, update_user_metadata
 from backend.util.service import AppService, expose
 from backend.util.settings import Config
 

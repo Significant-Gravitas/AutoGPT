@@ -71,9 +71,6 @@ WORKDIR /app/autogpt_platform/backend
 FROM server_dependencies AS server
 
 COPY autogpt_platform/backend /app/autogpt_platform/backend
-COPY autogpt_platform/backend/custom_migrations /app/autogpt_platform/backend/custom_migrations
-COPY autogpt_platform/backend/migrate /app/autogpt_platform/backend/migrate
-
 
 ENV DATABASE_URL=""
 ENV PORT=8000

@@ -3,14 +3,11 @@ from datetime import datetime, timezone
 from multiprocessing import Manager
 from typing import Any, Generic, TypeVar
 
-from autogpt_libs.supabase_integration_credentials_store.types import UserMetadataRaw
-from prisma import Json
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
-    User,
 )
 from prisma.types import (
     AgentGraphExecutionInclude,
@@ -480,21 +477,3 @@ async def get_incomplete_executions(
         include=EXECUTION_RESULT_INCLUDE,
     )
     return [ExecutionResult.from_db(execution) for execution in executions]
-
-
-async def get_user_metadata(user_id: str) -> UserMetadataRaw:
-    user = await User.prisma().find_unique_or_raise(
-        where={"id": user_id},
-    )
-    return (
-        UserMetadataRaw.model_validate(user.metadata)
-        if user.metadata
-        else UserMetadataRaw()
-    )
-
-
-async def update_user_metadata(user_id: str, metadata: UserMetadataRaw):
-    await User.prisma().update(
-        where={"id": user_id},
-        data={"metadata": Json(metadata.model_dump())},
-    )
