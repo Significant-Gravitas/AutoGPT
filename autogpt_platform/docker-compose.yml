@@ -96,7 +96,6 @@ services:
       file: ./supabase/docker/docker-compose.yml
       service: rest
 
-
   realtime:
     <<: *supabase-services
     extends:
