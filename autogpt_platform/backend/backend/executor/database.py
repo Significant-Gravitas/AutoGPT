@@ -16,6 +16,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import get_graph, get_node
 from backend.data.queue import RedisEventQueue
+from backend.data.user import get_user_metadata, update_user_metadata
 from backend.util.service import AppService, expose
 from backend.util.settings import Config
 
@@ -73,3 +74,7 @@ class DatabaseManager(AppService):
         Callable[[Any, str, int, str, dict[str, str], float, float], int],
         exposed_run_and_wait(user_credit_model.spend_credits),
     )
+
+    # User + User Metadata
+    get_user_metadata = exposed_run_and_wait(get_user_metadata)
+    update_user_metadata = exposed_run_and_wait(update_user_metadata)
