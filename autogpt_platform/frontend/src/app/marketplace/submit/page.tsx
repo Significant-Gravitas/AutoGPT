@@ -417,7 +417,10 @@ const SubmitPage: React.FC = () => {
                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                   >
                     I agree to the{" "}
-                    <a href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf" className="text-blue-500 hover:underline">
+                    <a
+                      href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                      className="text-blue-500 hover:underline"
+                    >
                       terms of use
                     </a>
                   </label>
