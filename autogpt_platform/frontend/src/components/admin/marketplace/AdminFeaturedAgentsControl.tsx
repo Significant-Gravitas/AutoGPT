@@ -46,11 +46,11 @@ export default async function AdminFeaturedAgentsControl({
         <h3 className="text-lg font-semibold">Featured Agent Controls</h3>
         <AdminAddFeaturedAgentDialog
           categories={categories.unique_categories}
-          agents={notFeaturedAgents.agents}
+          agents={notFeaturedAgents.items}
         />
       </div>
       <FeaturedAgentsTable
-        agents={agents.agents}
+        agents={agents.items}
         globalActions={[
           {
             component: <Button>Remove</Button>,

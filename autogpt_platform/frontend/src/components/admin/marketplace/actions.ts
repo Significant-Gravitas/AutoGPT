@@ -59,7 +59,7 @@ export async function getFeaturedAgents(
     async () => {
       const api = new ServerSideMarketplaceAPI();
       const featured = await api.getFeaturedAgents(page, pageSize);
-      console.debug(`Getting featured agents ${featured.agents.length}`);
+      console.debug(`Getting featured agents ${featured.items.length}`);
       return featured;
     },
   );
@@ -135,7 +135,7 @@ export async function getNotFeaturedAgents(
     async () => {
       const api = new ServerSideMarketplaceAPI();
       const agents = await api.getNotFeaturedAgents(page, pageSize);
-      console.debug(`Getting not featured agents ${agents.agents.length}`);
+      console.debug(`Getting not featured agents ${agents.items.length}`);
       return agents;
     },
   );
