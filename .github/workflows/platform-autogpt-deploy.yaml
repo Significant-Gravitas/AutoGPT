@@ -49,7 +49,7 @@ jobs:
           echo "market_changed=$MARKET_CHANGED" >> $GITHUB_OUTPUT
 
       - name: Run Backend Migrations
-        if: steps.check_changes.outputs.backend_changed == 'true'
+        if: steps.check_changes.outputs.backend_changed == 'false'
         working-directory: ./autogpt_platform/backend
         run: |
           python -m prisma migrate deploy
@@ -57,7 +57,7 @@ jobs:
           DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
       - name: Run Market Migrations
-        if: steps.check_changes.outputs.market_changed == 'true'
+        if: steps.check_changes.outputs.market_changed == 'false'
         working-directory: ./autogpt_platform/market
         run: |
           python -m prisma migrate deploy
