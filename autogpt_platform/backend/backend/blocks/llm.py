@@ -62,7 +62,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT4_TURBO = "gpt-4-turbo"
     GPT3_5_TURBO = "gpt-3.5-turbo"
     # Anthropic models
-    CLAUDE_3_5_SONNET = "claude-3-5-sonnet-20240620"
+    CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # Groq models
     LLAMA3_8B = "llama3-8b-8192"
