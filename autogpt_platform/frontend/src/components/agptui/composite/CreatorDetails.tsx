@@ -115,3 +115,5 @@ export const CreatorDetails: React.FC<CreatorDetailsProps> = React.memo(
     );
   },
 );
+
+CreatorDetails.displayName = "CreatorDetails";
