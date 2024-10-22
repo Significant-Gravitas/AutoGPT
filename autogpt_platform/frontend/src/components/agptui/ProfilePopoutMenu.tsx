@@ -75,7 +75,7 @@ const PopoutMenuItem: React.FC<PopoutMenuItemProps> = ({
     console.warn("onClick and href are both defined");
   }
   const content = (
-    <div className="inline-flex w-full items-start justify-start gap-2.5 hover:rounded hover:bg-[#e0e0e0]">
+    <div className="inline-flex w-full items-center justify-start gap-2.5 hover:rounded hover:bg-[#e0e0e0]">
       {getIcon(icon)}
       <div className="font-['Inter'] text-base font-normal leading-7 text-[#474747]">
         {text}
