@@ -27,3 +27,16 @@ variable "role_bindings" {
   type        = map(list(string))
   default     = {}
 }
+
+variable "workload_identity_pools" {
+  type = map(object({
+    display_name = string
+    providers = map(object({
+      issuer_uri = string
+      attribute_mapping = map(string)
+      allowed_audiences = optional(list(string))
+    }))
+    service_accounts = map(list(string))  # Map of SA to list of allowed principals
+  }))
+  default = {}
+}
