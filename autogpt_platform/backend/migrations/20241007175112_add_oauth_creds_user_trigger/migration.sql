@@ -7,8 +7,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- This CREATE commands is for dev-only, where full-fledged Supabase can be missing.
--- Create the 'auth' schema if it doesn't exist
+-- CreateSchema & CreateTable
+-- Note: these CREATE commands are dev-only, where full-fledged Supabase can be missing.
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY, email TEXT);
 
