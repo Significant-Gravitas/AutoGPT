@@ -78,7 +78,13 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
       ) : (
         <>
           <div className="flex-grow p-4 sm:p-6 overflow-hidden">
-            <div className="h-[300px] sm:h-[400px] md:h-[500px] overflow-y-auto pr-2">
+            <h3 className="sr-only">List of agents</h3>
+            <div 
+              className="h-[300px] sm:h-[400px] md:h-[500px] overflow-y-auto pr-2"
+              role="region"
+              aria-labelledby="agentListHeading"
+            >
+              <div id="agentListHeading" className="sr-only">Scrollable list of agents</div>
               <div className="p-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {agents.map((agent) => (
@@ -90,6 +96,15 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                           : "hover:shadow-md"
                       }`}
                       onClick={() => handleAgentClick(agent.name)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleAgentClick(agent.name);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-pressed={selectedAgent === agent.name}
                     >
                       <div className="relative h-32 sm:h-40 bg-gray-100">
                         <Image
