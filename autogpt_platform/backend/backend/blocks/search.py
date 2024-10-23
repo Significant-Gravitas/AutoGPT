@@ -167,14 +167,14 @@ class GetWeatherInformationBlock(Block, GetRequest):
 
 class FactCheckerBlock(Block, GetRequest):
     class Input(BlockSchema):
-        statement: str
+        statement: str = SchemaField(description="The statement to check for factuality")
         api_key: BlockSecret = SecretField(key="jina_api_key")
 
     class Output(BlockSchema):
-        factuality: float
-        result: bool
-        reason: str
-        error: str
+        factuality: float = SchemaField(description="The factuality score of the statement")
+        result: bool = SchemaField(description="The result of the factuality check")
+        reason: str = SchemaField(description="The reason for the factuality result")
+        error: str = SchemaField(description="Error message if the check fails")
 
     def __init__(self):
         super().__init__(
