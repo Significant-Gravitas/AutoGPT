@@ -518,7 +518,7 @@ model StoreListing {
   Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
   owningUserId String
-  OwningUser         User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
+  OwningUser   User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
 
   isGroupListing Boolean    @default(false)
   owningGroupId  String?
