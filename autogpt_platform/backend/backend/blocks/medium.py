@@ -2,9 +2,7 @@ from enum import Enum
 from typing import List, Literal
 
 import requests
-from autogpt_platform.autogpt_libs.autogpt_libs.supabase_integration_credentials_store.types import (
-    APIKeyCredentials,
-)
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema

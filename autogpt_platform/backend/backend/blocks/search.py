@@ -2,9 +2,7 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 import requests
-from autogpt_platform.autogpt_libs.autogpt_libs.supabase_integration_credentials_store.types import (
-    APIKeyCredentials,
-)
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
