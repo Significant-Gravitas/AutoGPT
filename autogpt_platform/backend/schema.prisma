@@ -19,19 +19,17 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  AgentGraphs                  Agent[]
-  AgentGraphExecutions         AgentGraphExecution[]
-  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
-  AnalyticsDetails             AnalyticsDetails[]
-  AnalyticsMetrics             AnalyticsMetrics[]
-  UserBlockCredit              UserBlockCredit[]
-  ConfiguredAgents             AgentPreset[]
-  UserAgents                   UserAgents[]
+  Agents                  Agent[]
+  AgentExecutions         AgentExecution[]
+  AgentExecutionSchedules AgentExecutionSchedule[]
+  AnalyticsDetails        AnalyticsDetails[]
+  AnalyticsMetrics        AnalyticsMetrics[]
+  UserBlockCredit         UserBlockCredit[]
+  AgentPresets            AgentPreset[]
+  UserAgents              UserAgent[]
 
   // User Group relations
   UserGroupMemberships   UserGroupMembership[]
-  UserAccounting         UserAccounting[]
-  UserSubscription       UserSubscription[]
   Profile                Profile[]
   StoreListing           StoreListing[]
   StoreListingSubmission StoreListingSubmission[]
@@ -66,10 +64,10 @@ model UserGroupMembership {
   updatedAt DateTime @updatedAt
 
   userId      String
-  user        User          @relation(fields: [userId], references: [id])
+  User        User          @relation(fields: [userId], references: [id])
   userGroupId String
-  userGroup   UserGroup     @relation(fields: [userGroupId], references: [id])
-  role        UserGroupRole @default(MEMBER)
+  UserGroup   UserGroup     @relation(fields: [userGroupId], references: [id])
+  Role        UserGroupRole @default(MEMBER)
 
   @@unique([userId, userGroupId])
   @@index([userId])
@@ -88,30 +86,29 @@ model Agent {
 
   // Link to User model
   createdByUserId String
-  createdByUser   User   @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  CreatedByUser   User   @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
 
   groupId String?
-  group   UserGroup? @relation(fields: [groupId], references: [id])
+  Group   UserGroup? @relation(fields: [groupId], references: [id])
 
-  AgentNodes          AgentNode[]
-  AgentGraphExecution AgentGraphExecution[]
+  AgentNodes     AgentNode[]
+  AgentExecution AgentExecution[]
 
   // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs          Agent[] @relation("AgentSubGraph")
-  agentGraphParentId      String?
-  agentGraphParentVersion Int?
-  AgentGraphParent        Agent?  @relation("AgentSubGraph", fields: [agentGraphParentId, agentGraphParentVersion], references: [id, version], onDelete: Cascade)
+  SubAgents          Agent[] @relation("SubAgents")
+  agentParentId      String?
+  agentParentVersion Int?
+  AgentParent        Agent?  @relation("SubAgents", fields: [agentParentId, agentParentVersion], references: [id, version], onDelete: Cascade)
 
-  ConfiguredAgents            AgentPreset[]
-  WebhookTrigger              WebhookTrigger[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
-  UserAgents                  UserAgents[]
-  UserBlockCredit             UserBlockCredit[]
-  StoreListing                StoreListing[]
-  StoreListingVersion         StoreListingVersion[]
+  AgentPresets           AgentPreset[]
+  WebhookTrigger         WebhookTrigger[]
+  AgentExecutionSchedule AgentExecutionSchedule[]
+  UserAgents             UserAgent[]
+  UserBlockCredit        UserBlockCredit[]
+  StoreListing           StoreListing[]
+  StoreListingVersion    StoreListingVersion[]
 
-  @@id(name: "graphVersionId", [id, version])
-  @@map("AgentGraph")
+  @@id(name: "agentVersionId", [id, version])
 }
 
 //////////////////////////////////////////////////////////// 
@@ -133,39 +130,38 @@ model AgentPreset {
   isActive Boolean @default(true)
 
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  User   User   @relation(fields: [userId], references: [id])
 
   agentId      String
   agentVersion Int
-  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  InputPresets                AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionPresets")
-  UserAgents                  UserAgents[]
-  WebhookTrigger              WebhookTrigger[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionPresets")
+  UserAgents             UserAgent[]
+  WebhookTrigger         WebhookTrigger[]
+  AgentExecutionSchedule AgentExecutionSchedule[]
+  AgentExecution         AgentExecution[]
 
   @@index([userId])
 }
 
-model UserAgents {
+model UserAgent {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  User   User   @relation(fields: [userId], references: [id])
 
   agentId      String
   agentVersion Int
-  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  configuredAgentId String?
-  configuredAgent   AgentPreset? @relation(fields: [configuredAgentId], references: [id])
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
   isFavorite      Boolean @default(false)
   isCreatedByUser Boolean @default(false)
-  isPublished     Boolean @default(false)
-  isPublic        Boolean @default(false)
   isArchived      Boolean @default(false)
   isDeleted       Boolean @default(false)
 
@@ -184,9 +180,9 @@ model AgentNode {
   agentBlockId String
   AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id], onUpdate: Cascade)
 
-  agentGraphId      String
-  agentGraphVersion Int    @default(1)
-  AgentGraph        Agent  @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentId      String
+  agentVersion Int    @default(1)
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
 
   // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeSink")
@@ -236,7 +232,7 @@ model AgentBlock {
   UserBlockCredit       UserBlockCredit[]
 }
 
-// This model describes the status of an AgentGraphExecution or AgentNodeExecution.
+// This model describes the status of an AgentExecution or AgentNodeExecution.
 enum AgentExecutionStatus {
   INCOMPLETE
   QUEUED
@@ -253,7 +249,7 @@ enum ExecutionTriggerType {
 }
 
 // This model describes the execution of an AgentGraph.
-model AgentGraphExecution {
+model AgentExecution {
   id                   String               @id @default(uuid())
   createdAt            DateTime             @default(now())
   updatedAt            DateTime?            @updatedAt
@@ -262,9 +258,13 @@ model AgentGraphExecution {
 
   executionStatus AgentExecutionStatus @default(COMPLETED)
 
-  agentGraphId      String
-  agentGraphVersion Int    @default(1)
-  AgentGraph        Agent  @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentId      String
+  agentVersion Int    @default(1)
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+
+  // we need to be able to associate an agent execution with an agent preset
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
   AgentNodeExecutions AgentNodeExecution[]
 
@@ -272,15 +272,16 @@ model AgentGraphExecution {
   executedByUserId String
   executedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
-  stats Json? // JSON serialized object
+  stats           Json? // JSON serialized object
+  UserBlockCredit UserBlockCredit[]
 }
 
 // This model describes the execution of an AgentNode.
 model AgentNodeExecution {
   id String @id @default(uuid())
 
-  agentGraphExecutionId String
-  AgentGraphExecution   AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id], onDelete: Cascade)
+  AgentExecutionId String
+  AgentExecution   AgentExecution @relation(fields: [AgentExecutionId], references: [id], onDelete: Cascade)
 
   agentNodeId String
   AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id], onDelete: Cascade)
@@ -313,21 +314,21 @@ model AgentNodeExecutionInputOutput {
   referencedByOutputExecId String?
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
-  configuredAgentId String?
-  ConfiguredAgent   AgentPreset? @relation("AgentNodeExecutionPresets", fields: [configuredAgentId], references: [id])
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation("AgentNodeExecutionPresets", fields: [agentPresetId], references: [id])
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
 }
 
 // This model describes the recurring execution schedule of an Agent.
-model AgentGraphExecutionSchedule {
+model AgentExecutionSchedule {
   id        String    @id
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  configuredAgentId String
-  configuredAgent   AgentPreset @relation(fields: [configuredAgentId], references: [id], onDelete: Cascade)
+  agentPresetId String
+  AgentPreset   AgentPreset @relation(fields: [agentPresetId], references: [id], onDelete: Cascade)
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
@@ -340,7 +341,7 @@ model AgentGraphExecutionSchedule {
 
   // Link to User model
   userId       String
-  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   Agent        Agent?  @relation(fields: [agentId, agentVersion], references: [id, version])
   agentId      String?
   agentVersion Int?
@@ -361,8 +362,8 @@ model WebhookTrigger {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  configuredAgentId String
-  ConfiguredAgent   AgentPreset @relation(fields: [configuredAgentId], references: [id])
+  agentPresetId String
+  AgentPreset   AgentPreset @relation(fields: [agentPresetId], references: [id])
 
   method  HttpMethod
   urlSlug String
@@ -377,7 +378,7 @@ model WebhookTrigger {
   agentId            String?
   agentVersion       Int?
 
-  @@index([configuredAgentId])
+  @@index([agentPresetId])
 }
 
 //////////////////////////////////////////////////////////// 
@@ -425,7 +426,7 @@ model AnalyticsMetrics {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 //////////////////////////////////////////////////////////// 
@@ -450,107 +451,29 @@ model UserBlockCredit {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   blockId String?
-  block   AgentBlock? @relation(fields: [blockId], references: [id])
+  Block   AgentBlock? @relation(fields: [blockId], references: [id])
 
   // We need to be able to associate a credit transaction with an agent
   executedAgentId      String?
   executedAgentVersion Int?
-  executedAgent        Agent?  @relation(fields: [executedAgentId, executedAgentVersion], references: [id, version])
+  ExecutedAgent        Agent?  @relation(fields: [executedAgentId, executedAgentVersion], references: [id, version])
 
-  // We need to be able to associate a credit transaction with a store listing
-  storeListingId String?
-  storeListing   StoreListing? @relation(fields: [storeListingId], references: [id])
+  // We need to be able to associate a cost with a specific agent execution
+  agentExecutionId String?
+  AgentExecution   AgentExecution? @relation(fields: [agentExecutionId], references: [id])
 
   amount Int
   type   UserBlockCreditType
 
-  isActive         Boolean         @default(true)
-  metadata         Json?
-  UserAccounting   UserAccounting? @relation(fields: [userAccountingId], references: [id])
-  userAccountingId String?
+  isActive Boolean @default(true)
+  metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
 }
 
-// This is the top level accounting table for a user
-model UserAccounting {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  transactions UserBlockCredit[]
-
-  usdBalance Float @default(0.0)
-
-  subscription   UserSubscription? @relation(fields: [subscriptionId], references: [id])
-  subscriptionId String?
-}
-
-// This table tracks a user's subscription to autogpt
-model UserSubscription {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  isSubscribed          Boolean   @default(false)
-  subscriptionStartDate DateTime?
-  subscriptionEndDate   DateTime?
-  isCancelling          Boolean   @default(false)
-
-  subscriptionPlanId String
-  subscriptionPlan   SubscriptionPlan @relation(fields: [subscriptionPlanId], references: [id])
-
-  // Stripe Integration Fields
-  stripeCustomerId         String?
-  stripeSubscriptionId     String?
-  stripePaymentMethodId    String?
-  stripeSubscriptionStatus String?
-  currentPeriodEnd         DateTime?
-
-  hasInitiatedChargeBackProcess Boolean          @default(false)
-  chargeBackProcessInitiatedAt  DateTime?
-  UserAccounting                UserAccounting[]
-
-  @@index([isSubscribed, isCancelling])
-}
-
-// This table tracks the different subscription plans available to a user
-model SubscriptionPlan {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  name        String
-  description String
-  planIconUrl String?
-
-  creditsPerMonth Int
-  usdPrice        Float
-
-  // Stripe Integration Field
-  stripePriceId String?
-
-  isDeleted        Boolean            @default(false)
-  UserSubscription UserSubscription[]
-}
-
-model StripeEvent {
-  id          String    @id @default(uuid())
-  eventId     String    @unique
-  eventType   String
-  createdAt   DateTime  @default(now())
-  processedAt DateTime?
-}
-
 //////////////////////////////////////////////////////////// 
 //////////////////////////////////////////////////////////// 
-//////////////   Store TABLES    /////////////////////
+//////////////   Store TABLES    ///////////////////////////
 //////////////////////////////////////////////////////////// 
 //////////////////////////////////////////////////////////// 
 
@@ -591,10 +514,10 @@ model StoreListing {
 
   agentId      String
   agentVersion Int
-  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
   owningUserId String
-  user         User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
+  User         User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
 
   isGroupListing Boolean    @default(false)
   owningGroupId  String?
@@ -602,7 +525,6 @@ model StoreListing {
 
   StoreListingVersions   StoreListingVersion[]
   StorePricings          StorePricing[]
-  UserBlockCredit        UserBlockCredit[]
   StoreListingSubmission StoreListingSubmission[]
 
   @@index([isApproved])
@@ -618,7 +540,7 @@ model StorePricing {
 
   // Owner can be found from the storeListing
   storeListingId String
-  storeListing   StoreListing @relation(fields: [storeListingId], references: [id])
+  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id])
 
   canPurchase   Boolean @default(true)
   purchasePrice Float?
@@ -638,7 +560,7 @@ model StoreListingVersion {
 
   agentId      String
   agentVersion Int
-  agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
   isFeatured Boolean  @default(false)
   categories String[]
@@ -656,6 +578,7 @@ model StoreListingVersion {
 }
 
 enum SubmissionStatus {
+  DAFT
   PENDING
   APPROVED
   REJECTED
@@ -673,12 +596,12 @@ model StoreListingSubmission {
   StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id])
 
   reviewByUserId String
-  reviewByUser   User   @relation(fields: [reviewByUserId], references: [id], onDelete: Cascade)
+  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id], onDelete: Cascade)
 
-  status         SubmissionStatus @default(PENDING)
+  Status         SubmissionStatus @default(PENDING)
   isDenied       Boolean          @default(false)
   reviewComments String?
 
   @@index([storeListingId])
-  @@index([status])
+  @@index([Status])
 }
