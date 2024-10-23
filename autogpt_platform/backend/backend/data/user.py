@@ -37,8 +37,8 @@ async def get_user_by_id(user_id: str) -> Optional[User]:
     return User.model_validate(user) if user else None
 
 
-async def create_default_user(enable_auth: str) -> Optional[User]:
-    if not enable_auth.lower() == "true":
+async def create_default_user(enable_auth: bool) -> Optional[User]:
+    if enable_auth:
         user = await prisma.user.find_unique(where={"id": DEFAULT_USER_ID})
         if not user:
             user = await prisma.user.create(
