@@ -203,7 +203,15 @@ class FactCheckerBlock(Block, GetRequest):
             categories={BlockCategory.SEARCH},
             input_schema=FactCheckerBlock.Input,
             output_schema=FactCheckerBlock.Output,
-            test_input={"statement": "Jina AI was founded in 2020 in Berlin."},
+            test_input={
+                "statement": "Jina AI was founded in 2020 in Berlin.",
+                "credentials": {
+                    "id": "test-credentials-id",
+                    "provider": "jina",
+                    "type": "api_key",
+                    "title": "Mock Jina API key",
+                },
+            },
             test_output=[
                 ("factuality", 0.95),
                 ("result", True),
@@ -218,6 +226,13 @@ class FactCheckerBlock(Block, GetRequest):
                     }
                 }
             },
+            test_credentials=APIKeyCredentials(
+                id="test-credentials-id",
+                provider="jina",
+                api_key="mock-api-key",
+                title="Mock Jina API key",
+                expires_at=None,
+            ),
         )
 
     def run(
