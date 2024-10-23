@@ -70,7 +70,7 @@ export const SaveControl = ({
         handleSave(); // Call your save function
         toast({
           duration: 2000,
-          title: "All changes saved successfully..!!",
+          title: "All changes saved successfully!",
         });
       }
     };
