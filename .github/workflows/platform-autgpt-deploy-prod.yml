@@ -1,12 +1,8 @@
-name: AutoGPT Platform - Build, Push, and Deploy Dev Environment
+name: AutoGPT Platform - Build, Push, and Deploy Prod Environment
 
 on:
-  push:
-    branches: [ dev ]
-    paths:
-      - 'autogpt_platform/backend/**'
-      - 'autogpt_platform/frontend/**'
-      - 'autogpt_platform/market/**'
+  release:
+    types: [published]
 
 permissions:
   contents: 'read'
@@ -14,13 +10,13 @@ permissions:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GKE_CLUSTER: dev-gke-cluster
+  GKE_CLUSTER: prod-gke-cluster
   GKE_ZONE: us-central1-a
-  NAMESPACE: dev-agpt
+  NAMESPACE: prod-agpt
 
 jobs:
   migrate:
-    environment: develop
+    environment: production
     name: Run migrations for AutoGPT Platform
     runs-on: ubuntu-latest
 
@@ -51,10 +47,10 @@ jobs:
           python -m prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.MARKET_DATABASE_URL }}
-
+          
   build-push-deploy:
+    environment: production
     name: Build, Push, and Deploy
-    needs: migrate
     runs-on: ubuntu-latest
 
     steps:
@@ -66,8 +62,8 @@ jobs:
     - id: 'auth'
       uses: 'google-github-actions/auth@v1'
       with:
-        workload_identity_provider: 'projects/638488734936/locations/global/workloadIdentityPools/dev-pool/providers/github'
-        service_account: 'dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com'
+        workload_identity_provider: 'projects/638488734936/locations/global/workloadIdentityPools/prod-pool/providers/github'
+        service_account: 'prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com'
         token_format: 'access_token'
         create_credentials_file: true
 
@@ -92,10 +88,10 @@ jobs:
     - name: Check for changes
       id: check_changes
       run: |
-        git fetch origin dev
-        BACKEND_CHANGED=$(git diff --name-only origin/dev HEAD | grep "^autogpt_platform/backend/" && echo "true" || echo "false")
-        FRONTEND_CHANGED=$(git diff --name-only origin/dev HEAD | grep "^autogpt_platform/frontend/" && echo "true" || echo "false")
-        MARKET_CHANGED=$(git diff --name-only origin/dev HEAD | grep "^autogpt_platform/market/" && echo "true" || echo "false")
+        git fetch origin master
+        BACKEND_CHANGED=$(git diff --name-only origin/master HEAD | grep "^autogpt_platform/backend/" && echo "true" || echo "false")
+        FRONTEND_CHANGED=$(git diff --name-only origin/master HEAD | grep "^autogpt_platform/frontend/" && echo "true" || echo "false")
+        MARKET_CHANGED=$(git diff --name-only origin/master HEAD | grep "^autogpt_platform/market/" && echo "true" || echo "false")
         echo "backend_changed=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
         echo "frontend_changed=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
         echo "market_changed=$MARKET_CHANGED" >> $GITHUB_OUTPUT
@@ -113,7 +109,7 @@ jobs:
         context: .
         file: ./autogpt_platform/backend/Dockerfile
         push: true
-        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-backend-dev/agpt-backend-dev:${{ github.sha }}
+        tags: us-east1-docker.pkg.dev/agpt-prod/agpt-backend-prod/agpt-backend-prod:${{ github.sha }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -124,7 +120,7 @@ jobs:
         context: .
         file: ./autogpt_platform/frontend/Dockerfile
         push: true
-        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-frontend-dev/agpt-frontend-dev:${{ github.sha }}
+        tags: us-east1-docker.pkg.dev/agpt-prod/agpt-frontend-prod/agpt-frontend-prod:${{ github.sha }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -135,7 +131,7 @@ jobs:
         context: .
         file: ./autogpt_platform/market/Dockerfile
         push: true
-        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-market-dev/agpt-market-dev:${{ github.sha }}
+        tags: us-east1-docker.pkg.dev/agpt-prod/agpt-market-prod/agpt-market-prod:${{ github.sha }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -155,7 +151,7 @@ jobs:
         helm upgrade autogpt-server ./autogpt-server \
           --namespace ${{ env.NAMESPACE }} \
           -f autogpt-server/values.yaml \
-          -f autogpt-server/values.dev.yaml \
+          -f autogpt-server/values.prod.yaml \
           --set image.tag=${{ github.sha }}
 
     - name: Deploy Websocket
@@ -164,7 +160,7 @@ jobs:
         helm upgrade autogpt-websocket-server ./autogpt-websocket-server \
           --namespace ${{ env.NAMESPACE }} \
           -f autogpt-websocket-server/values.yaml \
-          -f autogpt-websocket-server/values.dev.yaml \
+          -f autogpt-websocket-server/values.prod.yaml \
           --set image.tag=${{ github.sha }}
 
     - name: Deploy Market
@@ -173,7 +169,7 @@ jobs:
         helm upgrade autogpt-market ./autogpt-market \
           --namespace ${{ env.NAMESPACE }} \
           -f autogpt-market/values.yaml \
-          -f autogpt-market/values.dev.yaml \
+          -f autogpt-market/values.prod.yaml \
           --set image.tag=${{ github.sha }}
 
     - name: Deploy Frontend
@@ -182,5 +178,5 @@ jobs:
         helm upgrade autogpt-builder ./autogpt-builder \
           --namespace ${{ env.NAMESPACE }} \
           -f autogpt-builder/values.yaml \
-          -f autogpt-builder/values.dev.yaml \
+          -f autogpt-builder/values.prod.yaml \
           --set image.tag=${{ github.sha }}
