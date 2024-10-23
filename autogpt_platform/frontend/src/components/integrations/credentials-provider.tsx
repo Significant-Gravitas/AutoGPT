@@ -2,6 +2,8 @@ import AutoGPTServerAPI, {
   APIKeyCredentials,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
+  CredentialsProviderName,
+  PROVIDER_NAMES,
 } from "@/lib/autogpt-server-api";
 import {
   createContext,
@@ -11,18 +13,26 @@ import {
   useState,
 } from "react";
 
-// --8<-- [start:CredentialsProviderNames]
-const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
-
-export type CredentialsProviderName =
-  (typeof CREDENTIALS_PROVIDER_NAMES)[number];
+// Get keys from CredentialsProviderName type
+const CREDENTIALS_PROVIDER_NAMES = Object.values(
+  PROVIDER_NAMES,
+) as CredentialsProviderName[];
 
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
   github: "GitHub",
   google: "Google",
   notion: "Notion",
-};
-// --8<-- [end:CredentialsProviderNames]
+  discord: "Discord",
+  d_id: "D-ID",
+  google_maps: "Google Maps",
+  ideogram: "Ideogram",
+  medium: "Medium",
+  openai: "OpenAI",
+  openweathermap: "OpenWeatherMap",
+  replicate: "Replicate",
+  revid: "Rev.ID",
+  unreal_speech: "Unreal Speech",
+} as const;
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -154,41 +164,43 @@ export default function CredentialsProvider({
     api.isAuthenticated().then((isAuthenticated) => {
       if (!isAuthenticated) return;
 
-      CREDENTIALS_PROVIDER_NAMES.forEach((provider) => {
-        api.listCredentials(provider).then((response) => {
-          const { oauthCreds, apiKeys } = response.reduce<{
-            oauthCreds: CredentialsMetaResponse[];
-            apiKeys: CredentialsMetaResponse[];
-          }>(
-            (acc, cred) => {
-              if (cred.type === "oauth2") {
-                acc.oauthCreds.push(cred);
-              } else if (cred.type === "api_key") {
-                acc.apiKeys.push(cred);
-              }
-              return acc;
-            },
-            { oauthCreds: [], apiKeys: [] },
-          );
+      CREDENTIALS_PROVIDER_NAMES.forEach(
+        (provider: CredentialsProviderName) => {
+          api.listCredentials(provider).then((response) => {
+            const { oauthCreds, apiKeys } = response.reduce<{
+              oauthCreds: CredentialsMetaResponse[];
+              apiKeys: CredentialsMetaResponse[];
+            }>(
+              (acc, cred) => {
+                if (cred.type === "oauth2") {
+                  acc.oauthCreds.push(cred);
+                } else if (cred.type === "api_key") {
+                  acc.apiKeys.push(cred);
+                }
+                return acc;
+              },
+              { oauthCreds: [], apiKeys: [] },
+            );
 
-          setProviders((prev) => ({
-            ...prev,
-            [provider]: {
-              provider,
-              providerName: providerDisplayNames[provider],
-              savedApiKeys: apiKeys,
-              savedOAuthCredentials: oauthCreds,
-              oAuthCallback: (code: string, state_token: string) =>
-                oAuthCallback(provider, code, state_token),
-              createAPIKeyCredentials: (
-                credentials: APIKeyCredentialsCreatable,
-              ) => createAPIKeyCredentials(provider, credentials),
-              deleteCredentials: (id: string) =>
-                deleteCredentials(provider, id),
-            },
-          }));
-        });
-      });
+            setProviders((prev) => ({
+              ...prev,
+              [provider]: {
+                provider,
+                providerName: providerDisplayNames[provider],
+                savedApiKeys: apiKeys,
+                savedOAuthCredentials: oauthCreds,
+                oAuthCallback: (code: string, state_token: string) =>
+                  oAuthCallback(provider, code, state_token),
+                createAPIKeyCredentials: (
+                  credentials: APIKeyCredentialsCreatable,
+                ) => createAPIKeyCredentials(provider, credentials),
+                deleteCredentials: (id: string) =>
+                  deleteCredentials(provider, id),
+              },
+            }));
+          });
+        },
+      );
     });
   }, [api, createAPIKeyCredentials, deleteCredentials, oAuthCallback]);
 

@@ -93,10 +93,29 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
 };
 
 export type CredentialsType = "api_key" | "oauth2";
-
 // --8<-- [start:BlockIOCredentialsSubSchema]
+
+export const PROVIDER_NAMES = {
+  D_ID: "d_id",
+  DISCORD: "discord",
+  GITHUB: "github",
+  GOOGLE: "google",
+  GOOGLE_MAPS: "google_maps",
+  IDEOGRAM: "ideogram",
+  MEDIUM: "medium",
+  NOTION: "notion",
+  OPENAI: "openai",
+  OPENWEATHERMAP: "openweathermap",
+  REPLICATE: "replicate",
+  REVID: "revid",
+  UNREAL_SPEECH: "unreal_speech",
+} as const;
+
+export type CredentialsProviderName =
+  (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
+
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: "github" | "google" | "notion";
+  credentials_provider: CredentialsProviderName;
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
 };
