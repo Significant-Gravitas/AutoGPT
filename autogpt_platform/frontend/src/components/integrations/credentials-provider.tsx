@@ -12,7 +12,7 @@ import {
 } from "react";
 
 // --8<-- [start:CredentialsProviderNames]
-const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion"] as const;
+const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion", "jina"] as const;
 
 export type CredentialsProviderName =
   (typeof CREDENTIALS_PROVIDER_NAMES)[number];
@@ -21,6 +21,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   github: "GitHub",
   google: "Google",
   notion: "Notion",
+  jina: "Jina AI",
 };
 // --8<-- [end:CredentialsProviderNames]
 
