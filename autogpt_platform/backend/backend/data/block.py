@@ -230,6 +230,11 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.disabled = disabled
         self.static_output = static_output
         self.block_type = block_type
+        self.execution_stats = {}
+
+    @classmethod
+    def create(cls: Type["Block"]) -> "Block":
+        return cls()
 
     @abstractmethod
     def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
@@ -243,6 +248,26 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             output_data: The data for the output_name, matching the defined schema.
         """
         pass
+
+    def run_once(self, input_data: BlockSchemaInputType, output: str, **kwargs) -> Any:
+        for name, data in self.run(input_data, **kwargs):
+            if name == output:
+                return data
+        raise ValueError(f"{self.name} did not produce any output for {output}")
+
+    def merge_stats(self, stats: dict[str, Any]) -> dict[str, Any]:
+        for key, value in stats.items():
+            if isinstance(value, dict):
+                self.execution_stats.setdefault(key, {}).update(value)
+            elif isinstance(value, (int, float)):
+                self.execution_stats.setdefault(key, 0)
+                self.execution_stats[key] += value
+            elif isinstance(value, list):
+                self.execution_stats.setdefault(key, [])
+                self.execution_stats[key].extend(value)
+            else:
+                self.execution_stats[key] = value
+        return self.execution_stats
 
     @property
     def name(self):
@@ -282,14 +307,15 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 # ======================= Block Helper Functions ======================= #
 
 
-def get_blocks() -> dict[str, Block]:
+def get_blocks() -> dict[str, Type[Block]]:
     from backend.blocks import AVAILABLE_BLOCKS  # noqa: E402
 
     return AVAILABLE_BLOCKS
 
 
 async def initialize_blocks() -> None:
-    for block in get_blocks().values():
+    for cls in get_blocks().values():
+        block = cls()
         existing_block = await AgentBlock.prisma().find_first(
             where={"OR": [{"id": block.id}, {"name": block.name}]}
         )
@@ -324,4 +350,5 @@ async def initialize_blocks() -> None:
 
 
 def get_block(block_id: str) -> Block | None:
-    return get_blocks().get(block_id)
+    cls = get_blocks().get(block_id)
+    return cls() if cls else None
