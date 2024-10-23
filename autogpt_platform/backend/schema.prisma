@@ -137,7 +137,7 @@ model AgentPreset {
   agentVersion Int
   Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionPresets")
+  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsData")
   UserAgents             UserAgent[]
   WebhookTrigger         WebhookTrigger[]
   AgentExecutionSchedule AgentExecutionSchedule[]
@@ -316,7 +316,7 @@ model AgentNodeExecutionInputOutput {
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
   agentPresetId String?
-  AgentPreset   AgentPreset? @relation("AgentNodeExecutionPresets", fields: [agentPresetId], references: [id])
+  AgentPreset   AgentPreset? @relation("AgentPresetsData", fields: [agentPresetId], references: [id])
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
