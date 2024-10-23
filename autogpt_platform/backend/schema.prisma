@@ -271,7 +271,7 @@ model AgentExecution {
 
   // This is so we can track which user executed the agent.
   executedByUserId String
-  executedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
+  ExecutedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
   stats           Json? // JSON serialized object
   UserBlockCredit UserBlockCredit[]
@@ -281,8 +281,8 @@ model AgentExecution {
 model AgentNodeExecution {
   id String @id @default(uuid())
 
-  AgentExecutionId String
-  AgentExecution   AgentExecution @relation(fields: [AgentExecutionId], references: [id], onDelete: Cascade)
+  agentExecutionId String
+  AgentExecution   AgentExecution @relation(fields: [agentExecutionId], references: [id], onDelete: Cascade)
 
   agentNodeId String
   AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id], onDelete: Cascade)
@@ -397,7 +397,7 @@ model AnalyticsDetails {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
   type String
@@ -449,7 +449,7 @@ model UserBlockCredit {
   createdAt      DateTime @default(now())
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   blockId String?
   Block   AgentBlock? @relation(fields: [blockId], references: [id])
@@ -484,11 +484,11 @@ model Profile {
   updatedAt DateTime @updatedAt
 
   userId String?
-  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   isGroupProfile Boolean    @default(false)
   groupId        String?
-  group          UserGroup? @relation(fields: [groupId], references: [id])
+  Group          UserGroup? @relation(fields: [groupId], references: [id])
 
   username    String @unique
   description String
@@ -518,11 +518,11 @@ model StoreListing {
   Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
   owningUserId String
-  User         User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
+  OwningUser         User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
 
   isGroupListing Boolean    @default(false)
   owningGroupId  String?
-  owningGroup    UserGroup? @relation(fields: [owningGroupId], references: [id])
+  OwningGroup    UserGroup? @relation(fields: [owningGroupId], references: [id])
 
   StoreListingVersions   StoreListingVersion[]
   StorePricings          StorePricing[]
@@ -591,7 +591,7 @@ model StoreListingSubmission {
   updatedAt DateTime @updatedAt
 
   storeListingId String
-  storeListing   StoreListing @relation(fields: [storeListingId], references: [id])
+  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id])
 
   storeListingVersionId String
   StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id])
