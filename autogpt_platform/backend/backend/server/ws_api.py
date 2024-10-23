@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
 
 logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
@@ -66,7 +66,7 @@ async def event_broadcaster(manager: ConnectionManager):
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if settings.config.enable_auth.lower() == "true":
+    if settings.config.enable_auth:
         token = websocket.query_params.get("token")
         if not token:
             await websocket.close(code=4001, reason="Missing authentication token")

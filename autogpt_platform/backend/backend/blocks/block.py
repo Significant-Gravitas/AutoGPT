@@ -3,6 +3,7 @@ import re
 from typing import Type
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class BlockInstallationBlock(Block):
@@ -15,11 +16,17 @@ class BlockInstallationBlock(Block):
     """
 
     class Input(BlockSchema):
-        code: str
+        code: str = SchemaField(
+            description="Python code of the block to be installed",
+        )
 
     class Output(BlockSchema):
-        success: str
-        error: str
+        success: str = SchemaField(
+            description="Success message if the block is installed successfully",
+        )
+        error: str = SchemaField(
+            description="Error message if the block installation fails",
+        )
 
     def __init__(self):
         super().__init__(

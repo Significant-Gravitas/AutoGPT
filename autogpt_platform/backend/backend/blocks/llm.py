@@ -96,25 +96,25 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 
 
 MODEL_METADATA = {
-    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000, cost_factor=60),
-    LlmModel.O1_MINI: ModelMetadata("openai", 62000, cost_factor=30),
-    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=10),
-    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=12),
-    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=11),
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=8),
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=14),
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=13),
-    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=6),
-    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=9),
-    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=7),
-    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=6),
-    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=7),
-    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=10),
+    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000, cost_factor=16),
+    LlmModel.O1_MINI: ModelMetadata("openai", 62000, cost_factor=4),
+    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=1),
+    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=3),
+    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=10),
+    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=1),
+    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=4),
+    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=1),
+    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=1),
+    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=1),
     # Limited to 16k during preview
-    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=15),
-    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=13),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
+    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=1),
+    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=1),
+    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=1),
+    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=1),
 }
 
 for model in LlmModel:
@@ -122,9 +122,23 @@ for model in LlmModel:
         raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
 
+class MessageRole(str, Enum):
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class Message(BlockSchema):
+    role: MessageRole
+    content: str
+
+
 class AIStructuredResponseGeneratorBlock(Block):
     class Input(BlockSchema):
-        prompt: str
+        prompt: str = SchemaField(
+            description="The prompt to send to the language model.",
+            placeholder="Enter your prompt here...",
+        )
         expected_format: dict[str, str] = SchemaField(
             description="Expected format of the response. If provided, the response will be validated against this format. "
             "The keys should be the expected fields in the response, and the values should be the description of the field.",
@@ -136,15 +150,34 @@ class AIStructuredResponseGeneratorBlock(Block):
             advanced=False,
         )
         api_key: BlockSecret = SecretField(value="")
-        sys_prompt: str = ""
-        retry: int = 3
+        sys_prompt: str = SchemaField(
+            title="System Prompt",
+            default="",
+            description="The system prompt to provide additional context to the model.",
+        )
+        conversation_history: list[Message] = SchemaField(
+            default=[],
+            description="The conversation history to provide context for the prompt.",
+        )
+        retry: int = SchemaField(
+            title="Retry Count",
+            default=3,
+            description="Number of times to retry the LLM call if the response does not match the expected format.",
+        )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False, default={}, description="Values used to fill in the prompt."
         )
+        max_tokens: int | None = SchemaField(
+            advanced=True,
+            default=None,
+            description="The maximum number of tokens to generate in the chat completion.",
+        )
 
     class Output(BlockSchema):
-        response: dict[str, Any]
-        error: str
+        response: dict[str, Any] = SchemaField(
+            description="The response object generated by the language model."
+        )
+        error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
         super().__init__(
@@ -164,26 +197,47 @@ class AIStructuredResponseGeneratorBlock(Block):
             },
             test_output=("response", {"key1": "key1Value", "key2": "key2Value"}),
             test_mock={
-                "llm_call": lambda *args, **kwargs: json.dumps(
-                    {
-                        "key1": "key1Value",
-                        "key2": "key2Value",
-                    }
+                "llm_call": lambda *args, **kwargs: (
+                    json.dumps(
+                        {
+                            "key1": "key1Value",
+                            "key2": "key2Value",
+                        }
+                    ),
+                    0,
+                    0,
                 )
             },
         )
 
     @staticmethod
     def llm_call(
-        api_key: str, model: LlmModel, prompt: list[dict], json_format: bool
-    ) -> str:
-        provider = model.metadata.provider
+        api_key: str,
+        llm_model: LlmModel,
+        prompt: list[dict],
+        json_format: bool,
+        max_tokens: int | None = None,
+    ) -> tuple[str, int, int]:
+        """
+        Args:
+            api_key: API key for the LLM provider.
+            llm_model: The LLM model to use.
+            prompt: The prompt to send to the LLM.
+            json_format: Whether the response should be in JSON format.
+            max_tokens: The maximum number of tokens to generate in the chat completion.
+
+        Returns:
+            The response from the LLM.
+            The number of tokens used in the prompt.
+            The number of tokens used in the completion.
+        """
+        provider = llm_model.metadata.provider
 
         if provider == "openai":
             openai.api_key = api_key
             response_format = None
 
-            if model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
+            if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
                 sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
                 usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
                 prompt = [
@@ -194,11 +248,17 @@ class AIStructuredResponseGeneratorBlock(Block):
                 response_format = {"type": "json_object"}
 
             response = openai.chat.completions.create(
-                model=model.value,
+                model=llm_model.value,
                 messages=prompt,  # type: ignore
                 response_format=response_format,  # type: ignore
+                max_completion_tokens=max_tokens,
             )
-            return response.choices[0].message.content or ""
+
+            return (
+                response.choices[0].message.content or "",
+                response.usage.prompt_tokens if response.usage else 0,
+                response.usage.completion_tokens if response.usage else 0,
+            )
         elif provider == "anthropic":
             system_messages = [p["content"] for p in prompt if p["role"] == "system"]
             sysprompt = " ".join(system_messages)
@@ -216,13 +276,18 @@ class AIStructuredResponseGeneratorBlock(Block):
 
             client = anthropic.Anthropic(api_key=api_key)
             try:
-                response = client.messages.create(
-                    model=model.value,
-                    max_tokens=4096,
+                resp = client.messages.create(
+                    model=llm_model.value,
                     system=sysprompt,
                     messages=messages,
+                    max_tokens=max_tokens or 8192,
                 )
-                return response.content[0].text if response.content else ""
+
+                return (
+                    resp.content[0].text if resp.content else "",
+                    resp.usage.input_tokens,
+                    resp.usage.output_tokens,
+                )
             except anthropic.APIError as e:
                 error_message = f"Anthropic API error: {str(e)}"
                 logger.error(error_message)
@@ -231,23 +296,35 @@ class AIStructuredResponseGeneratorBlock(Block):
             client = Groq(api_key=api_key)
             response_format = {"type": "json_object"} if json_format else None
             response = client.chat.completions.create(
-                model=model.value,
+                model=llm_model.value,
                 messages=prompt,  # type: ignore
                 response_format=response_format,  # type: ignore
+                max_tokens=max_tokens,
             )
-            return response.choices[0].message.content or ""
+            return (
+                response.choices[0].message.content or "",
+                response.usage.prompt_tokens if response.usage else 0,
+                response.usage.completion_tokens if response.usage else 0,
+            )
         elif provider == "ollama":
+            sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
+            usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
             response = ollama.generate(
-                model=model.value,
-                prompt=prompt[0]["content"],
+                model=llm_model.value,
+                prompt=f"{sys_messages}\n\n{usr_messages}",
+                stream=False,
             )
-            return response["response"]
+            return (
+                response.get("response") or "",
+                response.get("prompt_eval_count") or 0,
+                response.get("eval_count") or 0,
+            )
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
-        prompt = []
+        prompt = [p.model_dump() for p in input_data.conversation_history]
 
         def trim_prompt(s: str) -> str:
             lines = s.strip().split("\n")
@@ -276,7 +353,8 @@ class AIStructuredResponseGeneratorBlock(Block):
             )
             prompt.append({"role": "system", "content": sys_prompt})
 
-        prompt.append({"role": "user", "content": input_data.prompt})
+        if input_data.prompt:
+            prompt.append({"role": "user", "content": input_data.prompt})
 
         def parse_response(resp: str) -> tuple[dict[str, Any], str | None]:
             try:
@@ -292,19 +370,26 @@ class AIStructuredResponseGeneratorBlock(Block):
 
         logger.info(f"LLM request: {prompt}")
         retry_prompt = ""
-        model = input_data.model
+        llm_model = input_data.model
         api_key = (
             input_data.api_key.get_secret_value()
-            or LlmApiKeys[model.metadata.provider].get_secret_value()
+            or LlmApiKeys[llm_model.metadata.provider].get_secret_value()
         )
 
         for retry_count in range(input_data.retry):
             try:
-                response_text = self.llm_call(
+                response_text, input_token, output_token = self.llm_call(
                     api_key=api_key,
-                    model=model,
+                    llm_model=llm_model,
                     prompt=prompt,
                     json_format=bool(input_data.expected_format),
+                    max_tokens=input_data.max_tokens,
+                )
+                self.merge_stats(
+                    {
+                        "input_token_count": input_token,
+                        "output_token_count": output_token,
+                    }
                 )
                 logger.info(f"LLM attempt-{retry_count} response: {response_text}")
 
@@ -341,15 +426,25 @@ class AIStructuredResponseGeneratorBlock(Block):
                 )
                 prompt.append({"role": "user", "content": retry_prompt})
             except Exception as e:
-                logger.error(f"Error calling LLM: {e}")
+                logger.exception(f"Error calling LLM: {e}")
                 retry_prompt = f"Error calling LLM: {e}"
+            finally:
+                self.merge_stats(
+                    {
+                        "llm_call_count": retry_count + 1,
+                        "llm_retry_count": retry_count,
+                    }
+                )
 
         raise RuntimeError(retry_prompt)
 
 
 class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
-        prompt: str
+        prompt: str = SchemaField(
+            description="The prompt to send to the language model.",
+            placeholder="Enter your prompt here...",
+        )
         model: LlmModel = SchemaField(
             title="LLM Model",
             default=LlmModel.GPT4_TURBO,
@@ -357,15 +452,30 @@ class AITextGeneratorBlock(Block):
             advanced=False,
         )
         api_key: BlockSecret = SecretField(value="")
-        sys_prompt: str = ""
-        retry: int = 3
+        sys_prompt: str = SchemaField(
+            title="System Prompt",
+            default="",
+            description="The system prompt to provide additional context to the model.",
+        )
+        retry: int = SchemaField(
+            title="Retry Count",
+            default=3,
+            description="Number of times to retry the LLM call if the response does not match the expected format.",
+        )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False, default={}, description="Values used to fill in the prompt."
         )
+        max_tokens: int | None = SchemaField(
+            advanced=True,
+            default=None,
+            description="The maximum number of tokens to generate in the chat completion.",
+        )
 
     class Output(BlockSchema):
-        response: str
-        error: str
+        response: str = SchemaField(
+            description="The response generated by the language model."
+        )
+        error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
         super().__init__(
@@ -379,15 +489,11 @@ class AITextGeneratorBlock(Block):
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
 
-    @staticmethod
-    def llm_call(input_data: AIStructuredResponseGeneratorBlock.Input) -> str:
-        object_block = AIStructuredResponseGeneratorBlock()
-        for output_name, output_data in object_block.run(input_data):
-            if output_name == "response":
-                return output_data["response"]
-            else:
-                raise RuntimeError(output_data)
-        raise ValueError("Failed to get a response from the LLM.")
+    def llm_call(self, input_data: AIStructuredResponseGeneratorBlock.Input) -> str:
+        block = AIStructuredResponseGeneratorBlock()
+        response = block.run_once(input_data, "response")
+        self.merge_stats(block.execution_stats)
+        return response["response"]
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
@@ -406,22 +512,43 @@ class SummaryStyle(Enum):
 
 class AITextSummarizerBlock(Block):
     class Input(BlockSchema):
-        text: str
+        text: str = SchemaField(
+            description="The text to summarize.",
+            placeholder="Enter the text to summarize here...",
+        )
         model: LlmModel = SchemaField(
             title="LLM Model",
             default=LlmModel.GPT4_TURBO,
             description="The language model to use for summarizing the text.",
         )
-        focus: str = "general information"
-        style: SummaryStyle = SummaryStyle.CONCISE
+        focus: str = SchemaField(
+            title="Focus",
+            default="general information",
+            description="The topic to focus on in the summary",
+        )
+        style: SummaryStyle = SchemaField(
+            title="Summary Style",
+            default=SummaryStyle.CONCISE,
+            description="The style of the summary to generate.",
+        )
         api_key: BlockSecret = SecretField(value="")
         # TODO: Make this dynamic
-        max_tokens: int = 4000  # Adjust based on the model's context window
-        chunk_overlap: int = 100  # Overlap between chunks to maintain context
+        max_tokens: int = SchemaField(
+            title="Max Tokens",
+            default=4096,
+            description="The maximum number of tokens to generate in the chat completion.",
+            ge=1,
+        )
+        chunk_overlap: int = SchemaField(
+            title="Chunk Overlap",
+            default=100,
+            description="The number of overlapping tokens between chunks to maintain context.",
+            ge=0,
+        )
 
     class Output(BlockSchema):
-        summary: str
-        error: str
+        summary: str = SchemaField(description="The final summary of the text.")
+        error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
         super().__init__(
@@ -470,15 +597,11 @@ class AITextSummarizerBlock(Block):
 
         return chunks
 
-    @staticmethod
-    def llm_call(
-        input_data: AIStructuredResponseGeneratorBlock.Input,
-    ) -> dict[str, str]:
-        llm_block = AIStructuredResponseGeneratorBlock()
-        for output_name, output_data in llm_block.run(input_data):
-            if output_name == "response":
-                return output_data
-        raise ValueError("Failed to get a response from the LLM.")
+    def llm_call(self, input_data: AIStructuredResponseGeneratorBlock.Input) -> dict:
+        block = AIStructuredResponseGeneratorBlock()
+        response = block.run_once(input_data, "response")
+        self.merge_stats(block.execution_stats)
+        return response
 
     def _summarize_chunk(self, chunk: str, input_data: Input) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
@@ -527,17 +650,6 @@ class AITextSummarizerBlock(Block):
             ]  # Get the first yielded value
 
 
-class MessageRole(str, Enum):
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-
-
-class Message(BlockSchema):
-    role: MessageRole
-    content: str
-
-
 class AIConversationBlock(Block):
     class Input(BlockSchema):
         messages: List[Message] = SchemaField(
@@ -552,9 +664,9 @@ class AIConversationBlock(Block):
             value="", description="API key for the chosen language model provider."
         )
         max_tokens: int | None = SchemaField(
+            advanced=True,
             default=None,
             description="The maximum number of tokens to generate in the chat completion.",
-            ge=1,
         )
 
     class Output(BlockSchema):
@@ -592,62 +704,22 @@ class AIConversationBlock(Block):
             },
         )
 
-    @staticmethod
-    def llm_call(
-        api_key: str,
-        model: LlmModel,
-        messages: List[dict[str, str]],
-        max_tokens: int | None = None,
-    ) -> str:
-        provider = model.metadata.provider
-
-        if provider == "openai":
-            openai.api_key = api_key
-            response = openai.chat.completions.create(
-                model=model.value,
-                messages=messages,  # type: ignore
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content or ""
-        elif provider == "anthropic":
-            client = anthropic.Anthropic(api_key=api_key)
-            response = client.messages.create(
-                model=model.value,
-                max_tokens=max_tokens or 4096,
-                messages=messages,  # type: ignore
-            )
-            return response.content[0].text if response.content else ""
-        elif provider == "groq":
-            client = Groq(api_key=api_key)
-            response = client.chat.completions.create(
-                model=model.value,
-                messages=messages,  # type: ignore
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content or ""
-        elif provider == "ollama":
-            response = ollama.chat(
-                model=model.value,
-                messages=messages,  # type: ignore
-                stream=False,  # type: ignore
-            )
-            return response["message"]["content"]
-        else:
-            raise ValueError(f"Unsupported LLM provider: {provider}")
+    def llm_call(self, input_data: AIStructuredResponseGeneratorBlock.Input) -> str:
+        block = AIStructuredResponseGeneratorBlock()
+        response = block.run_once(input_data, "response")
+        self.merge_stats(block.execution_stats)
+        return response["response"]
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        api_key = (
-            input_data.api_key.get_secret_value()
-            or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
-        )
-
-        messages = [message.model_dump() for message in input_data.messages]
-
         response = self.llm_call(
-            api_key=api_key,
-            model=input_data.model,
-            messages=messages,
-            max_tokens=input_data.max_tokens,
+            AIStructuredResponseGeneratorBlock.Input(
+                prompt="",
+                api_key=input_data.api_key,
+                model=input_data.model,
+                conversation_history=input_data.messages,
+                max_tokens=input_data.max_tokens,
+                expected_format={},
+            )
         )
 
         yield "response", response
@@ -679,6 +751,11 @@ class AIListGeneratorBlock(Block):
             description="Maximum number of retries for generating a valid list.",
             ge=1,
             le=5,
+        )
+        max_tokens: int | None = SchemaField(
+            advanced=True,
+            default=None,
+            description="The maximum number of tokens to generate in the chat completion.",
         )
 
     class Output(BlockSchema):
@@ -734,11 +811,8 @@ class AIListGeneratorBlock(Block):
         input_data: AIStructuredResponseGeneratorBlock.Input,
     ) -> dict[str, str]:
         llm_block = AIStructuredResponseGeneratorBlock()
-        for output_name, output_data in llm_block.run(input_data):
-            if output_name == "response":
-                logger.debug(f"Received response from LLM: {output_data}")
-                return output_data
-        raise ValueError("Failed to get a response from the LLM.")
+        response = llm_block.run_once(input_data, "response")
+        return response
 
     @staticmethod
     def string_to_list(string):

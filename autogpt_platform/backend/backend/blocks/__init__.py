@@ -2,6 +2,7 @@ import importlib
 import os
 import re
 from pathlib import Path
+from typing import Type, TypeVar
 
 from backend.data.block import Block
 
@@ -24,28 +25,31 @@ for module in modules:
     AVAILABLE_MODULES.append(module)
 
 # Load all Block instances from the available modules
-AVAILABLE_BLOCKS = {}
+AVAILABLE_BLOCKS: dict[str, Type[Block]] = {}
 
 
-def all_subclasses(clz):
-    subclasses = clz.__subclasses__()
+T = TypeVar("T")
+
+
+def all_subclasses(cls: Type[T]) -> list[Type[T]]:
+    subclasses = cls.__subclasses__()
     for subclass in subclasses:
         subclasses += all_subclasses(subclass)
     return subclasses
 
 
-for cls in all_subclasses(Block):
-    name = cls.__name__
+for block_cls in all_subclasses(Block):
+    name = block_cls.__name__
 
-    if cls.__name__.endswith("Base"):
+    if block_cls.__name__.endswith("Base"):
         continue
 
-    if not cls.__name__.endswith("Block"):
+    if not block_cls.__name__.endswith("Block"):
         raise ValueError(
-            f"Block class {cls.__name__} does not end with 'Block', If you are creating an abstract class, please name the class with 'Base' at the end"
+            f"Block class {block_cls.__name__} does not end with 'Block', If you are creating an abstract class, please name the class with 'Base' at the end"
         )
 
-    block = cls()
+    block = block_cls.create()
 
     if not isinstance(block.id, str) or len(block.id) != 36:
         raise ValueError(f"Block ID {block.name} error: {block.id} is not a valid UUID")
@@ -69,6 +73,17 @@ for cls in all_subclasses(Block):
             f"{block.name} `error` field in output_schema must be a string"
         )
 
+    # Make sure all fields in input_schema and output_schema are annotated and has a value
+    for field_name, field in [*input_schema.items(), *output_schema.items()]:
+        if field.annotation is None:
+            raise ValueError(
+                f"{block.name} has a field {field_name} that is not annotated"
+            )
+        if field.json_schema_extra is None:
+            raise ValueError(
+                f"{block.name} has a field {field_name} not defined as SchemaField"
+            )
+
     for field in block.input_schema.model_fields.values():
         if field.annotation is bool and field.default not in (True, False):
             raise ValueError(f"{block.name} has a boolean field with no default value")
@@ -76,6 +91,6 @@ for cls in all_subclasses(Block):
     if block.disabled:
         continue
 
-    AVAILABLE_BLOCKS[block.id] = block
+    AVAILABLE_BLOCKS[block.id] = block_cls
 
 __all__ = ["AVAILABLE_MODULES", "AVAILABLE_BLOCKS"]
