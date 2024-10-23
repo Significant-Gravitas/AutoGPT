@@ -18,6 +18,7 @@ const CREDENTIALS_PROVIDER_NAMES = Object.values(
   PROVIDER_NAMES,
 ) as CredentialsProviderName[];
 
+// --8<-- [start:CredentialsProviderNames]
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
   github: "GitHub",
   google: "Google",
@@ -33,6 +34,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   revid: "Rev.ID",
   unreal_speech: "Unreal Speech",
 } as const;
+// --8<-- [end:CredentialsProviderNames]
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
