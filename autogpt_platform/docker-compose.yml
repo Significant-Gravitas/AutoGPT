@@ -162,3 +162,4 @@ services:
       - analytics
       - db
       - vector
+      - redis
