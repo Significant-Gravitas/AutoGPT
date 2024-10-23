@@ -9,9 +9,10 @@ from backend.data.model import BlockSecret, SchemaField, SecretField, Credential
 class JinaChunkingBlock(Block):
     class Input(BlockSchema):
         texts: list = SchemaField(description="List of texts to chunk")
+
         credentials: CredentialsMetaInput[Literal['jina'], Literal['api_key']] = CredentialsField(
             provider="jina",
-            supported_credential_types={"api_key"},
+            supported_credential_types={"api_key"}, # noqa
             description="The Jina integration can be used with "
                         "any API key with sufficient permissions for the blocks it is used on.",
         )
