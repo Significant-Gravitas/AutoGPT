@@ -41,7 +41,7 @@ class JinaChunkingBlock(Block):
         url = "https://segment.jina.ai/"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {input_data.credentials.api_key}",
+            "Authorization": f"Bearer {input_data.credentials.get_secret_value()}",
         }
 
         all_chunks = []

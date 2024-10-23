@@ -101,7 +101,7 @@ class PineconeQueryBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        pc = Pinecone(api_key=input_data.credentials.api_key)
+        pc = Pinecone(api_key=input_data.credentials.api_key.get_secret_value())
         idx = pc.Index(host=input_data.host)
         results = idx.query(
             namespace=input_data.namespace,

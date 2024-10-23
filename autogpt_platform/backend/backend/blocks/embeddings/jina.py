@@ -36,7 +36,7 @@ class JinaEmbeddingBlock(Block):
         url = "https://api.jina.ai/v1/embeddings"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {input_data.credentials.api_key}",
+            "Authorization": f"Bearer {input_data.credentials.api_key.get_secret_value()}",
         }
         data = {"input": input_data.texts, "model": input_data.model}
         response = requests.post(url, headers=headers, json=data)
