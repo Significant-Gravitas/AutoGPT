@@ -7,24 +7,37 @@ from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCred
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import (
-    BlockSecret,
-    CredentialsField,
-    CredentialsMetaInput,
-    SchemaField,
-    SecretField,
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+
+DiscordCredentials = CredentialsMetaInput[Literal["discord"], Literal["api_key"]]
+
+
+def DiscordCredentialsField() -> DiscordCredentials:
+    return CredentialsField(
+        description="Discord bot token",
+        provider="discord",
+        supported_credential_types={"api_key"},
+    )
+
+
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="discord",
+    api_key=SecretStr("test_api_key"),
+    title="Mock Discord API key",
+    expires_at=None,
 )
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
 
 
 class ReadDiscordMessagesBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["discord"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="discord",
-                supported_credential_types={"api_key"},
-                description="Discord bot token",
-            )
-        )
+        credentials: DiscordCredentials = DiscordCredentialsField()
         continuous_read: bool = SchemaField(
             description="Whether to continuously read messages", default=True
         )
@@ -47,7 +60,11 @@ class ReadDiscordMessagesBlock(Block):
             output_schema=ReadDiscordMessagesBlock.Output,  # Assign output schema
             description="Reads messages from a Discord channel using a bot token.",
             categories={BlockCategory.SOCIAL},
-            test_input={"discord_bot_token": "test_token", "continuous_read": False},
+            test_input={
+                "continuous_read": False,
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "message_content",
@@ -147,9 +164,7 @@ class ReadDiscordMessagesBlock(Block):
 
 class SendDiscordMessageBlock(Block):
     class Input(BlockSchema):
-        discord_bot_token: BlockSecret = SecretField(
-            key="discord_bot_token", description="Discord bot token"
-        )
+        credentials: DiscordCredentials = DiscordCredentialsField()
         message_content: str = SchemaField(
             description="The content of the message received"
         )
@@ -170,14 +185,15 @@ class SendDiscordMessageBlock(Block):
             description="Sends a message to a Discord channel using a bot token.",
             categories={BlockCategory.SOCIAL},
             test_input={
-                "discord_bot_token": "YOUR_DISCORD_BOT_TOKEN",
                 "channel_name": "general",
                 "message_content": "Hello, Discord!",
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[("status", "Message sent")],
             test_mock={
                 "send_message": lambda token, channel_name, message_content: asyncio.Future()
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     async def send_message(self, token: str, channel_name: str, message_content: str):
@@ -207,11 +223,13 @@ class SendDiscordMessageBlock(Block):
         """Splits a message into chunks not exceeding the Discord limit."""
         return [message[i : i + limit] for i in range(0, len(message), limit)]
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         try:
             loop = asyncio.get_event_loop()
             future = self.send_message(
-                input_data.discord_bot_token.get_secret_value(),
+                credentials.api_key.get_secret_value(),
                 input_data.channel_name,
                 input_data.message_content,
             )

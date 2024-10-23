@@ -7,6 +7,20 @@ from pydantic import SecretStr
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="unreal_speech",
+    api_key=SecretStr("mock-unreal-speech-api-key"),
+    title="Mock Unreal Speech API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
 
 class UnrealTextToSpeechBlock(Block):
     class Input(BlockSchema):
@@ -19,7 +33,6 @@ class UnrealTextToSpeechBlock(Block):
             placeholder="Scarlett",
             default="Scarlett",
         )
-
         credentials: CredentialsMetaInput[
             Literal["unreal_speech"], Literal["api_key"]
         ] = CredentialsField(
@@ -43,7 +56,7 @@ class UnrealTextToSpeechBlock(Block):
             test_input={
                 "text": "This is a test of the text to speech API.",
                 "voice_id": "Scarlett",
-                "api_key": "test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[("mp3_url", "https://example.com/test.mp3")],
             test_mock={
@@ -51,6 +64,7 @@ class UnrealTextToSpeechBlock(Block):
                     "OutputUri": "https://example.com/test.mp3"
                 }
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     @staticmethod

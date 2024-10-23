@@ -8,6 +8,20 @@ from pydantic import SecretStr
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="d_id",
+    api_key=SecretStr("mock-d-id-api-key"),
+    title="Mock D-ID API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
 
 class CreateTalkingAvatarVideoBlock(Block):
     class Input(BlockSchema):
@@ -65,7 +79,7 @@ class CreateTalkingAvatarVideoBlock(Block):
             input_schema=CreateTalkingAvatarVideoBlock.Input,
             output_schema=CreateTalkingAvatarVideoBlock.Output,
             test_input={
-                "api_key": "your_test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "script_input": "Welcome to AutoGPT",
                 "voice_id": "en-US-JennyNeural",
                 "presenter_id": "amy-Aq6OmGZnMt",
@@ -93,6 +107,7 @@ class CreateTalkingAvatarVideoBlock(Block):
                     "result_url": "https://d-id.com/api/clips/abcd1234-5678-efgh-ijkl-mnopqrstuvwx/video",
                 },
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def create_clip(self, api_key: SecretStr, payload: dict) -> dict:

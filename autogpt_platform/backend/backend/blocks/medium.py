@@ -14,6 +14,20 @@ from backend.data.model import (
     SecretField,
 )
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="medium",
+    api_key=SecretStr("mock-medium-api-key"),
+    title="Mock Medium API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
 
 class PublishToMediumStatus(str, Enum):
     PUBLIC = "public"
@@ -97,7 +111,7 @@ class PublishToMediumBlock(Block):
                 "license": "all-rights-reserved",
                 "notify_followers": False,
                 "publish_status": PublishToMediumStatus.DRAFT.value,
-                "api_key": "your_test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
                 ("post_id", "e6f36a"),
@@ -114,6 +128,7 @@ class PublishToMediumBlock(Block):
                     }
                 }
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def create_post(

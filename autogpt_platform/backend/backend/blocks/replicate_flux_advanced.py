@@ -9,6 +9,20 @@ from pydantic import SecretStr
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="replicate",
+    api_key=SecretStr("mock-replicate-api-key"),
+    title="Mock Replicate API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
 
 # Model name enum
 class ReplicateFluxModelName(str, Enum):
@@ -35,10 +49,6 @@ class ImageType(str, Enum):
 
 class ReplicateFluxAdvancedModelBlock(Block):
     class Input(BlockSchema):
-        # api_key: BlockSecret = SecretField(
-        #     key="replicate_api_key",
-        #     description="Replicate API Key",
-        # )
         credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
             CredentialsField(
                 provider="replicate",
@@ -121,7 +131,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
             input_schema=ReplicateFluxAdvancedModelBlock.Input,
             output_schema=ReplicateFluxAdvancedModelBlock.Output,
             test_input={
-                "api_key": "test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "replicate_model_name": ReplicateFluxModelName.FLUX_SCHNELL,
                 "prompt": "A beautiful landscape painting of a serene lake at sunrise",
                 "seed": None,
@@ -142,6 +152,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
             test_mock={
                 "run_model": lambda api_key, model_name, prompt, seed, steps, guidance, interval, aspect_ratio, output_format, output_quality, safety_tolerance: "https://replicate.com/output/generated-image-url.jpg",
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def run(

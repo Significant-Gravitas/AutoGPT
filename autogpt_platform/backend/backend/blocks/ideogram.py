@@ -8,6 +8,20 @@ from pydantic import SecretStr
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="ideogram",
+    api_key=SecretStr("mock-ideogram-api-key"),
+    title="Mock Ideogram API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
 
 class IdeogramModelName(str, Enum):
     V2 = "V_2"
@@ -138,7 +152,6 @@ class IdeogramModelBlock(Block):
             input_schema=IdeogramModelBlock.Input,
             output_schema=IdeogramModelBlock.Output,
             test_input={
-                "api_key": "test_api_key",
                 "ideogram_model_name": IdeogramModelName.V2,
                 "prompt": "A futuristic cityscape at sunset",
                 "aspect_ratio": AspectRatio.ASPECT_1_1,
@@ -148,6 +161,7 @@ class IdeogramModelBlock(Block):
                 "style_type": StyleType.AUTO,
                 "negative_prompt": None,
                 "color_palette_name": ColorPalettePreset.NONE,
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
                 (
@@ -159,6 +173,7 @@ class IdeogramModelBlock(Block):
                 "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name: "https://ideogram.ai/api/images/test-generated-image-url.png",
                 "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def run(

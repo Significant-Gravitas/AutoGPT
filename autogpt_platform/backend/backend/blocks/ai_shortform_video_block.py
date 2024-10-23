@@ -10,6 +10,20 @@ from pydantic import SecretStr
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="revid",
+    api_key=SecretStr("mock-revid-api-key"),
+    title="Mock Revid API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
 
 class AudioTrack(str, Enum):
     OBSERVER = ("Observer",)
@@ -174,7 +188,7 @@ class AIShortformVideoCreatorBlock(Block):
             input_schema=AIShortformVideoCreatorBlock.Input,
             output_schema=AIShortformVideoCreatorBlock.Output,
             test_input={
-                "api_key": "test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "script": "[close-up of a cat] Meow!",
                 "ratio": "9 / 16",
                 "resolution": "720p",
@@ -196,6 +210,7 @@ class AIShortformVideoCreatorBlock(Block):
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
                 "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/video.mp4",
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def create_webhook(self):
