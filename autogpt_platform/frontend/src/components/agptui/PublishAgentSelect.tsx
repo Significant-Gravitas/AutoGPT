@@ -32,8 +32,8 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   };
 
   return (
-    <div className="w-[900px] bg-white rounded-3xl shadow-lg flex flex-col">
-      <div className="p-6 border-b border-slate-200 relative">
+    <div className="w-full max-w-[900px] bg-white rounded-3xl shadow-lg flex flex-col mx-auto">
+      <div className="p-4 sm:p-6 border-b border-slate-200 relative">
         <div className="absolute top-4 right-4">
           <button
             onClick={onClose}
@@ -57,13 +57,13 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             </svg>
           </button>
         </div>
-        <h2 className="text-neutral-900 text-2xl font-semibold font-['Poppins'] leading-loose text-center mb-2">Publish Agent</h2>
-        <p className="text-neutral-600 text-base font-normal font-['Geist'] leading-7 text-center">Select your project that you'd like to publish</p>
+        <h2 className="text-neutral-900 text-xl sm:text-2xl font-semibold font-['Poppins'] leading-loose text-center mb-2">Publish Agent</h2>
+        <p className="text-neutral-600 text-sm sm:text-base font-normal font-['Geist'] leading-7 text-center">Select your project that you'd like to publish</p>
       </div>
       
       {agents.length === 0 ? (
-        <div className="h-[370px] px-6 py-5 flex-col justify-center items-center gap-[29px] inline-flex">
-          <div className="w-[573px] text-center text-neutral-600 text-xl font-normal font-['Geist'] leading-7">
+        <div className="h-[370px] px-4 sm:px-6 py-5 flex-col justify-center items-center gap-[29px] inline-flex">
+          <div className="w-full sm:w-[573px] text-center text-neutral-600 text-lg sm:text-xl font-normal font-['Geist'] leading-7">
             Uh-oh.. It seems like you don't have any agents in your library. We'd suggest you to create an agent in our builder first
           </div>
           <button
@@ -75,10 +75,10 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
         </div>
       ) : (
         <>
-          <div className="flex-grow p-4 overflow-hidden">
-            <div className="h-[500px] overflow-y-auto pr-2">
+          <div className="flex-grow p-4 sm:p-6 overflow-hidden">
+            <div className="h-[300px] sm:h-[400px] md:h-[500px] overflow-y-auto pr-2">
               <div className="p-2">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {agents.map((agent) => (
                     <div
                       key={agent.name}
@@ -89,7 +89,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                       }`}
                       onClick={() => handleAgentClick(agent.name)}
                     >
-                      <div className="relative h-40 bg-gray-100">
+                      <div className="relative h-32 sm:h-40 bg-gray-100">
                         <Image
                           src={agent.imageSrc}
                           alt={agent.name}
@@ -98,8 +98,8 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         />
                       </div>
                       <div className="p-3">
-                        <h3 className="text-neutral-800 text-base font-medium font-['Geist'] leading-normal">{agent.name}</h3>
-                        <p className="text-neutral-500 text-sm font-normal font-['Geist'] leading-[14px]">Edited {agent.lastEdited}</p>
+                        <h3 className="text-neutral-800 text-sm sm:text-base font-medium font-['Geist'] leading-normal">{agent.name}</h3>
+                        <p className="text-neutral-500 text-xs sm:text-sm font-normal font-['Geist'] leading-[14px]">Edited {agent.lastEdited}</p>
                       </div>
                     </div>
                   ))}
@@ -108,7 +108,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             </div>
           </div>
           
-          <div className="p-6 border-t border-slate-200 flex justify-between gap-4">
+          <div className="p-4 sm:p-6 border-t border-slate-200 flex justify-between gap-4">
             <button
               onClick={onCancel}
               className="flex-grow h-10 px-4 py-2 bg-white rounded-[59px] border border-neutral-900 justify-center items-center gap-2.5 inline-flex"
