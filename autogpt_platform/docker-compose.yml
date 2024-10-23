@@ -7,12 +7,14 @@ networks:
 volumes:
   db-config:
 
-x-agpt-services: &agpt-services
+x-agpt-services:
+  &agpt-services
   networks:
     - app-network
     - shared-network
 
-x-supabase-services: &supabase-services
+x-supabase-services:
+  &supabase-services
   networks:
     - app-network
     - shared-network
@@ -61,11 +63,11 @@ services:
       file: ./docker-compose.platform.yml
       service: market-migrations
 
-  #  frontend:
-  #    <<: *agpt-services
-  #    extends:
-  #      file: ./docker-compose.platform.yml
-  #      service: frontend
+#  frontend:
+#    <<: *agpt-services
+#    extends:
+#      file: ./docker-compose.platform.yml
+#      service: frontend
 
   # Supabase services
   studio:
