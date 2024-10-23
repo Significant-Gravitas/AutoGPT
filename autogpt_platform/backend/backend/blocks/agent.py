@@ -1,5 +1,7 @@
 import logging
 
+from autogpt_libs.utils.cache import thread_cached
+
 from backend.data.block import (
     Block,
     BlockInput,
@@ -10,11 +12,8 @@ from backend.data.block import (
 )
 from backend.data.execution import ExecutionStatus
 from backend.data.model import SchemaField
-from backend.util.cache import thread_cached
-from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
-config = Config()
 
 
 @thread_cached
@@ -22,7 +21,7 @@ def get_executor_manager_client():
     from backend.executor import ExecutionManager
     from backend.util.service import get_service_client
 
-    return get_service_client(ExecutionManager, config.execution_manager_port)
+    return get_service_client(ExecutionManager)
 
 
 @thread_cached
