@@ -7,11 +7,7 @@ TEST_SERVICE_PORT = 8765
 
 class ServiceTest(AppService):
     def __init__(self):
-        super().__init__()
-
-    @classmethod
-    def get_port(cls) -> int:
-        return TEST_SERVICE_PORT
+        super().__init__(port=TEST_SERVICE_PORT)
 
     @expose
     def add(self, a: int, b: int) -> int:
@@ -32,7 +28,7 @@ class ServiceTest(AppService):
 @pytest.mark.asyncio(scope="session")
 async def test_service_creation(server):
     with ServiceTest():
-        client = get_service_client(ServiceTest)
+        client = get_service_client(ServiceTest, TEST_SERVICE_PORT)
         assert client.add(5, 3) == 8
         assert client.subtract(10, 4) == 6
         assert client.fun_with_async(5, 3) == 8
