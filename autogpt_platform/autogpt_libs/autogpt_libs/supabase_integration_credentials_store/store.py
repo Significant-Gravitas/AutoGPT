@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from redis import Redis
     from backend.executor.database import DatabaseManager
 
+from autogpt_libs.utils.cache import thread_cached_property
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
 from .types import (
@@ -18,9 +19,14 @@ from .types import (
 
 
 class SupabaseIntegrationCredentialsStore:
-    def __init__(self, redis: "Redis", db: "DatabaseManager"):
-        self.db_manager: DatabaseManager = db
+    def __init__(self, redis: "Redis"):
         self.locks = RedisKeyedMutex(redis)
+        
+    @thread_cached_property
+    def db_manager(self) -> "DatabaseManager":
+        from backend.executor.database import DatabaseManager
+        from backend.util.service import get_service_client
+        return get_service_client(DatabaseManager)
 
     def add_creds(self, user_id: str, credentials: Credentials) -> None:
         with self.locked_user_metadata(user_id):
