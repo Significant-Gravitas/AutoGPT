@@ -11,7 +11,7 @@ class JinaEmbeddingBlock(Block):
         texts: list = SchemaField(description="List of texts to embed")
         credentials: CredentialsMetaInput[Literal['jina'], Literal['api_key']] = CredentialsField(
             provider="jina",
-            supported_credential_types={"api_key"},
+            supported_credential_types={"api_key"}, # noqa
             description="The Jina integration can be used with "
                         "any API key with sufficient permissions for the blocks it is used on.",
         )
