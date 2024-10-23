@@ -61,6 +61,7 @@ module "iam" {
   service_accounts           = var.service_accounts
   workload_identity_bindings = var.workload_identity_bindings
   role_bindings              = var.role_bindings
+  workload_identity_pools    = var.workload_identity_pools
 }
 
 module "storage" {

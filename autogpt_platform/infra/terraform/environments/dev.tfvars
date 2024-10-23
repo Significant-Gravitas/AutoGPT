@@ -28,6 +28,10 @@ service_accounts = {
    "dev-agpt-market-sa" = {
     display_name = "AutoGPT Dev Market Server Account"
     description  = "Service account for agpt dev market server"
+  },
+  "dev-github-actions-sa" = {
+    display_name = "GitHub Actions Dev Service Account"
+    description  = "Service account for GitHub Actions deployments to dev"
   }
 }
 
@@ -51,6 +55,11 @@ workload_identity_bindings = {
     service_account_name = "dev-agpt-market-sa"
     namespace            = "dev-agpt"
     ksa_name             = "dev-agpt-market-sa"
+  },
+  "dev-github-actions-workload-identity" = {
+    service_account_name = "dev-github-actions-sa"
+    namespace            = "dev-agpt"
+    ksa_name             = "dev-github-actions-sa"
   }
 }
 
@@ -59,7 +68,8 @@ role_bindings = {
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com"
   ],
   "roles/cloudsql.client" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
@@ -80,7 +90,8 @@ role_bindings = {
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
-    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
+    "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com",
+    "serviceAccount:dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com"
   ]
   "roles/compute.networkUser" = [
     "serviceAccount:dev-agpt-server-sa@agpt-dev.iam.gserviceaccount.com",
@@ -93,6 +104,16 @@ role_bindings = {
     "serviceAccount:dev-agpt-builder-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-ws-server-sa@agpt-dev.iam.gserviceaccount.com",
     "serviceAccount:dev-agpt-market-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/artifactregistry.writer" = [
+    "serviceAccount:dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/container.viewer" = [
+    "serviceAccount:dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com"
+  ],
+  "roles/iam.serviceAccountTokenCreator" = [
+    "principalSet://iam.googleapis.com/projects/638488734936/locations/global/workloadIdentityPools/dev-pool/*",
+    "serviceAccount:dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com"
   ]
 }
 
@@ -102,3 +123,24 @@ services_ip_cidr_range = "10.2.0.0/20"
 public_bucket_names = ["website-artifacts"]
 standard_bucket_names = []
 bucket_admins = ["gcp-devops-agpt@agpt.co", "gcp-developers@agpt.co"]
+
+workload_identity_pools = {
+  "dev-pool" = {
+    display_name = "Development Identity Pool"
+    providers = {
+      "github" = {
+        issuer_uri = "https://token.actions.githubusercontent.com"
+        attribute_mapping = {
+          "google.subject" = "assertion.sub"
+          "attribute.repository" = "assertion.repository"
+          "attribute.repository_owner" = "assertion.repository_owner"
+        }
+      }
+    }
+    service_accounts = {
+      "dev-github-actions-sa" = [
+        "Significant-Gravitas/AutoGPT"
+      ]
+    }
+  }
+}
