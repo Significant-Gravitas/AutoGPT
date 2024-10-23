@@ -17,6 +17,7 @@ model User {
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  metadata  Json?
 
   // Relations
   AgentGraphs                  AgentGraph[]

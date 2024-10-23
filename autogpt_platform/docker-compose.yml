@@ -96,6 +96,36 @@ services:
       file: ./supabase/docker/docker-compose.yml
       service: rest
 
+  realtime:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: realtime
+
+  storage:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: storage
+
+  imgproxy:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: imgproxy
+
+  meta:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: meta
+
+  functions:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: functions
+
   analytics:
     <<: *supabase-services
     extends:
@@ -112,3 +142,24 @@ services:
     extends:
       file: ./supabase/docker/docker-compose.yml
       service: vector
+
+  deps:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - studio
+      - kong
+      - auth
+      - rest
+      - realtime
+      - storage
+      - imgproxy
+      - meta
+      - functions
+      - analytics
+      - db
+      - vector
+      - redis

@@ -47,6 +47,7 @@ jobs:
           python -m prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.MARKET_DATABASE_URL }}
+          
   build-push-deploy:
     environment: production
     name: Build, Push, and Deploy
