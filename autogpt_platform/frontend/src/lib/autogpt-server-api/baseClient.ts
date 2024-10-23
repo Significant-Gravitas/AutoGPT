@@ -276,6 +276,7 @@ export default class BaseAutoGPTServerAPI {
         typeof window !== "undefined" // Check if in browser environment
       ) {
         window.location.href = "/login";
+        return null;
       }
 
       let errorDetail;
