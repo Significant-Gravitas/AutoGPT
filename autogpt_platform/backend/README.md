@@ -69,7 +69,7 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 Run the following command to run database in docker but the application locally:
 
 ```sh
-docker compose --profile local up --build -d
+docker compose --profile local up deps --build --detach
 poetry run app
 ```
 
