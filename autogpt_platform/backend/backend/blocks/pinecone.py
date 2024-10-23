@@ -6,17 +6,27 @@ from backend.blocks.pinecone import Pinecone, ServerlessSpec
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
+PineconeCredentials = APIKeyCredentials
+PineconeCredentialsInput = CredentialsMetaInput[
+    Literal["pinecone"],
+    Literal["api_key"],
+]
+
+
+def PineconeCredentialsField() -> PineconeCredentialsInput:
+    """
+    Creates a Pinecone credentials input on a block.
+
+    """
+    return CredentialsField(
+        provider="pinecone",
+        supported_credential_types={"api_key"},
+        description="The Pinecone integration can be used with an API Key.",
+    )
 
 class PineconeInitBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["pinecone"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="pinecone",
-                supported_credential_types={"api_key"},
-                description="The Pinecone integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
-            )
-        )
+        credentials: PineconeCredentialsInput = PineconeCredentialsField()
         index_name: str = SchemaField(description="Name of the Pinecone index")
         dimension: int = SchemaField(
             description="Dimension of the vectors", default=768
@@ -72,14 +82,7 @@ class PineconeInitBlock(Block):
 
 class PineconeQueryBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["pinecone"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="pinecone",
-                supported_credential_types={"api_key"},
-                description="The Pinecone integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
-            )
-        )
+        credentials: PineconeCredentialsInput = PineconeCredentialsField()
         query_vector: list = SchemaField(description="Query vector")
         namespace: str = SchemaField(
             description="Namespace to query in Pinecone", default=""
