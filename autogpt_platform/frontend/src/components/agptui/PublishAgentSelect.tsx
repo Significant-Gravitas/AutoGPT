@@ -64,7 +64,9 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
       {agents.length === 0 ? (
         <div className="h-[370px] px-4 sm:px-6 py-5 flex-col justify-center items-center gap-[29px] inline-flex">
           <div className="w-full sm:w-[573px] text-center text-neutral-600 text-lg sm:text-xl font-normal font-['Geist'] leading-7">
-            Uh-oh.. It seems like you don't have any agents in your library. We'd suggest you to create an agent in our builder first
+            Uh-oh.. It seems like you don't have any agents in your library.
+            <br />
+            We'd suggest you to create an agent in our builder first
           </div>
           <button
             onClick={onOpenBuilder}
