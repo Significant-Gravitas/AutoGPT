@@ -18,7 +18,7 @@ from backend.data.model import (
 
 class ReadDiscordMessagesBlock(Block):
     class Input(BlockSchema):
-        credential: CredentialsMetaInput[Literal["discord"], Literal["api_key"]] = (
+        credentials: CredentialsMetaInput[Literal["discord"], Literal["api_key"]] = (
             CredentialsField(
                 provider="discord",
                 supported_credential_types={"api_key"},
