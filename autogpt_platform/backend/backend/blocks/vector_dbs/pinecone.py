@@ -1,5 +1,6 @@
 from typing import Literal
 
+from autogpt_libs.supabase_integration_credentials_store import Credentials
 from pinecone import Pinecone, ServerlessSpec
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -100,8 +101,11 @@ class PineconeQueryBlock(Block):
             output_schema=PineconeQueryBlock.Output,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        pc = Pinecone(api_key=input_data.credentials.api_key.get_secret_value())
+    def run(input_data: Input,
+        *,
+        credentials: Credentials,
+        **kwargs) -> BlockOutput:
+        pc = Pinecone(api_key=credentials.api_key.get_secret_value())
         idx = pc.Index(host=input_data.host)
         results = idx.query(
             namespace=input_data.namespace,
