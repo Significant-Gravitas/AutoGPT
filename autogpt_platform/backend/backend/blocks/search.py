@@ -1,12 +1,17 @@
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 from urllib.parse import quote
 
 import requests
+from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField, CredentialsField, CredentialsMetaInput
-from typing import Literal
-from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
+from backend.data.model import (
+    BlockSecret,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    SecretField,
+)
 
 
 class GetRequest:
@@ -169,15 +174,21 @@ class GetWeatherInformationBlock(Block, GetRequest):
 
 class FactCheckerBlock(Block, GetRequest):
     class Input(BlockSchema):
-        statement: str = SchemaField(description="The statement to check for factuality")
-        credentials: CredentialsMetaInput[Literal['jina'], Literal['api_key']] = CredentialsField(
-            provider="jina",
-            supported_credential_types={"api_key"},
-            description="The Jina AI API key for getting around the API rate limit.",
+        statement: str = SchemaField(
+            description="The statement to check for factuality"
+        )
+        credentials: CredentialsMetaInput[Literal["jina"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="jina",
+                supported_credential_types={"api_key"},
+                description="The Jina AI API key for getting around the API rate limit.",
+            )
         )
 
     class Output(BlockSchema):
-        factuality: float = SchemaField(description="The factuality score of the statement")
+        factuality: float = SchemaField(
+            description="The factuality score of the statement"
+        )
         result: bool = SchemaField(description="The result of the factuality check")
         reason: str = SchemaField(description="The reason for the factuality result")
         error: str = SchemaField(description="Error message if the check fails")
@@ -206,17 +217,16 @@ class FactCheckerBlock(Block, GetRequest):
             },
         )
 
-    def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         encoded_statement = quote(input_data.statement)
         url = f"https://g.jina.ai/{encoded_statement}"
-        
-        headers = {
-            "Accept": "application/json",
-            "Authorization": credentials.bearer()
-        }
-        
+
+        headers = {"Accept": "application/json", "Authorization": credentials.bearer()}
+
         response = self.get_request(url, json=True, headers=headers)
-        
+
         if "data" in response:
             data = response["data"]
             yield "factuality", data["factuality"]

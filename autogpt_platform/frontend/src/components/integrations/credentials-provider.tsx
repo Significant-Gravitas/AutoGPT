@@ -12,7 +12,12 @@ import {
 } from "react";
 
 // --8<-- [start:CredentialsProviderNames]
-const CREDENTIALS_PROVIDER_NAMES = ["github", "google", "notion", "jina"] as const;
+const CREDENTIALS_PROVIDER_NAMES = [
+  "github",
+  "google",
+  "notion",
+  "jina",
+] as const;
 
 export type CredentialsProviderName =
   (typeof CREDENTIALS_PROVIDER_NAMES)[number];
