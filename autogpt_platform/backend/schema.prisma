@@ -65,9 +65,9 @@ model UserGroupMembership {
   updatedAt DateTime @updatedAt
 
   userId      String
-  User        User          @relation(fields: [userId], references: [id])
+  User        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userGroupId String
-  UserGroup   UserGroup     @relation(fields: [userGroupId], references: [id])
+  UserGroup   UserGroup     @relation(fields: [userGroupId], references: [id], onDelete: Cascade)
   Role        UserGroupRole @default(MEMBER)
 
   @@unique([userId, userGroupId])
@@ -87,9 +87,13 @@ model Agent {
 
   // Link to User model
   createdByUserId String
-  CreatedByUser   User   @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  // Do not cascade delete the agent when the user is deleted
+  // This allows us to delete user data with deleting the agent which maybe in use by other users
+  CreatedByUser   User   @relation(fields: [createdByUserId], references: [id])
 
   groupId String?
+  // Do not cascade delete the agent when the group is deleted
+  // This allows us to delete user group data with deleting the agent which maybe in use by other users
   Group   UserGroup? @relation(fields: [groupId], references: [id])
 
   AgentNodes     AgentNode[]
@@ -99,7 +103,7 @@ model Agent {
   SubAgents          Agent[] @relation("SubAgents")
   agentParentId      String?
   agentParentVersion Int?
-  AgentParent        Agent?  @relation("SubAgents", fields: [agentParentId, agentParentVersion], references: [id, version], onDelete: Cascade)
+  AgentParent        Agent?  @relation("SubAgents", fields: [agentParentId, agentParentVersion], references: [id, version])
 
   AgentPresets           AgentPreset[]
   WebhookTrigger         WebhookTrigger[]
@@ -131,11 +135,11 @@ model AgentPreset {
   isActive Boolean @default(true)
 
   userId String
-  User   User   @relation(fields: [userId], references: [id])
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   agentId      String
   agentVersion Int
-  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
 
   InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsData")
   UserAgents             UserAgent[]
@@ -152,7 +156,7 @@ model UserAgent {
   updatedAt DateTime @updatedAt
 
   userId String
-  User   User   @relation(fields: [userId], references: [id])
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   agentId      String
   agentVersion Int
@@ -515,10 +519,10 @@ model StoreListing {
 
   agentId      String
   agentVersion Int
-  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
 
   owningUserId String
-  OwningUser   User   @relation(fields: [owningUserId], references: [id], onDelete: Cascade)
+  OwningUser   User   @relation(fields: [owningUserId], references: [id])
 
   isGroupListing Boolean    @default(false)
   owningGroupId  String?
@@ -541,7 +545,7 @@ model StorePricing {
 
   // Owner can be found from the storeListing
   storeListingId String
-  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id])
+  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
 
   canPurchase   Boolean @default(true)
   purchasePrice Float?
@@ -571,7 +575,7 @@ model StoreListingVersion {
   isAvailable            Boolean                  @default(true)
   // Not needed but makes lookups faster
   isApproved             Boolean                  @default(false)
-  StoreListing           StoreListing?            @relation(fields: [storeListingId], references: [id])
+  StoreListing           StoreListing?            @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
   storeListingId         String?
   StoreListingSubmission StoreListingSubmission[]
 
@@ -591,13 +595,13 @@ model StoreListingSubmission {
   updatedAt DateTime @updatedAt
 
   storeListingId String
-  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id])
+  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
 
   storeListingVersionId String
-  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id])
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
 
   reviewByUserId String
-  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id], onDelete: Cascade)
+  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
 
   Status         SubmissionStatus @default(PENDING)
   isDenied       Boolean          @default(false)
