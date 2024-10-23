@@ -16,6 +16,9 @@ from backend.data.model import (
     SecretField,
 )
 
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import BlockSecret, SchemaField, SecretField
+
 
 class ReadDiscordMessagesBlock(Block):
     class Input(BlockSchema):
@@ -26,16 +29,18 @@ class ReadDiscordMessagesBlock(Block):
                 description="Discord bot token",
             )
         )
-        continuous_read: bool = Field(
+        continuous_read: bool = SchemaField(
             description="Whether to continuously read messages", default=True
         )
 
     class Output(BlockSchema):
-        message_content: str = Field(description="The content of the message received")
-        channel_name: str = Field(
+        message_content: str = SchemaField(
+            description="The content of the message received"
+        )
+        channel_name: str = SchemaField(
             description="The name of the channel the message was received from"
         )
-        username: str = Field(
+        username: str = SchemaField(
             description="The username of the user who sent the message"
         )
 
@@ -149,13 +154,15 @@ class SendDiscordMessageBlock(Block):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
         )
-        message_content: str = Field(description="The content of the message received")
-        channel_name: str = Field(
+        message_content: str = SchemaField(
+            description="The content of the message received"
+        )
+        channel_name: str = SchemaField(
             description="The name of the channel the message was received from"
         )
 
     class Output(BlockSchema):
-        status: str = Field(
+        status: str = SchemaField(
             description="The status of the operation (e.g., 'Message sent', 'Error')"
         )
 

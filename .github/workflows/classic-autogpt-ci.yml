@@ -2,12 +2,12 @@ name: Classic - AutoGPT CI
 
 on:
   push:
-    branches: [ master, development, ci-test* ]
+    branches: [ master, dev, ci-test* ]
     paths:
       - '.github/workflows/classic-autogpt-ci.yml'
       - 'classic/original_autogpt/**'
   pull_request:
-    branches: [ master, development, release-* ]
+    branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-autogpt-ci.yml'
       - 'classic/original_autogpt/**'

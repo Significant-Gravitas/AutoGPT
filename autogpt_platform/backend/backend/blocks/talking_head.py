@@ -22,7 +22,8 @@ class CreateTalkingAvatarVideoBlock(Block):
             )
         )
         script_input: str = SchemaField(
-            description="The text input for the script", default="Welcome to AutoGPT"
+            description="The text input for the script",
+            placeholder="Welcome to AutoGPT",
         )
         provider: Literal["microsoft", "elevenlabs", "amazon"] = SchemaField(
             description="The voice provider to use", default="microsoft"
