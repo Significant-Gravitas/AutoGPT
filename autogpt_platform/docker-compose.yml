@@ -142,3 +142,23 @@ services:
     extends:
       file: ./supabase/docker/docker-compose.yml
       service: vector
+
+  local_dependencies:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - studio
+      - kong
+      - auth
+      - rest
+      - realtime
+      - storage
+      - imgproxy
+      - meta
+      - functions
+      - analytics
+      - db
+      - vector
