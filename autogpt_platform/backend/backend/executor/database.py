@@ -15,7 +15,7 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.graph import get_graph, get_node
-from backend.data.queue import RedisEventBus
+from backend.data.queue import RedisExecutionEventBus
 from backend.data.user import get_user_metadata, update_user_metadata
 from backend.util.service import AppService, expose
 from backend.util.settings import Config
@@ -30,7 +30,7 @@ class DatabaseManager(AppService):
         super().__init__()
         self.use_db = True
         self.use_redis = True
-        self.event_queue = RedisEventBus()
+        self.event_queue = RedisExecutionEventBus()
 
     @classmethod
     def get_port(cls) -> int:
