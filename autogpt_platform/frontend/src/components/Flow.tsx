@@ -424,15 +424,16 @@ const FlowEditor: React.FC<{
         return;
       }
 
-      // What we are going to do??
-      // Calculate a position to the right of the newly added block, allowing for some margin.
-      // If adding to the right side causes the new block to collide with an existing block, attempt to place it at the bottom or left.
-      // Why not the top? Because the height of the new block is unknown.
-      // If it still collides, run a loop to find the best position where it does not collide.
-      // Then, adjust the canvas to center on the newly added block.
-      // Note: The width is known, e.g., w = 300px for a note and w = 500px for others, but the height is dynamic.
+      /*
+       Calculate a position to the right of the newly added block, allowing for some margin.
+       If adding to the right side causes the new block to collide with an existing block, attempt to place it at the bottom or left.
+       Why not the top? Because the height of the new block is unknown.
+       If it still collides, run a loop to find the best position where it does not collide.
+       Then, adjust the canvas to center on the newly added block.
+       Note: The width is known, e.g., w = 300px for a note and w = 500px for others, but the height is dynamic.
+       */
 
-      // We could also use D3 force, Intersection for this
+      // Alternative: We could also use D3 force, Intersection for this (React flow Pro examples)
 
       const viewportCoordinates =
         nodeDimensions && Object.keys(nodeDimensions).length > 0
