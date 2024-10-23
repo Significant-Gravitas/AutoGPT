@@ -22,11 +22,6 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
     const { data, error } = await supabase.auth.signInWithPassword(values);
 
     if (error) {
-      if (error.status == 400) {
-        // Hence User is not present
-        redirect("/signup");
-      }
-
       return error.message;
     }
 
