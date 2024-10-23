@@ -19,7 +19,7 @@ def JinaCredentialsField() -> JinaCredentialsInput:
     """
     return CredentialsField(
         provider="jina",
-        supported_credential_types={"api_key"},  # noqa
+        supported_credential_types={"api_key"},
         description="The Jina integration can be used with an API Key.",
     )
 
