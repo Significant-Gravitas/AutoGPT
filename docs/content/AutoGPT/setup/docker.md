@@ -88,14 +88,14 @@
     docker pull significantgravitas/auto-gpt
     ```
 4. _Optional: mount configuration file._
-      If you have component configuration file, for example `config.json`, place it in `autogpt/data/` directory. Or place it in `autogpt/` and uncomment the line in `docker-compose.yml` that mounts it.
+      If you have component configuration file, for example `config.json`, place it in `classic/original_autogpt/data/` directory. Or place it in `classic/original_autogpt/` and uncomment the line in `docker-compose.yml` that mounts it.
       To learn more about configuring, see [Component configuration](../../forge/components/components.md#json-configuration)
 
 !!! note "Docker only supports headless browsing"
     AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
     Please do not change this setting in combination with Docker, or AutoGPT will crash.
 
-[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/.env.template
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
 
 ## Developer Setup

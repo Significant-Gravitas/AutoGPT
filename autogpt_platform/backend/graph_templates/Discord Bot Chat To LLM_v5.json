@@ -1,0 +1,199 @@
+{
+  "id": "381164dd-3c91-43fd-ba93-c12a13ce8499",
+  "version": 5,
+  "is_active": false,
+  "is_template": true,
+  "name": "Discord Bot Chat To LLM",
+  "description": "Simply send the bot the message \"!chat <message>\" and it will reply.",
+  "nodes": [
+    {
+      "id": "b8138bca-7892-42c2-9594-a845d3483413",
+      "block_id": "df06086a-d5ac-4abb-9996-2ad0acb2eff7",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -98.31744952152862,
+          "y": 291.1279542656707
+        }
+      }
+    },
+    {
+      "id": "b667bcc4-4e17-4343-bd31-14e48d99d21d",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {
+        "input2": " Said: "
+      },
+      "metadata": {
+        "position": {
+          "x": 642.0641136440832,
+          "y": -318.9010839696226
+        }
+      }
+    },
+    {
+      "id": "42eda7a9-fe29-45c8-9571-55222830142d",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "(?<=!chat ).*"
+      },
+      "metadata": {
+        "position": {
+          "x": 651.4338270731059,
+          "y": 120.68871252027822
+        }
+      }
+    },
+    {
+      "id": "9049f063-5b07-4984-b211-068bc93e653a",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "sys_prompt": "You are a nice friendly AI"
+      },
+      "metadata": {
+        "position": {
+          "x": 2099.785393180648,
+          "y": -325.6642266305269
+        }
+      }
+    },
+    {
+      "id": "dda2d061-2ef9-4dc5-9433-918c8395a4ac",
+      "block_id": "d0822ab5-9f8a-44a3-8971-531dd0178b6b",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2697.355782645,
+          "y": 225.29000586164966
+        }
+      }
+    },
+    {
+      "id": "3209c5e1-2da9-4cd1-bf4b-2f9488577815",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "DISCORD BOT API KEY HERE"
+      },
+      "metadata": {
+        "position": {
+          "x": -772.5858672155341,
+          "y": 26.390737439792503
+        }
+      }
+    },
+    {
+      "id": "b6411821-bd48-4543-b526-0f7138e8ffe9",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "input": "DISCORD BOT API KEY HERE"
+      },
+      "metadata": {
+        "position": {
+          "x": -778.4138607648867,
+          "y": 422.0409097488691
+        }
+      }
+    },
+    {
+      "id": "d693cda1-973d-4d62-b549-d696b73d51d9",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1325.5852307018679,
+          "y": -328.95888935525124
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "80683364-c3e8-467b-a734-d5629f97cd30",
+      "source_id": "b8138bca-7892-42c2-9594-a845d3483413",
+      "sink_id": "42eda7a9-fe29-45c8-9571-55222830142d",
+      "source_name": "message_content",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "8510bd83-1444-4a70-99e3-26c3ae28d7bf",
+      "source_id": "42eda7a9-fe29-45c8-9571-55222830142d",
+      "sink_id": "3209c5e1-2da9-4cd1-bf4b-2f9488577815",
+      "source_name": "negative",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "ff48a673-1f18-4b05-b5e7-e6dcc3e65add",
+      "source_id": "b8138bca-7892-42c2-9594-a845d3483413",
+      "sink_id": "dda2d061-2ef9-4dc5-9433-918c8395a4ac",
+      "source_name": "channel_name",
+      "sink_name": "channel_name",
+      "is_static": false
+    },
+    {
+      "id": "aebf9b2b-ee01-41bf-9c05-6444b6e5aa44",
+      "source_id": "3209c5e1-2da9-4cd1-bf4b-2f9488577815",
+      "sink_id": "b8138bca-7892-42c2-9594-a845d3483413",
+      "source_name": "output",
+      "sink_name": "discord_bot_token",
+      "is_static": false
+    },
+    {
+      "id": "cdbf9290-1b63-463d-a869-a16734ebd03c",
+      "source_id": "9049f063-5b07-4984-b211-068bc93e653a",
+      "sink_id": "dda2d061-2ef9-4dc5-9433-918c8395a4ac",
+      "source_name": "response",
+      "sink_name": "message_content",
+      "is_static": false
+    },
+    {
+      "id": "d9a51e17-c8de-4835-bee1-c1abba457c35",
+      "source_id": "dda2d061-2ef9-4dc5-9433-918c8395a4ac",
+      "sink_id": "3209c5e1-2da9-4cd1-bf4b-2f9488577815",
+      "source_name": "status",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "7bea8f77-45d7-4884-974f-b8f5ad10a988",
+      "source_id": "b6411821-bd48-4543-b526-0f7138e8ffe9",
+      "sink_id": "b8138bca-7892-42c2-9594-a845d3483413",
+      "source_name": "output",
+      "sink_name": "discord_bot_token",
+      "is_static": false
+    },
+    {
+      "id": "f2427ca7-3adf-450f-8be4-b8042eb0b9a6",
+      "source_id": "b8138bca-7892-42c2-9594-a845d3483413",
+      "sink_id": "b667bcc4-4e17-4343-bd31-14e48d99d21d",
+      "source_name": "username",
+      "sink_name": "input1",
+      "is_static": false
+    },
+    {
+      "id": "117244bf-8c32-4096-baff-38cd0fa9cf9d",
+      "source_id": "b667bcc4-4e17-4343-bd31-14e48d99d21d",
+      "sink_id": "d693cda1-973d-4d62-b549-d696b73d51d9",
+      "source_name": "output",
+      "sink_name": "input1",
+      "is_static": false
+    },
+    {
+      "id": "9ee4a0a5-de27-4bf8-81a9-140db1b5e475",
+      "source_id": "d693cda1-973d-4d62-b549-d696b73d51d9",
+      "sink_id": "9049f063-5b07-4984-b211-068bc93e653a",
+      "source_name": "output",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "49da866a-8c13-469c-95ea-fe4685e95c75",
+      "source_id": "42eda7a9-fe29-45c8-9571-55222830142d",
+      "sink_id": "d693cda1-973d-4d62-b549-d696b73d51d9",
+      "source_name": "positive",
+      "sink_name": "input2",
+      "is_static": false
+    }
+  ]
+}

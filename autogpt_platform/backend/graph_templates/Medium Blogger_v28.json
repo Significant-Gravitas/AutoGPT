@@ -1,0 +1,128 @@
+{
+  "id": "96450e28-1ec0-4420-82c4-a8837247fc05",
+  "version": 28,
+  "is_active": false,
+  "is_template": true,
+  "name": "Medium Blogger",
+  "description": "An Agent that conducts research on a given topic, then writes and publishes a SEO blog post on Medium.",
+  "nodes": [
+    {
+      "id": "382efac9-3def-4baf-b16a-d6d2512a5c8b",
+      "block_id": "87840993-2053-44b7-8da4-187ad4ee518c",
+      "input_default": {
+        "query": "19th July 2024 Microsoft Blackout"
+      },
+      "metadata": {
+        "position": {
+          "x": -20.471811217638447,
+          "y": 128.91560744799943
+        }
+      }
+    },
+    {
+      "id": "12e9ec75-74cd-4965-9003-6ff651f1fbf9",
+      "block_id": "3f7b2dcb-4a78-4e3f-b0f1-88132e1b89df",
+      "input_default": {
+        "author_id": "",
+        "title": "Worldwide IT Blackout",
+        "content_format": "markdown",
+        "tags": [
+          "AI",
+          "LLM"
+        ],
+        "publish_status": "public",
+        "license": "all-rights-reserved",
+        "notify_followers": false,
+        "api_key": ""
+      },
+      "metadata": {
+        "position": {
+          "x": 1674.8131635468642,
+          "y": 135.36034349603352
+        }
+      }
+    },
+    {
+      "id": "0cd8f670-8956-4942-ba28-aee732ec783f",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "TITLE"
+      },
+      "metadata": {
+        "position": {
+          "x": 1126.4031753175684,
+          "y": 134.2846124057806
+        }
+      }
+    },
+    {
+      "id": "4a15b6b9-036d-43d3-915a-7e931fbc6522",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "CONTENT"
+      },
+      "metadata": {
+        "position": {
+          "x": 1132.489453622949,
+          "y": 582.2118862549163
+        }
+      }
+    },
+    {
+      "id": "a6fbbb8a-bd43-4469-b8ed-67d54ae58eeb",
+      "block_id": "ed55ac19-356e-4243-a6cb-bc599e9b716f",
+      "input_default": {
+        "model": "gpt-4o-mini",
+        "api_key": "",
+        "sys_prompt": "You are a uniquely talented blog writer with an approachable style. You don't use big words or complex, overly verbose prose. Your content always feels uncannily valuable to read.\n\nYou write full-length blog posts based on the research provided to you by the user.\n\nWrite in a standard markdown format.\n\nAlways include the following Subtitle under the main post title:\n## This content is AI Generated",
+        "expected_format": {
+          "CONTENT": "full blog post content",
+          "TITLE": "Blog post title"
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 558.8191447209389,
+          "y": 137.96346625283394
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "06cf41ad-50ba-4273-883a-c93fd8bfd5b6",
+      "source_id": "0cd8f670-8956-4942-ba28-aee732ec783f",
+      "sink_id": "12e9ec75-74cd-4965-9003-6ff651f1fbf9",
+      "source_name": "output",
+      "sink_name": "title"
+    },
+    {
+      "id": "f2d5cf87-dbb5-4d81-98cd-46c225d82d60",
+      "source_id": "a6fbbb8a-bd43-4469-b8ed-67d54ae58eeb",
+      "sink_id": "0cd8f670-8956-4942-ba28-aee732ec783f",
+      "source_name": "response",
+      "sink_name": "input"
+    },
+    {
+      "id": "26e379d8-3d8e-498f-8c2c-3567977105d4",
+      "source_id": "382efac9-3def-4baf-b16a-d6d2512a5c8b",
+      "sink_id": "a6fbbb8a-bd43-4469-b8ed-67d54ae58eeb",
+      "source_name": "results",
+      "sink_name": "prompt"
+    },
+    {
+      "id": "304f6a2f-c5ce-423a-b395-1ef1d827f8f5",
+      "source_id": "4a15b6b9-036d-43d3-915a-7e931fbc6522",
+      "sink_id": "12e9ec75-74cd-4965-9003-6ff651f1fbf9",
+      "source_name": "output",
+      "sink_name": "content"
+    },
+    {
+      "id": "90274d0b-98d9-4841-a4d7-9111e4fb5156",
+      "source_id": "a6fbbb8a-bd43-4469-b8ed-67d54ae58eeb",
+      "sink_id": "4a15b6b9-036d-43d3-915a-7e931fbc6522",
+      "source_name": "response",
+      "sink_name": "input"
+    }
+  ]
+}

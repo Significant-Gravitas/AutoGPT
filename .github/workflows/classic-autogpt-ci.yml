@@ -1,0 +1,138 @@
+name: Classic - AutoGPT CI
+
+on:
+  push:
+    branches: [ master, dev, ci-test* ]
+    paths:
+      - '.github/workflows/classic-autogpt-ci.yml'
+      - 'classic/original_autogpt/**'
+  pull_request:
+    branches: [ master, dev, release-* ]
+    paths:
+      - '.github/workflows/classic-autogpt-ci.yml'
+      - 'classic/original_autogpt/**'
+
+concurrency:
+  group: ${{ format('classic-autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: classic/original_autogpt
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
+
+    steps:
+      # Quite slow on macOS (2~4 minutes to set up Docker)
+      # - name: Set up Docker (macOS)
+      #   if: runner.os == 'macOS'
+      #   uses: crazy-max/ghaction-setup-docker@v3
+
+      - name: Start MinIO service (Linux)
+        if: runner.os == 'Linux'
+        working-directory: '.'
+        run: |
+          docker pull minio/minio:edge-cicd
+          docker run -d -p 9000:9000 minio/minio:edge-cicd
+
+      - name: Start MinIO service (macOS)
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          brew install minio/stable/minio
+          mkdir data
+          minio server ./data &
+
+      # No MinIO on Windows:
+      # - Windows doesn't support running Linux Docker containers
+      # - It doesn't seem possible to start background processes on Windows. They are
+      #   killed after the step returns.
+      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Configure git user Auto-GPT-Bot
+        run: |
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/original_autogpt/poetry.lock') }}
+
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Run pytest with coverage
+        run: |
+          poetry run pytest -vv \
+            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --numprocesses=logical --durations=10 \
+            tests/unit tests/integration
+        env:
+          CI: true
+          PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          S3_ENDPOINT_URL: ${{ runner.os != 'Windows' && 'http://127.0.0.1:9000' || '' }}
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: autogpt-agent,${{ runner.os }}
+
+      - name: Upload logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: classic/original_autogpt/logs/

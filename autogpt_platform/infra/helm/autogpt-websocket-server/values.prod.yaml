@@ -1,0 +1,83 @@
+replicaCount: 1 # not scaling websocket server for now
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-prod/agpt-backend-prod/agpt-backend-prod
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8001
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-websocket-server-backend-config"}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: "agpt-prod-agpt-ws-backend-ip"
+    networking.gke.io/managed-certificates: "autogpt-websocket-server-cert"
+  hosts:
+    - host: ws-backend.agpt.co
+      paths:
+        - path: /ws
+          pathType: Prefix
+      backend:
+        service:
+          name: autogpt-websocket-server
+          port: 8001
+  defaultBackend:
+    service:
+      name: autogpt-websocket-server
+      port:
+        number: 8001
+
+domain: "ws-backend.agpt.co"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+cors:
+  allowOrigins: "https://platform.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 10
+  periodSeconds: 5
+livenessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+env:
+  REDIS_HOST: "redis-prod-master.redis-prod.svc.cluster.local"
+  REDIS_PORT: "6379"
+  BACKEND_CORS_ALLOW_ORIGINS: '["https://platform.agpt.co"]'
+
+secrets:
+  REDIS_PASSWORD: "AgAfjYznqRaf/teLvYmjk61r3N0hx3jUFcrvzOARUQokr79relW7V48COEpVBUZzv5212oXpAOdNL2boBfTGneVJ59ohh1PIW1Wm/zrLhYs/G7gIx1YZdeAFDaB++fdNU87MWpLrDXknf0bOj4VgeuoGQ5aph5sHH9ZNVU6KODyQiZK88ghgfuB6YLe0U7ng5X9m2pY+FZ/NlrZZTaI6Lmhzfk8ozXg70n9/pPpdLy3C7o79Y15mcMOrO5SVufsIH8jHJUKwG0T5Pjkzy7qImQQAVlH24No7J55fhyZHwo2TegWw9PDuPinjcW2LfoDqVSRMcW8Gs0b41OhrOriZss8vUG5PqB49/PdVt7a9R52WVeq1vWTOc5vBLdjq8xiOX1XzghVHvvt8HKaSCO4cb+nt5iPCv+1ZbTm1UVCG66okjCpJpW8fB3R/1i+HjH2gy1gzwW0ATQzDeRoa0ErBJfEbKfmEAgUU0uiqfSd4Ch9rJmEWgt4WdcKBUjvhKODk6mgX1LoQTLnuAivQV3AYw7837+nLwKXiwdWP+FvNNTdPjH7Im5UiwPqIs+rUnT+tm0UPhKjDg60Ylc2QIV3HmjU1qoa9h438hxufb8rURSLpPfI5d462ou6g3W67KR2UzqfNuX4o7PB1suWmLs/lQpegybFZ8i8ShbcTC+rfrsPD0d1g0SW5RCTj5wsCvuE6KOZLdcCw4kV69jS36QA3jg=="

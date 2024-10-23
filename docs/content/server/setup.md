@@ -9,7 +9,7 @@ This guide will help you setup the server and builder for the project.
 
 <!-- The video is listed in the root Readme.md of the repo -->
 
-We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT#how-to-get-started).
+We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT?tab=readme-ov-file#how-to-setup-for-self-hosting).
 
 !!! warning
     **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
@@ -19,119 +19,110 @@ We also offer this in video format. You can check it out [here](https://github.c
 To setup the server, you need to have the following installed:
 
 - [Node.js](https://nodejs.org/en/)
-- [Python 3.10](https://www.python.org/downloads/)
+- [Docker](https://docs.docker.com/get-docker/)
+- [Git](https://git-scm.com/downloads)
 
-### Checking if you have Node.js and Python installed
+### Checking if you have Node.js & NPM installed
 
-You can check if you have Node.js installed by running the following command:
+We use Node.js to run our frontend application.
+
+If you need assistance installing Node.js:
+https://nodejs.org/en/download/
+
+NPM is included with Node.js, but if you need assistance installing NPM:
+https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
+
+You can check if you have Node.js & NPM installed by running the following command:
 
 ```bash
 node -v
+npm -v
 ```
 
-You can check if you have Python installed by running the following command:
+Once you have Node.js installed, you can proceed to the next step.
 
-```bash
-python --version
-```
-
-Once you have node and python installed, you can proceed to the next step.
-
-### Installing the package managers
-
-In order to install the dependencies, you need to have the appropriate package managers installed.
-
-- Installing Yarn
-
-Yarn is a package manager for Node.js. You can install it by running the following command:
-
-```bash
-npm install -g yarn
-```
-
-- Installing Poetry
-
-Poetry is a package manager for Python. You can install it by running the following command:
-
-```bash
-pip install poetry
-```
-- Installing Docker and Docker Compose
+### Checking if you have Docker & Docker Compose installed
 
 Docker containerizes applications, while Docker Compose orchestrates multi-container Docker applications.
 
-You can follow the steps here:
-
 If you need assistance installing docker:
 https://docs.docker.com/desktop/
-If you need assistance installing docker compose: 
+
+Docker-compose is included in Docker Desktop, but if you need assistance installing docker compose: 
 https://docs.docker.com/compose/install/
 
-### Installing the dependencies
-
-Once you have installed Yarn and Poetry, you can run the following command to install the dependencies:
+You can check if you have Docker installed by running the following command:
 
 ```bash
-cd rnd/autogpt_server
-cp .env.example .env
-poetry install
+docker -v
+docker-compose -v
 ```
 
-**In another terminal**, run the following command to install the dependencies for the frontend:
+Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
-```bash
-cd rnd/autogpt_builder
-yarn install
+## Cloning the Repository
+The first step is cloning the AutoGPT repository to your computer.
+To do this, open a terminal window in a folder on your computer and run:
 ```
-
-Once you have installed the dependencies, you can proceed to the next step.
-
-### Setting up the database
-
-In order to setup the database, you need to run the following commands, in the same terminal you ran the `poetry install` command:
-
-   ```sh
-   docker compose up postgres redis -d
-   poetry run prisma migrate dev
-   ```
-After deploying the migration, to ensure that the database schema is correctly mapped to your codebase, allowing the application to interact with the database properly, you need to generate the Prisma database model:
-
-```bash
-poetry run prisma generate
+git clone https://github.com/Significant-Gravitas/AutoGPT.git
 ```
+If you get stuck, follow [this guide](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
-Without running this command, the necessary Python modules (prisma.models) won't be available, leading to a `ModuleNotFoundError`.
+Once that's complete you can close this terminal window.
 
-### Running the server without Docker
+## Running the backend services
 
-To run the server, you can run the following commands in the same terminal you ran the `poetry install` command:
+To run the backend services, follow these steps:
 
-```bash
-poetry run app
-```
+* Within the repository, clone the submodules and navigate to the `autogpt_platform` directory:
+  ```bash
+   git submodule update --init --recursive
+   cd autogpt_platform
+  ```
+  This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
 
-### Running the server within Docker
+* Copy the `.env.example` file available in the `supabase/docker` directory to `.env` in `autogpt_platform`:
+  ```
+   cp supabase/docker/.env.example .env
+  ```
+  This command will copy the `.env.example` file to `.env` in the `supabase/docker` directory. You can modify the `.env` file to add your own environment variables.
 
-To run the server, you can run the following commands in the same terminal you ran the `poetry install` command:
+* Run the backend services:
+  ```
+   docker compose up -d
+  ```
+  This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
 
-```bash
-docker compose build
-docker compose up
-```
 
-In the other terminal from autogpt_builder, you can run the following command to start the frontend:
+## Running the frontend application
 
-```bash
-yarn dev
-```
+To run the frontend application, follow these steps:
 
-### Checking if the server is running
+* Navigate to `frontend` folder within the `autogpt_platform` directory:
+  ```
+   cd frontend
+  ```
+
+* Copy the `.env.example` file available in the `frontend` directory to `.env` in the same directory:
+  ```
+   cp .env.example .env
+  ```
+  You can modify the `.env` within this folder to add your own environment variables for the frontend application.
+
+* Run the following command:
+  ```
+   npm install
+   npm run dev
+  ```
+  This command will install the necessary dependencies and start the frontend application in development mode.
+
+## Checking if the application is running
 
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Notes: 
-By default the daemons for different services run on the following ports: 
+By default the application for different services run on the following ports: 
 
-Execution Manager Daemon: 8002
-Execution Scheduler Daemon: 8003
-Rest Server Daemon: 8004
+Frontend UI Server: 3000
+Backend Websocket Server: 8001
+Execution API Rest Server: 8006

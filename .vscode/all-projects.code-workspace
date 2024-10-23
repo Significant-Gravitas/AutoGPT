@@ -1,44 +1,45 @@
 {
   "folders": [
     {
-      "name": "autogpt",
-      "path": "../autogpt"
+      "name": "frontend",
+      "path": "../autogpt_platform/frontend"
     },
     {
-      "name": "benchmark",
-      "path": "../benchmark"
+      "name": "backend",
+      "path": "../autogpt_platform/backend"
+    },
+    {
+      "name": "market",
+      "path": "../autogpt_platform/market"
+    },
+    {
+      "name": "lib",
+      "path": "../autogpt_platform/autogpt_libs"
+    },
+    {
+      "name": "infra",
+      "path": "../autogpt_platform/infra"
     },
     {
       "name": "docs",
       "path": "../docs"
     },
+
     {
-      "name": "forge",
-      "path": "../forge"
+      "name": "classic - autogpt",
+      "path": "../classic/original_autogpt"
     },
     {
-      "name": "frontend",
-      "path": "../frontend"
+      "name": "classic - benchmark",
+      "path": "../classic/benchmark"
     },
     {
-      "name": "autogpt_server",
-      "path": "../rnd/autogpt_server"
+      "name": "classic - forge",
+      "path": "../classic/forge"
     },
     {
-      "name": "autogpt_builder",
-      "path": "../rnd/autogpt_builder"
-    },
-    {
-      "name": "market",
-      "path": "../rnd/market"
-    },
-    {
-      "name": "lib",
-      "path": "../rnd/autogpt_libs"
-    },
-    {
-      "name": "infra",
-      "path": "../rnd/infra"
+      "name": "classic - frontend",
+      "path": "../classic/frontend"
     },
     {
       "name": "[root]",

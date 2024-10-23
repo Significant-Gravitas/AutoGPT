@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autogpt-server.fullname" . }}
+  labels:
+    {{- include "autogpt-server.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    {{- if .Values.service.pyroDaemonPort }}
+    - port: {{ .Values.service.pyroDaemonPort }}
+      targetPort: pyro
+      protocol: TCP
+      name: pyro
+    {{- end }}
+  selector:
+    {{- include "autogpt-server.selectorLabels" . | nindent 4 }}

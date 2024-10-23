@@ -1,0 +1,84 @@
+# base values, environment specific variables should be specified/overwritten in environment values
+
+replicaCount: 1
+
+image:
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
+
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetMemoryUtilizationPercentage: 80
+
+volumes: []
+
+volumeMounts: []
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+domain: ""
+
+cors:
+  allowOrigins:
+    - "https://dev-builder.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
