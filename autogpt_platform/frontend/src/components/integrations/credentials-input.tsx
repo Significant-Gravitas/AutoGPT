@@ -42,6 +42,7 @@ export const providerIcons: Record<string, React.FC<{ className?: string }>> = {
   google: FaGoogle,
   notion: NotionLogoIcon,
   jina: FaKey,
+  pinecone: FaKey,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
