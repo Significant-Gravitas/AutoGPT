@@ -10,7 +10,7 @@ class PineconeInitBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[Literal['pinecone'], Literal['api_key']] = CredentialsField(
             provider="pinecone",
-            supported_credential_types={"api_key"},
+            supported_credential_types={"api_key"}, # noqa
             description="The Pinecone integration can be used with "
                         "any API key with sufficient permissions for the blocks it is used on.",
         )
