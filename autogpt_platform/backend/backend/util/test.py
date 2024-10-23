@@ -31,7 +31,7 @@ class SpinTestServer:
 
         await db.connect()
         await initialize_blocks()
-        await create_default_user("false")
+        await create_default_user()
 
         return self
 
