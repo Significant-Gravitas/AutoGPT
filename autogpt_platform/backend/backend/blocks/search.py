@@ -136,7 +136,7 @@ class GetWeatherInformationBlock(Block, GetRequest):
             description="The OpenWeatherMap integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
         )
-        use_celsius:  bool = SchemaField(
+        use_celsius: bool = SchemaField(
             default=True,
             description="Whether to use Celsius or Fahrenheit for temperature",
         )
