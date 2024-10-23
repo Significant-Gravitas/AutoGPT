@@ -2,6 +2,7 @@ from typing import Literal
 
 import requests
 
+from backend.blocks.jina._auth import JinaCredentialsField, JinaCredentialsInput
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField, CredentialsMetaInput, CredentialsField
 
@@ -10,12 +11,7 @@ class JinaChunkingBlock(Block):
     class Input(BlockSchema):
         texts: list = SchemaField(description="List of texts to chunk")
 
-        credentials: CredentialsMetaInput[Literal['jina'], Literal['api_key']] = CredentialsField(
-            provider="jina",
-            supported_credential_types={"api_key"}, # noqa
-            description="The Jina integration can be used with "
-                        "any API key with sufficient permissions for the blocks it is used on.",
-        )
+        credentials: JinaCredentialsInput = JinaCredentialsField()
         max_chunk_length: int = SchemaField(
             description="Maximum length of each chunk", default=1000
         )

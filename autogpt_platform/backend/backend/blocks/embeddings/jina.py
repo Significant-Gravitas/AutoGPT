@@ -3,6 +3,7 @@ from typing import Literal
 import requests
 
 from autogpt_libs.supabase_integration_credentials_store import Credentials
+from backend.blocks.jina._auth import JinaCredentialsField, JinaCredentialsInput
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField, CredentialsMetaInput, CredentialsField
 
@@ -10,12 +11,7 @@ from backend.data.model import BlockSecret, SchemaField, SecretField, Credential
 class JinaEmbeddingBlock(Block):
     class Input(BlockSchema):
         texts: list = SchemaField(description="List of texts to embed")
-        credentials: CredentialsMetaInput[Literal['jina'], Literal['api_key']] = CredentialsField(
-            provider="jina",
-            supported_credential_types={"api_key"}, # noqa
-            description="The Jina integration can be used with "
-                        "any API key with sufficient permissions for the blocks it is used on.",
-        )
+        credentials: JinaCredentialsInput = JinaCredentialsField()
         model: str = SchemaField(
             description="Jina embedding model to use",
             default="jina-embeddings-v2-base-en",
