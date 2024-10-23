@@ -1,11 +1,12 @@
 import * as React from "react";
-import { Navbar } from "../Navbar";
-import { CreatorDetails } from "../composite/CreatorDetails";
-import { AgentsSection } from "../composite/AgentsSection";
-import { BreadCrumbs } from "../BreadCrumbs";
-import { IconType } from "../../ui/icons";
+import { Navbar } from "@/components/agptui/Navbar";
+import { CreatorDetails } from "@/components/agptui/composite/CreatorDetails";
+import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
+import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
+import { IconType } from "@/components/ui/icons";
 
 interface CreatorPageProps {
+  isLoggedIn: boolean;
   userName: string;
   userEmail: string;
   navLinks: { name: string; href: string }[];
@@ -44,6 +45,7 @@ interface CreatorPageProps {
 }
 
 export const CreatorPage: React.FC<CreatorPageProps> = ({
+  isLoggedIn,
   userName,
   userEmail,
   navLinks,
@@ -65,6 +67,7 @@ export const CreatorPage: React.FC<CreatorPageProps> = ({
   return (
     <div className="mx-auto w-screen max-w-[1440px]">
       <Navbar
+        isLoggedIn={isLoggedIn}
         userName={userName}
         userEmail={userEmail}
         links={navLinks}

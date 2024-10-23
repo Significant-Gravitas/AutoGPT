@@ -14,15 +14,15 @@ const nextConfig = {
   images: {
     domains: ["images.unsplash.com"],
   },
-  async redirects() {
-    return [
-      {
-        source: "/monitor", // FIXME: Remove after 2024-09-01
-        destination: "/",
-        permanent: false,
-      },
-    ];
-  },
+  // async redirects() {
+  //   return [
+  //     {
+  //       source: "/monitor", // FIXME: Remove after 2024-09-01
+  //       destination: "/",
+  //       permanent: false,
+  //     },
+  //   ];
+  // },
   // TODO: Re-enable TypeScript checks once current issues are resolved
   typescript: {
     ignoreBuildErrors: true,

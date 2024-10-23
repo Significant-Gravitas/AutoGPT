@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FeaturedStoreCard } from "../FeaturedStoreCard";
+import { FeaturedStoreCard } from "@/components/agptui/FeaturedStoreCard";
 
 interface FeaturedAgent {
   agentName: string;

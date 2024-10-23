@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CreatorCard } from "../CreatorCard";
+import { CreatorCard } from "@/components/agptui/CreatorCard";
 import {
   Carousel,
   CarouselContent,

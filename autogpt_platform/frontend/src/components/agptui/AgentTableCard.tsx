@@ -2,8 +2,8 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "./Button";
-import { IconStarFilled, IconEdit } from "../ui/icons";
-import { Card } from "../ui/card";
+import { IconStarFilled, IconEdit } from "@/components/ui/icons";
+import { Card } from "@/components/ui/card";
 import { AgentTableRowProps } from "./AgentTableRow";
 
 export const AgentTableCard: React.FC<AgentTableRowProps> = ({

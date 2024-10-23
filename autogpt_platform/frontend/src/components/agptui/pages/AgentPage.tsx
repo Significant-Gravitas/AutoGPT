@@ -1,14 +1,15 @@
 import * as React from "react";
-import { Navbar } from "../Navbar";
-import { AgentInfo } from "../AgentInfo";
-import { AgentImages } from "../AgentImages";
-import { BecomeACreator } from "../BecomeACreator";
-import { AgentsSection } from "../composite/AgentsSection";
-import { Separator } from "../../ui/separator";
-import { IconType } from "../../ui/icons";
-import { BreadCrumbs } from "../BreadCrumbs";
+import { Navbar } from "@/components/agptui/Navbar";
+import { AgentInfo } from "@/components/agptui/AgentInfo";
+import { AgentImages } from "@/components/agptui/AgentImages";
+import { BecomeACreator } from "@/components/agptui/BecomeACreator";
+import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
+import { Separator } from "@/components/ui/separator";
+import { IconType } from "@/components/ui/icons";
+import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 
 interface AgentPageProps {
+  isLoggedIn: boolean;
   userName: string;
   userEmail: string;
   navLinks: { name: string; href: string }[];
@@ -52,6 +53,7 @@ interface AgentPageProps {
 }
 
 export const AgentPage: React.FC<AgentPageProps> = ({
+  isLoggedIn,
   userName,
   userEmail,
   navLinks,
@@ -85,6 +87,7 @@ export const AgentPage: React.FC<AgentPageProps> = ({
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
       <Navbar
+        isLoggedIn={isLoggedIn}
         userName={userName}
         userEmail={userEmail}
         links={navLinks}

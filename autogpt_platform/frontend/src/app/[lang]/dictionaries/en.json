@@ -1,0 +1,22 @@
+{
+  "auth": {
+    "signIn": "Sign In",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Submit",
+    "error": "Invalid login credentials"
+  },
+  "dashboard": {
+    "welcome": "Welcome to your dashboard",
+    "stats": "Your Stats",
+    "recentActivity": "Recent Activity"
+  },
+  "admin": {
+    "title": "Admin Dashboard",
+    "users": "Users Management",
+    "settings": "System Settings"
+  },
+  "home": {
+    "welcome": "Welcome to the Home Page"
+  }
+}
