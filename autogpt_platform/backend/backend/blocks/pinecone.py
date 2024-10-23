@@ -1,7 +1,8 @@
 from typing import Literal
 
+from pinecone import ServerlessSpec, Pinecone
+
 from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
-from backend.blocks.pinecone import Pinecone, ServerlessSpec
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
