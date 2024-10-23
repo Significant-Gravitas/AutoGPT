@@ -1,8 +1,7 @@
 from typing import Literal
 
-from pinecone import ServerlessSpec, Pinecone
-
 from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
+from pinecone import Pinecone, ServerlessSpec
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
@@ -24,6 +23,7 @@ def PineconeCredentialsField() -> PineconeCredentialsInput:
         supported_credential_types={"api_key"},
         description="The Pinecone integration can be used with an API Key.",
     )
+
 
 class PineconeInitBlock(Block):
     class Input(BlockSchema):
