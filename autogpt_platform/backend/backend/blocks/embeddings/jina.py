@@ -1,14 +1,19 @@
+from typing import Literal
+
 import requests
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import BlockSecret, SchemaField, SecretField, CredentialsMetaInput, CredentialsField
 
 
 class JinaEmbeddingBlock(Block):
     class Input(BlockSchema):
         texts: list = SchemaField(description="List of texts to embed")
-        api_key: BlockSecret = SecretField(
-            key="jina_api_key", description="Jina API Key"
+        credentials: CredentialsMetaInput[Literal['jina'], Literal['api_key']] = CredentialsField(
+            provider="jina",
+            supported_credential_types={"api_key"},
+            description="The Jina integration can be used with "
+                        "any API key with sufficient permissions for the blocks it is used on.",
         )
         model: str = SchemaField(
             description="Jina embedding model to use",
@@ -31,7 +36,7 @@ class JinaEmbeddingBlock(Block):
         url = "https://api.jina.ai/v1/embeddings"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {input_data.api_key.get_secret_value()}",
+            "Authorization": f"Bearer {input_data.credentials.api_key}",
         }
         data = {"input": input_data.texts, "model": input_data.model}
         response = requests.post(url, headers=headers, json=data)
