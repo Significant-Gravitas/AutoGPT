@@ -27,10 +27,14 @@ R = TypeVar("R")
 class DatabaseManager(AppService):
 
     def __init__(self):
-        super().__init__(port=Config().database_api_port)
+        super().__init__()
         self.use_db = True
         self.use_redis = True
         self.event_queue = RedisEventQueue()
+
+    @classmethod
+    def get_port(cls) -> int:
+        return Config().database_api_port
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
