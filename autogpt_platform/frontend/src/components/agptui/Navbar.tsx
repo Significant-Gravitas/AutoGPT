@@ -1,7 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import { IconType, IconLogIn } from "../ui/icons";
+import { IconType, IconLogIn } from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 interface NavLink {

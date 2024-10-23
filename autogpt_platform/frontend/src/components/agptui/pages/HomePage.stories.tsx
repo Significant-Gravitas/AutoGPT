@@ -15,6 +15,7 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
+    isLoggedIn: { control: "boolean" },
     userName: { control: "text" },
     navLinks: { control: "object" },
     activeLink: { control: "text" },
@@ -237,6 +238,7 @@ const mockFeaturedCreators = [
 
 export const Default: Story = {
   args: {
+    isLoggedIn: true,
     userName: "John Doe",
     userEmail: "john.doe@example.com",
     navLinks: mockNavLinks,
@@ -272,6 +274,7 @@ export const WithInteraction: Story = {
 
 export const EmptyState: Story = {
   args: {
+    isLoggedIn: false,
     userName: "Jane Smith",
     userEmail: "jane.smith@example.com",
     navLinks: mockNavLinks,

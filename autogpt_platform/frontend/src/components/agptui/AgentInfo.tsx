@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Button } from "./Button";
 import Link from "next/link";
-import { StarRatingIcons } from "../ui/icons";
+import { StarRatingIcons } from "@/components/ui/icons";
 interface AgentInfoProps {
   onRunAgent: () => void;
   name: string;

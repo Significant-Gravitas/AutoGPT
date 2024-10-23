@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
-import { StarRatingIcons } from "../ui/icons";
+import { StarRatingIcons } from "@/components/ui/icons";
 interface StoreCardProps {
   agentName: string;
   agentImage: string;

@@ -1,12 +1,13 @@
 import * as React from "react";
-import { Navbar } from "../Navbar";
-import { Sidebar } from "../Sidebar";
-import { AgentTable } from "../AgentTable";
-import { Button } from "../Button";
+import { Navbar } from "@/components/agptui/Navbar";
+import { Sidebar } from "@/components/agptui/Sidebar";
+import { AgentTable } from "@/components/agptui/AgentTable";
+import { Button } from "@/components/agptui/Button";
 import { Separator } from "@/components/ui/separator";
-import { IconType } from "../../ui/icons";
+import { IconType } from "@/components/ui/icons";
 
 interface CreatorDashboardPageProps {
+  isLoggedIn: boolean;
   userName: string;
   userEmail: string;
   navLinks: { name: string; href: string }[];
@@ -39,6 +40,7 @@ interface CreatorDashboardPageProps {
 }
 
 export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
+  isLoggedIn,
   userName,
   userEmail,
   navLinks,
@@ -50,6 +52,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
   return (
     <div className="mx-auto w-full max-w-[1440px] bg-white">
       <Navbar
+        isLoggedIn={isLoggedIn}
         userName={userName}
         userEmail={userEmail}
         links={navLinks}

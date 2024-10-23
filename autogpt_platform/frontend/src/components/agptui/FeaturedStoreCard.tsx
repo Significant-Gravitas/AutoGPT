@@ -1,6 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
-import { StarRatingIcons } from "../ui/icons";
+import { StarRatingIcons } from "@/components/ui/icons";
 interface FeaturedStoreCardProps {
   agentName: string;
   agentImage: string;

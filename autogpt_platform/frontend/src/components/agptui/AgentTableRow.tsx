@@ -1,7 +1,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "./Button";
-import { IconStarFilled, IconEdit } from "../ui/icons";
+import { IconStarFilled, IconEdit } from "@/components/ui/icons";
 
 export interface AgentTableRowProps {
   agentName: string;

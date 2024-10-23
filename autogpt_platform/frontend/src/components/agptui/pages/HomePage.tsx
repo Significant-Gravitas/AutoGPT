@@ -1,13 +1,14 @@
 import * as React from "react";
-import { Navbar } from "../Navbar";
-import { HeroSection } from "../composite/HeroSection";
-import { FeaturedSection } from "../composite/FeaturedSection";
-import { AgentsSection } from "../composite/AgentsSection";
-import { BecomeACreator } from "../BecomeACreator";
-import { FeaturedCreators } from "../composite/FeaturedCreators";
-import { Separator } from "../../ui/separator";
-import { IconType } from "../../ui/icons";
+import { Navbar } from "@/components/agptui/Navbar";
+import { HeroSection } from "@/components/agptui/composite/HeroSection";
+import { FeaturedSection } from "@/components/agptui/composite/FeaturedSection";
+import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
+import { BecomeACreator } from "@/components/agptui/BecomeACreator";
+import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
+import { Separator } from "@/components/ui/separator";
+import { IconType } from "@/components/ui/icons";
 interface PageProps {
+  isLoggedIn: boolean;
   userName: string;
   userEmail: string;
   navLinks: { name: string; href: string }[];
@@ -47,6 +48,7 @@ interface PageProps {
 }
 
 export const Page: React.FC<PageProps> = ({
+  isLoggedIn,
   userName,
   userEmail,
   navLinks,
@@ -84,6 +86,7 @@ export const Page: React.FC<PageProps> = ({
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
       <Navbar
+        isLoggedIn={isLoggedIn}
         userName={userName}
         userEmail={userEmail}
         links={navLinks}

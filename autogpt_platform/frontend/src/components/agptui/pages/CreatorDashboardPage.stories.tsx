@@ -13,6 +13,9 @@ const meta: Meta<typeof CreatorDashboardPage> = {
     },
   },
   tags: ["autodocs"],
+  argTypes: {
+    isLoggedIn: { control: "boolean" },
+  },
 };
 
 export default meta;
@@ -97,6 +100,7 @@ const sampleAgents = [
 
 export const Default: Story = {
   args: {
+    isLoggedIn: true,
     userName: "John Doe",
     userEmail: "john.doe@example.com",
     navLinks: sampleNavLinks,

@@ -15,6 +15,7 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
+    isLoggedIn: { control: "boolean" },
     userName: { control: "text" },
     userEmail: { control: "text" },
     navLinks: { control: "object" },
@@ -155,6 +156,7 @@ const mockSimilarAgents = [
 
 export const Default: Story = {
   args: {
+    isLoggedIn: true,
     userName: "John Doe",
     userEmail: "john.doe@example.com",
     navLinks: mockNavLinks,

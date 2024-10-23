@@ -1,6 +1,6 @@
 import * as React from "react";
-import { SearchBar } from "../SearchBar";
-import { FilterChips } from "../FilterChips";
+import { SearchBar } from "@/components/agptui/SearchBar";
+import { FilterChips } from "@/components/agptui/FilterChips";
 
 interface HeroSectionProps {
   onSearch: (query: string) => void;

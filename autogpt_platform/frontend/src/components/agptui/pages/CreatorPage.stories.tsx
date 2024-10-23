@@ -15,6 +15,7 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
+    isLoggedIn: { control: "boolean" },
     userName: { control: "text" },
     userEmail: { control: "text" },
     navLinks: { control: "object" },
@@ -76,6 +77,7 @@ const mockCreatorInfo = {
   avgRating: 4.8,
   agentCount: 15,
   topCategories: ["SEO", "Marketing", "Data Analysis"],
+  avatarSrc: "https://example.com/avatar1.jpg",
   otherLinks: {
     website: "https://ailabs.com",
     github: "https://github.com/ailabs",
@@ -158,6 +160,7 @@ const mockCreatorAgents = [
 
 export const Default: Story = {
   args: {
+    isLoggedIn: true,
     userName: "John Doe",
     userEmail: "john.doe@example.com",
     navLinks: mockNavLinks,
