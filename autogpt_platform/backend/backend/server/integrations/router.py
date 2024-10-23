@@ -10,6 +10,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.executor.manager import get_db_client
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
 
-creds_manager = IntegrationCredentialsManager()
+creds_manager = IntegrationCredentialsManager(db_manager=get_db_client())
 
 
 class LoginResponse(BaseModel):

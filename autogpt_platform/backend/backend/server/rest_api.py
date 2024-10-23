@@ -7,7 +7,6 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.utils.cache import thread_cached_property
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,7 +19,10 @@ from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.executor.manager import get_db_client
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
+from backend.util.cache import thread_cached_property
 from backend.util.service import AppService, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -35,12 +37,8 @@ class AgentServer(AppService):
     _user_credit_model = get_user_credit_model()
 
     def __init__(self):
-        super().__init__()
+        super().__init__(port=Config().agent_server_port)
         self.use_redis = True
-
-    @classmethod
-    def get_port(cls) -> int:
-        return Config().agent_server_port
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
@@ -100,6 +98,7 @@ class AgentServer(AppService):
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
         )
+        self.integration_creds_manager = IntegrationCredentialsManager(get_db_client())
 
         api_router.include_router(
             backend.server.routers.analytics.router,
@@ -309,11 +308,11 @@ class AgentServer(AppService):
 
     @thread_cached_property
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
+        return get_service_client(ExecutionManager, Config().execution_manager_port)
 
     @thread_cached_property
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler)
+        return get_service_client(ExecutionScheduler, Config().execution_scheduler_port)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):
