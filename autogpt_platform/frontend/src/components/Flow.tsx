@@ -434,22 +434,20 @@ const FlowEditor: React.FC<{
 
       // We could also use D3 force, Intersection for this
 
-      let viewportCoordinates;
-      // we will get all the dimension of nodes, then store
-      if (nodeDimensions && Object.keys(nodeDimensions).length > 0) {
-        viewportCoordinates = findNewlyAddedBlockCoordinates(
-          nodeDimensions,
-          (nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500) / zoom,
-          60 / zoom,
-          zoom,
-        );
-      } else {
-        // Calculate the center of the viewport considering zoom
-        viewportCoordinates = {
-          x: (window.innerWidth / 2 - x) / zoom,
-          y: (window.innerHeight / 2 - y) / zoom,
-        };
-      }
+      const viewportCoordinates =
+        nodeDimensions && Object.keys(nodeDimensions).length > 0
+          ? // we will get all the dimension of nodes, then store
+            findNewlyAddedBlockCoordinates(
+              nodeDimensions,
+              (nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500) / zoom,
+              60 / zoom,
+              zoom,
+            )
+          : // we will get all the dimension of nodes, then store
+            {
+              x: (window.innerWidth / 2 - x) / zoom,
+              y: (window.innerHeight / 2 - y) / zoom,
+            };
 
       const newNode: CustomNode = {
         id: nodeId.toString(),
