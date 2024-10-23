@@ -1,5 +1,6 @@
 import json
 import logging
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
 
@@ -25,16 +26,18 @@ class DateTimeEncoder(json.JSONEncoder):
 M = TypeVar("M", bound=BaseModel)
 
 
-class BaseRedisEventBus(Generic[M]):
+class BaseRedisEventBus(Generic[M], ABC):
     Model: type[M]
 
-    def __init__(self):
-        self.event_bus_name = config.execution_event_bus_name
+    @property
+    @abstractmethod
+    def event_bus_name(self) -> str:
+        pass
 
     def _serialize_message(self, item: M, channel_key: str) -> tuple[str, str]:
         message = json.dumps(item.model_dump(), cls=DateTimeEncoder)
         channel_name = f"{self.event_bus_name}-{channel_key}"
-        logger.info(f"[{channel_name}] Putting execution result to Redis {message}")
+        logger.info(f"[{channel_name}] Publishing an event to Redis {message}")
         return message, channel_name
 
     def _deserialize_message(self, msg: Any, channel_key: str) -> M | None:
@@ -43,10 +46,10 @@ class BaseRedisEventBus(Generic[M]):
             return None
         try:
             data = json.loads(msg["data"])
-            logger.info(f"Getting execution result from Redis {data}")
+            logger.info(f"Consuming an event from Redis {data}")
             return self.Model(**data)
         except Exception as e:
-            logger.error(f"Failed to get execution result from Redis {msg} {e}")
+            logger.error(f"Failed to parse event result from Redis {msg} {e}")
 
     def _subscribe(
         self, connection: redis.Redis | redis.AsyncRedis, channel_key: str
@@ -56,15 +59,15 @@ class BaseRedisEventBus(Generic[M]):
         return pubsub, channel_name
 
 
-class RedisEventBus(BaseRedisEventBus[M]):
+class RedisEventBus(BaseRedisEventBus[M], ABC):
     Model: type[M]
 
     @property
     def connection(self) -> redis.Redis:
         return redis.get_redis()
 
-    def publish_event(self, execution_result: M, channel_key: str):
-        message, channel_name = self._serialize_message(execution_result, channel_key)
+    def publish_event(self, event: M, channel_key: str):
+        message, channel_name = self._serialize_message(event, channel_key)
         self.connection.publish(channel_name, message)
 
     def listen_events(self, channel_key: str) -> Generator[M, None, None]:
@@ -77,19 +80,19 @@ class RedisEventBus(BaseRedisEventBus[M]):
             pubsub.subscribe(channel_name)
 
         for message in pubsub.listen():
-            if execution_result := self._deserialize_message(message, channel_key):
-                yield execution_result
+            if event := self._deserialize_message(message, channel_key):
+                yield event
 
 
-class AsyncRedisEventBus(BaseRedisEventBus[M]):
+class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
     Model: type[M]
 
     @property
     async def connection(self) -> redis.AsyncRedis:
         return await redis.get_redis_async()
 
-    async def publish_event(self, execution_result: M, channel_key: str):
-        message, channel_name = self._serialize_message(execution_result, channel_key)
+    async def publish_event(self, event: M, channel_key: str):
+        message, channel_name = self._serialize_message(event, channel_key)
         connection = await self.connection
         await connection.publish(channel_name, message)
 
@@ -103,12 +106,16 @@ class AsyncRedisEventBus(BaseRedisEventBus[M]):
             await pubsub.subscribe(channel_name)
 
         async for message in pubsub.listen():
-            if execution_result := self._deserialize_message(message, channel_key):
-                yield execution_result
+            if event := self._deserialize_message(message, channel_key):
+                yield event
 
 
 class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
     Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
 
     def publish(self, res: ExecutionResult):
         self.publish_event(res, f"{res.graph_id}-{res.graph_exec_id}")
@@ -122,6 +129,10 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
 
 class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
     Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
 
     async def publish(self, res: ExecutionResult):
         await self.publish_event(res, f"{res.graph_id}-{res.graph_exec_id}")
