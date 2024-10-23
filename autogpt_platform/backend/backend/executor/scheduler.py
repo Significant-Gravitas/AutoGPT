@@ -4,7 +4,6 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from autogpt_libs.utils.cache import thread_cached_property
 
 from backend.data.block import BlockInput
 from backend.data.schedule import (
@@ -15,6 +14,7 @@ from backend.data.schedule import (
     update_schedule,
 )
 from backend.executor.manager import ExecutionManager
+from backend.util.cache import thread_cached_property
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config
 
@@ -28,18 +28,14 @@ def log(msg, **kwargs):
 class ExecutionScheduler(AppService):
 
     def __init__(self, refresh_interval=10):
-        super().__init__()
+        super().__init__(port=Config().execution_scheduler_port)
         self.use_db = True
         self.last_check = datetime.min
         self.refresh_interval = refresh_interval
 
-    @classmethod
-    def get_port(cls) -> int:
-        return Config().execution_scheduler_port
-
     @thread_cached_property
     def execution_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
+        return get_service_client(ExecutionManager, Config().execution_manager_port)
 
     def run_service(self):
         scheduler = BackgroundScheduler()

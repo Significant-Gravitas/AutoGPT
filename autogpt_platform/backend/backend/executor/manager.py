@@ -16,8 +16,6 @@ from redis.lock import Lock as RedisLock
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
 
-from autogpt_libs.utils.cache import thread_cached
-
 from backend.data import redis
 from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.execution import (
@@ -33,6 +31,7 @@ from backend.data.graph import Graph, Link, Node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
+from backend.util.cache import thread_cached
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
@@ -420,7 +419,7 @@ class Executor:
         redis.connect()
         cls.pid = os.getpid()
         cls.db_client = get_db_client()
-        cls.creds_manager = IntegrationCredentialsManager()
+        cls.creds_manager = IntegrationCredentialsManager(db_manager=cls.db_client)
 
         # Set up shutdown handlers
         cls.shutdown_lock = threading.Lock()
@@ -660,16 +659,12 @@ class Executor:
 class ExecutionManager(AppService):
 
     def __init__(self):
-        super().__init__()
+        super().__init__(port=settings.config.execution_manager_port)
         self.use_redis = True
         self.use_supabase = True
         self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
-
-    @classmethod
-    def get_port(cls) -> int:
-        return settings.config.execution_manager_port
 
     def run_service(self):
         from autogpt_libs.supabase_integration_credentials_store import (
@@ -677,7 +672,7 @@ class ExecutionManager(AppService):
         )
 
         self.credentials_store = SupabaseIntegrationCredentialsStore(
-            redis=redis.get_redis()
+            redis=redis.get_redis(), db=self.db_client
         )
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
@@ -868,7 +863,7 @@ class ExecutionManager(AppService):
 def get_db_client() -> "DatabaseManager":
     from backend.executor import DatabaseManager
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManager, settings.config.database_api_port)
 
 
 @contextmanager
