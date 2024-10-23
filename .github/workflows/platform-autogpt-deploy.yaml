@@ -1,0 +1,186 @@
+name: AutoGPT Platform - Build, Push, and Deploy Dev Environment
+
+on:
+  push:
+    branches: [ dev ]
+    paths:
+      - 'autogpt_platform/backend/**'
+      - 'autogpt_platform/frontend/**'
+      - 'autogpt_platform/market/**'
+
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: dev-gke-cluster
+  GKE_ZONE: us-central1-a
+  NAMESPACE: dev-agpt
+
+jobs:
+  migrate:
+    environment: develop
+    name: Run migrations for AutoGPT Platform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install prisma
+
+      - name: Run Backend Migrations
+        working-directory: ./autogpt_platform/backend
+        run: |
+          python -m prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
+
+      - name: Run Market Migrations
+        working-directory: ./autogpt_platform/market
+        run: |
+          python -m prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.MARKET_DATABASE_URL }}
+
+  build-push-deploy:
+    name: Build, Push, and Deploy
+    needs: migrate
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v1'
+      with:
+        workload_identity_provider: 'projects/638488734936/locations/global/workloadIdentityPools/dev-pool/providers/github'
+        service_account: 'dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com'
+        token_format: 'access_token'
+        create_credentials_file: true
+
+    - name: 'Set up Cloud SDK'
+      uses: 'google-github-actions/setup-gcloud@v1'
+
+    - name: 'Configure Docker'
+      run: |
+        gcloud auth configure-docker us-east1-docker.pkg.dev
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Cache Docker layers
+      uses: actions/cache@v2
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    - name: Check for changes
+      id: check_changes
+      run: |
+        git fetch origin dev
+        BACKEND_CHANGED=$(git diff --name-only origin/dev HEAD | grep "^autogpt_platform/backend/" && echo "true" || echo "false")
+        FRONTEND_CHANGED=$(git diff --name-only origin/dev HEAD | grep "^autogpt_platform/frontend/" && echo "true" || echo "false")
+        MARKET_CHANGED=$(git diff --name-only origin/dev HEAD | grep "^autogpt_platform/market/" && echo "true" || echo "false")
+        echo "backend_changed=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
+        echo "frontend_changed=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
+        echo "market_changed=$MARKET_CHANGED" >> $GITHUB_OUTPUT
+
+    - name: Get GKE credentials
+      uses: 'google-github-actions/get-gke-credentials@v1'
+      with:
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
+
+    - name: Build and Push Backend
+      if: steps.check_changes.outputs.backend_changed == 'true'
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        file: ./autogpt_platform/backend/Dockerfile
+        push: true
+        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-backend-dev/agpt-backend-dev:${{ github.sha }}
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+    - name: Build and Push Frontend
+      if: steps.check_changes.outputs.frontend_changed == 'true'
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        file: ./autogpt_platform/frontend/Dockerfile
+        push: true
+        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-frontend-dev/agpt-frontend-dev:${{ github.sha }}
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+    - name: Build and Push Market
+      if: steps.check_changes.outputs.market_changed == 'true'
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        file: ./autogpt_platform/market/Dockerfile
+        push: true
+        tags: us-east1-docker.pkg.dev/agpt-dev/agpt-market-dev/agpt-market-dev:${{ github.sha }}
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v1
+      with:
+        version: v3.4.0
+
+    - name: Deploy Backend
+      if: steps.check_changes.outputs.backend_changed == 'true'
+      run: |
+        helm upgrade autogpt-server ./autogpt-server \
+          --namespace ${{ env.NAMESPACE }} \
+          -f autogpt-server/values.yaml \
+          -f autogpt-server/values.dev.yaml \
+          --set image.tag=${{ github.sha }}
+
+    - name: Deploy Websocket
+      if: steps.check_changes.outputs.backend_changed == 'true'
+      run: |
+        helm upgrade autogpt-websocket-server ./autogpt-websocket-server \
+          --namespace ${{ env.NAMESPACE }} \
+          -f autogpt-websocket-server/values.yaml \
+          -f autogpt-websocket-server/values.dev.yaml \
+          --set image.tag=${{ github.sha }}
+
+    - name: Deploy Market
+      if: steps.check_changes.outputs.market_changed == 'true'
+      run: |
+        helm upgrade autogpt-market ./autogpt-market \
+          --namespace ${{ env.NAMESPACE }} \
+          -f autogpt-market/values.yaml \
+          -f autogpt-market/values.dev.yaml \
+          --set image.tag=${{ github.sha }}
+
+    - name: Deploy Frontend
+      if: steps.check_changes.outputs.frontend_changed == 'true'
+      run: |
+        helm upgrade autogpt-builder ./autogpt-builder \
+          --namespace ${{ env.NAMESPACE }} \
+          -f autogpt-builder/values.yaml \
+          -f autogpt-builder/values.dev.yaml \
+          --set image.tag=${{ github.sha }}

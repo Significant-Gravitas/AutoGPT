@@ -19,6 +19,7 @@ from ..utils import get_user_id
 logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
+
 creds_manager = IntegrationCredentialsManager()
 
 
@@ -41,7 +42,7 @@ async def login(
     requested_scopes = scopes.split(",") if scopes else []
 
     # Generate and store a secure random state token along with the scopes
-    state_token = await creds_manager.store.store_state_token(
+    state_token = creds_manager.store.store_state_token(
         user_id, provider, requested_scopes
     )
 
@@ -70,12 +71,12 @@ async def callback(
     handler = _get_provider_oauth_handler(request, provider)
 
     # Verify the state token
-    if not await creds_manager.store.verify_state_token(user_id, state_token, provider):
+    if not creds_manager.store.verify_state_token(user_id, state_token, provider):
         logger.warning(f"Invalid or expired state token for user {user_id}")
         raise HTTPException(status_code=400, detail="Invalid or expired state token")
 
     try:
-        scopes = await creds_manager.store.get_any_valid_scopes_from_state_token(
+        scopes = creds_manager.store.get_any_valid_scopes_from_state_token(
             user_id, state_token, provider
         )
         logger.debug(f"Retrieved scopes from state token: {scopes}")
