@@ -257,7 +257,7 @@ class Graph(GraphMeta):
 
                 block = get_block(node.block_id)
                 if not block:
-                    blocks = {v.id: v.name for v in get_blocks().values()}
+                    blocks = {v().id: v().name for v in get_blocks().values()}
                     raise ValueError(
                         f"{suffix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )

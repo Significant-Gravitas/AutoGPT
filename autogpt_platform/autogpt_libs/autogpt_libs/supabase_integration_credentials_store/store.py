@@ -1,11 +1,12 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from redis import Redis
-    from supabase import Client
+    from backend.executor.database import DatabaseManager
 
+from autogpt_libs.utils.cache import thread_cached_property
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
 from .types import (
@@ -18,9 +19,14 @@ from .types import (
 
 
 class SupabaseIntegrationCredentialsStore:
-    def __init__(self, supabase: "Client", redis: "Redis"):
-        self.supabase = supabase
+    def __init__(self, redis: "Redis"):
         self.locks = RedisKeyedMutex(redis)
+        
+    @thread_cached_property
+    def db_manager(self) -> "DatabaseManager":
+        from backend.executor.database import DatabaseManager
+        from backend.util.service import get_service_client
+        return get_service_client(DatabaseManager)
 
     def add_creds(self, user_id: str, credentials: Credentials) -> None:
         with self.locked_user_metadata(user_id):
@@ -35,7 +41,9 @@ class SupabaseIntegrationCredentialsStore:
 
     def get_all_creds(self, user_id: str) -> list[Credentials]:
         user_metadata = self._get_user_metadata(user_id)
-        return UserMetadata.model_validate(user_metadata).integration_credentials
+        return UserMetadata.model_validate(
+            user_metadata.model_dump()
+        ).integration_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
         all_credentials = self.get_all_creds(user_id)
@@ -90,9 +98,7 @@ class SupabaseIntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
-    async def store_state_token(
-        self, user_id: str, provider: str, scopes: list[str]
-    ) -> str:
+    def store_state_token(self, user_id: str, provider: str, scopes: list[str]) -> str:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
@@ -105,17 +111,17 @@ class SupabaseIntegrationCredentialsStore:
 
         with self.locked_user_metadata(user_id):
             user_metadata = self._get_user_metadata(user_id)
-            oauth_states = user_metadata.get("integration_oauth_states", [])
+            oauth_states = user_metadata.integration_oauth_states
             oauth_states.append(state.model_dump())
-            user_metadata["integration_oauth_states"] = oauth_states
+            user_metadata.integration_oauth_states = oauth_states
 
-            self.supabase.auth.admin.update_user_by_id(
-                user_id, {"user_metadata": user_metadata}
+            self.db_manager.update_user_metadata(
+                user_id=user_id, metadata=user_metadata
             )
 
         return token
 
-    async def get_any_valid_scopes_from_state_token(
+    def get_any_valid_scopes_from_state_token(
         self, user_id: str, token: str, provider: str
     ) -> list[str]:
         """
@@ -126,7 +132,7 @@ class SupabaseIntegrationCredentialsStore:
         THE CODE FOR TOKENS.
         """
         user_metadata = self._get_user_metadata(user_id)
-        oauth_states = user_metadata.get("integration_oauth_states", [])
+        oauth_states = user_metadata.integration_oauth_states
 
         now = datetime.now(timezone.utc)
         valid_state = next(
@@ -145,10 +151,10 @@ class SupabaseIntegrationCredentialsStore:
 
         return []
 
-    async def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
+    def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
         with self.locked_user_metadata(user_id):
             user_metadata = self._get_user_metadata(user_id)
-            oauth_states = user_metadata.get("integration_oauth_states", [])
+            oauth_states = user_metadata.integration_oauth_states
 
             now = datetime.now(timezone.utc)
             valid_state = next(
@@ -165,10 +171,8 @@ class SupabaseIntegrationCredentialsStore:
             if valid_state:
                 # Remove the used state
                 oauth_states.remove(valid_state)
-                user_metadata["integration_oauth_states"] = oauth_states
-                self.supabase.auth.admin.update_user_by_id(
-                    user_id, {"user_metadata": user_metadata}
-                )
+                user_metadata.integration_oauth_states = oauth_states
+                self.db_manager.update_user_metadata(user_id, user_metadata)
                 return True
 
         return False
@@ -177,19 +181,13 @@ class SupabaseIntegrationCredentialsStore:
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
         raw_metadata = self._get_user_metadata(user_id)
-        raw_metadata.update(
-            {"integration_credentials": [c.model_dump() for c in credentials]}
-        )
-        self.supabase.auth.admin.update_user_by_id(
-            user_id, {"user_metadata": raw_metadata}
-        )
+        raw_metadata.integration_credentials = [c.model_dump() for c in credentials]
+        self.db_manager.update_user_metadata(user_id, raw_metadata)
 
     def _get_user_metadata(self, user_id: str) -> UserMetadataRaw:
-        response = self.supabase.auth.admin.get_user_by_id(user_id)
-        if not response.user:
-            raise ValueError(f"User with ID {user_id} not found")
-        return cast(UserMetadataRaw, response.user.user_metadata)
+        metadata: UserMetadataRaw = self.db_manager.get_user_metadata(user_id=user_id)
+        return metadata
 
     def locked_user_metadata(self, user_id: str):
-        key = (self.supabase.supabase_url, f"user:{user_id}", "metadata")
+        key = (self.db_manager, f"user:{user_id}", "metadata")
         return self.locks.locked(key)
