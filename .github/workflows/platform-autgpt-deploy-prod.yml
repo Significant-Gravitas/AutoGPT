@@ -34,17 +34,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install prisma
 
-      - name: Check for changes
-        id: check_changes
-        run: |
-          git fetch origin dev
-          BACKEND_CHANGED=$(git diff --name-only origin/master HEAD | grep "^autogpt_platform/backend/migrations" && echo "true" || echo "false")
-          MARKET_CHANGED=$(git diff --name-only origin/master HEAD | grep "^autogpt_platform/market/migrations" && echo "true" || echo "false")
-          echo "backend_changed=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
-          echo "market_changed=$MARKET_CHANGED" >> $GITHUB_OUTPUT
-
       - name: Run Backend Migrations
-        if: steps.check_changes.outputs.backend_changed == 'true'
         working-directory: ./autogpt_platform/backend
         run: |
           python -m prisma migrate deploy
@@ -52,7 +42,6 @@ jobs:
           DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
       - name: Run Market Migrations
-        if: steps.check_changes.outputs.market_changed == 'true'
         working-directory: ./autogpt_platform/market
         run: |
           python -m prisma migrate deploy
