@@ -1,12 +1,9 @@
 from typing import Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import (
-    APIKeyCredentials,
-)
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput
-
 
 JinaCredentials = APIKeyCredentials
 JinaCredentialsInput = CredentialsMetaInput[
@@ -22,8 +19,8 @@ def JinaCredentialsField() -> JinaCredentialsInput:
     """
     return CredentialsField(
         provider="jina",
-        supported_credential_types={"api_key"} , # noqa
-        description="The Jina integration can be used with an API Key."
+        supported_credential_types={"api_key"},  # noqa
+        description="The Jina integration can be used with an API Key.",
     )
 
 

@@ -1,19 +1,21 @@
 from typing import Literal
 
-from autogpt_libs.supabase_integration_credentials_store import Credentials
+from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
 from pinecone import Pinecone, ServerlessSpec
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField, CredentialsMetaInput, CredentialsField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
 class PineconeInitBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal['pinecone'], Literal['api_key']] = CredentialsField(
-            provider="pinecone",
-            supported_credential_types={"api_key"}, # noqa
-            description="The Pinecone integration can be used with "
-                        "any API key with sufficient permissions for the blocks it is used on.",
+        credentials: CredentialsMetaInput[Literal["pinecone"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="pinecone",
+                supported_credential_types={"api_key"},  # noqa
+                description="The Pinecone integration can be used with "
+                "any API key with sufficient permissions for the blocks it is used on.",
+            )
         )
         index_name: str = SchemaField(description="Name of the Pinecone index")
         dimension: int = SchemaField(
@@ -42,8 +44,10 @@ class PineconeInitBlock(Block):
             output_schema=PineconeInitBlock.Output,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        pc = Pinecone(api_key=input_data.credentials.api_key)
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        pc = Pinecone(api_key=credentials.api_key.get_secret_value())
 
         try:
             existing_indexes = pc.list_indexes()
@@ -65,13 +69,16 @@ class PineconeInitBlock(Block):
         except Exception as e:
             yield "message", f"Error initializing Pinecone index: {str(e)}"
 
+
 class PineconeQueryBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal['pinecone'], Literal['api_key']] = CredentialsField(
-            provider="pinecone",
-            supported_credential_types={"api_key"}, # noqa
-            description="The Pinecone integration can be used with "
-                        "any API key with sufficient permissions for the blocks it is used on.",
+        credentials: CredentialsMetaInput[Literal["pinecone"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="pinecone",
+                supported_credential_types={"api_key"},  # noqa
+                description="The Pinecone integration can be used with "
+                "any API key with sufficient permissions for the blocks it is used on.",
+            )
         )
         query_vector: list = SchemaField(description="Query vector")
         namespace: str = SchemaField(
@@ -101,10 +108,13 @@ class PineconeQueryBlock(Block):
             output_schema=PineconeQueryBlock.Output,
         )
 
-    def run(input_data: Input,
+    def run(
+        self,
+        input_data: Input,
         *,
-        credentials: Credentials,
-        **kwargs) -> BlockOutput:
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         pc = Pinecone(api_key=credentials.api_key.get_secret_value())
         idx = pc.Index(host=input_data.host)
         results = idx.query(

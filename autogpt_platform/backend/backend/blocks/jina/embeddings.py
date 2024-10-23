@@ -1,11 +1,12 @@
-from typing import Literal
-
 import requests
 
-from autogpt_libs.supabase_integration_credentials_store import Credentials
-from backend.blocks.jina._auth import JinaCredentialsField, JinaCredentialsInput
+from backend.blocks.jina._auth import (
+    JinaCredentials,
+    JinaCredentialsField,
+    JinaCredentialsInput,
+)
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField, CredentialsMetaInput, CredentialsField
+from backend.data.model import SchemaField
 
 
 class JinaEmbeddingBlock(Block):
@@ -29,11 +30,9 @@ class JinaEmbeddingBlock(Block):
             output_schema=JinaEmbeddingBlock.Output,
         )
 
-    def run(self,
-        input_data: Input,
-        *,
-        credentials: Credentials,
-        **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: JinaCredentials, **kwargs
+    ) -> BlockOutput:
         url = "https://api.jina.ai/v1/embeddings"
         headers = {
             "Content-Type": "application/json",

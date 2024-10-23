@@ -1,10 +1,12 @@
-from typing import Literal
-
 import requests
 
-from backend.blocks.jina._auth import JinaCredentialsField, JinaCredentialsInput
+from backend.blocks.jina._auth import (
+    JinaCredentials,
+    JinaCredentialsField,
+    JinaCredentialsInput,
+)
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField, CredentialsMetaInput, CredentialsField
+from backend.data.model import SchemaField
 
 
 class JinaChunkingBlock(Block):
@@ -34,11 +36,13 @@ class JinaChunkingBlock(Block):
             output_schema=JinaChunkingBlock.Output,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: JinaCredentials, **kwargs
+    ) -> BlockOutput:
         url = "https://segment.jina.ai/"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {input_data.credentials.get_secret_value()}",
+            "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
 
         all_chunks = []
