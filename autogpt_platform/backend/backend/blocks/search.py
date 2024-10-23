@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Literal, Optional
 from urllib.parse import quote
 
 import requests
@@ -16,7 +16,10 @@ from backend.data.model import (
 
 class GetRequest:
     @classmethod
-    def get_request(cls, url: str, json=False, headers: Dict[str, str] = None) -> Any:
+    def get_request(
+        cls, url: str, json=False, headers: Optional[Dict[str, str]] = None
+    ) -> Any:
+        headers = headers or {}
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.json() if json else response.text
