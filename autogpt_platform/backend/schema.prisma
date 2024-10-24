@@ -17,7 +17,7 @@ model User {
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  metadata  Json?
+  metadata  Json? @default({})
 
   // Relations
   Agents                  Agent[]
@@ -122,6 +122,10 @@ model Agent {
 //////////////////////////////////////////////////////////// 
 //////////////////////////////////////////////////////////// 
 
+// An AgentPrest is an Agent + User Configuration of that agent.
+// For example, if someone has created a weather agent and they want to set it up to 
+// Inform them of extreme weather warnings in Texas, the agent with the configuration to set it to
+// monitor texas, along with the cron setup or webhook tiggers, is an AgentPreset
 model AgentPreset {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -150,6 +154,8 @@ model AgentPreset {
   @@index([userId])
 }
 
+// For the library page
+// It is a user controlled list of agents, that they will see in there library
 model UserAgent {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
