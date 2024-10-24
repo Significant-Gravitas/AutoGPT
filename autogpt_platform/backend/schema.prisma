@@ -17,7 +17,7 @@ model User {
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  metadata  Json? @default({})
+  metadata  Json?    @default("{}")
 
   // Relations
   Agents                  Agent[]
@@ -283,8 +283,7 @@ model AgentExecution {
   executedByUserId String
   ExecutedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
-  stats           Json? // JSON serialized object
-  UserBlockCredit UserBlockCredit[]
+  stats Json? // JSON serialized object
 }
 
 // This model describes the execution of an AgentNode.
@@ -308,7 +307,8 @@ model AgentNodeExecution {
   startedTime     DateTime?
   endedTime       DateTime?
 
-  stats Json? // JSON serialized object
+  stats           Json? // JSON serialized object
+  UserBlockCredit UserBlockCredit[]
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -470,8 +470,8 @@ model UserBlockCredit {
   ExecutedAgent        Agent?  @relation(fields: [executedAgentId, executedAgentVersion], references: [id, version])
 
   // We need to be able to associate a cost with a specific agent execution
-  agentExecutionId String?
-  AgentExecution   AgentExecution? @relation(fields: [agentExecutionId], references: [id])
+  agentNodeExecutionId String?
+  AgentNodeExecution   AgentNodeExecution? @relation(fields: [agentNodeExecutionId], references: [id])
 
   amount Int
   type   UserBlockCreditType
