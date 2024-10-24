@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 class ApiBaseUrlField extends StatelessWidget {
   final TextEditingController controller = TextEditingController();
 
+  ApiBaseUrlField({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Consumer<SettingsViewModel>(

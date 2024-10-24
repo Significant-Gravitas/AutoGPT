@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        ### ⚠️ Before you continue
+        "### ⚠️ Before you continue"
         * Check out our [backlog], [roadmap] and join our [discord] to discuss what's going on
         * If you need help, you can ask in the [discussions] section or in [#tech-support]
         * **Thoroughly search the [existing issues] before creating a new one**
@@ -170,4 +170,5 @@ body:
         ⚠️ The error log may contain personal data given to AutoGPT by you in prompt or input as well as 
         any personal information that AutoGPT collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
-      required: false
+      required: true
+      

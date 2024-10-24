@@ -26,6 +26,7 @@ class AuthService {
       print("Error during Google Sign-In: $e");
       return null;
     }
+    return null;
   }
 
 // Sign in with GitHub using redirect

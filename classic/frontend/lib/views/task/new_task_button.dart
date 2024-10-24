@@ -18,12 +18,12 @@ class NewTaskButton extends StatelessWidget {
       onPressed: onPressed,
       style: ButtonStyle(
         // Set the button's background color
-        backgroundColor: MaterialStateProperty.all<Color>(Colors.white),
+        backgroundColor: WidgetStateProperty.all<Color>(Colors.white),
         // Set the button's edge
-        side: MaterialStateProperty.all<BorderSide>(
+        side: WidgetStateProperty.all<BorderSide>(
             const BorderSide(color: Colors.black, width: 0.5)),
         // Set the button's shape with rounded corners
-        shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+        shape: WidgetStateProperty.all<RoundedRectangleBorder>(
           RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8.0),
           ),

@@ -11,6 +11,7 @@ class TestSuiteListTile extends StatelessWidget {
     required this.onTap,
   }) : super(key: key);
 
+  @override
   Widget build(BuildContext context) {
     // Determine the width of the TaskView
     double taskViewWidth = MediaQuery.of(context).size.width;

@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/d04273a5-b36a-4a37-818e-f631ce72d603
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
 
-### 🧱 AutoGPT Frontend
+### 🧱 **AutoGPT** Frontend
 
 The AutoGPT frontend is where users interact with our powerful AI automation platform. It offers multiple ways to engage with and leverage our AI agents. This is the interface where you'll bring your AI automation ideas to life:
 

@@ -95,7 +95,7 @@ class ChatViewModel with ChangeNotifier {
       }
 
       // Assign the chats list
-      if (chats.length > 0) {
+      if (chats.isNotEmpty) {
         _chats = chats;
       }
 
