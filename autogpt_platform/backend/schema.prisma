@@ -1,4 +1,3 @@
-// THIS FILE IS AUTO-GENERATED, RUN `poetry run schema` TO UPDATE
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -12,63 +11,188 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id        String   @id // This should match the Supabase user ID
+  id        String   @id @db.Uuid // This should match the Supabase user ID
   email     String   @unique
   name      String?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  metadata  Json?
+  updatedAt DateTime @default(now()) @updatedAt
+  metadata  Json?    @default("{}")
 
   // Relations
-  AgentGraphs                  AgentGraph[]
-  AgentGraphExecutions         AgentGraphExecution[]
-  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
-  AnalyticsDetails             AnalyticsDetails[]
-  AnalyticsMetrics             AnalyticsMetrics[]
-  UserBlockCredit              UserBlockCredit[]
+  Agents                  Agent[]
+  AgentExecutions         AgentExecution[]
+  AgentExecutionSchedules AgentExecutionSchedule[]
+  AnalyticsDetails        AnalyticsDetails[]
+  AnalyticsMetrics        AnalyticsMetrics[]
+  UserBlockCredit         UserBlockCredit[]
+  AgentPresets            AgentPreset[]
+  UserAgents              UserAgent[]
 
-  @@index([id])
-  @@index([email])
+  // User Group relations
+  UserGroupMemberships   UserGroupMembership[]
+  Profile                Profile[]
+  StoreListing           StoreListing[]
+  StoreListingSubmission StoreListingSubmission[]
+}
+
+model UserGroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  name         String
+  description  String
+  groupIconUrl String?
+
+  UserGroupMemberships UserGroupMembership[]
+
+  Agents       Agent[]
+  Profile      Profile[]
+  StoreListing StoreListing[]
+
+  @@index([name])
+}
+
+enum UserGroupRole {
+  MEMBER
+  OWNER
+}
+
+model UserGroupMembership {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId      String        @db.Uuid
+  User        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userGroupId String        @db.Uuid
+  UserGroup   UserGroup     @relation(fields: [userGroupId], references: [id], onDelete: Cascade)
+  Role        UserGroupRole @default(MEMBER)
+
+  @@unique([userId, userGroupId])
+  @@index([userId])
+  @@index([userGroupId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
-model AgentGraph {
-  id        String    @default(uuid())
-  version   Int       @default(1)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
+model Agent {
+  id        String   @default(uuid()) @db.Uuid
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   name        String?
   description String?
-  isActive    Boolean @default(true)
-  isTemplate  Boolean @default(false)
 
   // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdByUserId String? @db.Uuid
+  // Do not cascade delete the agent when the user is deleted
+  // This allows us to delete user data with deleting the agent which maybe in use by other users
+  CreatedByUser   User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
 
-  AgentNodes                  AgentNode[]
-  AgentGraphExecution         AgentGraphExecution[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+  groupId String?    @db.Uuid
+  // Do not cascade delete the agent when the group is deleted
+  // This allows us to delete user group data with deleting the agent which maybe in use by other users
+  Group   UserGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  AgentNodes     AgentNode[]
+  AgentExecution AgentExecution[]
 
   // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
-  agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
+  SubAgents          Agent[] @relation("SubAgents")
+  agentParentId      String? @db.Uuid
+  agentParentVersion Int?
+  AgentParent        Agent?  @relation("SubAgents", fields: [agentParentId, agentParentVersion], references: [id, version])
 
-  @@id(name: "graphVersionId", [id, version])
+  AgentPresets           AgentPreset[]
+  WebhookTrigger         WebhookTrigger[]
+  AgentExecutionSchedule AgentExecutionSchedule[]
+  UserAgents             UserAgent[]
+  UserBlockCredit        UserBlockCredit[]
+  StoreListing           StoreListing[]
+  StoreListingVersion    StoreListingVersion[]
+
+  @@id(name: "agentVersionId", [id, version])
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////////////   USER SPECIFIC DATA   ////////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+
+// An AgentPrest is an Agent + User Configuration of that agent.
+// For example, if someone has created a weather agent and they want to set it up to 
+// Inform them of extreme weather warnings in Texas, the agent with the configuration to set it to
+// monitor texas, along with the cron setup or webhook tiggers, is an AgentPreset
+model AgentPreset {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  name        String
+  description String
+
+  // For agents that can be triggered by webhooks or cronjob
+  // This bool allows us to disable a configured agent without deleting it
+  isActive Boolean @default(true)
+
+  userId String @db.Uuid
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentId      String @db.Uuid
+  agentVersion Int
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+
+  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
+  UserAgents             UserAgent[]
+  WebhookTrigger         WebhookTrigger[]
+  AgentExecutionSchedule AgentExecutionSchedule[]
+  AgentExecution         AgentExecution[]
+
+  @@index([userId])
+}
+
+// For the library page
+// It is a user controlled list of agents, that they will see in there library
+model UserAgent {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String @db.Uuid
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentId      String @db.Uuid
+  agentVersion Int
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  agentPresetId String?      @db.Uuid
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  isFavorite      Boolean @default(false)
+  isCreatedByUser Boolean @default(false)
+  isArchived      Boolean @default(false)
+  isDeleted       Boolean @default(false)
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   AGENT DEFINITION AND EXECUTION TABLES    ////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
 
-  agentBlockId String
+  agentBlockId String     @db.Uuid
   AgentBlock   AgentBlock @relation(fields: [agentBlockId], references: [id], onUpdate: Cascade)
 
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentId      String @db.Uuid
+  agentVersion Int    @default(1)
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
 
   // List of consumed input, that the parent node should provide.
   Input AgentNodeLink[] @relation("AgentNodeSink")
@@ -77,25 +201,25 @@ model AgentNode {
   Output AgentNodeLink[] @relation("AgentNodeSource")
 
   // JSON serialized dict[str, str] containing predefined input values.
-  constantInput String @default("{}")
+  constantInput Json @default("{}")
 
   // JSON serialized dict[str, str] containing the node metadata.
-  metadata String @default("{}")
+  metadata Json @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
 }
 
 // This model describes the link between two AgentNodes.
 model AgentNodeLink {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
 
   // Output of a node is connected to the source of the link.
-  agentNodeSourceId String
+  agentNodeSourceId String    @db.Uuid
   AgentNodeSource   AgentNode @relation("AgentNodeSource", fields: [agentNodeSourceId], references: [id], onDelete: Cascade)
   sourceName        String
 
   // Input of a node is connected to the sink of the link.
-  agentNodeSinkId String
+  agentNodeSinkId String    @db.Uuid
   AgentNodeSink   AgentNode @relation("AgentNodeSink", fields: [agentNodeSinkId], references: [id], onDelete: Cascade)
   sinkName        String
 
@@ -105,20 +229,20 @@ model AgentNodeLink {
 
 // This model describes a component that will be executed by the AgentNode.
 model AgentBlock {
-  id   String @id @default(uuid())
+  id   String @id @default(uuid()) @db.Uuid
   name String @unique
 
   // We allow a block to have multiple types of input & output.
   // Serialized object-typed `jsonschema` with top-level properties as input/output name.
-  inputSchema  String
-  outputSchema String
+  inputSchema  Json @default("{}")
+  outputSchema Json @default("{}")
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
   UserBlockCredit       UserBlockCredit[]
 }
 
-// This model describes the status of an AgentGraphExecution or AgentNodeExecution.
+// This model describes the status of an AgentExecution or AgentNodeExecution.
 enum AgentExecutionStatus {
   INCOMPLETE
   QUEUED
@@ -127,36 +251,48 @@ enum AgentExecutionStatus {
   FAILED
 }
 
+// Enum for execution trigger types
+enum ExecutionTriggerType {
+  MANUAL
+  SCHEDULE
+  WEBHOOK
+}
+
 // This model describes the execution of an AgentGraph.
-model AgentGraphExecution {
-  id        String    @id @default(uuid())
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
-  startedAt DateTime?
+model AgentExecution {
+  id                   String               @id @default(uuid()) @db.Uuid
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @default(now()) @updatedAt
+  startedAt            DateTime?
+  executionTriggerType ExecutionTriggerType @default(MANUAL)
 
   executionStatus AgentExecutionStatus @default(COMPLETED)
 
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentId      String @db.Uuid
+  agentVersion Int    @default(1)
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+
+  // we need to be able to associate an agent execution with an agent preset
+  agentPresetId String?      @db.Uuid
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
   AgentNodeExecutions AgentNodeExecution[]
 
-  // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // This is so we can track which user executed the agent.
+  executedByUserId String @db.Uuid
+  ExecutedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
-  stats String? // JSON serialized object
+  stats Json @default("{}") // JSON serialized object
 }
 
 // This model describes the execution of an AgentNode.
 model AgentNodeExecution {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
 
-  agentGraphExecutionId String
-  AgentGraphExecution   AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id], onDelete: Cascade)
+  agentExecutionId String         @db.Uuid
+  AgentExecution   AgentExecution @relation(fields: [agentExecutionId], references: [id], onDelete: Cascade)
 
-  agentNodeId String
+  agentNodeId String    @db.Uuid
   AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id], onDelete: Cascade)
 
   Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
@@ -170,51 +306,96 @@ model AgentNodeExecution {
   startedTime     DateTime?
   endedTime       DateTime?
 
-  stats String? // JSON serialized object
+  stats           Json              @default("{}") // JSON serialized object
+  UserBlockCredit UserBlockCredit[]
 }
 
 // This model describes the output of an AgentNodeExecution.
 model AgentNodeExecutionInputOutput {
-  id String @id @default(uuid())
+  id String @id @default(uuid()) @db.Uuid
 
   name String
   data String
   time DateTime @default(now())
 
   // Prisma requires explicit back-references.
-  referencedByInputExecId  String?
+  referencedByInputExecId  String?             @db.Uuid
   ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id], onDelete: Cascade)
-  referencedByOutputExecId String?
+  referencedByOutputExecId String?             @db.Uuid
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
+
+  agentPresetId String?      @db.Uuid
+  AgentPreset   AgentPreset? @relation("AgentPresetsInputData", fields: [agentPresetId], references: [id])
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
 }
 
 // This model describes the recurring execution schedule of an Agent.
-model AgentGraphExecutionSchedule {
-  id        String    @id
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
+model AgentExecutionSchedule {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentPresetId String      @db.Uuid
+  AgentPreset   AgentPreset @relation(fields: [agentPresetId], references: [id], onDelete: Cascade)
 
   schedule  String // cron expression
   isEnabled Boolean @default(true)
-  inputData String // JSON serialized object
+
+  // Allows triggers to be routed down different execution paths in an agent graph
+  triggerIdentifier String
 
   // default and set the value on each update, lastUpdated field has no time zone.
-  lastUpdated DateTime @updatedAt
+  lastUpdated DateTime @default(now()) @updatedAt
 
   // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String  @db.Uuid
+  User         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Agent        Agent?  @relation(fields: [agentId, agentVersion], references: [id, version])
+  agentId      String? @db.Uuid
+  agentVersion Int?
 
   @@index([isEnabled])
 }
 
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  PATCH
+}
+
+model WebhookTrigger {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  agentPresetId String      @db.Uuid
+  AgentPreset   AgentPreset @relation(fields: [agentPresetId], references: [id])
+
+  method  HttpMethod
+  urlSlug String
+
+  // Allows triggers to be routed down different execution paths in an agent graph
+  triggerIdentifier String
+
+  isActive           Boolean   @default(true)
+  lastReceivedDataAt DateTime?
+  isDeleted          Boolean   @default(false)
+  Agent              Agent?    @relation(fields: [agentId, agentVersion], references: [id, version])
+  agentId            String?   @db.Uuid
+  agentVersion       Int?
+
+  @@index([agentPresetId])
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   METRICS TRACKING TABLES    ////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model AnalyticsDetails {
   // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
   // typical uuid() inserts are handled by prisma
@@ -224,14 +405,14 @@ model AnalyticsDetails {
   updatedAt DateTime @default(now()) @updatedAt
 
   // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.Uuid
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
   type String
 
   // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
-  data Json?
+  data Json @default("{}")
 
   // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
   dataIndex String?
@@ -243,7 +424,7 @@ model AnalyticsDetails {
 model AnalyticsMetrics {
   id        String   @id @default(dbgenerated("gen_random_uuid()"))
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
   analyticMetric String
@@ -254,9 +435,15 @@ model AnalyticsMetrics {
   dataString     String?
 
   // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.Uuid
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 
 enum UserBlockCreditType {
   TOP_UP
@@ -267,17 +454,139 @@ model UserBlockCredit {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @db.Uuid
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  blockId String?
-  block   AgentBlock? @relation(fields: [blockId], references: [id])
+  blockId String?     @db.Uuid
+  Block   AgentBlock? @relation(fields: [blockId], references: [id])
+
+  // We need to be able to associate a credit transaction with an agent
+  executedAgentId      String? @db.Uuid
+  executedAgentVersion Int?
+  ExecutedAgent        Agent?  @relation(fields: [executedAgentId, executedAgentVersion], references: [id, version])
+
+  // We need to be able to associate a cost with a specific agent execution
+  agentNodeExecutionId String?             @db.Uuid
+  AgentNodeExecution   AgentNodeExecution? @relation(fields: [agentNodeExecutionId], references: [id])
 
   amount Int
   type   UserBlockCreditType
 
   isActive Boolean @default(true)
-  metadata Json?
+  metadata Json    @default("{}")
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   Store TABLES    ///////////////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+
+model Profile {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String? @db.Uuid
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isGroupProfile Boolean    @default(false)
+  groupId        String?    @db.Uuid
+  Group          UserGroup? @relation(fields: [groupId], references: [id])
+
+  username    String @unique
+  description String
+
+  links String[]
+
+  avatarUrl String?
+
+  @@index([username])
+}
+
+model StoreListing {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  isDeleted  Boolean @default(false)
+  // Not needed but makes lookups faster
+  isApproved Boolean @default(false)
+
+  slug        String
+  name        String
+  description String
+
+  agentId      String @db.Uuid
+  agentVersion Int
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+
+  owningUserId String @db.Uuid
+  OwningUser   User   @relation(fields: [owningUserId], references: [id])
+
+  isGroupListing Boolean    @default(false)
+  owningGroupId  String?    @db.Uuid
+  OwningGroup    UserGroup? @relation(fields: [owningGroupId], references: [id])
+
+  StoreListingVersions   StoreListingVersion[]
+  StoreListingSubmission StoreListingSubmission[]
+
+  @@index([isApproved])
+  @@index([agentId])
+  @@index([owningUserId])
+  @@index([owningGroupId])
+}
+
+model StoreListingVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  agentId      String @db.Uuid
+  agentVersion Int
+  Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  isFeatured Boolean  @default(false)
+  categories String[]
+
+  isDeleted              Boolean                  @default(false)
+  // Old versions can be made unavailable by the author if desired
+  isAvailable            Boolean                  @default(true)
+  // Not needed but makes lookups faster
+  isApproved             Boolean                  @default(false)
+  StoreListing           StoreListing?            @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
+  storeListingId         String?                  @db.Uuid
+  StoreListingSubmission StoreListingSubmission[]
+
+  @@index([agentId, agentVersion, isApproved])
+}
+
+enum SubmissionStatus {
+  DAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model StoreListingSubmission {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  storeListingId String       @db.Uuid
+  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
+
+  storeListingVersionId String              @db.Uuid
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  reviewByUserId String @db.Uuid
+  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
+
+  Status         SubmissionStatus @default(PENDING)
+  reviewComments String?
+
+  @@index([storeListingId])
+  @@index([Status])
 }
