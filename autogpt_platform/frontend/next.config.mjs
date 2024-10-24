@@ -3,7 +3,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ["images.unsplash.com"],
+    domains: ["images.unsplash.com", "ddz4ak4pa3d19.cloudfront.net", "upload.wikimedia.org"],
   },
   async redirects() {
     return [
