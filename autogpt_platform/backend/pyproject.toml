@@ -27,7 +27,7 @@ jsonref = "^1.1.0"
 jsonschema = "^4.22.0"
 ollama = "^0.3.0"
 openai = "^1.35.7"
-praw = "^7.7.1"
+praw = "~7.7.1"
 prisma = "^0.13.1"
 psutil = "^5.9.8"
 pydantic = "^2.7.2"
@@ -55,6 +55,7 @@ ruff = "^0.5.2"
 pyright = "^1.1.371"
 isort = "^5.13.2"
 black = "^24.4.2"
+aiohappyeyeballs = "^2.4.3"
 
 [build-system]
 requires = ["poetry-core"]
