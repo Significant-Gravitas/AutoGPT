@@ -87,7 +87,7 @@
     "@types/react-modal": "^3.16.3",
     "concurrently": "^9.0.1",
     "eslint": "^8",
-    "eslint-config-next": "14.2.4",
+    "eslint-config-next": "15.0.1",
     "eslint-plugin-storybook": "^0.9.0",
     "postcss": "^8",
     "prettier": "^3.3.3",
