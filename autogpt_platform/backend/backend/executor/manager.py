@@ -174,7 +174,7 @@ def execute_node(
             log_metadata.info("Node produced output", output_name=output_data)
             db_client.upsert_execution_output(node_exec_id, output_name, output_data)
             exec_res.output_data.setdefault(output_name, []).append(output_data)
-            db_client.send_execution_update(exec_res)
+            db_client.send_execution_update(exec_res.model_dump())
 
             for execution in _enqueue_next_nodes(
                 db_client=db_client,
