@@ -77,24 +77,24 @@ model UserGroupMembership {
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
 model Agent {
-  id        String    @default(uuid())
-  version   Int       @default(1)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
+  id        String   @default(uuid())
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   name        String?
   description String?
 
   // Link to User model
-  createdByUserId String
+  createdByUserId String?
   // Do not cascade delete the agent when the user is deleted
   // This allows us to delete user data with deleting the agent which maybe in use by other users
-  CreatedByUser   User   @relation(fields: [createdByUserId], references: [id])
+  CreatedByUser   User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   groupId String?
   // Do not cascade delete the agent when the group is deleted
   // This allows us to delete user group data with deleting the agent which maybe in use by other users
-  Group   UserGroup? @relation(fields: [groupId], references: [id])
+  Group   UserGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   AgentNodes     AgentNode[]
   AgentExecution AgentExecution[]
@@ -145,7 +145,7 @@ model AgentPreset {
   agentVersion Int
   Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
 
-  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsData")
+  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
   UserAgents             UserAgent[]
   WebhookTrigger         WebhookTrigger[]
   AgentExecutionSchedule AgentExecutionSchedule[]
@@ -263,7 +263,7 @@ enum ExecutionTriggerType {
 model AgentExecution {
   id                   String               @id @default(uuid())
   createdAt            DateTime             @default(now())
-  updatedAt            DateTime?            @updatedAt
+  updatedAt            DateTime             @updatedAt
   startedAt            DateTime?
   executionTriggerType ExecutionTriggerType @default(MANUAL)
 
@@ -283,7 +283,7 @@ model AgentExecution {
   executedByUserId String
   ExecutedByUser   User   @relation(fields: [executedByUserId], references: [id], onDelete: Cascade)
 
-  stats Json? // JSON serialized object
+  stats Json @default("{}") // JSON serialized object
 }
 
 // This model describes the execution of an AgentNode.
@@ -307,7 +307,7 @@ model AgentNodeExecution {
   startedTime     DateTime?
   endedTime       DateTime?
 
-  stats           Json? // JSON serialized object
+  stats           Json              @default("{}") // JSON serialized object
   UserBlockCredit UserBlockCredit[]
 }
 
@@ -326,7 +326,7 @@ model AgentNodeExecutionInputOutput {
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
   agentPresetId String?
-  AgentPreset   AgentPreset? @relation("AgentPresetsData", fields: [agentPresetId], references: [id])
+  AgentPreset   AgentPreset? @relation("AgentPresetsInputData", fields: [agentPresetId], references: [id])
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
@@ -334,9 +334,9 @@ model AgentNodeExecutionInputOutput {
 
 // This model describes the recurring execution schedule of an Agent.
 model AgentExecutionSchedule {
-  id        String    @id
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   agentPresetId String
   AgentPreset   AgentPreset @relation(fields: [agentPresetId], references: [id], onDelete: Cascade)
@@ -413,7 +413,7 @@ model AnalyticsDetails {
   type String
 
   // Analytic Specific Data. We should use a union type here, but prisma doesn't support it.
-  data Json?
+  data Json @default("{}")
 
   // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
   dataIndex String?
@@ -449,9 +449,6 @@ model AnalyticsMetrics {
 enum UserBlockCreditType {
   TOP_UP
   USAGE
-  COMMISSION
-  PURCHASE
-  SALE
 }
 
 model UserBlockCredit {
@@ -477,7 +474,7 @@ model UserBlockCredit {
   type   UserBlockCreditType
 
   isActive Boolean @default(true)
-  metadata Json?
+  metadata Json    @default("{}")
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
 }
@@ -535,33 +532,12 @@ model StoreListing {
   OwningGroup    UserGroup? @relation(fields: [owningGroupId], references: [id])
 
   StoreListingVersions   StoreListingVersion[]
-  StorePricings          StorePricing[]
   StoreListingSubmission StoreListingSubmission[]
 
   @@index([isApproved])
   @@index([agentId])
   @@index([owningUserId])
   @@index([owningGroupId])
-}
-
-model StorePricing {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Owner can be found from the storeListing
-  storeListingId String
-  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
-
-  canPurchase   Boolean @default(true)
-  purchasePrice Float?
-
-  commissionPerRun Float?
-  // We don't ever delete store pricings,
-  // just mark them as deleted and add a new entry
-  isDeleted        Boolean @default(false)
-
-  @@index([storeListingId, updatedAt])
 }
 
 model StoreListingVersion {
@@ -610,7 +586,6 @@ model StoreListingSubmission {
   ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
 
   Status         SubmissionStatus @default(PENDING)
-  isDenied       Boolean          @default(false)
   reviewComments String?
 
   @@index([storeListingId])
