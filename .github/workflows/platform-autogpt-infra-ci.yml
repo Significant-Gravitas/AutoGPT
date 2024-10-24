@@ -36,7 +36,7 @@ jobs:
             tflint_changed_only: false
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4.2.0
+        uses: azure/setup-helm@v4
         with:
           version: v3.14.4
 
