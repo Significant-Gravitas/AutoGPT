@@ -210,7 +210,7 @@ def execute_node(
             try:
                 creds_lock.release()
             except Exception as e:
-                log_metadata.exception(f"Failed to release credentials lock: {e}")
+                log_metadata.error(f"Failed to release credentials lock: {e}")
 
         # Update execution status and spend credits
         res = update_execution(end_status)
