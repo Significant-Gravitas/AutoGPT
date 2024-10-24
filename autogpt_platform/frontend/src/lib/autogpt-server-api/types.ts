@@ -96,7 +96,7 @@ export type CredentialsType = "api_key" | "oauth2";
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: "github" | "google" | "notion";
+  credentials_provider: "github" | "google" | "notion" | "jina" | "pinecone";
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
 };
