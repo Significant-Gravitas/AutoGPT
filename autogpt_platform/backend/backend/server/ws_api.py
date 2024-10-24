@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.data import redis
-from backend.data.queue import RedisExecutionEventQueue
+from backend.data.queue import RedisEventQueue
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
@@ -51,7 +51,7 @@ def get_connection_manager():
 async def event_broadcaster(manager: ConnectionManager):
     try:
         redis.connect()
-        event_queue = RedisExecutionEventQueue()
+        event_queue = RedisEventQueue()
         while True:
             event = event_queue.get()
             if event:
