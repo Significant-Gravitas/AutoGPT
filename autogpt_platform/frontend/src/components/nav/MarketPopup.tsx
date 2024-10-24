@@ -7,7 +7,9 @@ interface MarketPopupProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export default function MarketPopup({
   className = "",
-  marketplaceUrl = "http://platform.agpt.co/marketplace",
+  marketplaceUrl = process.env.APP_ENV === "prod"
+    ? "https://production-marketplace-url.com"
+    : "http://localhost:3000/marketplace",
   children,
   ...props
 }: MarketPopupProps) {
