@@ -41,7 +41,8 @@ export const providerIcons: Record<string, React.FC<{ className?: string }>> = {
   github: FaGithub,
   google: FaGoogle,
   notion: NotionLogoIcon,
-  jina: FaKey, // Use a generic icon for now as there is no specific icon for Jina AI
+  jina: FaKey,
+  pinecone: FaKey,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

@@ -17,6 +17,7 @@ const CREDENTIALS_PROVIDER_NAMES = [
   "google",
   "notion",
   "jina",
+  "pinecone",
 ] as const;
 
 export type CredentialsProviderName =
@@ -26,7 +27,8 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   github: "GitHub",
   google: "Google",
   notion: "Notion",
-  jina: "Jina AI",
+  jina: "Jina",
+  pinecone: "Pinecone",
 };
 // --8<-- [end:CredentialsProviderNames]
 

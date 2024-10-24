@@ -26,8 +26,12 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import { Link } from "@/lib/autogpt-server-api";
-import { getTypeColor, filterBlocksByType } from "@/lib/utils";
+import { BlockUIType, Link } from "@/lib/autogpt-server-api";
+import {
+  getTypeColor,
+  filterBlocksByType,
+  findNewlyAddedBlockCoordinates,
+} from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -45,6 +49,7 @@ import RunnerUIWrapper, {
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
 import { forceLoad } from "@sentry/nextjs";
+import { useCopyPaste } from "../hooks/useCopyPaste";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -56,6 +61,15 @@ type FlowContextType = {
   getNextNodeId: () => string;
 };
 
+export type NodeDimension = {
+  [nodeId: string]: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
+
 export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
@@ -63,8 +77,14 @@ const FlowEditor: React.FC<{
   template?: boolean;
   className?: string;
 }> = ({ flowID, template, className }) => {
-  const { addNodes, addEdges, getNode, deleteElements, updateNode } =
-    useReactFlow<CustomNode, CustomEdge>();
+  const {
+    addNodes,
+    addEdges,
+    getNode,
+    deleteElements,
+    updateNode,
+    setViewport,
+  } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
   const [copiedNodes, setCopiedNodes] = useState<CustomNode[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<CustomEdge[]>([]);
@@ -108,6 +128,9 @@ const FlowEditor: React.FC<{
   const { toast } = useToast();
 
   const TUTORIAL_STORAGE_KEY = "shepherd-tour";
+
+  // It stores the dimension of all nodes with position as well
+  const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
 
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
@@ -401,16 +424,36 @@ const FlowEditor: React.FC<{
         return;
       }
 
-      // Calculate the center of the viewport considering zoom
-      const viewportCenter = {
-        x: (window.innerWidth / 2 - x) / zoom,
-        y: (window.innerHeight / 2 - y) / zoom,
-      };
+      /*
+       Calculate a position to the right of the newly added block, allowing for some margin.
+       If adding to the right side causes the new block to collide with an existing block, attempt to place it at the bottom or left.
+       Why not the top? Because the height of the new block is unknown.
+       If it still collides, run a loop to find the best position where it does not collide.
+       Then, adjust the canvas to center on the newly added block.
+       Note: The width is known, e.g., w = 300px for a note and w = 500px for others, but the height is dynamic.
+       */
+
+      // Alternative: We could also use D3 force, Intersection for this (React flow Pro examples)
+
+      const viewportCoordinates =
+        nodeDimensions && Object.keys(nodeDimensions).length > 0
+          ? // we will get all the dimension of nodes, then store
+            findNewlyAddedBlockCoordinates(
+              nodeDimensions,
+              (nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500) / zoom,
+              60 / zoom,
+              zoom,
+            )
+          : // we will get all the dimension of nodes, then store
+            {
+              x: (window.innerWidth / 2 - x) / zoom,
+              y: (window.innerHeight / 2 - y) / zoom,
+            };
 
       const newNode: CustomNode = {
         id: nodeId.toString(),
         type: "custom",
-        position: viewportCenter, // Set the position to the calculated viewport center
+        position: viewportCoordinates, // Set the position to the calculated viewport center
         data: {
           blockType: nodeType,
           blockCosts: nodeSchema.costs,
@@ -432,6 +475,15 @@ const FlowEditor: React.FC<{
       setNodeId((prevId) => prevId + 1);
       clearNodesStatusAndOutput(); // Clear status and output when a new node is added
 
+      setViewport(
+        {
+          x: -viewportCoordinates.x * zoom + window.innerWidth / 2,
+          y: -viewportCoordinates.y * zoom + window.innerHeight / 2 - 100,
+          zoom: 0.8,
+        },
+        { duration: 500 },
+      );
+
       history.push({
         type: "ADD_NODE",
         payload: { node: { ...newNode, ...newNode.data } },
@@ -441,8 +493,10 @@ const FlowEditor: React.FC<{
     },
     [
       nodeId,
+      setViewport,
       availableNodes,
       addNodes,
+      nodeDimensions,
       deleteElements,
       clearNodesStatusAndOutput,
       x,
@@ -451,6 +505,38 @@ const FlowEditor: React.FC<{
     ],
   );
 
+  const findNodeDimensions = useCallback(() => {
+    const newNodeDimensions: NodeDimension = nodes.reduce((acc, node) => {
+      const nodeElement = document.querySelector(
+        `[data-id="custom-node-${node.id}"]`,
+      );
+      if (nodeElement) {
+        const rect = nodeElement.getBoundingClientRect();
+        const { left, top, width, height } = rect;
+
+        // Convert screen coordinates to flow coordinates
+        const flowX = (left - x) / zoom;
+        const flowY = (top - y) / zoom;
+        const flowWidth = width / zoom;
+        const flowHeight = height / zoom;
+
+        acc[node.id] = {
+          x: flowX,
+          y: flowY,
+          width: flowWidth,
+          height: flowHeight,
+        };
+      }
+      return acc;
+    }, {} as NodeDimension);
+
+    setNodeDimensions(newNodeDimensions);
+  }, [nodes, x, y, zoom]);
+
+  useEffect(() => {
+    findNodeDimensions();
+  }, [nodes, findNodeDimensions]);
+
   const handleUndo = () => {
     history.undo();
   };
@@ -458,6 +544,8 @@ const FlowEditor: React.FC<{
   const handleRedo = () => {
     history.redo();
   };
+
+  const handleCopyPaste = useCopyPaste(getNextNodeId);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -470,68 +558,9 @@ const FlowEditor: React.FC<{
 
       if (isAnyModalOpen || isInputField) return;
 
-      if (event.ctrlKey || event.metaKey) {
-        if (event.key === "c" || event.key === "C") {
-          // Copy selected nodes
-          const selectedNodes = nodes.filter((node) => node.selected);
-          const selectedEdges = edges.filter((edge) => edge.selected);
-          setCopiedNodes(selectedNodes);
-          setCopiedEdges(selectedEdges);
-        }
-        if (event.key === "v" || event.key === "V") {
-          // Paste copied nodes
-          if (copiedNodes.length > 0) {
-            const oldToNewNodeIDMap: Record<string, string> = {};
-            const pastedNodes = copiedNodes.map((node, index) => {
-              const newNodeId = (nodeId + index).toString();
-              oldToNewNodeIDMap[node.id] = newNodeId;
-              return {
-                ...node,
-                id: newNodeId,
-                position: {
-                  x: node.position.x + 20, // Offset pasted nodes
-                  y: node.position.y + 20,
-                },
-                data: {
-                  ...node.data,
-                  status: undefined, // Reset status
-                  executionResults: undefined, // Clear output data
-                },
-              };
-            });
-            setNodes((existingNodes) =>
-              // Deselect copied nodes
-              existingNodes.map((node) => ({ ...node, selected: false })),
-            );
-            addNodes(pastedNodes);
-            setNodeId((prevId) => prevId + copiedNodes.length);
-
-            const pastedEdges = copiedEdges.map((edge) => {
-              const newSourceId = oldToNewNodeIDMap[edge.source] ?? edge.source;
-              const newTargetId = oldToNewNodeIDMap[edge.target] ?? edge.target;
-              return {
-                ...edge,
-                id: `${newSourceId}_${edge.sourceHandle}_${newTargetId}_${edge.targetHandle}_${Date.now()}`,
-                source: newSourceId,
-                target: newTargetId,
-              };
-            });
-            addEdges(pastedEdges);
-          }
-        }
-      }
+      handleCopyPaste(event);
     },
-    [
-      isAnyModalOpen,
-      nodes,
-      edges,
-      copiedNodes,
-      setNodes,
-      addNodes,
-      copiedEdges,
-      addEdges,
-      nodeId,
-    ],
+    [isAnyModalOpen, handleCopyPaste],
   );
 
   useEffect(() => {
