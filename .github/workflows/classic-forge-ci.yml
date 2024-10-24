@@ -4,15 +4,15 @@ on:
   push:
     branches: [ master, dev, ci-test* ]
     paths:
-      - '.github/workflows/classic-forge-ci.yml'
-      - 'classic/forge/**'
-      - '!classic/forge/tests/vcr_cassettes'
+      - ".github/workflows/classic-forge-ci.yml"
+      - "classic/forge/**"
+      - "!classic/forge/tests/vcr_cassettes"
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
-      - '.github/workflows/classic-forge-ci.yml'
-      - 'classic/forge/**'
-      - '!classic/forge/tests/vcr_cassettes'
+      - ".github/workflows/classic-forge-ci.yml"
+      - "classic/forge/**"
+      - "!classic/forge/tests/vcr_cassettes"
 
 concurrency:
   group: ${{ format('forge-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -43,7 +43,7 @@ jobs:
 
       - name: Start MinIO service (Linux)
         if: runner.os == 'Linux'
-        working-directory: '.'
+        working-directory: "."
         run: |
           docker pull minio/minio:edge-cicd
           docker run -d -p 9000:9000 minio/minio:edge-cicd
