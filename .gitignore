@@ -165,9 +165,12 @@ package-lock.json
 
 # Allow for locally private items
 # private
-pri* 
+pri*
 # ignore
 ig*
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py
+
+# Ignoring the supabase folder from pushing on github
+supabase/
