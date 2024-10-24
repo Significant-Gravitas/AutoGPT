@@ -1,16 +1,26 @@
-from typing import Any
+from typing import Any, Dict, Literal, Optional
 from urllib.parse import quote
 
 import requests
+from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import (
+    BlockSecret,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    SecretField,
+)
 
 
 class GetRequest:
     @classmethod
-    def get_request(cls, url: str, json=False) -> Any:
-        response = requests.get(url)
+    def get_request(
+        cls, url: str, json=False, headers: Optional[Dict[str, str]] = None
+    ) -> Any:
+        headers = headers or {}
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.json() if json else response.text
 
@@ -180,3 +190,82 @@ class GetWeatherInformationBlock(Block, GetRequest):
             yield "condition", weather_data["weather"][0]["description"]
         else:
             raise RuntimeError(f"Expected keys not found in response: {weather_data}")
+
+
+class FactCheckerBlock(Block, GetRequest):
+    class Input(BlockSchema):
+        statement: str = SchemaField(
+            description="The statement to check for factuality"
+        )
+        credentials: CredentialsMetaInput[Literal["jina"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="jina",
+                supported_credential_types={"api_key"},
+                description="The Jina AI API key for getting around the API rate limit.",
+            )
+        )
+
+    class Output(BlockSchema):
+        factuality: float = SchemaField(
+            description="The factuality score of the statement"
+        )
+        result: bool = SchemaField(description="The result of the factuality check")
+        reason: str = SchemaField(description="The reason for the factuality result")
+        error: str = SchemaField(description="Error message if the check fails")
+
+    def __init__(self):
+        super().__init__(
+            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            description="This block checks the factuality of a given statement using Jina AI's Grounding API.",
+            categories={BlockCategory.SEARCH},
+            input_schema=FactCheckerBlock.Input,
+            output_schema=FactCheckerBlock.Output,
+            test_input={
+                "statement": "Jina AI was founded in 2020 in Berlin.",
+                "credentials": {
+                    "id": "test-credentials-id",
+                    "provider": "jina",
+                    "type": "api_key",
+                    "title": "Mock Jina API key",
+                },
+            },
+            test_output=[
+                ("factuality", 0.95),
+                ("result", True),
+                ("reason", "The statement is supported by multiple sources."),
+            ],
+            test_mock={
+                "get_request": lambda url, json, headers: {
+                    "data": {
+                        "factuality": 0.95,
+                        "result": True,
+                        "reason": "The statement is supported by multiple sources.",
+                    }
+                }
+            },
+            test_credentials=APIKeyCredentials(
+                id="test-credentials-id",
+                provider="jina",
+                api_key="mock-api-key",
+                title="Mock Jina API key",
+                expires_at=None,
+            ),
+        )
+
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        encoded_statement = quote(input_data.statement)
+        url = f"https://g.jina.ai/{encoded_statement}"
+
+        headers = {"Accept": "application/json", "Authorization": credentials.bearer()}
+
+        response = self.get_request(url, json=True, headers=headers)
+
+        if "data" in response:
+            data = response["data"]
+            yield "factuality", data["factuality"]
+            yield "result", data["result"]
+            yield "reason", data["reason"]
+        else:
+            raise RuntimeError(f"Expected 'data' key not found in response: {response}")
