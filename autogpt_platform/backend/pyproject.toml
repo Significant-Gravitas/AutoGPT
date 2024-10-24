@@ -55,6 +55,7 @@ ruff = "^0.5.2"
 pyright = "^1.1.371"
 isort = "^5.13.2"
 black = "^24.4.2"
+aiohappyeyeballs = "^2.4.3"
 
 [build-system]
 requires = ["poetry-core"]
