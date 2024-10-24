@@ -2,8 +2,9 @@ from prisma.models import User
 
 from backend.blocks.basic import AgentInputBlock, PrintToConsoleBlock
 from backend.blocks.text import FillTextTemplateBlock
-from backend.data import graph
-from backend.data.graph import create_graph
+from backend.data.graph import CreatableGraph as Graph
+from backend.data.graph import CreatableNode as Node
+from backend.data.graph import Link, create_graph
 from backend.data.user import get_or_create_user
 from backend.util.test import SpinTestServer, wait_execution
 
@@ -18,7 +19,7 @@ async def create_test_user() -> User:
     return user
 
 
-def create_test_graph() -> graph.Graph:
+def create_test_graph() -> Graph:
     """
     InputBlock
                \
@@ -27,37 +28,37 @@ def create_test_graph() -> graph.Graph:
     InputBlock
     """
     nodes = [
-        graph.Node(
+        Node(
             block_id=AgentInputBlock().id,
             input_default={"name": "input_1"},
         ),
-        graph.Node(
+        Node(
             block_id=AgentInputBlock().id,
             input_default={"name": "input_2"},
         ),
-        graph.Node(
+        Node(
             block_id=FillTextTemplateBlock().id,
             input_default={
                 "format": "{a}, {b}{c}",
                 "values_#_c": "!!!",
             },
         ),
-        graph.Node(block_id=PrintToConsoleBlock().id),
+        Node(block_id=PrintToConsoleBlock().id),
     ]
     links = [
-        graph.Link(
+        Link(
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
             source_name="result",
             sink_name="values_#_a",
         ),
-        graph.Link(
+        Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
             source_name="result",
             sink_name="values_#_b",
         ),
-        graph.Link(
+        Link(
             source_id=nodes[2].id,
             sink_id=nodes[3].id,
             source_name="output",
@@ -65,7 +66,7 @@ def create_test_graph() -> graph.Graph:
         ),
     ]
 
-    return graph.Graph(
+    return Graph(
         name="TestGraph",
         description="Test graph",
         nodes=nodes,

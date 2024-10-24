@@ -3,7 +3,9 @@ from prisma.models import User
 from backend.blocks.llm import AIStructuredResponseGeneratorBlock
 from backend.blocks.reddit import GetRedditPostsBlock, PostRedditCommentBlock
 from backend.blocks.text import FillTextTemplateBlock, MatchTextPatternBlock
-from backend.data.graph import Graph, Link, Node, create_graph
+from backend.data.graph import CreatableGraph as Graph
+from backend.data.graph import CreatableNode as Node
+from backend.data.graph import Link, create_graph
 from backend.data.user import get_or_create_user
 from backend.util.test import SpinTestServer, wait_execution
 

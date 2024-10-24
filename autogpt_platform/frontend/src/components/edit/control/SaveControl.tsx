@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect } from "react";
 import {
   Popover,
   PopoverContent,
@@ -15,6 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useToast } from "@/components/ui/use-toast";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
@@ -52,13 +53,34 @@ export const SaveControl = ({
 
   // Determines if we're saving a template or an agent
   let isTemplate = agentMeta?.is_template ? true : undefined;
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onSave(isTemplate);
-  };
+  }, [onSave, isTemplate]);
 
   const getType = () => {
     return agentMeta?.is_template ? "template" : "agent";
   };
+
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+        event.preventDefault(); // Stop the browser default action
+        handleSave(); // Call your save function
+        toast({
+          duration: 2000,
+          title: "All changes saved successfully!",
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleSave]);
 
   return (
     <Popover open={pinSavePopover ? true : undefined}>

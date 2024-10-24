@@ -16,6 +16,8 @@ from redis.lock import Lock as RedisLock
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
 
+from autogpt_libs.utils.cache import thread_cached
+
 from backend.data import redis
 from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.execution import (
@@ -27,11 +29,10 @@ from backend.data.execution import (
     merge_execution_input,
     parse_execution_output,
 )
-from backend.data.graph import Graph, Link, Node
+from backend.data.graph import CreatableNode, Graph, Link
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
-from backend.util.cache import thread_cached_property
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
@@ -104,6 +105,7 @@ def execute_node(
 
     Args:
         db_client: The client to send execution updates to the server.
+        creds_manager: The manager to acquire and release credentials.
         data: The execution data for executing the current node.
         execution_stats: The execution statistics to be updated.
 
@@ -209,13 +211,14 @@ def execute_node(
         if creds_lock:
             creds_lock.release()
         if execution_stats is not None:
+            execution_stats.update(node_block.execution_stats)
             execution_stats["input_size"] = input_size
             execution_stats["output_size"] = output_size
 
 
 def _enqueue_next_nodes(
     db_client: "DatabaseManager",
-    node: Node,
+    node: CreatableNode,
     output: BlockData,
     user_id: str,
     graph_exec_id: str,
@@ -330,7 +333,7 @@ def _enqueue_next_nodes(
 
 
 def validate_exec(
-    node: Node,
+    node: CreatableNode,
     data: BlockInput,
     resolve_input: bool = True,
 ) -> tuple[BlockInput | None, str]:
@@ -655,12 +658,16 @@ class Executor:
 
 class ExecutionManager(AppService):
     def __init__(self):
-        super().__init__(port=settings.config.execution_manager_port)
+        super().__init__()
         self.use_redis = True
         self.use_supabase = True
         self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+
+    @classmethod
+    def get_port(cls) -> int:
+        return settings.config.execution_manager_port
 
     def run_service(self):
         from autogpt_libs.supabase_integration_credentials_store import (
@@ -668,7 +675,7 @@ class ExecutionManager(AppService):
         )
 
         self.credentials_store = SupabaseIntegrationCredentialsStore(
-            self.supabase, redis.get_redis()
+            redis=redis.get_redis()
         )
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
@@ -699,7 +706,7 @@ class ExecutionManager(AppService):
 
         super().cleanup()
 
-    @thread_cached_property
+    @property
     def db_client(self) -> "DatabaseManager":
         return get_db_client()
 
@@ -864,10 +871,11 @@ class ExecutionManager(AppService):
 # ------- UTILITIES ------- #
 
 
+@thread_cached
 def get_db_client() -> "DatabaseManager":
     from backend.executor import DatabaseManager
 
-    return get_service_client(DatabaseManager, settings.config.database_api_port)
+    return get_service_client(DatabaseManager)
 
 
 @contextmanager

@@ -124,7 +124,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
 
     def run(
         self,
-        input_data: Input,  # type: ignore
+        input_data: GitHubTriggerBase.Input,
         **kwargs,
     ) -> BlockOutput:
         super().run(input_data, **kwargs)

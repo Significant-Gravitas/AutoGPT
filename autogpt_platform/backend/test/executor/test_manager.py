@@ -3,20 +3,23 @@ from prisma.models import User
 
 from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
 from backend.blocks.maths import CalculatorBlock, Operation
-from backend.data import execution, graph
+from backend.data import execution
+from backend.data.graph import CreatableGraph as Graph
+from backend.data.graph import CreatableNode as Node
+from backend.data.graph import Link
 from backend.server.model import CreateGraph
 from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
 
-async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
+async def create_graph(s: SpinTestServer, g: Graph, u: User) -> Graph:
     return await s.agent_server.create_graph(CreateGraph(graph=g), False, u.id)
 
 
 async def execute_graph(
     agent_server: AgentServer,
-    test_graph: graph.Graph,
+    test_graph: Graph,
     test_user: User,
     input_data: dict,
     num_execs: int = 4,
@@ -33,7 +36,7 @@ async def execute_graph(
 
 async def assert_sample_graph_executions(
     agent_server: AgentServer,
-    test_graph: graph.Graph,
+    test_graph: Graph,
     test_user: User,
     graph_exec_id: str,
 ):
@@ -133,34 +136,34 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     StoreValueBlock2
     """
     nodes = [
-        graph.Node(
+        Node(
             block_id=StoreValueBlock().id,
             input_default={"input": {"key1": "value1", "key2": "value2"}},
         ),
-        graph.Node(
+        Node(
             block_id=StoreValueBlock().id,
             input_default={"input": "key2"},
         ),
-        graph.Node(
+        Node(
             block_id=FindInDictionaryBlock().id,
             input_default={"key": "", "input": {}},
         ),
     ]
     links = [
-        graph.Link(
+        Link(
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
             source_name="output",
             sink_name="input",
         ),
-        graph.Link(
+        Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
             source_name="output",
             sink_name="key",
         ),
     ]
-    test_graph = graph.Graph(
+    test_graph = Graph(
         name="TestGraph",
         description="Test graph",
         nodes=nodes,
@@ -198,42 +201,42 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     this input will complete the input of those three incomplete executions.
     """
     nodes = [
-        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
-        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
-        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
-        graph.Node(block_id=StoreValueBlock().id, input_default={"input": 5}),  # b
-        graph.Node(block_id=StoreValueBlock().id),
-        graph.Node(
+        Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
+        Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
+        Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
+        Node(block_id=StoreValueBlock().id, input_default={"input": 5}),  # b
+        Node(block_id=StoreValueBlock().id),
+        Node(
             block_id=CalculatorBlock().id,
             input_default={"operation": Operation.ADD.value},
         ),
     ]
     links = [
-        graph.Link(
+        Link(
             source_id=nodes[0].id,
             sink_id=nodes[5].id,
             source_name="output",
             sink_name="a",
         ),
-        graph.Link(
+        Link(
             source_id=nodes[1].id,
             sink_id=nodes[5].id,
             source_name="output",
             sink_name="a",
         ),
-        graph.Link(
+        Link(
             source_id=nodes[2].id,
             sink_id=nodes[5].id,
             source_name="output",
             sink_name="a",
         ),
-        graph.Link(
+        Link(
             source_id=nodes[3].id,
             sink_id=nodes[4].id,
             source_name="output",
             sink_name="input",
         ),
-        graph.Link(
+        Link(
             source_id=nodes[4].id,
             sink_id=nodes[5].id,
             source_name="output",
@@ -241,7 +244,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
             is_static=True,  # This is the static link to test.
         ),
     ]
-    test_graph = graph.Graph(
+    test_graph = Graph(
         name="TestGraph",
         description="Test graph",
         nodes=nodes,

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
+from autogpt_libs.utils.cache import thread_cached_property
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -25,7 +26,6 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 from backend.server.model import CreateGraph, SetGraphActiveVersion
-from backend.util.cache import thread_cached_property
 from backend.util.service import AppService, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -43,8 +43,12 @@ class AgentServer(AppService):
     _user_credit_model = get_user_credit_model()
 
     def __init__(self):
-        super().__init__(port=Config().agent_server_port)
+        super().__init__()
         self.use_redis = True
+
+    @classmethod
+    def get_port(cls) -> int:
+        return Config().agent_server_port
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
@@ -98,13 +102,14 @@ class AgentServer(AppService):
         import backend.server.integrations.router
         import backend.server.routers.analytics
 
+        self.integration_creds_manager = IntegrationCredentialsManager()
+
         api_router.include_router(
             backend.server.integrations.router.router,
             prefix="/integrations",
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
         )
-        self.integration_creds_manager = IntegrationCredentialsManager()
 
         api_router.include_router(
             backend.server.routers.analytics.router,
@@ -274,6 +279,7 @@ class AgentServer(AppService):
         app.add_exception_handler(500, self.handle_internal_http_error)
 
         app.include_router(api_router)
+        app.include_router(health_router)
 
         uvicorn.run(
             app,
@@ -313,11 +319,11 @@ class AgentServer(AppService):
 
     @thread_cached_property
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager, Config().execution_manager_port)
+        return get_service_client(ExecutionManager)
 
     @thread_cached_property
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler, Config().execution_scheduler_port)
+        return get_service_client(ExecutionScheduler)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):
@@ -336,9 +342,9 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        blocks = block.get_blocks()
+        blocks = [cls() for cls in block.get_blocks().values()]
         costs = get_block_costs()
-        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks.values()]
+        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks]
 
     @classmethod
     def execute_graph_block(
