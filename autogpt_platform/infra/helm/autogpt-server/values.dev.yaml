@@ -109,7 +109,7 @@ env:
   SUPABASE_SERVICE_ROLE_KEY: ""
   GITHUB_CLIENT_ID: ""
   GITHUB_CLIENT_SECRET: ""
-  FRONTEND_BASE_URL: "https://dev-builder.agpt.co/"
+  PLATFORM_BASE_URL: "https://dev-builder.agpt.co"
   SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co"
   AGENTSERVER_HOST: "autogpt-server.dev-agpt.svc.cluster.local"
   EXECUTIONMANAGER_HOST: "autogpt-server-executor.dev-agpt.svc.cluster.local"

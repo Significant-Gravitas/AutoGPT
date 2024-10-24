@@ -23,6 +23,7 @@ model User {
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
   AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+  IntegrationWebhooks          IntegrationWebhook[]
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
@@ -51,11 +52,6 @@ model AgentGraph {
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
-  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
-  agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
-
   @@id(name: "graphVersionId", [id, version])
 }
 
@@ -78,6 +74,10 @@ model AgentNode {
 
   // JSON serialized dict[str, str] containing predefined input values.
   constantInput String @default("{}")
+
+  // For webhook-triggered blocks: reference to the webhook that triggers the node
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
   // JSON serialized dict[str, str] containing the node metadata.
   metadata String @default("{}")
@@ -213,6 +213,28 @@ model AgentGraphExecutionSchedule {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([isEnabled])
+}
+
+// Webhook that is registered with a provider and propagates to one or more nodes
+model IntegrationWebhook {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict) // Webhooks must be deregistered before deleting
+
+  provider      String // e.g. 'github'
+  credentialsId String // relation to the credentials that the webhook was created with
+  webhookType   String // e.g. 'repo'
+  resource      String // e.g. 'Significant-Gravitas/AutoGPT'
+  events        String[] // e.g. ['created', 'updated']
+  config        Json
+  secret        String // crypto string, used to verify payload authenticity
+
+  providerWebhookId String // Webhook ID assigned by the provider
+
+  AgentNodes AgentNode[]
 }
 
 model AnalyticsDetails {

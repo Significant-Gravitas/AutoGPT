@@ -162,7 +162,9 @@ def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
         )
 
     handler_class = HANDLERS_BY_NAME[provider_name]
-    frontend_base_url = settings.config.frontend_base_url
+    frontend_base_url = (
+        settings.config.frontend_base_url or settings.config.platform_base_url
+    )
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,

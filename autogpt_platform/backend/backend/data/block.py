@@ -19,6 +19,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import Credential
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
+from backend.integrations.providers import ProviderName
 from backend.util import json
 
 from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
@@ -34,6 +35,7 @@ class BlockType(Enum):
     INPUT = "Input"
     OUTPUT = "Output"
     NOTE = "Note"
+    WEBHOOK = "Webhook"
 
 
 class BlockCategory(Enum):
@@ -183,6 +185,14 @@ class EmptySchema(BlockSchema):
     pass
 
 
+class BlockWebhookConfig(BaseModel):
+    provider: ProviderName
+    webhook_type: str
+    resource_format: str
+    event_filter_input: str
+    event_format: str
+
+
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
         self,
@@ -199,6 +209,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         disabled: bool = False,
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
+        webhook_config: Optional[BlockWebhookConfig] = None,
     ):
         """
         Initialize the block with the given schema.
@@ -229,8 +240,31 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.contributors = contributors or set()
         self.disabled = disabled
         self.static_output = static_output
-        self.block_type = block_type
+        self.block_type = block_type if not webhook_config else BlockType.WEBHOOK
+        self.webhook_config = webhook_config
         self.execution_stats = {}
+
+        # Enforce shape of webhook event filter
+        if self.webhook_config:
+            event_filter_field = self.input_schema.model_fields[
+                self.webhook_config.event_filter_input
+            ]
+            if not (
+                isinstance(event_filter_field.annotation, type)
+                and issubclass(event_filter_field.annotation, BaseModel)
+                and all(
+                    field.annotation is bool
+                    for field in event_filter_field.annotation.model_fields.values()
+                )
+            ):
+                raise NotImplementedError(
+                    f"{self.name} has an invalid webhook event selector: "
+                    "field must be a BaseModel and all its fields must be boolean"
+                )
+            if "payload" not in self.input_schema.model_fields:
+                raise TypeError(
+                    f"{self.name} is webhook-triggered but has no 'payload' input"
+                )
 
     @classmethod
     def create(cls: Type["Block"]) -> "Block":

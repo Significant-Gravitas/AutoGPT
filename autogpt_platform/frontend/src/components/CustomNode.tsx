@@ -148,7 +148,7 @@ export function CustomNode({
       <div key={key}>
         <NodeHandle
           keyName={key}
-          isConnected={isHandleConnected(key)}
+          isConnected={isOutputHandleConnected(key)}
           schema={schema.properties[key]}
           side="right"
         />
@@ -163,38 +163,6 @@ export function CustomNode({
     if (!schema?.properties) return null;
     let keys = Object.entries(schema.properties);
     switch (nodeType) {
-      case BlockUIType.INPUT:
-        // For INPUT blocks, dont include connection handles
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} data-id={`input-handle-${propKey}`}>
-                <span className="text-m green mb-0 text-gray-900">
-                  {propSchema.title || beautifyString(propKey)}
-                </span>
-                <div key={propKey}>
-                  {!isConnected && (
-                    <NodeGenericInputField
-                      nodeId={id}
-                      propKey={propKey}
-                      propSchema={propSchema}
-                      currentValue={getValue(propKey)}
-                      connections={data.connections}
-                      handleInputChange={handleInputChange}
-                      handleInputClick={handleInputClick}
-                      errors={data.errors ?? {}}
-                      displayName={propSchema.title || beautifyString(propKey)}
-                    />
-                  )}
-                </div>
-              </div>
-            )
-          );
-        });
-
       case BlockUIType.NOTE:
         // For NOTE blocks, don't render any input handles
         const [noteKey, noteSchema] = keys[0];
@@ -213,59 +181,24 @@ export function CustomNode({
           </div>
         );
 
-      case BlockUIType.OUTPUT:
-        // For OUTPUT blocks, only show the 'value' property
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} data-id={`output-handle-${propKey}`}>
-                {propKey !== "value" ? (
-                  <span className="text-m green mb-0 text-gray-900">
-                    {propSchema.title || beautifyString(propKey)}
-                  </span>
-                ) : (
-                  <NodeHandle
-                    keyName={propKey}
-                    isConnected={isConnected}
-                    isRequired={isRequired}
-                    schema={propSchema}
-                    side="left"
-                  />
-                )}
-                {!isConnected && (
-                  <NodeGenericInputField
-                    nodeId={id}
-                    propKey={propKey}
-                    propSchema={propSchema}
-                    currentValue={getValue(propKey)}
-                    connections={data.connections}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                    errors={data.errors ?? {}}
-                    displayName={propSchema.title || beautifyString(propKey)}
-                  />
-                )}
-              </div>
-            )
-          );
-        });
-
       default:
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
+          const isHidden = propSchema.hidden;
+          const isConnectable =
+            // No input connection handles on INPUT and WEBHOOK blocks
+            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
+            // No input connection handles for credentials
+            propKey !== "credentials" &&
+            // For OUTPUT blocks, only show the 'value' input connection handle
+            !(nodeType == BlockUIType.OUTPUT && propKey == "value");
+          const isConnected = isInputHandleConnected(propKey);
           return (
+            !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
-                {"credentials_provider" in propSchema ? (
-                  <span className="text-m green mb-0 text-gray-900">
-                    Credentials
-                  </span>
-                ) : (
+                {isConnectable ? (
                   <NodeHandle
                     keyName={propKey}
                     isConnected={isConnected}
@@ -273,8 +206,14 @@ export function CustomNode({
                     schema={propSchema}
                     side="left"
                   />
+                ) : (
+                  <span className="text-m green mb-0 text-gray-900">
+                    {propKey == "credentials"
+                      ? "Credentials"
+                      : propSchema.title || beautifyString(propKey)}
+                  </span>
                 )}
-                {!isConnected && (
+                {isConnected || (
                   <NodeGenericInputField
                     nodeId={id}
                     propKey={propKey}
@@ -378,21 +317,28 @@ export function CustomNode({
     }, data.hardcodedValues as any);
   };
 
-  const isHandleConnected = (key: string) => {
+  const isInputHandleConnected = (key: string) => {
     return (
       data.connections &&
       data.connections.some((conn: any) => {
         if (typeof conn === "string") {
-          const [source, target] = conn.split(" -> ");
-          return (
-            (target.includes(key) && target.includes(data.title)) ||
-            (source.includes(key) && source.includes(data.title))
-          );
+          const [_source, target] = conn.split(" -> ");
+          return target.includes(key) && target.includes(data.title);
         }
-        return (
-          (conn.target === id && conn.targetHandle === key) ||
-          (conn.source === id && conn.sourceHandle === key)
-        );
+        return conn.target === id && conn.targetHandle === key;
+      })
+    );
+  };
+
+  const isOutputHandleConnected = (key: string) => {
+    return (
+      data.connections &&
+      data.connections.some((conn: any) => {
+        if (typeof conn === "string") {
+          const [source, _target] = conn.split(" -> ");
+          return source.includes(key) && source.includes(data.title);
+        }
+        return conn.source === id && conn.sourceHandle === key;
       })
     );
   };

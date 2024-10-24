@@ -10,8 +10,18 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.integrations import (
+    WebhookEvent,
+    get_webhook,
+    listen_for_webhook_event,
+    publish_webhook_event,
+)
+from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
+from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 from ..utils import get_user_id
@@ -208,7 +218,67 @@ async def delete_credentials(
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
 
-# -------- UTILITIES --------- #
+# ------------------------- WEBHOOK STUFF -------------------------- #
+
+
+@router.post("/{provider}/webhooks/{webhook_id}/ingress")
+async def webhook_ingress_generic(
+    request: Request,
+    provider: Annotated[
+        ProviderName, Path(title="Provider where the webhook was registered")
+    ],
+    webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
+):
+    logger.debug(f"Received {provider} webhook ingress for ID {webhook_id}")
+    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
+    webhook = await get_webhook(webhook_id)
+    logger.debug(f"Webhook #{webhook_id}: {webhook}")
+    payload, event_type = await webhook_manager.validate_payload(webhook, request)
+    logger.debug(f"Validated {provider} {event_type} event with payload {payload}")
+
+    webhook_event = WebhookEvent(
+        provider=provider,
+        webhook_id=webhook_id,
+        event_type=event_type,
+        payload=payload,
+    )
+    publish_webhook_event(webhook_event)
+    logger.debug(f"Webhook event published: {webhook_event}")
+
+    if not webhook.attached_nodes:
+        return
+
+    executor = get_service_client(ExecutionManager)
+    for node in webhook.attached_nodes:
+        logger.debug(f"Webhook-attached node: {node}")
+        if not node.is_triggered_by_event_type(event_type):
+            logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
+            continue
+        logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
+        executor.add_execution(
+            node.graph_id,
+            data={f"webhook_{webhook_id}_payload": payload},
+            user_id=webhook.user_id,
+        )
+
+
+@router.post("/{provider}/webhooks/{webhook_id}/ping")
+async def webhook_ping(
+    provider: Annotated[
+        ProviderName, Path(title="Provider where the webhook was registered")
+    ],
+    webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
+    user_id: Annotated[str, Depends(get_user_id)],
+):
+    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
+    webhook = await get_webhook(webhook_id)
+
+    with listen_for_webhook_event(webhook_id, event_type="ping") as ping_event:
+        await webhook_manager.trigger_ping(webhook)
+        await ping_event
+
+
+# --------------------------- UTILITIES ---------------------------- #
 
 
 def _get_provider_oauth_handler(req: Request, provider_name: str) -> BaseOAuthHandler:
@@ -226,7 +296,11 @@ def _get_provider_oauth_handler(req: Request, provider_name: str) -> BaseOAuthHa
         )
 
     handler_class = HANDLERS_BY_NAME[provider_name]
-    frontend_base_url = settings.config.frontend_base_url or str(req.base_url)
+    frontend_base_url = (
+        settings.config.frontend_base_url
+        or settings.config.platform_base_url
+        or str(req.base_url)
+    )
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,

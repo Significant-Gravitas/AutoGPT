@@ -106,7 +106,7 @@ env:
   NUM_NODE_WORKERS: 3
   ENABLE_CREDIT: "true"
   BACKEND_CORS_ALLOW_ORIGINS: '["https://platform.agpt.co"]'
-  FRONTEND_BASE_URL: "https://platform.agpt.co/"
+  PLATFORM_BASE_URL: "https://platform.agpt.co"
   SUPABASE_URL: "https://bgwpwdsxblryihinutbx.supabase.co"
   AGENTSERVER_HOST: "autogpt-server.prod-agpt.svc.cluster.local"
   EXECUTIONMANAGER_HOST: "autogpt-server-executor.prod-agpt.svc.cluster.local"
