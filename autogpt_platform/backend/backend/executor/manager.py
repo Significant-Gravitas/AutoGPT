@@ -207,7 +207,10 @@ def execute_node(
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock:
-            creds_lock.release()
+            try:
+                creds_lock.release()
+            except Exception as e:
+                log_metadata.exception(f"Failed to release credentials lock: {e}")
 
         # Update execution status and spend credits
         res = update_execution(end_status)
