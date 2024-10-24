@@ -29,10 +29,9 @@ service_accounts = {
     display_name = "AutoGPT prod Market backend Account"
     description  = "Service account for agpt prod market backend"
   },
-  "prod-github-actions-workload-identity" = {
-    service_account_name = "prod-github-actions-sa"
-    namespace            = "prod-agpt"
-    ksa_name             = "prod-github-actions-sa"
+  "prod-github-actions-sa" = {
+    display_name = "GitHub Actions Prod Service Account"
+    description  = "Service account for GitHub Actions deployments to prod"
   }
 }
 
@@ -108,7 +107,7 @@ role_bindings = {
     "serviceAccount:prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com"
   ],
   "roles/iam.serviceAccountTokenCreator" = [
-    "principalSet://iam.googleapis.com/projects/638488734936/locations/global/workloadIdentityPools/prod-pool/*",
+    "principalSet://iam.googleapis.com/projects/1021527134101/locations/global/workloadIdentityPools/prod-pool/*",
     "serviceAccount:prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com"
   ]
 }
@@ -121,7 +120,7 @@ standard_bucket_names = []
 bucket_admins = ["gcp-devops-agpt@agpt.co", "gcp-developers@agpt.co"]
 
 workload_identity_pools = {
-  "dev-pool" = {
+  "prod-pool" = {
     display_name = "Production Identity Pool"
     providers = {
       "github" = {
