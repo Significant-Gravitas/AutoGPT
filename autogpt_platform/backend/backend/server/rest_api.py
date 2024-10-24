@@ -364,7 +364,7 @@ class AgentServer(AppService):
         cls,
         user_id: Annotated[str, Depends(get_user_id)],
         with_runs: bool = False,
-    ) -> list[graph_db.GraphMeta]:
+    ) -> list[graph_db.GraphMetaModel]:
         return await graph_db.get_graphs_meta(
             include_executions=with_runs, filter_by="active", user_id=user_id
         )
@@ -372,7 +372,7 @@ class AgentServer(AppService):
     @classmethod
     async def get_templates(
         cls, user_id: Annotated[str, Depends(get_user_id)]
-    ) -> list[graph_db.GraphMeta]:
+    ) -> list[graph_db.GraphMetaModel]:
         return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
 
     @classmethod
@@ -382,7 +382,7 @@ class AgentServer(AppService):
         user_id: Annotated[str, Depends(get_user_id)],
         version: int | None = None,
         hide_credentials: bool = False,
-    ) -> graph_db.Graph:
+    ) -> graph_db.GraphModel:
         graph = await graph_db.get_graph(
             graph_id, version, user_id=user_id, hide_credentials=hide_credentials
         )
@@ -393,7 +393,7 @@ class AgentServer(AppService):
     @classmethod
     async def get_template(
         cls, graph_id: str, version: int | None = None
-    ) -> graph_db.Graph:
+    ) -> graph_db.GraphModel:
         graph = await graph_db.get_graph(graph_id, version, template=True)
         if not graph:
             raise HTTPException(
@@ -404,7 +404,7 @@ class AgentServer(AppService):
     @classmethod
     async def get_graph_all_versions(
         cls, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
-    ) -> list[graph_db.Graph]:
+    ) -> list[graph_db.GraphModel]:
         graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
         if not graphs:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -412,12 +412,12 @@ class AgentServer(AppService):
 
     async def create_new_graph(
         self, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
-    ) -> graph_db.Graph:
+    ) -> graph_db.GraphModel:
         return await self.create_graph(create_graph, is_template=False, user_id=user_id)
 
     async def create_new_template(
         self, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
-    ) -> graph_db.Graph:
+    ) -> graph_db.GraphModel:
         return await self.create_graph(create_graph, is_template=True, user_id=user_id)
 
     class DeleteGraphResponse(TypedDict):
@@ -438,7 +438,7 @@ class AgentServer(AppService):
         # user_id doesn't have to be annotated like on other endpoints,
         # because create_graph isn't used directly as an endpoint
         user_id: str,
-    ) -> graph_db.Graph:
+    ) -> graph_db.GraphModel:
         if create_graph.graph:
             graph = graph_db.graph_from_creatable(create_graph.graph, user_id)
         elif create_graph.template_id:
@@ -473,9 +473,9 @@ class AgentServer(AppService):
     async def update_graph(
         self,
         graph_id: str,
-        graph: graph_db.CreatableGraph,
+        graph: graph_db.Graph,
         user_id: Annotated[str, Depends(get_user_id)],
-    ) -> graph_db.Graph:
+    ) -> graph_db.GraphModel:
         # Sanity check
         if graph.id and graph.id != graph_id:
             raise HTTPException(400, detail="Graph ID does not match ID in URI")

@@ -3,9 +3,7 @@ from uuid import UUID
 import pytest
 
 from backend.blocks.basic import AgentInputBlock, StoreValueBlock
-from backend.data.graph import CreatableGraph as Graph
-from backend.data.graph import CreatableNode as Node
-from backend.data.graph import Link
+from backend.data.graph import Graph, Link, Node
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.model import CreateGraph
 from backend.util.test import SpinTestServer

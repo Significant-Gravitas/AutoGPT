@@ -29,7 +29,7 @@ from backend.data.execution import (
     merge_execution_input,
     parse_execution_output,
 )
-from backend.data.graph import CreatableNode, Graph, Link
+from backend.data.graph import GraphModel, Link, Node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
@@ -218,7 +218,7 @@ def execute_node(
 
 def _enqueue_next_nodes(
     db_client: "DatabaseManager",
-    node: CreatableNode,
+    node: Node,
     output: BlockData,
     user_id: str,
     graph_exec_id: str,
@@ -333,7 +333,7 @@ def _enqueue_next_nodes(
 
 
 def validate_exec(
-    node: CreatableNode,
+    node: Node,
     data: BlockInput,
     resolve_input: bool = True,
 ) -> tuple[BlockInput | None, str]:
@@ -714,7 +714,7 @@ class ExecutionManager(AppService):
     def add_execution(
         self, graph_id: str, data: BlockInput, user_id: str
     ) -> dict[str, Any]:
-        graph: Graph | None = self.db_client.get_graph(graph_id, user_id=user_id)
+        graph: GraphModel | None = self.db_client.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise Exception(f"Graph #{graph_id} not found.")
 
@@ -822,7 +822,7 @@ class ExecutionManager(AppService):
                 )
                 self.db_client.send_execution_update(exec_update.model_dump())
 
-    def _validate_node_input_credentials(self, graph: Graph, user_id: str):
+    def _validate_node_input_credentials(self, graph: GraphModel, user_id: str):
         """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:

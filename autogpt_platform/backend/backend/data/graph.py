@@ -49,7 +49,7 @@ class Link(BaseDbModel):
         return hash((self.source_id, self.sink_id, self.source_name, self.sink_name))
 
 
-class CreatableNode(BaseDbModel):
+class Node(BaseDbModel):
     block_id: str
     input_default: BlockInput = {}  # dict[input_name, default_value]
     metadata: dict[str, Any] = {}
@@ -60,7 +60,7 @@ class CreatableNode(BaseDbModel):
     webhook: Optional[Webhook] = None
 
 
-class Node(CreatableNode):
+class NodeModel(Node):
     graph_id: str
     graph_version: int
 
@@ -68,7 +68,7 @@ class Node(CreatableNode):
     def from_db(node: AgentNode):
         if not node.AgentBlock:
             raise ValueError(f"Invalid node {node.id}, invalid AgentBlock.")
-        obj = Node(
+        obj = NodeModel(
             id=node.id,
             block_id=node.AgentBlock.id,
             input_default=json.loads(node.constantInput),
@@ -130,7 +130,7 @@ class ExecutionMeta(BaseDbModel):
         )
 
 
-class CreatableGraphMeta(BaseDbModel):
+class GraphMeta(BaseDbModel):
     version: int = 1
     is_active: bool = True
     is_template: bool = False
@@ -139,7 +139,7 @@ class CreatableGraphMeta(BaseDbModel):
     executions: list[ExecutionMeta] | None = None
 
 
-class GraphMeta(CreatableGraphMeta):
+class GraphMetaModel(GraphMeta):
     user_id: str
 
     @staticmethod
@@ -152,7 +152,7 @@ class GraphMeta(CreatableGraphMeta):
         else:
             executions = None
 
-        return GraphMeta(
+        return GraphMetaModel(
             id=graph.id,
             user_id=graph.userId,
             version=graph.version,
@@ -164,15 +164,15 @@ class GraphMeta(CreatableGraphMeta):
         )
 
 
-class CreatableGraph(CreatableGraphMeta):
-    nodes: list[CreatableNode]
+class Graph(GraphMeta):
+    nodes: list[Node]
     links: list[Link]
 
 
-class Graph(CreatableGraph, GraphMeta):
+class GraphModel(Graph, GraphMetaModel):
 
     @property
-    def starting_nodes(self) -> list[CreatableNode]:
+    def starting_nodes(self) -> list[Node]:
         outbound_nodes = {link.sink_id for link in self.links}
         input_nodes = {
             v.id
@@ -186,7 +186,7 @@ class Graph(CreatableGraph, GraphMeta):
         ]
 
     @property
-    def ending_nodes(self) -> list[CreatableNode]:
+    def ending_nodes(self) -> list[Node]:
         return [
             v for v in self.nodes if isinstance(get_block(v.block_id), AgentOutputBlock)
         ]
@@ -314,9 +314,9 @@ class Graph(CreatableGraph, GraphMeta):
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
         nodes = graph.AgentNodes or []
 
-        return Graph(
-            **GraphMeta.from_db(graph).model_dump(),
-            nodes=[Graph._process_node(node, hide_credentials) for node in nodes],
+        return GraphModel(
+            **GraphMetaModel.from_db(graph).model_dump(),
+            nodes=[GraphModel._process_node(node, hide_credentials) for node in nodes],
             links=list(
                 {
                     Link.from_db(link)
@@ -327,13 +327,13 @@ class Graph(CreatableGraph, GraphMeta):
         )
 
     @staticmethod
-    def _process_node(node: AgentNode, hide_credentials: bool) -> Node:
+    def _process_node(node: AgentNode, hide_credentials: bool) -> NodeModel:
         node_dict = node.model_dump()
         if hide_credentials and "constantInput" in node_dict:
             constant_input = json.loads(node_dict["constantInput"])
-            constant_input = Graph._hide_credentials_in_input(constant_input)
+            constant_input = GraphModel._hide_credentials_in_input(constant_input)
             node_dict["constantInput"] = json.dumps(constant_input)
-        return Node.from_db(AgentNode(**node_dict))
+        return NodeModel.from_db(AgentNode(**node_dict))
 
     @staticmethod
     def _hide_credentials_in_input(input_data: dict[str, Any]) -> dict[str, Any]:
@@ -341,7 +341,7 @@ class Graph(CreatableGraph, GraphMeta):
         result = {}
         for key, value in input_data.items():
             if isinstance(value, dict):
-                result[key] = Graph._hide_credentials_in_input(value)
+                result[key] = GraphModel._hide_credentials_in_input(value)
             elif isinstance(value, str) and any(
                 sensitive_key in key.lower() for sensitive_key in sensitive_keys
             ):
@@ -367,15 +367,15 @@ AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
 # --------------------- CRUD functions --------------------- #
 
 
-async def get_node(node_id: str) -> Node:
+async def get_node(node_id: str) -> NodeModel:
     node = await AgentNode.prisma().find_unique_or_raise(
         where={"id": node_id},
         include=AGENT_NODE_INCLUDE,
     )
-    return Node.from_db(node)
+    return NodeModel.from_db(node)
 
 
-async def set_node_webhook(node_id: str, webhook_id: str | None) -> Node:
+async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
     node = await AgentNode.prisma().update(
         where={"id": node_id},
         data=(
@@ -387,14 +387,14 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> Node:
     )
     if not node:
         raise ValueError(f"Node #{node_id} not found")
-    return Node.from_db(node)
+    return NodeModel.from_db(node)
 
 
 async def get_graphs_meta(
     user_id: str,
     include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
-) -> list[GraphMeta]:
+) -> list[GraphMetaModel]:
     """
     Retrieves graph metadata objects.
     Default behaviour is to get all currently active graphs.
@@ -405,7 +405,7 @@ async def get_graphs_meta(
         user_id: The ID of the user that owns the graph.
 
     Returns:
-        list[GraphMeta]: A list of objects representing the retrieved graph metadata.
+        list[GraphMetaModel]: A list of objects representing the retrieved graph metadata.
     """
     where_clause: prisma.types.AgentGraphWhereInput = {}
 
@@ -432,7 +432,7 @@ async def get_graphs_meta(
     if not graphs:
         return []
 
-    return [GraphMeta.from_db(graph) for graph in graphs]
+    return [GraphMetaModel.from_db(graph) for graph in graphs]
 
 
 async def get_graph(
@@ -441,7 +441,7 @@ async def get_graph(
     template: bool = False,
     user_id: str | None = None,
     hide_credentials: bool = False,
-) -> Graph | None:
+) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed,
@@ -466,7 +466,7 @@ async def get_graph(
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-    return Graph.from_db(graph, hide_credentials) if graph else None
+    return GraphModel.from_db(graph, hide_credentials) if graph else None
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
@@ -497,7 +497,7 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
     )
 
 
-async def get_graph_all_versions(graph_id: str, user_id: str) -> list[Graph]:
+async def get_graph_all_versions(graph_id: str, user_id: str) -> list[GraphModel]:
     graph_versions = await AgentGraph.prisma().find_many(
         where={"id": graph_id, "userId": user_id},
         order={"version": "desc"},
@@ -507,7 +507,7 @@ async def get_graph_all_versions(graph_id: str, user_id: str) -> list[Graph]:
     if not graph_versions:
         return []
 
-    return [Graph.from_db(graph) for graph in graph_versions]
+    return [GraphModel.from_db(graph) for graph in graph_versions]
 
 
 async def delete_graph(graph_id: str, user_id: str) -> int:
@@ -519,7 +519,7 @@ async def delete_graph(graph_id: str, user_id: str) -> int:
     return entries_count
 
 
-async def create_graph(graph: CreatableGraph, user_id: str) -> Graph:
+async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
 
@@ -531,7 +531,7 @@ async def create_graph(graph: CreatableGraph, user_id: str) -> Graph:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
-async def __create_graph(tx, graph: CreatableGraph, user_id: str):
+async def __create_graph(tx, graph: Graph, user_id: str):
     await AgentGraph.prisma(tx).create(
         data={
             "id": graph.id,
@@ -580,23 +580,23 @@ async def __create_graph(tx, graph: CreatableGraph, user_id: str):
 # ------------------------ UTILITIES ------------------------ #
 
 
-def graph_from_creatable(creatable_graph: CreatableGraph, user_id: str) -> Graph:
+def graph_from_creatable(creatable_graph: Graph, user_id: str) -> GraphModel:
     """
     Convert a CreatableGraph to a Graph, setting graph_id and graph_version on all nodes.
 
     Args:
-        creatable_graph (CreatableGraph): The creatable graph to convert.
+        creatable_graph (Graph): The creatable graph to convert.
         user_id (str): The ID of the user creating the graph.
 
     Returns:
-        Graph: The converted Graph object.
+        GraphModel: The converted Graph object.
     """
     # Create a new Graph object, inheriting properties from CreatableGraph
-    return Graph(
+    return GraphModel(
         **creatable_graph.model_dump(exclude={"nodes"}),
         user_id=user_id,
         nodes=[
-            Node(
+            NodeModel(
                 **creatable_node.model_dump(),
                 graph_id=creatable_graph.id,
                 graph_version=creatable_graph.version,

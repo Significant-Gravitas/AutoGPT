@@ -14,7 +14,7 @@ from backend.integrations.providers import ProviderName
 from .db import BaseDbModel
 
 if TYPE_CHECKING:
-    from .graph import Node
+    from .graph import NodeModel
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,11 @@ class Webhook(BaseDbModel):
 
     provider_webhook_id: str
 
-    attached_nodes: Optional[list["Node"]] = None
+    attached_nodes: Optional[list["NodeModel"]] = None
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
-        from .graph import Node
+        from .graph import NodeModel
 
         return Webhook(
             id=webhook.id,
@@ -49,7 +49,7 @@ class Webhook(BaseDbModel):
             secret=webhook.secret,
             provider_webhook_id=webhook.providerWebhookId,
             attached_nodes=(
-                [Node.from_db(node) for node in webhook.AgentNodes]
+                [NodeModel.from_db(node) for node in webhook.AgentNodes]
                 if webhook.AgentNodes is not None
                 else None
             ),

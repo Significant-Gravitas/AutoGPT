@@ -9,7 +9,7 @@ from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
 if TYPE_CHECKING:
     from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 
-    from backend.data.graph import CreatableNode, Graph
+    from backend.data.graph import GraphModel, Node
 
     from .base import BaseWebhooksManager
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 async def on_graph_activate(
-    graph: "Graph", get_credentials: Callable[[str], "Credentials | None"]
+    graph: "GraphModel", get_credentials: Callable[[str], "Credentials | None"]
 ):
     """
     Hook to be called when a graph is activated/created.
@@ -50,7 +50,7 @@ async def on_graph_activate(
 
 
 async def on_graph_deactivate(
-    graph: "Graph", get_credentials: Callable[[str], "Credentials | None"]
+    graph: "GraphModel", get_credentials: Callable[[str], "Credentials | None"]
 ):
     """
     Hook to be called when a graph is deactivated/deleted.
@@ -81,10 +81,10 @@ async def on_graph_deactivate(
 
 async def on_node_activate(
     user_id: str,
-    node: "CreatableNode",
+    node: "Node",
     *,
     credentials: Optional["Credentials"] = None,
-) -> "CreatableNode":
+) -> "Node":
     """Hook to be called when the node is activated/created"""
 
     block = get_block(node.block_id)
@@ -145,11 +145,11 @@ async def on_node_activate(
 
 
 async def on_node_deactivate(
-    node: "CreatableNode",
+    node: "Node",
     *,
     credentials: Optional["Credentials"] = None,
     webhooks_manager: Optional["BaseWebhooksManager"] = None,
-) -> "CreatableNode":
+) -> "Node":
     """Hook to be called when node is deactivated/deleted"""
 
     logger.debug(f"Deactivating node #{node.id}")
