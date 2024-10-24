@@ -1,7 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { LOCALES } from "@/lib/utils";
 
-export async function updateSession(request: NextRequest) {
+// TODO: Update the protected pages list
+const PROTECTED_PAGES = ["/monitor", "/build"];
+const ADMIN_PAGES = ["/admin"];
+
+export async function updateSession(request: NextRequest, locale: string) {
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -48,15 +53,49 @@ export async function updateSession(request: NextRequest) {
       error,
     } = await supabase.auth.getUser();
 
+    // Get the user role
+    const userRole = user?.role;
+    const url = request.nextUrl.clone();
+    const pathname = request.nextUrl.pathname;
+    const pathnameHasLocale = LOCALES.some(
+      (locale) =>
+        pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`,
+    );
+    const lang = pathnameHasLocale ? `/${pathname.split("/")[1]}` : "";
+
+    // AUTH REDIRECTS
+    // If not logged in and trying to access a protected page, redirect to login
     if (
-      !user &&
-      !request.nextUrl.pathname.startsWith("/login") &&
-      !request.nextUrl.pathname.startsWith("/auth")
+      (!user &&
+        PROTECTED_PAGES.some((page) => {
+          const combinedPath = `${lang}${page}`;
+          // console.log("Checking pathname:", request.nextUrl.pathname, "against:", combinedPath);
+          return request.nextUrl.pathname.startsWith(combinedPath);
+        })) ||
+      ADMIN_PAGES.some((page) => {
+        const combinedPath = `${lang}${page}`;
+        // console.log("Checking pathname:", request.nextUrl.pathname, "against:", combinedPath);
+        return request.nextUrl.pathname.startsWith(combinedPath);
+      })
     ) {
       // no user, potentially respond by redirecting the user to the login page
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      // return NextResponse.redirect(url)
+      url.pathname = `${locale}/login`;
+      return NextResponse.redirect(url);
+    }
+    if (
+      user &&
+      userRole != "admin" &&
+      ADMIN_PAGES.some((page) =>
+        request.nextUrl.pathname.startsWith(`${lang}${page}`),
+      )
+    ) {
+      // no user, potentially respond by redirecting the user to the login page
+      url.pathname = `${locale}/monitoring`;
+      return NextResponse.redirect(url);
+    }
+    if (locale) {
+      url.pathname = `${locale}${pathname}`;
+      return NextResponse.redirect(url);
     }
 
     // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're

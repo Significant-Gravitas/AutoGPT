@@ -271,13 +271,14 @@ export default class BaseAutoGPTServerAPI {
     if (!response.ok) {
       console.warn(`${method} ${path} returned non-OK response:`, response);
 
-      if (
-        response.status === 403 &&
-        typeof window !== "undefined" // Check if in browser environment
-      ) {
-        window.location.href = "/login";
-        return null;
-      }
+      // console.warn("baseClient is attempting to redirect by changing window location")
+      // if (
+      //   response.status === 403 &&
+      //   response.statusText === "Not authenticated" &&
+      //   typeof window !== "undefined" // Check if in browser environment
+      // ) {
+      //   window.location.href = "/login";
+      // }
 
       let errorDetail;
       try {

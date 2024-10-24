@@ -215,6 +215,9 @@ export function getBehaveAs(): BehaveAs {
     : BehaveAs.LOCAL;
 }
 
+export const LOCALES = process.env.NEXT_PUBLIC_LOCALES?.split(",") || ["en"];
+export const DEFAULT_LOCALE = process.env.NEXT_PUBLIC_DEFAULT_LOCALE || "en";
+
 function rectanglesOverlap(
   rect1: { x: number; y: number; width: number; height?: number },
   rect2: { x: number; y: number; width: number; height?: number },
