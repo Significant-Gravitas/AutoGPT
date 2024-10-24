@@ -507,7 +507,6 @@ const NodeArrayInput: FC<{
     typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
   return (
     <div className={cn(className, "flex flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
       {entries.map((entry: any, index: number) => {
         const entryKey = `${selfKey}_$_${index}`;
         const isConnected =

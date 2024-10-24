@@ -117,7 +117,7 @@ export default function useAgentGraph(
       if (!outputSchema) return "unknown";
 
       const outputHandle = outputSchema.properties[handleId];
-      if (!("type" in outputHandle)) return "unknown";
+      if (!outputHandle || !("type" in outputHandle)) return "unknown";
       return outputHandle.type;
     },
     [],

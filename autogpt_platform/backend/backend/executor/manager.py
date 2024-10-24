@@ -148,7 +148,7 @@ def execute_node(
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
     log_metadata.info("Executed node with input", input=input_data_str)
-    update_execution(ExecutionStatus.RUNNING)
+    exec_res = update_execution(ExecutionStatus.RUNNING)
 
     extra_exec_kwargs = {}
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
@@ -174,6 +174,8 @@ def execute_node(
             output_size += len(json.dumps(output_data))
             log_metadata.info("Node produced output", output_name=output_data)
             db_client.upsert_execution_output(node_exec_id, output_name, output_data)
+            exec_res.output_data.setdefault(output_name, []).append(output_data)
+            db_client.send_execution_update(exec_res.model_dump())
 
             for execution in _enqueue_next_nodes(
                 db_client=db_client,
