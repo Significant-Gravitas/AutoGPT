@@ -564,7 +564,7 @@ model StoreListingVersion {
 }
 
 enum SubmissionStatus {
-  DAFT
+  DRAFT
   PENDING
   APPROVED
   REJECTED
