@@ -22,7 +22,7 @@ async def execute_graph(
     num_execs: int = 4,
 ) -> str:
     # --- Test adding new executions --- #
-    response = await agent_server.execute_graph(test_graph.id, input_data, test_user.id)
+    response = agent_server.execute_graph(test_graph.id, input_data, test_user.id)
     graph_exec_id = response["id"]
 
     # Execution queue should be empty
