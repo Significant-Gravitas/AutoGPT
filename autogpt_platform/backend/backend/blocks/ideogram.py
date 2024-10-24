@@ -1,10 +1,26 @@
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 import requests
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="ideogram",
+    api_key=SecretStr("mock-ideogram-api-key"),
+    title="Mock Ideogram API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
 
 
 class IdeogramModelName(str, Enum):
@@ -62,9 +78,13 @@ class UpscaleOption(str, Enum):
 
 class IdeogramModelBlock(Block):
     class Input(BlockSchema):
-        api_key: BlockSecret = SecretField(
-            key="ideogram_api_key",
-            description="Ideogram API Key",
+
+        credentials: CredentialsMetaInput[Literal["ideogram"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="ideogram",
+                supported_credential_types={"api_key"},
+                description="The Ideogram integration can be used with any API key with sufficient permissions for the blocks it is used on.",
+            )
         )
         prompt: str = SchemaField(
             description="Text prompt for image generation",
@@ -132,7 +152,6 @@ class IdeogramModelBlock(Block):
             input_schema=IdeogramModelBlock.Input,
             output_schema=IdeogramModelBlock.Output,
             test_input={
-                "api_key": "test_api_key",
                 "ideogram_model_name": IdeogramModelName.V2,
                 "prompt": "A futuristic cityscape at sunset",
                 "aspect_ratio": AspectRatio.ASPECT_1_1,
@@ -142,6 +161,7 @@ class IdeogramModelBlock(Block):
                 "style_type": StyleType.AUTO,
                 "negative_prompt": None,
                 "color_palette_name": ColorPalettePreset.NONE,
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
                 (
@@ -153,14 +173,17 @@ class IdeogramModelBlock(Block):
                 "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name: "https://ideogram.ai/api/images/test-generated-image-url.png",
                 "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         seed = input_data.seed
 
         # Step 1: Generate the image
         result = self.run_model(
-            api_key=input_data.api_key.get_secret_value(),
+            api_key=credentials.api_key,
             model_name=input_data.ideogram_model_name.value,
             prompt=input_data.prompt,
             seed=seed,
@@ -174,7 +197,7 @@ class IdeogramModelBlock(Block):
         # Step 2: Upscale the image if requested
         if input_data.upscale == UpscaleOption.AI_UPSCALE:
             result = self.upscale_image(
-                api_key=input_data.api_key.get_secret_value(),
+                api_key=credentials.api_key,
                 image_url=result,
             )
 
@@ -182,7 +205,7 @@ class IdeogramModelBlock(Block):
 
     def run_model(
         self,
-        api_key: str,
+        api_key: SecretStr,
         model_name: str,
         prompt: str,
         seed: Optional[int],
@@ -193,7 +216,10 @@ class IdeogramModelBlock(Block):
         color_palette_name: str,
     ):
         url = "https://api.ideogram.ai/generate"
-        headers = {"Api-Key": api_key, "Content-Type": "application/json"}
+        headers = {
+            "Api-Key": api_key.get_secret_value(),
+            "Content-Type": "application/json",
+        }
 
         data: Dict[str, Any] = {
             "image_request": {
@@ -221,10 +247,10 @@ class IdeogramModelBlock(Block):
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to fetch image: {str(e)}")
 
-    def upscale_image(self, api_key: str, image_url: str):
+    def upscale_image(self, api_key: SecretStr, image_url: str):
         url = "https://api.ideogram.ai/upscale"
         headers = {
-            "Api-Key": api_key,
+            "Api-Key": api_key.get_secret_value(),
         }
 
         try:

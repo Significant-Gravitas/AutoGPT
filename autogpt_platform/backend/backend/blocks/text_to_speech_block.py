@@ -1,9 +1,25 @@
-from typing import Any
+from typing import Any, Literal
 
 import requests
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="unreal_speech",
+    api_key=SecretStr("mock-unreal-speech-api-key"),
+    title="Mock Unreal Speech API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
 
 
 class UnrealTextToSpeechBlock(Block):
@@ -17,8 +33,13 @@ class UnrealTextToSpeechBlock(Block):
             placeholder="Scarlett",
             default="Scarlett",
         )
-        api_key: BlockSecret = SecretField(
-            key="unreal_speech_api_key", description="Your Unreal Speech API key"
+        credentials: CredentialsMetaInput[
+            Literal["unreal_speech"], Literal["api_key"]
+        ] = CredentialsField(
+            provider="unreal_speech",
+            supported_credential_types={"api_key"},
+            description="The Unreal Speech integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
         )
 
     class Output(BlockSchema):
@@ -35,7 +56,7 @@ class UnrealTextToSpeechBlock(Block):
             test_input={
                 "text": "This is a test of the text to speech API.",
                 "voice_id": "Scarlett",
-                "api_key": "test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[("mp3_url", "https://example.com/test.mp3")],
             test_mock={
@@ -43,15 +64,16 @@ class UnrealTextToSpeechBlock(Block):
                     "OutputUri": "https://example.com/test.mp3"
                 }
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     @staticmethod
     def call_unreal_speech_api(
-        api_key: str, text: str, voice_id: str
+        api_key: SecretStr, text: str, voice_id: str
     ) -> dict[str, Any]:
         url = "https://api.v7.unrealspeech.com/speech"
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {api_key.get_secret_value()}",
             "Content-Type": "application/json",
         }
         data = {
@@ -67,9 +89,11 @@ class UnrealTextToSpeechBlock(Block):
         response.raise_for_status()
         return response.json()
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         api_response = self.call_unreal_speech_api(
-            input_data.api_key.get_secret_value(),
+            credentials.api_key,
             input_data.text,
             input_data.voice_id,
         )

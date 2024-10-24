@@ -1,10 +1,32 @@
 from enum import Enum
-from typing import List
+from typing import List, Literal
 
 import requests
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import (
+    BlockSecret,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    SecretField,
+)
+
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="medium",
+    api_key=SecretStr("mock-medium-api-key"),
+    title="Mock Medium API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
 
 
 class PublishToMediumStatus(str, Enum):
@@ -55,10 +77,12 @@ class PublishToMediumBlock(Block):
             description="Whether to notify followers that the user has published",
             placeholder="False",
         )
-        api_key: BlockSecret = SecretField(
-            key="medium_api_key",
-            description="""The API key for the Medium integration. You can get this from https://medium.com/me/settings/security and scrolling down to "integration Tokens".""",
-            placeholder="Enter your Medium API key",
+        credentials: CredentialsMetaInput[Literal["medium"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="medium",
+                supported_credential_types={"api_key"},
+                description="The Medium integration can be used with any API key with sufficient permissions for the blocks it is used on.",
+            )
         )
 
     class Output(BlockSchema):
@@ -87,7 +111,7 @@ class PublishToMediumBlock(Block):
                 "license": "all-rights-reserved",
                 "notify_followers": False,
                 "publish_status": PublishToMediumStatus.DRAFT.value,
-                "api_key": "your_test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
                 ("post_id", "e6f36a"),
@@ -104,11 +128,12 @@ class PublishToMediumBlock(Block):
                     }
                 }
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def create_post(
         self,
-        api_key,
+        api_key: SecretStr,
         author_id,
         title,
         content,
@@ -120,7 +145,7 @@ class PublishToMediumBlock(Block):
         notify_followers,
     ):
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {api_key.get_secret_value()}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
@@ -144,9 +169,11 @@ class PublishToMediumBlock(Block):
 
         return response.json()
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         response = self.create_post(
-            input_data.api_key.get_secret_value(),
+            credentials.api_key,
             input_data.author_id.get_secret_value(),
             input_data.title,
             input_data.content,
