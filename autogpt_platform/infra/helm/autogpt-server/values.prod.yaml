@@ -25,6 +25,13 @@ serviceExecutor:
   annotations:
     beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
 
+serviceDBManager:
+  type: ClusterIP
+  port: 8005
+  targetPort: 8005
+  annotations:
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
+
 ingress:
   enabled: true
   className: "gce"
