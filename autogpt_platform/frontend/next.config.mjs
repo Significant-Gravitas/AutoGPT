@@ -12,7 +12,7 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL,
   },
   images: {
-    domains: ["images.unsplash.com"],
+    domains: ["images.unsplash.com", "ddz4ak4pa3d19.cloudfront.net", "upload.wikimedia.org"],
   },
   // async redirects() {
   //   return [

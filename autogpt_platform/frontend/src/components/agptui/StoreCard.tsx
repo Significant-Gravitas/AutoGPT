@@ -23,10 +23,8 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   avatarSrc,
   hideAvatar = false,
 }) => {
-  const [isPressed, setIsPressed] = React.useState(false);
 
   const handleClick = () => {
-    setIsPressed(!isPressed);
     onClick();
   };
 
