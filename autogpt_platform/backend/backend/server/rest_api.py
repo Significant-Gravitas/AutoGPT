@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 from collections import defaultdict
@@ -516,7 +517,7 @@ class AgentServer(AppService):
             user_id=user_id,
         )
 
-    async def execute_graph(
+    def execute_graph(
         self,
         graph_id: str,
         node_input: dict[Any, Any],
@@ -539,7 +540,9 @@ class AgentServer(AppService):
                 404, detail=f"Agent execution #{graph_exec_id} not found"
             )
 
-        self.execution_manager_client.cancel_execution(graph_exec_id)
+        await asyncio.to_thread(
+            self.execution_manager_client.cancel_execution(graph_exec_id)
+        )
 
         # Retrieve & return canceled graph execution in its final state
         return await execution_db.get_execution_results(graph_exec_id)
@@ -616,8 +619,10 @@ class AgentServer(AppService):
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         execution_scheduler = self.execution_scheduler_client
         return {
-            "id": execution_scheduler.add_execution_schedule(
-                graph_id, graph.version, cron, input_data, user_id=user_id
+            "id": await asyncio.to_thread(
+                execution_scheduler.add_execution_schedule(
+                    graph_id, graph.version, cron, input_data, user_id=user_id
+                )
             )
         }
 
