@@ -105,7 +105,7 @@ class MainLayout extends StatelessWidget {
                         if (skillTreeViewModel.selectedNode != null)
                           SizedBox(
                               width: testQueueViewWidth,
-                              child: TaskQueueView()),
+                              child: const TaskQueueView()),
                         SizedBox(
                             width: chatViewWidth,
                             child: ChatView(viewModel: chatViewModel)),

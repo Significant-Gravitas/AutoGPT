@@ -2,7 +2,6 @@ import 'package:auto_gpt_flutter_client/constants/app_colors.dart';
 import 'package:auto_gpt_flutter_client/utils/uri_utility.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class LeaderboardSubmissionDialog extends StatefulWidget {
   final Function(String, String, String)? onSubmit;

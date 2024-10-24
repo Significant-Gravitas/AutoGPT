@@ -30,8 +30,7 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
     bool containsMarkdown(String text) {
       // Regular expression to detect Markdown patterns like headers, bold, links, etc.
       final RegExp markdownPattern = RegExp(
-        r'(?:\*\*|__).*?(?:\*\*|__)|' r'(?:\*|_).*?(?:\*|_)|' + // Italic
-            r'\[.*?\]\(.*?\)|' + // Links
+        r'(?:\*\*|__).*?(?:\*\*|__)|' r'(?:\*|_).*?(?:\*|_)|' r'\[.*?\]\(.*?\)|' + // Links
             r'!\[.*?\]\(.*?\)|' + // Images
             r'#{1,6}.*|' + // Headers
             r'```.*?```', // Fenced code blocks
