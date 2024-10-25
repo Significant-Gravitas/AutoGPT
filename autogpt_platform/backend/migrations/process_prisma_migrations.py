@@ -19,6 +19,10 @@ def wrap_table_with_indexes_and_constraints(
     """
     Wrap a table definition with its related indexes and constraints in a single DO block.
     """
+    # Add closing bracket if missing
+    if not table_block.strip().endswith(");"):
+        table_block = table_block.rstrip() + "\n);"
+
     if_not_exists_statements = [table_block] + indexes + constraints
     indented_statements = "\n\n".join(
         [indent_block(stmt.strip(), 8) for stmt in if_not_exists_statements]
@@ -63,7 +67,7 @@ def process_sql_file(input_file: str, output_file: str):
         sql_content = infile.read()
 
     # Split the SQL file by double newlines into blocks
-    blocks = sql_content.split("\n\n")
+    blocks = sql_content.split(";")
 
     # Separate blocks into enums, tables, indexes, and constraints
     enums = []
@@ -75,7 +79,7 @@ def process_sql_file(input_file: str, output_file: str):
 
     # Classify each block
     for block in blocks:
-        block = block.strip()
+        block = block.strip() + ';'
         if not block:
             continue
         if "CREATE TYPE" in block:

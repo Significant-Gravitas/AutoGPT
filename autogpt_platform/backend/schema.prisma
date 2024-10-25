@@ -496,8 +496,8 @@ model Profile {
   User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // The group this profile belongs to, if any.
-  groupId        String?    @db.Uuid
-  Group          UserGroup? @relation(fields: [groupId], references: [id])
+  groupId String?    @db.Uuid
+  Group   UserGroup? @relation(fields: [groupId], references: [id])
 
   username    String @unique
   description String
@@ -572,11 +572,10 @@ model StoreListingVersion {
 
   // Reviews are on a specific version, but then aggregated up to the listing.
   // This allows us to provide a review filter to current version of the agent.
-  StoreListingReview     StoreListingReview[]
+  StoreListingReview StoreListingReview[]
 
   @@index([agentId, agentVersion, isApproved])
 }
-
 
 model StoreListingReview {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -592,7 +591,6 @@ model StoreListingReview {
   score    Int
   comments String?
 }
-
 
 enum SubmissionStatus {
   DAFT
