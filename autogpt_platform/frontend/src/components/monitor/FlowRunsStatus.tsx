@@ -20,6 +20,7 @@ export const FlowRunsStatus: React.FC<{
   /* "dateMin": since the first flow in the dataset
    * number > 0: custom date (unix timestamp)
    * number < 0: offset relative to Date.now() (in seconds) */
+  const [selected, setSelected] = useState<Date>();
   const [statsSince, setStatsSince] = useState<number | "dataMin">(-24 * 3600);
   const statsSinceTimestamp = // unix timestamp or null
     typeof statsSince == "string"
@@ -74,10 +75,11 @@ export const FlowRunsStatus: React.FC<{
             <PopoverContent className="w-auto p-0" align="start">
               <Calendar
                 mode="single"
-                onSelect={(_, selectedDay) =>
-                  setStatsSince(selectedDay.getTime())
-                }
-                initialFocus
+                selected={selected}
+                onSelect={(_, selectedDay) => {
+                  setSelected(selectedDay);
+                  setStatsSince(selectedDay.getTime());
+                }}
               />
             </PopoverContent>
           </Popover>
