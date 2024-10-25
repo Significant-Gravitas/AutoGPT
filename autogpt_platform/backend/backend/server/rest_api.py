@@ -440,7 +440,7 @@ class AgentServer(AppService):
         user_id: str,
     ) -> graph_db.GraphModel:
         if create_graph.graph:
-            graph = graph_db.graph_from_creatable(create_graph.graph, user_id)
+            graph = graph_db.make_graph_model(create_graph.graph, user_id)
         elif create_graph.template_id:
             # Create a new graph from a template
             graph = await graph_db.get_graph(
@@ -500,7 +500,7 @@ class AgentServer(AppService):
                 400, detail="Changing is_template on an existing graph is forbidden"
             )
         graph.is_active = not graph.is_template
-        graph = graph_db.graph_from_creatable(graph, user_id)
+        graph = graph_db.make_graph_model(graph, user_id)
         graph.reassign_ids()
 
         new_graph_version = await graph_db.create_graph(graph, user_id=user_id)

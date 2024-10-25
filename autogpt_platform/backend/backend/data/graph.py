@@ -470,30 +470,27 @@ async def get_graph(
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
-    # Check if the graph belongs to the user
-    graph = await AgentGraph.prisma().find_first(
+    # Activate the requested version if it exists and is owned by the user.
+    updated_count = await AgentGraph.prisma().update_many(
+        data={"isActive": True},
         where={
             "id": graph_id,
             "version": version,
             "userId": user_id,
-        }
-    )
-    if not graph:
-        raise Exception(f"Graph #{graph_id} v{version} not found or not owned by user")
-
-    updated_graph = await AgentGraph.prisma().update(
-        data={"isActive": True},
-        where={
-            "graphVersionId": {"id": graph_id, "version": version},
         },
     )
-    if not updated_graph:
-        raise Exception(f"Graph #{graph_id} v{version} not found")
+    if updated_count == 0:
+        raise Exception(f"Graph #{graph_id} v{version} not found or not owned by user")
 
-    # Deactivate all other versions
+    # Deactivate all other versions.
     await AgentGraph.prisma().update_many(
         data={"isActive": False},
-        where={"id": graph_id, "version": {"not": version}, "userId": user_id},
+        where={
+            "id": graph_id,
+            "version": {"not": version},
+            "userId": user_id,
+            "isActive": True,
+        },
     )
 
 
@@ -580,9 +577,9 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 # ------------------------ UTILITIES ------------------------ #
 
 
-def graph_from_creatable(creatable_graph: Graph, user_id: str) -> GraphModel:
+def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     """
-    Convert a CreatableGraph to a Graph, setting graph_id and graph_version on all nodes.
+    Convert a Graph to a GraphModel, setting graph_id and graph_version on all nodes.
 
     Args:
         creatable_graph (Graph): The creatable graph to convert.
