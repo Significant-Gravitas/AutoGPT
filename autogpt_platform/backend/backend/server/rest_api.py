@@ -8,7 +8,7 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.utils.cache import thread_cached_property
+from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -308,11 +308,13 @@ class AgentServer(AppService):
 
         return wrapper
 
-    @thread_cached_property
+    @property
+    @thread_cached
     def execution_manager_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager)
 
-    @thread_cached_property
+    @property
+    @thread_cached
     def execution_scheduler_client(self) -> ExecutionScheduler:
         return get_service_client(ExecutionScheduler)
 
@@ -541,7 +543,7 @@ class AgentServer(AppService):
             )
 
         await asyncio.to_thread(
-            self.execution_manager_client.cancel_execution(graph_exec_id)
+            lambda: self.execution_manager_client.cancel_execution(graph_exec_id)
         )
 
         # Retrieve & return canceled graph execution in its final state
@@ -617,11 +619,15 @@ class AgentServer(AppService):
         graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-        execution_scheduler = self.execution_scheduler_client
+
         return {
             "id": await asyncio.to_thread(
-                execution_scheduler.add_execution_schedule(
-                    graph_id, graph.version, cron, input_data, user_id=user_id
+                lambda: self.execution_scheduler_client.add_execution_schedule(
+                    graph_id=graph_id,
+                    graph_version=graph.version,
+                    cron=cron,
+                    input_data=input_data,
+                    user_id=user_id,
                 )
             )
         }
