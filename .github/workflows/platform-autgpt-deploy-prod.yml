@@ -141,7 +141,7 @@ jobs:
         mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
     - name: Set up Helm
-      uses: azure/setup-helm@v1
+      uses: azure/setup-helm@v4
       with:
         version: v3.4.0
 
