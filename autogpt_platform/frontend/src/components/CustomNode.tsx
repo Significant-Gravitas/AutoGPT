@@ -191,8 +191,8 @@ export function CustomNode({
             ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
-            // For OUTPUT blocks, only show the 'value' input connection handle
-            !(nodeType == BlockUIType.OUTPUT && propKey == "value");
+            // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
+            !(nodeType == BlockUIType.OUTPUT && propKey == "name");
           const isConnected = isInputHandleConnected(propKey);
           return (
             !isHidden &&
