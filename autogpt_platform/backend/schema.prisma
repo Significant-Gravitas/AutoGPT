@@ -33,6 +33,7 @@ model User {
   Profile                Profile[]
   StoreListing           StoreListing[]
   StoreListingSubmission StoreListingSubmission[]
+  StoreListingReview     StoreListingReview[]
 }
 
 model UserGroup {
@@ -399,7 +400,7 @@ model WebhookTrigger {
 model AnalyticsDetails {
   // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
   // typical uuid() inserts are handled by prisma
-  id String @id @default(dbgenerated("gen_random_uuid()"))
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -422,7 +423,7 @@ model AnalyticsDetails {
 }
 
 model AnalyticsMetrics {
-  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
@@ -489,10 +490,12 @@ model Profile {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
+  // Only 1 of user or group can be set.
+  // The user this profile belongs to, if any. 
   userId String? @db.Uuid
   User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  isGroupProfile Boolean    @default(false)
+  // The group this profile belongs to, if any.
   groupId        String?    @db.Uuid
   Group          UserGroup? @relation(fields: [groupId], references: [id])
 
@@ -515,10 +518,7 @@ model StoreListing {
   // Not needed but makes lookups faster
   isApproved Boolean @default(false)
 
-  slug        String
-  name        String
-  description String
-
+  // The agent link here is only so we can do lookup on agentId, for the listing the StoreListingVersion is used.
   agentId      String @db.Uuid
   agentVersion Int
   Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
@@ -544,12 +544,22 @@ model StoreListingVersion {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
+  // The agent and version to be listed on the store
   agentId      String @db.Uuid
   agentVersion Int
   Agent        Agent  @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  isFeatured Boolean  @default(false)
-  categories String[]
+  // The detials for this version of the agent, this allows the author to update the details of the agent,
+  // But still allow using old versions of the agent with there original details.
+  // TODO: Create a database view that shows only the latest version of each store listing.
+  slug        String
+  name        String
+  videoUrl    String?
+  imageUrls   String[]
+  description String
+  categories  String[]
+
+  isFeatured Boolean @default(false)
 
   isDeleted              Boolean                  @default(false)
   // Old versions can be made unavailable by the author if desired
@@ -560,8 +570,29 @@ model StoreListingVersion {
   storeListingId         String?                  @db.Uuid
   StoreListingSubmission StoreListingSubmission[]
 
+  // Reviews are on a specific version, but then aggregated up to the listing.
+  // This allows us to provide a review filter to current version of the agent.
+  StoreListingReview     StoreListingReview[]
+
   @@index([agentId, agentVersion, isApproved])
 }
+
+
+model StoreListingReview {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  storeListingVersionId String              @db.Uuid
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  reviewByUserId String @db.Uuid
+  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
+
+  score    Int
+  comments String?
+}
+
 
 enum SubmissionStatus {
   DAFT
@@ -581,8 +612,8 @@ model StoreListingSubmission {
   storeListingVersionId String              @db.Uuid
   StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
 
-  reviewByUserId String @db.Uuid
-  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
+  reviewerId String @db.Uuid
+  Reviewer   User   @relation(fields: [reviewerId], references: [id])
 
   Status         SubmissionStatus @default(PENDING)
   reviewComments String?
