@@ -3,15 +3,23 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional, Type
 
-from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
-from backend.blocks.ideogram import IdeogramModelBlock
-from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 import prisma.errors
+from autogpt_libs.supabase_integration_credentials_store.store import (
+    anthropic_credentials,
+    did_credentials,
+    groq_credentials,
+    ideogram_credentials,
+    openai_credentials,
+    replicate_credentials,
+    revid_credentials,
+)
 from prisma import Json
 from prisma.enums import UserBlockCreditType
 from prisma.models import UserBlockCredit
 from pydantic import BaseModel
 
+from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
+from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.llm import (
     MODEL_METADATA,
     AIConversationBlock,
@@ -20,19 +28,11 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.data.block import Block, BlockInput, get_block
 from backend.util.settings import Config
-from autogpt_libs.supabase_integration_credentials_store.store import (
-    revid_credentials,
-    replicate_credentials,
-    ideogram_credentials,
-    groq_credentials,
-    openai_credentials,
-    anthropic_credentials,
-    did_credentials,
-)
 
 
 class BlockCostType(str, Enum):
