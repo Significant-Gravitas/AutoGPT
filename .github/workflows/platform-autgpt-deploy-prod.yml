@@ -97,7 +97,7 @@ jobs:
         echo "market_changed=$MARKET_CHANGED" >> $GITHUB_OUTPUT
 
     - name: Get GKE credentials
-      uses: 'google-github-actions/get-gke-credentials@v1'
+      uses: 'google-github-actions/get-gke-credentials@v2'
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ env.GKE_ZONE }}
