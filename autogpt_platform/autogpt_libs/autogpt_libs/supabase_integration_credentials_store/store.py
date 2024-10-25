@@ -66,6 +66,23 @@ groq_credentials = APIKeyCredentials(
     title="Use Credits for Groq",
     expires_at=None,
 )
+did_credentials = APIKeyCredentials(
+    id="7f7b0654-c36b-4565-8fa7-9a52575dfae2",
+    provider="d_id",
+    api_key=SecretStr(settings.secrets.did_api_key),
+    title="Use Credits for D-ID",
+    expires_at=None,
+)
+
+DEFAULT_CREDENTIALS = [
+    revid_credentials,
+    ideogram_credentials,
+    replicate_credentials,
+    openai_credentials,
+    anthropic_credentials,
+    groq_credentials,
+    did_credentials,
+]
 
 
 class SupabaseIntegrationCredentialsStore:
@@ -108,6 +125,8 @@ class SupabaseIntegrationCredentialsStore:
             all_credentials.append(openai_credentials)
         if settings.secrets.anthropic_api_key:
             all_credentials.append(anthropic_credentials)
+        if settings.secrets.did_api_key:
+            all_credentials.append(did_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
@@ -246,6 +265,8 @@ class SupabaseIntegrationCredentialsStore:
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
         raw_metadata = self._get_user_metadata(user_id)
+        # Remove default credentials from the list
+        credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
         raw_metadata.integration_credentials = [c.model_dump() for c in credentials]
         self.db_manager.update_user_metadata(user_id, raw_metadata)
 

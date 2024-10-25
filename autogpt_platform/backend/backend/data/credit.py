@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Optional, Type
 
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
-from backend.blocks.google.gmail import GmailListLabelsBlock
+from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 import prisma.errors
 from prisma import Json
@@ -31,6 +31,7 @@ from autogpt_libs.supabase_integration_credentials_store.store import (
     groq_credentials,
     openai_credentials,
     anthropic_credentials,
+    did_credentials,
 )
 
 
@@ -131,11 +132,32 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIStructuredResponseGeneratorBlock: llm_cost,
     AITextSummarizerBlock: llm_cost,
     CreateTalkingAvatarVideoBlock: [
-        BlockCost(cost_amount=15, cost_filter={"api_key": None})
+        BlockCost(
+            cost_amount=15,
+            cost_filter={
+                "credentials": {
+                    "id": did_credentials.id,
+                    "provider": did_credentials.provider,
+                    "type": did_credentials.type,
+                }
+            },
+        )
     ],
     SearchTheWebBlock: [BlockCost(cost_amount=1)],
     ExtractWebsiteContentBlock: [
         BlockCost(cost_amount=1, cost_filter={"raw_content": False})
+    ],
+    IdeogramModelBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": ideogram_credentials.id,
+                    "provider": ideogram_credentials.provider,
+                    "type": ideogram_credentials.type,
+                }
+            },
+        )
     ],
     AIShortformVideoCreatorBlock: [
         BlockCost(
