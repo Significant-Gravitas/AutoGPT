@@ -171,3 +171,6 @@ ig*
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py
+autogpt_platform/autogpt_platform.zip
+autogpt_platform/supabase
+autogpt_platform/supabase
