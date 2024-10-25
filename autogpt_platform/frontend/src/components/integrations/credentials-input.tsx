@@ -12,7 +12,7 @@ import {
   FaGithub,
   FaGoogle,
   FaMedium,
-  FaQuestionCircle,
+  FaKey
 } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
 import {
@@ -45,7 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const fallbackIcon = FaQuestionCircle;
+const fallbackIcon = FaKey;
 
 // --8<-- [start:ProviderIconsEmbed]
 export const providerIcons: Record<
@@ -58,10 +58,12 @@ export const providerIcons: Record<
   discord: FaDiscord,
   d_id: fallbackIcon,
   google_maps: FaGoogle,
+  jina: fallbackIcon,
   ideogram: fallbackIcon,
   medium: FaMedium,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,
+  pinecone: fallbackIcon,
   replicate: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
