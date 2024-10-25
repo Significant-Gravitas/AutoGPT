@@ -9,8 +9,8 @@ import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.utils.cache import thread_cached_property
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 from typing_extensions import TypedDict
 
 from backend.data import block, db
@@ -76,14 +76,6 @@ class AgentServer(AppService):
 
         logger.debug(
             f"FastAPI CORS allow origins: {Config().backend_cors_allow_origins}"
-        )
-
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=Config().backend_cors_allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],  # Allows all methods
-            allow_headers=["*"],  # Allows all headers
         )
 
         health_router = APIRouter()
@@ -276,10 +268,18 @@ class AgentServer(AppService):
             tags=["settings"],
         )
 
-        app.add_exception_handler(500, self.handle_internal_http_error)
-
+        app.add_exception_handler(ValueError, self.handle_internal_http_error(400))
+        app.add_exception_handler(500, self.handle_internal_http_error(500))
         app.include_router(api_router)
         app.include_router(health_router)
+
+        app = CORSMiddleware(
+            app=app,
+            allow_origins=Config().backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],  # Allows all methods
+            allow_headers=["*"],  # Allows all headers
+        )
 
         uvicorn.run(
             app,
@@ -326,14 +326,17 @@ class AgentServer(AppService):
         return get_service_client(ExecutionScheduler)
 
     @classmethod
-    def handle_internal_http_error(cls, request: Request, exc: Exception):
-        return JSONResponse(
-            content={
-                "message": f"{request.method} {request.url.path} failed",
-                "error": str(exc),
-            },
-            status_code=500,
-        )
+    def handle_internal_http_error(cls, status_code: int = 500):
+        def handler(request: Request, exc: Exception):
+            return JSONResponse(
+                content={
+                    "message": f"{request.method} {request.url.path} failed",
+                    "detail": str(exc),
+                },
+                status_code=status_code,
+            )
+
+        return handler
 
     @classmethod
     async def get_or_create_user_route(cls, user_data: dict = Depends(auth_middleware)):

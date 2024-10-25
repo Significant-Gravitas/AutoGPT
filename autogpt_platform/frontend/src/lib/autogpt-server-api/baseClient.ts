@@ -287,7 +287,7 @@ export default class BaseAutoGPTServerAPI {
         errorDetail = response.statusText;
       }
 
-      throw new Error(`HTTP error ${response.status}! ${errorDetail}`);
+      throw new Error(errorDetail);
     }
 
     // Handle responses with no content (like DELETE requests)

@@ -70,7 +70,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         response = requests.post(ping_url, headers=headers)
 
         if response.status_code != 204:
-            raise Exception(f"Failed to ping GitHub webhook: {response.text}")
+            raise ValueError(f"Failed to ping GitHub webhook: {response.text}")
 
     async def _register_webhook(
         self,
@@ -110,7 +110,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         )
 
         if response.status_code != 201:
-            raise Exception(f"Failed to create GitHub webhook: {response.text}")
+            raise ValueError(f"Failed to create GitHub webhook: {response.text}")
 
         webhook_id = response.json()["id"]
         config = response.json()["config"]
@@ -143,6 +143,6 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         if response.status_code not in [204, 404]:
             # 204 means successful deletion, 404 means the webhook was already deleted
-            raise Exception(f"Failed to delete GitHub webhook: {response.text}")
+            raise ValueError(f"Failed to delete GitHub webhook: {response.text}")
 
         # If we reach here, the webhook was successfully deleted or didn't exist
