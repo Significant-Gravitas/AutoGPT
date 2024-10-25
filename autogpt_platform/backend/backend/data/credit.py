@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional, Type
 
+from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
+from backend.blocks.google.gmail import GmailListLabelsBlock
+from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 import prisma.errors
 from prisma import Json
 from prisma.enums import UserBlockCreditType
@@ -21,6 +24,14 @@ from backend.blocks.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.data.block import Block, BlockInput, get_block
 from backend.util.settings import Config
+from autogpt_libs.supabase_integration_credentials_store.store import (
+    revid_credentials,
+    replicate_credentials,
+    ideogram_credentials,
+    groq_credentials,
+    openai_credentials,
+    anthropic_credentials,
+)
 
 
 class BlockCostType(str, Enum):
@@ -49,23 +60,70 @@ class BlockCost(BaseModel):
         )
 
 
-llm_cost = [
-    BlockCost(
-        cost_type=BlockCostType.RUN,
-        cost_filter={
-            "model": model,
-            "api_key": None,  # Running LLM with user own API key is free.
-        },
-        cost_amount=metadata.cost_factor,
-    )
-    for model, metadata in MODEL_METADATA.items()
-] + [
-    BlockCost(
-        # Default cost is running LlmModel.GPT4O.
-        cost_amount=MODEL_METADATA[LlmModel.GPT4O].cost_factor,
-        cost_filter={"api_key": None},
-    ),
-]
+llm_cost = (
+    [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "api_key": None,  # Running LLM with user own API key is free.
+            },
+            cost_amount=metadata.cost_factor,
+        )
+        for model, metadata in MODEL_METADATA.items()
+    ]
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": anthropic_credentials.id,
+                    "provider": anthropic_credentials.provider,
+                    "type": anthropic_credentials.type,
+                },
+            },
+            cost_amount=metadata.cost_factor,
+        )
+        for model, metadata in MODEL_METADATA.items()
+        if metadata.provider == "anthropic"
+    ]
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=metadata.cost_factor,
+        )
+        for model, metadata in MODEL_METADATA.items()
+        if metadata.provider == "openai"
+    ]
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {"id": groq_credentials.id},
+            },
+            cost_amount=metadata.cost_factor,
+        )
+        for model, metadata in MODEL_METADATA.items()
+        if metadata.provider == "groq"
+    ]
+    + [
+        BlockCost(
+            # Default cost is running LlmModel.GPT4O.
+            cost_amount=MODEL_METADATA[LlmModel.GPT4O].cost_factor,
+            cost_filter={"api_key": None},
+        ),
+    ]
+)
 
 BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIConversationBlock: llm_cost,
@@ -78,6 +136,30 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     SearchTheWebBlock: [BlockCost(cost_amount=1)],
     ExtractWebsiteContentBlock: [
         BlockCost(cost_amount=1, cost_filter={"raw_content": False})
+    ],
+    AIShortformVideoCreatorBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "credentials": {
+                    "id": revid_credentials.id,
+                    "provider": revid_credentials.provider,
+                    "type": revid_credentials.type,
+                }
+            },
+        )
+    ],
+    ReplicateFluxAdvancedModelBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                }
+            },
+        )
     ],
 }
 
