@@ -2,6 +2,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
+from pydantic import SecretStr
+
 if TYPE_CHECKING:
     from redis import Redis
     from backend.executor.database import DatabaseManager
@@ -10,6 +12,7 @@ from autogpt_libs.utils.cache import thread_cached_property
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
 from .types import (
+    APIKeyCredentials,
     Credentials,
     OAuth2Credentials,
     OAuthState,
@@ -17,15 +20,20 @@ from .types import (
     UserMetadataRaw,
 )
 
+from backend.util.settings import Settings
+
+settings = Settings()
+
 
 class SupabaseIntegrationCredentialsStore:
     def __init__(self, redis: "Redis"):
         self.locks = RedisKeyedMutex(redis)
-        
+
     @thread_cached_property
     def db_manager(self) -> "DatabaseManager":
         from backend.executor.database import DatabaseManager
         from backend.util.service import get_service_client
+
         return get_service_client(DatabaseManager)
 
     def add_creds(self, user_id: str, credentials: Credentials) -> None:
@@ -41,9 +49,65 @@ class SupabaseIntegrationCredentialsStore:
 
     def get_all_creds(self, user_id: str) -> list[Credentials]:
         user_metadata = self._get_user_metadata(user_id)
-        return UserMetadata.model_validate(
+        users_credentials = UserMetadata.model_validate(
             user_metadata.model_dump()
         ).integration_credentials
+        all_credentials = users_credentials
+        if settings.secrets.revid_api_key:
+            revid_credentials = APIKeyCredentials(
+                id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
+                provider="revid",
+                api_key=SecretStr(settings.secrets.revid_api_key),
+                title="Use Credits for Revid",
+                expires_at=None,
+            )
+            all_credentials.append(revid_credentials)
+        if settings.secrets.ideogram_api_key:
+            ideogram_credentials = APIKeyCredentials(
+                id="760f84fc-b270-42de-91f6-08efe1b512d0",
+                provider="ideogram",
+                api_key=SecretStr(settings.secrets.ideogram_api_key),
+                title="Use Credits for Ideogram",
+                expires_at=None,
+            )
+            all_credentials.append(ideogram_credentials)
+        if settings.secrets.groq_api_key:
+            groq_credentials = APIKeyCredentials(
+                id="4ec22295-8f97-4dd1-b42b-2c6957a02545",
+                provider="groq",
+                api_key=SecretStr(settings.secrets.groq_api_key),
+                title="Use Credits for Groq",
+                expires_at=None,
+            )
+            all_credentials.append(groq_credentials)
+        if settings.secrets.replicate_api_key:
+            replicate_credentials = APIKeyCredentials(
+                id="6b9fc200-4726-4973-86c9-cd526f5ce5db",
+                provider="replicate",
+                api_key=SecretStr(settings.secrets.replicate_api_key),
+                title="Use Credits for Replicate",
+                expires_at=None,
+            )
+            all_credentials.append(replicate_credentials)
+        if settings.secrets.openai_api_key:
+            openai_credentials = APIKeyCredentials(
+                id="53c25cb8-e3ee-465c-a4d1-e75a4c899c2a",
+                provider="openai",
+                api_key=SecretStr(settings.secrets.openai_api_key),
+                title="Use Credits for OpenAI",
+                expires_at=None,
+            )
+            all_credentials.append(openai_credentials)
+        if settings.secrets.anthropic_api_key:
+            anthropic_credentials = APIKeyCredentials(
+                id="24e5d942-d9e3-4798-8151-90143ee55629",
+                provider="anthropic",
+                api_key=SecretStr(settings.secrets.anthropic_api_key),
+                title="Use Credits for Anthropic",
+                expires_at=None,
+            )
+            all_credentials.append(anthropic_credentials)
+        return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
         all_credentials = self.get_all_creds(user_id)
