@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from "@radix-ui/react-icons";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+} from "@radix-ui/react-icons";
 import { DayPicker } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
@@ -25,8 +30,10 @@ function Calendar({
         month_caption: "flex justify-center pt-1 relative items-center",
         caption_label: "text-sm font-medium",
         nav: "space-x-1 flex items-center",
-        button_previous: "absolute left-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-        button_next: "absolute right-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+        button_previous:
+          "absolute left-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+        button_next:
+          "absolute right-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
         month_grid: "w-full border-collapse space-y-1",
         weekdays: "flex",
         weekday:
@@ -60,14 +67,11 @@ function Calendar({
         Chevron: (props) => {
           if (props.orientation === "left") {
             return <ChevronLeftIcon className="h-4 w-4" />;
-          }
-          else if (props.orientation === "right") {
+          } else if (props.orientation === "right") {
             return <ChevronRightIcon className="h-4 w-4" />;
-          }
-          else if (props.orientation === "down") {
+          } else if (props.orientation === "down") {
             return <ChevronDownIcon className="h-4 w-4" />;
-          }
-          else {
+          } else {
             return <ChevronUpIcon className="h-4 w-4" />;
           }
         },
