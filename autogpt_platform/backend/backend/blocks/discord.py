@@ -38,9 +38,6 @@ TEST_CREDENTIALS_INPUT = {
 class ReadDiscordMessagesBlock(Block):
     class Input(BlockSchema):
         credentials: DiscordCredentials = DiscordCredentialsField()
-        continuous_read: bool = SchemaField(
-            description="Whether to continuously read messages", default=True
-        )
 
     class Output(BlockSchema):
         message_content: str = SchemaField(
@@ -119,8 +116,7 @@ class ReadDiscordMessagesBlock(Block):
         while True:
             for output_name, output_value in self.__run(input_data, credentials):
                 yield output_name, output_value
-            if not input_data.continuous_read:
-                break
+            break
 
     def __run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         try:
