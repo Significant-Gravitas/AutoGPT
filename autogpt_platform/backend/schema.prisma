@@ -541,6 +541,7 @@ model StoreListing {
 
 model StoreListingVersion {
   id        String   @id @default(uuid()) @db.Uuid
+  version   Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
@@ -574,6 +575,7 @@ model StoreListingVersion {
   // This allows us to provide a review filter to current version of the agent.
   StoreListingReview StoreListingReview[]
 
+  @@unique([agentId, agentVersion])
   @@index([agentId, agentVersion, isApproved])
 }
 
