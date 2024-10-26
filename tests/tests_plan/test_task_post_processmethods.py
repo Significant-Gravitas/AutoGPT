@@ -65,7 +65,7 @@ async def test_default_post_prossessing_retry(
     example_tool: Tool, default_task: Task, mocker
 ):
     # Mock dependencies
-    mock_tool_output = ToolOutput() #{"result": "success"} 
+    mock_tool_output = ToolOutput()
     default_task.memorize_task = AsyncMock()
 
     mock_search_result = MagicMock(spec=AbstractChatModelResponse)

@@ -141,9 +141,10 @@ AFAAS_OUTPUT_TYPE_MANAGER.register_output_type(ErrorOutput)
 #         super().__init__(**data)
 
 class ToolOutput(AFAASModel): 
-    reasoning: Optional[str] = Field( description = "Rationale behind the task, including context and dependencies.")
-    action: Optional[str] = Field(description =  "Detailed account of steps taken or attempted by the AI to accomplish the task.")
-    output: Optional[Dict[str, list[OutputType]]]  = Field(description = "Output of the task, including files, tasks, errors, and corrections.")
+    reasoning: Optional[str] = Field(default=None, description="Rationale behind the task, including context and dependencies.")
+    action: Optional[str] = Field(default=None, description="Detailed account of steps taken or attempted by the AI to accomplish the task.")
+    output: Optional[Dict[str, list[OutputType]]] = Field(default_factory=dict, description="Output of the task, including files, tasks, errors, and corrections.")
+
 
     def add_output(self, output: OutputType):
         if output.name not in AFAAS_OUTPUT_TYPE_MANAGER.get_output_types():
