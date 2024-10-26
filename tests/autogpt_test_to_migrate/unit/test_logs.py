@@ -2,6 +2,7 @@ import pytest
 
 from AFAAS.lib.sdk.logger import remove_color_codes
 from AFAAS.lib.task.task import Task
+#from .utils import remove_color_codes
 
 
 @pytest.mark.parametrize(

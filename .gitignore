@@ -10,6 +10,7 @@ auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
+
 #.vscode
 .idea/*
 auto-gpt.json
@@ -165,7 +166,7 @@ classic/benchmark/agbenchmark/reports/
 
 # Nodejs
 package-lock.json
-package.json
+
 
 # Allow for locally private items
 # private

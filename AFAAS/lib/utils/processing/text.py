@@ -1,6 +1,7 @@
 """Text processing functions"""
 
 import json
+from __future__ import annotations
 import logging
 import math
 import os
@@ -13,6 +14,11 @@ from AFAAS.interfaces.adapters import AbstractChatModelProvider
 from AFAAS.interfaces.adapters.chatmodel import ChatPrompt
 from AFAAS.interfaces.adapters.language_model import ModelTokenizer
 from AFAAS.lib.sdk.logger import AFAASLogger
+
+# from forge.json.parsing import extract_list_from_json
+# from forge.llm.providers import ChatMessage, ModelTokenizer, MultiProvider
+# from forge.llm.providers.multi import ModelName
+
 
 LOG = AFAASLogger(name=__name__)
 LOG.notice(
@@ -181,14 +187,14 @@ async def _process_text(
             model_prompt=prompt.messages,
             llm_model_name=model,
             temperature=0.5,
-            max_tokens=max_result_tokens,
+            max_output_tokens=max_result_tokens,
             completion_parser=lambda s: (
-                json.loads(s.content) if output_type is not str else None
+                extract_list_from_json(s.content) if output_type is not str else None
             ),
         )
 
-        if output_type == list[str]:
-            LOG.debug(f"Raw LLM response: {repr(response.response.content)}")
+        if isinstance(response.parsed_result, list):
+            logger.debug(f"Raw LLM response: {repr(response.response.content)}")
             fmt_result_bullet_list = "\n".join(f"* {r}" for r in response.parsed_result)
             LOG.debug(
                 f"\n{'-'*11} EXTRACTION RESULT {'-'*12}\n"
@@ -205,7 +211,7 @@ async def _process_text(
             split_text(
                 text,
                 max_chunk_length=max_chunk_length,
-                tokenizer=llm_provider.get_tokenizer(model),
+                tokenizer=llm_provider.get_tokenizer(model_name),
             )
         )
 
@@ -249,7 +255,6 @@ def split_text(
 
     Args:
         text (str): The text to split.
-        config (Config): Config object containing the Spacy model setting.
         max_chunk_length (int, optional): The maximum length of a chunk.
         tokenizer (ModelTokenizer): Tokenizer to use for determining chunk length.
         with_overlap (bool, optional): Whether to allow overlap between chunks.

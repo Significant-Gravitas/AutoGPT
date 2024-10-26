@@ -1,5 +1,6 @@
 import functools
 import re
+from inspect import signature
 from typing import Any, Callable, ParamSpec, TypeVar
 from urllib.parse import urljoin, urlparse
 
@@ -14,7 +15,7 @@ def validate_url(func: Callable[P, T]) -> Callable[P, T]:
     """
 
     @functools.wraps(func)
-    def wrapper(url: str, *args, **kwargs) -> Any:
+    def wrapper(url: str, *args, **kwargs):
         """Check if the URL is valid and not a local file accessor.
 
         Args:
@@ -26,10 +27,11 @@ def validate_url(func: Callable[P, T]) -> Callable[P, T]:
         Raises:
             ValueError if the url fails any of the validation tests
         """
-
         # Most basic check if the URL is valid:
         if not re.match(r"^https?://", url):
-            raise ValueError("Invalid URL format")
+            raise ValueError(
+                "Invalid URL format: URL must start with http:// or https://"
+            )
         if not is_valid_url(url):
             raise ValueError("Missing Scheme or Network location")
         # Restrict access to local files

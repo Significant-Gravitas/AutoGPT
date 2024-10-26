@@ -1,9 +1,9 @@
 import enum
 import json
 from textwrap import indent
-from typing import Literal, Optional
+from typing import Optional, overload
 
-from jsonschema import Draft7Validator
+from jsonschema import Draft7Validator, ValidationError
 from pydantic import BaseModel
 
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -62,10 +62,13 @@ class JSONSchema(BaseModel):
 
     @staticmethod
     def from_dict(schema: dict) -> "JSONSchema":
+        definitions = schema.get("$defs", {})
+        schema = _resolve_type_refs_in_schema(schema, definitions)
+
         return JSONSchema(
             description=schema.get("description"),
             type=schema["type"],
-            enum=schema["enum"] if "enum" in schema else None,
+            enum=schema.get("enum"),
             items=JSONSchema.from_dict(schema["items"]) if "items" in schema else None,
             properties=(
                 JSONSchema.parse_properties(schema)
@@ -90,20 +93,20 @@ class JSONSchema(BaseModel):
                 v.required = k in schema_node["required"]
         return properties
 
+
     def validate_object(
         self, object: object
-    ) -> tuple[Literal[True], None] | tuple[Literal[False], list]:
+    ) -> tuple[bool, list[ValidationError]]:
         """
-        Validates a dictionary object against the JSONSchema.
+        Validates an object or a value against the JSONSchema.
 
         Params:
-            object: The dictionary object to validate.
+            object: The value/object to validate.
             schema (JSONSchema): The JSONSchema to validate against.
 
         Returns:
-            tuple: A tuple where the first element is a boolean indicating whether the
-                object is valid or not, and the second element is a list of errors found
-                in the object, or None if the object is valid.
+            bool: Indicates whether the given value or object is valid for the schema.
+            list[ValidationError]: The issues with the value or object (if any).
         """
         validator = Draft7Validator(self.to_dict())
 
@@ -120,7 +123,7 @@ class JSONSchema(BaseModel):
 
         LOG.trace("The JSON object is valid.")
 
-        return True, None
+        return True, []
 
     def to_typescript_object_interface(self, interface_name: str = "") -> str:
         if self.type != JSONSchema.Type.OBJECT:
@@ -146,21 +149,55 @@ class JSONSchema(BaseModel):
 
     @property
     def typescript_type(self) -> str:
+        if not self.type:
+            return "any"
         if self.type == JSONSchema.Type.BOOLEAN:
             return "boolean"
-        elif self.type in {JSONSchema.Type.INTEGER, JSONSchema.Type.NUMBER}:
+        if self.type in {JSONSchema.Type.INTEGER, JSONSchema.Type.NUMBER}:
             return "number"
-        elif self.type == JSONSchema.Type.STRING:
+        if self.type == JSONSchema.Type.STRING:
             return "string"
-        elif self.type == JSONSchema.Type.ARRAY:
+        if self.type == JSONSchema.Type.ARRAY:
             return f"Array<{self.items.typescript_type}>" if self.items else "Array"
-        elif self.type == JSONSchema.Type.OBJECT:
+        if self.type == JSONSchema.Type.OBJECT:
             if not self.properties:
                 return "Record<string, any>"
             return self.to_typescript_object_interface()
-        elif self.enum:
+        if self.enum:
             return " | ".join(repr(v) for v in self.enum)
+
+        raise NotImplementedError(
+            f"JSONSchema.typescript_type does not support Type.{self.type.name} yet"
+        )
+
+
+@overload
+def _resolve_type_refs_in_schema(schema: dict, definitions: dict) -> dict:
+    ...
+
+
+@overload
+def _resolve_type_refs_in_schema(schema: list, definitions: dict) -> list:
+    ...
+
+
+def _resolve_type_refs_in_schema(schema: dict | list, definitions: dict) -> dict | list:
+    """
+    Recursively resolve type $refs in the JSON schema with their definitions.
+    """
+    if isinstance(schema, dict):
+        if "$ref" in schema:
+            ref_path = schema["$ref"].split("/")[2:]  # Split and remove '#/definitions'
+            ref_value = definitions
+            for key in ref_path:
+                ref_value = ref_value[key]
+            return _resolve_type_refs_in_schema(ref_value, definitions)
         else:
-            raise NotImplementedError(
-                f"JSONSchema.typescript_type does not support Type.{self.type.name} yet"
-            )
+            return {
+                k: _resolve_type_refs_in_schema(v, definitions)
+                for k, v in schema.items()
+            }
+    elif isinstance(schema, list):
+        return [_resolve_type_refs_in_schema(item, definitions) for item in schema]
+    else:
+        return schema

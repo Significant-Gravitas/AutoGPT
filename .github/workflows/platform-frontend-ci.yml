@@ -1,0 +1,96 @@
+name: AutoGPT Platform - Frontend CI
+
+on:
+  push:
+    branches: [master, dev]
+    paths:
+      - ".github/workflows/platform-frontend-ci.yml"
+      - "autogpt_platform/frontend/**"
+  pull_request:
+    paths:
+      - ".github/workflows/platform-frontend-ci.yml"
+      - "autogpt_platform/frontend/**"
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/frontend
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Run lint
+        run: |
+          yarn lint
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+
+          # all of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: false
+          dotnet: false
+          haskell: false
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Copy default supabase .env
+        run: |
+          cp ../supabase/docker/.env.example ../.env
+
+      - name: Run docker compose
+        run: |
+          docker compose -f ../docker-compose.yml up -d
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Setup Builder .env
+        run: |
+          cp .env.example .env
+
+      - name: Install Playwright Browsers
+        run: yarn playwright install --with-deps
+
+      - name: Run tests
+        run: |
+          yarn test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30

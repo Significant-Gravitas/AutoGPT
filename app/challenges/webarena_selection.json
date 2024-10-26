@@ -334,7 +334,7 @@
                     "June: 13 orders",
                     "July: 9 orders",
                     "August: 8 orders",
-                    "Sepetember: 10 orders",
+                    "September: 10 orders",
                     "October: 4 orders",
                     "November: 5 orders",
                     "December: 10 orders"
@@ -343,7 +343,7 @@
             "reference_url": "",
             "program_html": [],
             "string_note": "",
-            "reference_answer_raw_annotation": "May: 8 orders June: 13 orders July: 9 orders August: 8 orders Sepetember: 10 orders Octorbor: 4 orders November: 5 orders December: 10 orders  "
+            "reference_answer_raw_annotation": "May: 8 orders; June: 13 orders; July: 9 orders; August: 8 orders; September: 10 orders; October: 4 orders; November: 5 orders; December: 10 orders"
         },
         "intent_template_id": 270,
         "string_note": null,

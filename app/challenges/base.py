@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import AsyncIterator, ClassVar, Optional
+from typing import AsyncIterator, Awaitable, ClassVar, Optional
 
 import pytest
 from agbenchmark.config import AgentBenchmarkConfig
@@ -27,6 +27,9 @@ class ChallengeInfo(BaseModel):
     source_uri: str
     """Internal reference indicating the source of the challenge specification"""
 
+    available: bool = True
+    unavailable_reason: str = ""
+
 
 class BaseChallenge(ABC):
     """
@@ -50,7 +53,7 @@ class BaseChallenge(ABC):
         config: AgentBenchmarkConfig,
         request: pytest.FixtureRequest,
         i_attempt: int,
-    ) -> None:
+    ) -> None | Awaitable[None]:
         """
         Test method for use by Pytest-based benchmark sessions. Should return normally
         if the challenge passes, and raise a (preferably descriptive) error otherwise.
@@ -59,7 +62,7 @@ class BaseChallenge(ABC):
 
     @classmethod
     async def run_challenge(
-        cls, config: AgentBenchmarkConfig, timeout: int
+        cls, config: AgentBenchmarkConfig, timeout: int, *, mock: bool = False
     ) -> AsyncIterator[Step]:
         """
         Runs the challenge on the subject agent with the specified timeout.
@@ -88,7 +91,7 @@ class BaseChallenge(ABC):
         logger.debug(f"Starting {cls.info.name} challenge run")
         i = 0
         async for step in run_api_agent(
-            cls.info.task, config, timeout, cls.info.task_artifacts_dir
+            cls.info.task, config, timeout, cls.info.task_artifacts_dir, mock=mock
         ):
             i += 1
             print(f"[{cls.info.name}] - step {step.name} ({i}. request)")

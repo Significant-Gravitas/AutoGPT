@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "AFAAS"
-version = "0.0.2"
+version = "0.0.4"
 description = ""
 authors = ["Pierre-Henri AUSSEIL"]
 license = "No license, you are not allowed to read this code, neither execute it, nor copy it, nor modify it, nor distribute it, nor use it in any way, shape or form."

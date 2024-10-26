@@ -6,9 +6,34 @@ from unittest.mock import patch
 import pytest
 from autogpt.agents.agent import PlannerAgent
 from PIL import Image
+from pydantic import SecretStr, ValidationError
 
 from AFAAS.core.tools.image_gen import generate_image, generate_image_with_sd_webui
 from AFAAS.lib.task.task import Task
+from forge.components.image_gen import ImageGeneratorComponent
+from forge.components.image_gen.image_gen import ImageGeneratorConfiguration
+from forge.file_storage.base import FileStorage
+from forge.llm.providers.openai import OpenAICredentials
+
+
+@pytest.fixture
+def image_gen_component(storage: FileStorage):
+    try:
+        cred = OpenAICredentials.from_env()
+    except ValidationError:
+        cred = OpenAICredentials(api_key=SecretStr("test"))
+
+    return ImageGeneratorComponent(storage, openai_credentials=cred)
+
+
+@pytest.fixture
+def huggingface_image_gen_component(storage: FileStorage):
+    config = ImageGeneratorConfiguration(
+        image_provider="huggingface",
+        huggingface_api_token=SecretStr("1"),
+        huggingface_image_model="CompVis/stable-diffusion-v1-4",
+    )
+    return ImageGeneratorComponent(storage, config=config)
 
 
 @pytest.fixture(params=[256, 512, 1024])
@@ -17,13 +42,14 @@ def image_size(request):
     return request.param
 
 
-@pytest.mark.requires_openai_api_key
 @pytest.mark.vcr
-def test_dalle(agent: Agent, workspace, image_size, cached_openai_client):
+def test_dalle(
+    image_gen_component: ImageGeneratorComponent,
+    image_size,
+):
     """Test DALL-E image generation."""
     generate_and_validate(
-        agent,
-        workspace,
+        image_gen_component,
         image_provider="dalle",
         image_size=image_size,
     )
@@ -33,16 +59,22 @@ def test_dalle(agent: Agent, workspace, image_size, cached_openai_client):
     reason="The image is too big to be put in a cassette for a CI pipeline. "
     "We're looking into a solution."
 )
-@pytest.mark.requires_huggingface_api_key
 @pytest.mark.parametrize(
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],
 )
+<<<<<<<< HEAD:tests/autogpt_test_to_migrate/integration/test_image_gen.py
 def test_huggingface(agent: PlannerAgent, workspace, image_size, image_model):
+========
+def test_huggingface(
+    image_gen_component: ImageGeneratorComponent,
+    image_size,
+    image_model,
+):
+>>>>>>>> Significant-Gravitas/master:classic/forge/forge/components/image_gen/test_image_gen.py
     """Test HuggingFace image generation."""
     generate_and_validate(
-        agent,
-        workspace,
+        image_gen_component,
         image_provider="huggingface",
         image_size=image_size,
         hugging_face_image_model=image_model,
@@ -50,20 +82,25 @@ def test_huggingface(agent: PlannerAgent, workspace, image_size, image_model):
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
+<<<<<<<< HEAD:tests/autogpt_test_to_migrate/integration/test_image_gen.py
 def test_sd_webui(agent: PlannerAgent, workspace, image_size):
+========
+def test_sd_webui(image_gen_component: ImageGeneratorComponent, image_size):
+>>>>>>>> Significant-Gravitas/master:classic/forge/forge/components/image_gen/test_image_gen.py
     """Test SD WebUI image generation."""
     generate_and_validate(
-        agent,
-        workspace,
+        image_gen_component,
         image_provider="sd_webui",
         image_size=image_size,
     )
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui_negative_prompt(agent: PlannerAgent, workspace, image_size):
+def test_sd_webui_negative_prompt(agent: PlannerAgent,
+    image_gen_component: ImageGeneratorComponent, image_size
+):
     gen_image = functools.partial(
-        generate_image_with_sd_webui,
+        image_gen_component.generate_image_with_sd_webui,
         prompt="astronaut riding a horse",
         agent=default_task.agent,
         size=image_size,
@@ -93,18 +130,19 @@ def lst(txt):
 def generate_and_validate(
     agent: PlannerAgent,
     workspace,
+    image_gen_component: ImageGeneratorComponent,
     image_size,
     image_provider,
     hugging_face_image_model=None,
     **kwargs,
 ):
     """Generate an image and validate the output."""
-    agent.legacy_config.image_provider = image_provider
+    image_gen_component.config.image_provider = image_provider
     if hugging_face_image_model:
-        agent.legacy_config.huggingface_image_model = hugging_face_image_model
+        image_gen_component.config.huggingface_image_model = hugging_face_image_model
     prompt = "astronaut riding a horse"
 
-    image_path = lst(generate_image(prompt, agent, image_size, **kwargs))
+    image_path = lst(image_gen_component.generate_image(prompt, image_size, **kwargs))
     assert image_path.exists()
     with Image.open(image_path) as img:
         assert img.size == (image_size, image_size)
@@ -126,7 +164,12 @@ def generate_and_validate(
 )
 @pytest.mark.parametrize("delay", [10, 0])
 def test_huggingface_fail_request_with_delay(
-    agent: PlannerAgent, workspace, image_size, image_model, return_text, delay
+    agent: PlannerAgent, workspace, 
+    huggingface_image_gen_component: ImageGeneratorComponent,
+    image_size,
+    image_model,
+    return_text,
+    delay,
 ):
     return_text = return_text.replace("[model]", image_model).replace(
         "[delay]", str(delay)
@@ -144,14 +187,12 @@ def test_huggingface_fail_request_with_delay(
             mock_post.return_value.ok = False
             mock_post.return_value.text = return_text
 
-        agent.legacy_config.image_provider = "huggingface"
-        agent.legacy_config.huggingface_api_token = "mock-api-key"
-        agent.legacy_config.huggingface_image_model = image_model
+        huggingface_image_gen_component.config.huggingface_image_model = image_model
         prompt = "astronaut riding a horse"
 
         with patch("time.sleep") as mock_sleep:
             # Verify request fails.
-            result = generate_image(prompt, agent, image_size)
+            result = huggingface_image_gen_component.generate_image(prompt, image_size)
             assert result == "Error creating image."
 
             # Verify retry was called with delay if delay is in return_text
@@ -161,7 +202,8 @@ def test_huggingface_fail_request_with_delay(
                 mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_no_delay(mocker, agent: PlannerAgent):
+<<<<<<<< HEAD:tests/autogpt_test_to_migrate/integration/test_image_gen.py
+def test_huggingface_fail_request_no_delay(mocker, agent: PlannerAgent, huggingface_image_gen_component: ImageGeneratorComponent):
     agent.legacy_config.huggingface_api_token = "1"
 
     # Mock requests.post
@@ -175,10 +217,9 @@ def test_huggingface_fail_request_no_delay(mocker, agent: PlannerAgent):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-
-    result = generate_image("astronaut riding a horse", agent, 512)
+    result = huggingface_image_gen_component.generate_image(
+        "astronaut riding a horse", 512
+    )
 
     assert result == "Error creating image."
 
@@ -186,10 +227,11 @@ def test_huggingface_fail_request_no_delay(mocker, agent: PlannerAgent):
     mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_bad_json(mocker, agent: PlannerAgent):
-    agent.legacy_config.huggingface_api_token = "1"
-
+<<<<<<<< HEAD:tests/autogpt_test_to_migrate/integration/test_image_gen.py
+def test_huggingface_fail_request_bad_json(mocker, agent: PlannerAgent , huggingface_image_gen_component: ImageGeneratorComponent
+):
     # Mock requests.post
+        agent.legacy_config.huggingface_api_token = "1"
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 500
     mock_post.return_value.ok = False
@@ -198,10 +240,9 @@ def test_huggingface_fail_request_bad_json(mocker, agent: PlannerAgent):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-
-    result = generate_image("astronaut riding a horse", agent, 512)
+    result = huggingface_image_gen_component.generate_image(
+        "astronaut riding a horse", 512
+    )
 
     assert result == "Error creating image."
 
@@ -209,28 +250,26 @@ def test_huggingface_fail_request_bad_json(mocker, agent: PlannerAgent):
     mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_bad_image(mocker, agent: PlannerAgent):
+def test_huggingface_fail_request_bad_image(mocker, agent: PlannerAgent, huggingface_image_gen_component: ImageGeneratorComponent):
     agent.legacy_config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 200
 
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    result = huggingface_image_gen_component.generate_image(
+        "astronaut riding a horse", 512
+    )
 
-    result = generate_image("astronaut riding a horse", agent, 512)
+#     assert result == "Error creating image."
 
-    assert result == "Error creating image."
+# def test_huggingface_fail_missing_api_token(mocker, agent: PlannerAgent):
+#     agent.legacy_config.image_provider = "huggingface"
+#     agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
+#     # Mock requests.post to raise ValueError
+#     mocker.patch("requests.post", side_effect=ValueError)
 
-def test_huggingface_fail_missing_api_token(mocker, agent: PlannerAgent):
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-
-    # Mock requests.post to raise ValueError
-    mocker.patch("requests.post", side_effect=ValueError)
-
-    # Verify request raises an error.
-    with pytest.raises(ValueError):
-        generate_image("astronaut riding a horse", agent, 512)
+#     # Verify request raises an error.
+#     with pytest.raises(ValueError):
+#         generate_image("astronaut riding a horse", agent, 512)

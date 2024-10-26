@@ -1,0 +1,44 @@
+{
+    "uncategorized": {
+        "change_ownership": "AFAAS.plugins.tools.unsafe_file_operation",
+        "change_permissions": "AFAAS.plugins.tools.unsafe_file_operation",
+        "copy_file": "AFAAS.plugins.tools.unsafe_file_operation",
+        "create_link": "AFAAS.plugins.tools.unsafe_file_operation",
+        "create_symlink": "AFAAS.plugins.tools.unsafe_file_operation",
+        "delete_file": "AFAAS.plugins.tools.unsafe_file_operation",
+        "move_file": "AFAAS.plugins.tools.unsafe_file_operation",
+        "synchronize_directories": "AFAAS.plugins.tools.unsafe_file_operation",
+        "googledocument_search": "AFAAS.plugins.tools.google_document_search"
+    },
+    "google": {
+        "create_event": "AFAAS.plugins.tools.llama_index_google_calendar",
+        "google_finance": "AFAAS.plugins.tools.langchain_google_serper",
+        "google_serper_results_json": "AFAAS.plugins.tools.langchain_google_serper",
+        "google_serper": "AFAAS.plugins.tools.langchain_google_serper"
+    },
+    "calendar": {
+        "create_event": "AFAAS.plugins.tools.llama_index_google_calendar"
+    },
+    "youtube": {
+        "youtube_search": "AFAAS.plugins.tools.langchain_search_youtube",
+        "youtube_transcript": "AFAAS.plugins.tools.youtube_transcript"
+    },
+    "search": {
+        "youtube_search": "AFAAS.plugins.tools.langchain_search_youtube",
+        "Wikipedia": "AFAAS.plugins.tools.langchain_search_wikipedia",
+        "google_serper_results_json": "AFAAS.plugins.tools.langchain_google_serper",
+        "google_serper": "AFAAS.plugins.tools.langchain_google_serper",
+        "arxiv": "AFAAS.plugins.tools.langchain_search_arxiv"
+    },
+    "wikipedia": {
+        "Wikipedia": "AFAAS.plugins.tools.langchain_search_wikipedia",
+        "arxiv": "AFAAS.plugins.tools.langchain_search_arxiv"
+    },
+    "video": {
+        "youtube_transcript": "AFAAS.plugins.tools.youtube_transcript"
+    },
+    "finance": {
+        "google_finance": "AFAAS.plugins.tools.langchain_google_serper"
+    },
+    "last_updated": 1729961038.938096
+}

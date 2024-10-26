@@ -2,26 +2,45 @@ import json
 
 import pytest
 from googleapiclient.errors import HttpError
+from httplib2 import Response
+from pydantic import SecretStr
 
 from AFAAS.core.tools.untested.web_search import google, safe_google_results, web_search
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.lib.sdk.errors import ConfigurationError
 from AFAAS.lib.task.task import Task
 
+from forge.utils.exceptions import ConfigurationError
+
+from . import WebSearchComponent
+
+
+@pytest.fixture
+def web_search_component():
+    component = WebSearchComponent()
+    if component.config.google_api_key is None:
+        component.config.google_api_key = SecretStr("test")
+    if component.config.google_custom_search_engine_id is None:
+        component.config.google_custom_search_engine_id = SecretStr("test")
+    return component
 
 @pytest.mark.parametrize(
     "query, expected_output",
     [("test", "test"), (["test1", "test2"], '["test1", "test2"]')],
 )
-def test_safe_google_results(query, expected_output):
-    result = safe_google_results(query)
+@pytest.fixture
+def test_safe_google_results(
+    query, expected_output, web_search_component: WebSearchComponent
+):
+    result = web_search_component.safe_google_results(query)
     assert isinstance(result, str)
     assert result == expected_output
 
 
-def test_safe_google_results_invalid_input():
+@pytest.fixture
+def test_safe_google_results_invalid_input(web_search_component: WebSearchComponent):
     with pytest.raises(AttributeError):
-        safe_google_results(123)
+        web_search_component.safe_google_results(123)  # type: ignore
 
 
 @pytest.mark.parametrize(
@@ -45,6 +64,7 @@ def test_google_search(
     return_value,
     mocker,
     agent: BaseAgent,
+    web_search_component: WebSearchComponent,
 ):
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
@@ -95,14 +115,11 @@ def test_google_official_search(
     search_results,
     mock_googleapiclient,
     agent: BaseAgent,
+    web_search_component: WebSearchComponent,
 ):
     mock_googleapiclient.return_value = search_results
-    actual_output = google(
-        query,
-        agent=default_task.agent,
-        num_results=num_results,
-    )
-    assert actual_output == safe_google_results(expected_output)
+    actual_output = web_search_component.google(query, num_results=num_results)
+    assert actual_output == web_search_component.safe_google_results(expected_output)
 
 
 @pytest.mark.parametrize(
@@ -133,17 +150,13 @@ def test_google_official_search_errors(
     http_code,
     error_msg,
     agent: BaseAgent,
+    web_search_component: WebSearchComponent,
 ):
-    class resp:
-        def __init__(self, _status, _reason):
-            self.status = _status
-            self.reason = _reason
-
     response_content = {
         "error": {"code": http_code, "message": error_msg, "reason": "backendError"}
     }
     error = HttpError(
-        resp=resp(http_code, error_msg),
+        resp=Response({"status": http_code, "reason": error_msg}),
         content=str.encode(json.dumps(response_content)),
         uri="https://www.googleapis.com/customsearch/v1?q=invalid+query&cx",
     )
@@ -155,3 +168,4 @@ def test_google_official_search_errors(
             agent=default_task.agent,
             num_results=num_results,
         )
+        web_search_component.google(query, num_results=num_results)
