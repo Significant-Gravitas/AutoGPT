@@ -24,6 +24,6 @@ class StrategiesSet:
         return [
             InitialPlanStrategy(**InitialPlanStrategy.default_configuration.dict()),
             # SelectToolStrategy(
-            #     **SelectToolStrategy.default_configuration.dict()
+            #     **SelectToolStrategy.config.dict()
             # ),
         ]

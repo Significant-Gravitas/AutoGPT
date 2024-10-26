@@ -12,6 +12,7 @@ from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , C
 # prompting
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessage,
     ChatPrompt,
@@ -48,7 +49,7 @@ class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
 ### STRATEGY
 ####
 class SelectToolStrategy(AbstractPlanningPromptStrategy):
-    default_configuration: SelectToolStrategyConfiguration = (
+    config: SelectToolStrategyConfiguration = (
         SelectToolStrategyConfiguration()
     )
     STRATEGY_NAME = "select_tool"
@@ -59,11 +60,11 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
         note_to_agent_length: int,
         temperature: float,  # if coding 0.05,
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         use_message: bool = False,
     ):
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.note_to_agent_length = note_to_agent_length
         self.default_tool_choice = default_tool_choice
 
@@ -128,11 +129,15 @@ class SelectToolStrategy(AbstractPlanningPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )
 
     def parse_response_content(
         self,

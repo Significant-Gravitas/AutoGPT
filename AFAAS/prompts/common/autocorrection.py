@@ -10,6 +10,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessage,
     ChatPrompt,
@@ -39,7 +40,7 @@ class AutoCorrectionStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class AutoCorrectionStrategy(AbstractPromptStrategy):
-    default_configuration = AutoCorrectionStrategyConfiguration()
+    default_configuration : AutoCorrectionStrategyConfiguration = AutoCorrectionStrategyConfiguration()
     STRATEGY_NAME = "base_autocorection"
 
     ###
@@ -56,7 +57,7 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
         # presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
         user_last_goal="",
-        exit_token: str = str(uuid.uuid4()),
+
         use_message: bool = False,
     ):
         """
@@ -84,7 +85,7 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
             Flag to determine whether to use messages.
         """
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.note_to_agent_length = note_to_agent_length
 
     def set_tools(self, **kwargs):
@@ -92,10 +93,10 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
             self.note_to_agent_length = "note_to_agent_length"
 
         # FIXME: Will cause issue if multithreading, better return PromptStrategy object in BaseModelResponse
-        strategy = self.get_strategy(
+        self.strategy = self.get_strategy(
             strategy_name=kwargs["corrected_strategy"].STRATEGY_NAME
         )
-        self._tools: list[CompletionModelFunction] = strategy.get_tools()
+        self._tools: list[CompletionModelFunction] = self.strategy.get_tools()
 
     async def build_message(
         self,
@@ -146,8 +147,12 @@ class AutoCorrectionStrategy(AbstractPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.strategy.temperature,
+        )

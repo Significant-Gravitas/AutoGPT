@@ -2,6 +2,7 @@ import enum
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessage,
     ChatPrompt,
@@ -32,7 +33,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class InitialPlanStrategy(AbstractPromptStrategy):
-    default_configuration = InitialPlanStrategyConfiguration()
+    default_configuration : InitialPlanStrategyConfiguration = InitialPlanStrategyConfiguration()
     STRATEGY_NAME = "make_initial_plan"
 
     ###
@@ -177,8 +178,12 @@ class InitialPlanStrategy(AbstractPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessage,
     ChatPrompt,
@@ -40,7 +41,7 @@ class BaseTaskSummaryStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class BaseTaskSummary_Strategy(AbstractPromptStrategy):
-    default_configuration = BaseTaskSummaryStrategyConfiguration()
+    default_configuration : BaseTaskSummaryStrategyConfiguration = BaseTaskSummaryStrategyConfiguration()
     STRATEGY_NAME = "afaas_task_postprocess_default_summary"
 
     def __init__(
@@ -48,11 +49,11 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
         default_tool_choice: BaseTaskSummaryStrategyFunctionNames,
         temperature: float,
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         task_output_lenght: int = 300,
     ):
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.default_tool_choice = default_tool_choice
         self.task_output_lenght = task_output_lenght
 
@@ -143,8 +144,12 @@ class BaseTaskSummary_Strategy(AbstractPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )
