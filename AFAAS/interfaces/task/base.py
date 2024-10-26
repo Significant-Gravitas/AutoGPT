@@ -145,7 +145,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             self._subtasks = TaskStack(parent_task=self, _task_ids=[])
 
     def dict_db(self, **kwargs) -> dict:
-        d = super().dict(**kwargs)
+        d = super().model_dump(**kwargs)
 
         # Iterate over each attribute of the dict
         for field, field_info in self.model_fields.items():
@@ -430,7 +430,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
             raise ValueError("Depth must be a non-negative integer.")
 
         # Initialize the return dictionary
-        return_dict = self.dict()
+        return_dict = self.model_dump()
 
         # Recursively process subtasks up to the specified depth
         if depth > 0 and self.subtasks:

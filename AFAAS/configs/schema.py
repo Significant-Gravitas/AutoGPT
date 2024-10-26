@@ -111,7 +111,7 @@ class AFAASModel(BaseModel):
 
     def dict_db(self, **dumps_kwargs) -> dict:
         LOG.trace(f"FIXME: Temporary implementation before pydantic 2.0.0")
-        dict = self.dict(**dumps_kwargs)
+        dict = self.model_dump(**dumps_kwargs)
         return self._apply_custom_encoders(data=dict)
 
     def _apply_custom_encoders(self, data: dict) -> dict:
@@ -122,13 +122,13 @@ class AFAASModel(BaseModel):
                     data[key] = encoder(value)
         return data
 
-    def dict(self, include_all=False, *args, **kwargs):
+    def model_dump(self, include_all=False, *args, **kwargs):
         # TODO: Move to System settings ?
-        self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
+        self.prepare_values_before_serialization()  # Call the custom treatment before .model_dump()
         if not include_all:
             kwargs["exclude"] = self.model_config['default_exclude']
-        # Call the .dict() method with the updated exclude_arg
-        return super().dict(*args, **kwargs)
+        # Call the .model_dump() method with the updated exclude_arg
+        return super().model_dump(*args, **kwargs)
 
     def json(self, *args, **kwargs):
         LOG.warning("Warning : Recomended use json_api() or json_memory()")

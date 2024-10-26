@@ -26,11 +26,11 @@ class TaskStack(AFAASModel):
         if not "_task_ids" in data.keys():
             self._task_ids = []
 
-    def dict(self, *args, **kwargs) -> list[str]:
+    def model_dump(self, *args, **kwargs) -> list[str]:
         return self._task_ids
 
     def json(self, *args, **kwargs):
-        return json.dumps(self.dict())
+        return json.dumps(self.model_dump())
 
     def __len__(self):
         return len(self._task_ids)

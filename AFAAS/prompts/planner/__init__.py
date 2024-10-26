@@ -19,6 +19,6 @@ class StrategiesSet:
     def get_strategies() -> list[AbstractPromptStrategy]:
         return [
             # SelectToolStrategy(
-            #     **SelectToolStrategy.config.dict()
+            #     **SelectToolStrategy.config.model_dump()
             # ),
         ]
