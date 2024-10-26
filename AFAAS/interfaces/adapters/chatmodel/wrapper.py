@@ -1,138 +1,24 @@
-from __future__ import annotations
-import abc
-import enum
-import os
-import functools
-import time
-from typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Dict,
-    Generic,
-    Literal,
-    Optional,
-    TypeVar,
-    Union,
-    ParamSpec,
-)
-from typing_extensions import TypedDict
-from AFAAS.interfaces.adapters.chatmessage import AssistantChatMessage
+from pydantic import BaseModel
+from AFAAS.interfaces.adapters.chatmodel.chatmodel import LOG, _RetryHandler, AbstractChatModelProvider, AbstractChatModelResponse, CompletionModelFunction
+from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
 
-from pydantic import BaseModel, Field
+from typing import (
+    Callable,
+    TypeVar,
+    Optional
+)
+from AFAAS.interfaces.adapters.chatmodel.chatmessage import AssistantChatMessage
 
 from langchain_core.language_models.chat_models import BaseChatModel
-
-from AFAAS.interfaces.adapters.language_model import (
-    AbstractLanguageModelProvider,
-    BaseModelInfo,
-    BaseModelResponse,
-    ModelProviderService,
-    AbstractPromptConfiguration,
-)
-from AFAAS.lib.utils.json_schema import JSONSchema
-
-
-from openai import APIError, AsyncOpenAI, RateLimitError
+from langchain_core.messages import ChatMessage
 from openai.resources import AsyncCompletions
-from AFAAS.lib.sdk.logger import AFAASLogger
-LOG = AFAASLogger(name=__name__)
-
-from langchain_core.messages import ChatMessage, HumanMessage, SystemMessage, AIMessage
 
 
-class CompletionModelFunction(BaseModel):
-    name: str
-    description: str
-    parameters: Dict[str, JSONSchema]
+from typing import Callable
 
-    @property
-    def schema(self) -> dict[str, str | dict | list]:
-        """Returns an OpenAI-consumable function specification"""
-        #FIXME : This is OpenAI specific & should be moved to the OpenAI adapter or implemented via dependency injection
-
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    name: param.to_dict() for name, param in self.parameters.items()
-                },
-                "required": [
-                    name for name, param in self.parameters.items() if param.required
-                ],
-            },
-        }
-
-    @staticmethod
-    def parse(schema: dict) -> "CompletionModelFunction":
-        #FIXME : This is OpenAI specific & should be moved to the OpenAI adapter or implemented via dependency injection
-        return CompletionModelFunction(
-            name=schema["name"],
-            description=schema["description"],
-            parameters=JSONSchema.parse_properties(schema["parameters"]),
-        )
-
-    def _remove_none_entries(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        cleaned_data = {}
-        for key, value in data.items():
-            if value is not None:
-                if isinstance(value, dict):
-                    cleaned_data[key] = self._remove_none_entries(value)
-                else:
-                    cleaned_data[key] = value
-        return cleaned_data
-
-    def dict(self, *args, **kwargs):
-        # Call the parent class's dict() method to get the original dictionary
-        data = super().dict(*args, **kwargs)
-
-        # Remove entries with None values recursively
-        cleaned_data = self._remove_none_entries(data)
-
-        return cleaned_data
-
-    def fmt_line(self) -> str:
-        params = ", ".join(
-            f"{name}: {p.type.value}" for name, p in self.parameters.items()
-        )
-        return f"{self.name}: {self.description}. Params: ({params})"
-
-
-class ChatPrompt(BaseModel):
-    messages: list
-    tools: list[CompletionModelFunction] = Field(default_factory=list)
-    tool_choice: str
-    default_tool_choice: str
-
-    def raw(self) -> list:
-        return [m.dict() for m in self.messages]
-
-    def __str__(self):
-        return "\n\n".join(
-            [m.dict() for m in self.messages]
-        )
 
 
 _T = TypeVar("_T")
-
-
-class AbstractChatModelResponse(BaseModelResponse, Generic[_T]):
-
-    response: Optional[AssistantChatMessage] = None
-    parsed_result: _T = None
-    """Standard response struct for a response from a language model."""
-
-    content: dict = None
-    chat_messages: list[ChatMessage] = []
-    system_prompt: str = None
-
-
-class ChatModelInfo(BaseModelInfo):
-    llm_service : ModelProviderService = ModelProviderService.CHAT
-    max_tokens: int
-    has_function_call_api: bool = False
 
 
 class ChatCompletionKwargs(BaseModel):
@@ -169,7 +55,7 @@ class ChatModelWrapper:
         self,
         chat_messages: list[ChatMessage],
         completion_kwargs: ChatCompletionKwargs,
-        completion_parser: Callable[[AssistantChatMessage], _T], 
+        completion_parser: Callable[[AssistantChatMessage], _T],
         # Function to parse the response, usualy injectect by an AbstractPromptStrategy
         **kwargs,
     ) -> AbstractChatModelResponse[_T]:
@@ -190,12 +76,12 @@ class ChatModelWrapper:
         # ##############################################################################
 
         response = await self._create_chat_completion(
-            messages=chat_messages, 
+            messages=chat_messages,
             llm_kwargs = llm_kwargs,
             **kwargs
         )
         response_message = self.llm_adapter.extract_response_details(
-            response=response, 
+            response=response,
             model_name=completion_kwargs.llm_model_name
         )
 
@@ -221,7 +107,7 @@ class ChatModelWrapper:
                 )
 
             # FIXME, TODO, NOTE: Organize application save feedback loop to improve the prompts, as it is not normal that function are not called
-            try : 
+            try :
                 response_message.additional_kwargs['tool_calls'] = None
             except Exception as e:
                 response_message['tool_calls'] = None
@@ -280,7 +166,7 @@ class ChatModelWrapper:
             **kwargs
         )
 
-    def _make_chat_kwargs(self, completion_kwargs : ChatCompletionKwargs , **kwargs) -> dict:   
+    def _make_chat_kwargs(self, completion_kwargs : ChatCompletionKwargs , **kwargs) -> dict:
 
         built_kwargs = {}
         built_kwargs.update(self.llm_adapter.make_model_arg(model_name=completion_kwargs.llm_model_name))
@@ -309,14 +195,14 @@ class ChatModelWrapper:
         self,
         messages: ChatMessage | list[ChatMessage],
         model_name: str,
-    ) -> int: 
+    ) -> int:
         return self.llm_adapter.count_message_tokens(messages, model_name)
 
     async def _chat(
-        self, 
+        self,
         messages: list[ChatMessage],
-        llm_kwargs : dict, 
-        *_, 
+        llm_kwargs : dict,
+        *_,
         **kwargs
     ) -> AsyncCompletions:
 
@@ -335,128 +221,3 @@ class ChatModelWrapper:
     def get_default_config(self) -> AbstractPromptConfiguration:
         return self.llm_adapter.get_default_config()
 
-
-
-class AbstractChatModelProvider(AbstractLanguageModelProvider): 
-
-    llm_model : Optional[BaseChatModel] = None
-
-    @abc.abstractmethod
-    def count_message_tokens(
-        self,
-        messages: ChatMessage | list[ChatMessage],
-        model_name: str,
-    ) -> int: ...
-
-    @abc.abstractmethod
-    async def chat(
-        self, messages: list[ChatMessage], *_, **llm_kwargs
-    ) -> AsyncCompletions:
-        ...
-
-    @abc.abstractmethod
-    def make_model_arg(self, model_name : str) -> dict:
-        ...
-
-    @abc.abstractmethod
-    def make_tool(self, f : CompletionModelFunction) -> dict:
-        ...
-
-    @abc.abstractmethod
-    def make_tools_arg(self, tools : list[CompletionModelFunction]) -> dict:
-        ...
-
-    @abc.abstractmethod
-    def make_tool_choice_arg(self , name : str) -> dict:
-        ... 
-
-    @abc.abstractmethod
-    def has_oa_tool_calls_api(self, model_name: str) -> bool:
-        ...
-
-    @abc.abstractmethod
-    def get_default_config(self) -> AbstractPromptConfiguration:
-        ...
-
-    @abc.abstractmethod
-    def extract_response_details(
-        self, response: AsyncCompletions, model_name: str
-    ) -> BaseModel:
-        ...
-
-    @abc.abstractmethod
-    def should_retry_function_call(
-        self, tools: list[CompletionModelFunction], response_message: dict
-    ) -> bool: 
-        ...
-
-    @abc.abstractmethod
-    def formulate_final_response(
-        self,
-        response_message: dict,
-        completion_parser: Callable[[AssistantChatMessage], _T],
-    ) -> AbstractChatModelResponse[_T]: 
-        ...
-
-
-
-_P = ParamSpec("_P")
-
-class _RetryHandler:
-    """Retry Handler for OpenAI API call.
-
-    Args:
-        num_retries int: Number of retries. Defaults to 10.
-        backoff_base float: Base for exponential backoff. Defaults to 2.
-        warn_user bool: Whether to warn the user. Defaults to True.
-    """
-
-    _retry_limit_msg = "Error: Reached rate limit, passing..."
-    _api_key_error_msg = (
-        "Please double check that you have setup a PAID OpenAI API Account. You can "
-        "read more here: https://docs.agpt.co/setup/#getting-an-api-key"
-    )
-    _backoff_msg = "Error: API Bad gateway. Waiting {backoff} seconds..."
-
-    def __init__(
-        self,
-        num_retries: int = 10,
-        backoff_base: float = 2.0,
-        warn_user: bool = True,
-    ):
-        self._num_retries = num_retries
-        self._backoff_base = backoff_base
-        self._warn_user = warn_user
-
-    def _log_rate_limit_error(self) -> None:
-        LOG.trace(self._retry_limit_msg)
-        if self._warn_user:
-            LOG.warning(self._api_key_error_msg)
-            self._warn_user = False
-
-    def _backoff(self, attempt: int) -> None:
-        backoff = self._backoff_base ** (attempt + 2)
-        LOG.trace(self._backoff_msg.format(backoff=backoff))
-        time.sleep(backoff)
-
-    def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
-        @functools.wraps(func)
-        async def _wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            num_attempts = self._num_retries + 1  # +1 for the first attempt
-            for attempt in range(1, num_attempts + 1):
-                try:
-                    return await func(*args, **kwargs)
-
-                except RateLimitError:
-                    if attempt == num_attempts:
-                        raise
-                    self._log_rate_limit_error()
-
-                except APIError as e:
-                    if (e.code != 502) or (attempt == num_attempts):
-                        raise
-                except Exception as e:
-                    LOG.warning(e)
-                self._backoff(attempt)
-
-        return _wrapped

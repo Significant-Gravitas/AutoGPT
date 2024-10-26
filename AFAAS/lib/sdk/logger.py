@@ -140,7 +140,7 @@ class ConsoleFormatter(logging.Formatter):
             levelname_color = current_color + levelname + RESET_SEQ
             rec.levelname = levelname_color
 
-        rec.name = f"{GREY}{os.path.relpath(rec.pathname):<15}{RESET_SEQ}"
+        rec.name = f"{GREY}[{os.path.relpath(rec.pathname):<15}"
         rec.msg = current_color + EMOJIS[levelname] + "  " + str(rec.msg)
 
         message = logging.Formatter.format(self, rec)
@@ -167,9 +167,9 @@ class AFAASLogger(logging.Logger):
     DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
     CONSOLE_FORMAT: str = (
-        "[%(asctime)s] [$BOLD%(name)-15s,%(lineno)d$RESET] [%(levelname)-8s]\t%(message)s"
+        "[%(asctime)s] $BOLD%(name)-15s,%(lineno)d]$RESET [%(levelname)-8s]\t%(message)s"
     )
-    FORMAT: str = "%(asctime)s %(name)-15s %(levelname)-8s %(message)s"
+    FORMAT: str = "%(asctime)s %(name)-15s,%(lineno)d] %(levelname)-8s %(message)s"
     COLOR_FORMAT: str = formatter_message(CONSOLE_FORMAT, True)
     JSON_FORMAT: str = (
         '{"time": "%(asctime)s", "name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'

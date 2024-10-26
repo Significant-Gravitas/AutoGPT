@@ -55,7 +55,3 @@ class BaseProviderCredentials(SystemConfiguration):
 class BaseProviderSettings(SystemSettings):
     credentials: BaseProviderCredentials | None = None
     budget: BaseProviderBudget | None = None
-
-
-# Used both by model providers and db providers
-Embedding = list[float]

@@ -11,7 +11,7 @@ from AFAAS.core.tools.tool_decorator import SAFE_MODE, tool
 from AFAAS.interfaces.tools.tool import AFAASBaseTool
 from AFAAS.lib.sdk.logger import AFAASLogger
 from AFAAS.lib.task.task import Task
-from AFAAS.interfaces.adapters import AbstractChatModelResponse
+from AFAAS.interfaces.adapters.chatmodel import AbstractChatModelResponse
 from AFAAS.prompts.usercontext.refine_user_context import (
     RefineUserContextFunctionNames,
 )
@@ -100,7 +100,7 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent , user_objectiv
                     interupt_refinement_process = True
 
         # # FIXME:0.0.3: Move it outside of the tool
-        # # Option 1 : Callback functions (one default to the tool & one custom for the plan)        
+        # # Option 1 : Callback functions (one default to the tool & one custom for the plan)    
         # agent.agent_goal_sentence = return_value["agent_goal_sentence"]
         # agent.agent_goals = return_value["agent_goals"]
     except Exception as e:

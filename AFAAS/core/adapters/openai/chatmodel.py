@@ -2,10 +2,9 @@ import os
 from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
 
 import tiktoken
-from openai import AsyncOpenAI
 from openai.resources import AsyncCompletions
 
-from AFAAS.core.adapters.openai.model_config import (
+from AFAAS.core.adapters.openai.configuration import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_DEFAULT_CHAT_CONFIGS,
     OPEN_AI_MODELS,
@@ -14,19 +13,13 @@ from AFAAS.core.adapters.openai.model_config import (
     OpenAISettings,
 )
 
-from langchain_openai import ChatOpenAI
-aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
-from AFAAS.interfaces.adapters.chatmessage import OpenAIChatMessage
+from langchain_core.messages  import AIMessage , ChatMessage
 from AFAAS.configs.schema import Configurable
-from AFAAS.interfaces.adapters.chatmodel import (
-    _RetryHandler,
+from AFAAS.interfaces.adapters.chatmodel.chatmodel import (
     AbstractChatModelProvider,
     AbstractChatModelResponse,
     AssistantChatMessage,
     CompletionModelFunction,
-    ChatCompletionKwargs
 )
 from AFAAS.interfaces.adapters.language_model import  ModelTokenizer, BaseModelResponse
 from AFAAS.lib.sdk.logger import AFAASLogger
@@ -36,10 +29,20 @@ LOG = AFAASLogger(name=__name__)
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
-OpenAIChatParser = Callable[[str], dict]
-
 
 class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
+
+    def __llmmodel_default__(self) :
+        return "gpt-3.5-turbo"
+
+    def __llmmodel_cheap__(self) :
+        return "gpt-3.5-turbo"
+
+    def __llmmodel_code_expert_model__(self) :
+        return "gpt-3.5-turbo"
+
+    def __llmmodel_long_context_model__(self) :
+        return "gpt-3.5-turbo"
 
     def __init__(
         self,
@@ -166,14 +169,32 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
 
     def has_oa_tool_calls_api(self, model_name: str) -> bool:
         return True # Always True for OpenAI
-        #return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
 
     def get_default_config(self) -> OpenAIPromptConfiguration:
+        LOG.warning(f"Using {__class__.__name__} default config, we recommend setting individual model configs")
         return OPEN_AI_DEFAULT_CHAT_CONFIGS.SMART_MODEL_32K
 
+    def make_tools_arg(self, tools : list[CompletionModelFunction]) -> dict:
+        return { "tools" : [self.make_tool(f) for f in tools] }
 
     def make_tool(self, f : CompletionModelFunction) -> dict:
-        return  {"type": "function", "function": f.schema}
+        return  {"type": "function", "function": f.schema(schema_builder=self.tool_builder)}
+
+    @staticmethod
+    def tool_builder(func: CompletionModelFunction) -> dict[str, str | dict | list]:
+            return {
+                "name": func.name,
+                "description": func.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        name: param.to_dict() for name, param in func.parameters.items()
+                    },
+                    "required": [
+                        name for name, param in func.parameters.items() if param.required
+                    ],
+                },
+            }
 
     def make_tool_choice_arg(self , name : str) -> dict:
         return {
@@ -186,27 +207,21 @@ class AFAASChatOpenAI(Configurable[OpenAISettings], AbstractChatModelProvider):
     def make_model_arg(self, model_name : str) -> dict:
         return { "model" : model_name }
 
-    def make_tools_arg(self, tools : list[CompletionModelFunction]) -> dict:
-        return { "tools" : [self.make_tool(f) for f in tools] }
-
 
     async def chat(
         self, messages: list[ChatMessage], *_, **llm_kwargs
     ) -> AsyncCompletions: 
+
+        # Example : LangChain Client
         from langchain_community.callbacks import get_openai_callback, OpenAICallbackHandler
-        #NOTE: This is a temporary fix because of Langchain issues
-        # chat_messages = []
-        # for message in messages:
-        #     print(f"AFAASChatOpenAI.message: {message.__class__}({message})")
-        #     chat_messages.append(OpenAIChatMessage.from_langchain(message))
-
-
+        from langchain_openai import ChatOpenAI
         self.callback : OpenAICallbackHandler
-        chat = ChatOpenAI(model = "gpt-3.5-turbo" , temperature=0.5 )
+        self.llm_model = ChatOpenAI() #model = "gpt-3.5-turbo" , temperature=0.5 )
         with get_openai_callback() as callback:
             self.callback : OpenAICallbackHandler = callback
-            return await chat.ainvoke(input = messages , **llm_kwargs)
+            return await self.llm_model.ainvoke(input = messages , **llm_kwargs)
 
-        # OAClient : 
+        # Example : OAClient : 
+        # aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
         # self.llm_model = aclient.chat
-        #return await aclient.chat.completions.create( messages=messages, **llm_kwargs )
+        # return await aclient.chat.completions.create( messages=messages, **llm_kwargs )

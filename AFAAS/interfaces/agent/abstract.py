@@ -42,7 +42,7 @@ class AbstractAgent(ABC):
     agent_id: str
 
     @property
-    def vectorstores(self) -> VectorStoreWrapper:        
+    def vectorstores(self) -> VectorStoreWrapper:
         if self._vectorstores is None:
             self._vectorstores = ChromaWrapper(vector_store=Chroma(
                 persist_directory=f'data/chroma/',
@@ -76,14 +76,24 @@ class AbstractAgent(ABC):
     def db(self, value: AbstractMemory):
         self._db = value
 
+    # @property
+    # @abstractmethod
+    # def default_llm_provider(self) -> AbstractLanguageModelProvider:
+    #     ...
+
+    # @default_llm_provider.setter
+    # def default_llm_provider(self, value: AbstractLanguageModelProvider):
+    #     self._default_llm_provider = value
+
+
     @property
     @abstractmethod
-    def default_llm_provider(self) -> AbstractLanguageModelProvider:
+    def prompt_manager(self) -> AbstractPromptManager:
         ...
 
-    @default_llm_provider.setter
-    def default_llm_provider(self, value: AbstractLanguageModelProvider):
-        self._default_llm_provider = value
+    @prompt_manager.setter
+    def prompt_manager(self, value: AbstractPromptManager):
+        self._prompt_manager : AbstractPromptManager = value
 
     @property
     @abstractmethod
@@ -103,9 +113,6 @@ class AbstractAgent(ABC):
 
     class SystemSettings(SystemSettings):
 
-
-        
-        
         model_config = update_model_config(original= SystemSettings.model_config ,
                                            new = {
                                                 'AGENT_CLASS_FIELD_NAME' : "settings_agent_class_",
@@ -195,7 +202,7 @@ class AbstractAgent(ABC):
         db: AbstractMemory,
         workspace: AbstractFileWorkspace,
         prompt_manager: AbstractPromptManager,
-        default_llm_provider: AbstractLanguageModelProvider,
+        # default_llm_provider: AbstractLanguageModelProvider,
         vectorstore: VectorStoreWrapper,
         embedding_model : Embeddings,
         workflow_registry: WorkflowRegistry,
@@ -219,14 +226,14 @@ class AbstractAgent(ABC):
         self.settings_agent_module_ = settings.settings_agent_module_
 
         self._prompt_manager : AbstractPromptManager = prompt_manager
-        self._prompt_manager.set_agent(agent=self)
+        self.prompt_manager.set_agent(agent=self)
 
         self._db : AbstractMemory = db
 
         self._workspace : AbstractFileWorkspace = workspace
         self.workspace.initialize()
 
-        self._default_llm_provider : AbstractLanguageModelProvider = default_llm_provider
+        #self._default_llm_provider : AbstractLanguageModelProvider = default_llm_provider
         self._embedding_model : Embeddings = embedding_model
 
         self._vectorstores: VectorStoreWrapper = vectorstore
@@ -317,7 +324,7 @@ class AbstractAgent(ABC):
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
-        return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
+        return await self.prompt_manager.execute_strategy(strategy_name=strategy_name, **kwargs)
 
 
 AbstractAgent.SystemSettings.model_rebuild()
