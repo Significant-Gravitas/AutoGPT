@@ -1,6 +1,7 @@
 # Merge facilitators
-autogpt_platform
+autogpt_platform/
 assets
+
 ## Original ignores
 .github_access_token
 classic/original_autogpt/keys.py
