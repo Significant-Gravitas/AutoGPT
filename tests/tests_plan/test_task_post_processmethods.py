@@ -9,7 +9,7 @@ import pytest
 
 # Assuming the not_implemented_tool function is defined in a module named `tools`
 from AFAAS.core.tools.builtins.search_info import AbstractChatModelResponse, search_info
-from AFAAS.core.tools.tool import Tool
+from AFAAS.core.tools.tool import Tool, ToolOutput
 from AFAAS.interfaces.task.meta import AFAASModel, TaskStatusList
 from AFAAS.interfaces.task.stack import TaskStack
 from AFAAS.lib.task.plan import Plan
@@ -65,8 +65,8 @@ async def test_default_post_prossessing_retry(
     example_tool: Tool, default_task: Task, mocker
 ):
     # Mock dependencies
-    mock_tool_output = {"result": "success"}
-    default_task.memorize_output = AsyncMock()
+    mock_tool_output = ToolOutput()
+    default_task.memorize_task = AsyncMock()
 
     mock_search_result = MagicMock(spec=AbstractChatModelResponse)
     mock_parameters = {param.name: MagicMock() for param in example_tool.parameters}
@@ -86,7 +86,7 @@ async def test_default_post_prossessing_retry(
     example_tool.success_check_callback = AsyncMock(return_value=False)
     default_task.retry = AsyncMock()
     await default_task.process_tool_output(example_tool, mock_tool_output)
-    default_task.memorize_output.assert_called_once()
+    default_task.memorize_task.assert_called_once()
     default_task.retry.assert_called_once()
     assert (
         default_task.task_text_output == "Processed output"

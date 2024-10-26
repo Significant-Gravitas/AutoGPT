@@ -37,14 +37,14 @@ class StrategiesSet:
     @staticmethod
     def get_strategies() -> list[AbstractPromptStrategy]:
         return [
-            RoutingStrategy(**RoutingStrategy.default_configuration.dict()),
+            RoutingStrategy(**RoutingStrategy.default_configuration.model_dump()),
             EvaluateSelectStrategy(
-                **EvaluateSelectStrategy.default_configuration.dict()
+                **EvaluateSelectStrategy.default_configuration.model_dump()
             ),
             AutoCorrectionStrategy(
-                **AutoCorrectionStrategy.default_configuration.dict()
+                **AutoCorrectionStrategy.default_configuration.model_dump()
             ),
             SelectPlanningStrategy(
-                **SelectPlanningStrategy.default_configuration.dict()
+                **SelectPlanningStrategy.default_configuration.model_dump()
             ),
         ]

@@ -215,9 +215,6 @@ class ChatModelWrapper:
 
         return return_value
 
-    def has_oa_tool_calls_api(self, model_name: str) -> bool:
-        self.llm_adapter.has_oa_tool_calls_api(model_name)
-
     def get_default_config(self) -> AbstractPromptConfiguration:
         return self.llm_adapter.get_default_config()
 
