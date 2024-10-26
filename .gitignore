@@ -1,19 +1,14 @@
-
-arena/*
-chroma/
-.github/configuration.json
-
+# Merge facilitators
+autogpt_platform
+assets
 ## Original ignores
 .github_access_token
-autogpt/keys.py
-autogpt/*.json
+classic/original_autogpt/keys.py
+classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
-ai_settings.yaml
-last_run_ai_settings.yaml
-
 #.vscode
 .idea/*
 auto-gpt.json
@@ -159,12 +154,13 @@ vicuna-*
 # mac
 .DS_Store
 
+openai/
 
 # news
 CURRENT_BULLETIN.md
 
 # AgBenchmark
-agbenchmark/reports/
+classic/benchmark/agbenchmark/reports/
 
 # Nodejs
 package-lock.json
@@ -176,6 +172,10 @@ pri*
 # ignore
 ig*
 .github_access_token
-~/AFAAS/cache.json
-.env.bak
-AFAAS/interfaces/adapters/chatmodel/configuration.py
+
+#AFAAS
+LICENSE.rtf
+autogpt_platform/backend/settings.py
+arena/*
+chroma/
+.github/configuration.json
