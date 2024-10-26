@@ -127,6 +127,8 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         if response.status_code != 201:
             error_msg = extract_github_error_msg(response)
+            if "not found" in error_msg.lower():
+                error_msg = f"{error_msg} (Make sure the GitHub account has an add webhook permission to the repository)"
             raise ValueError(f"Failed to create GitHub webhook: {error_msg}")
 
         webhook_id = response.json()["id"]
