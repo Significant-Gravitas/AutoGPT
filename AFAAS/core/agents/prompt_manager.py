@@ -26,7 +26,7 @@ from AFAAS.interfaces.adapters.chatmodel import (
 )
 from AFAAS.interfaces.adapters.chatmodel.wrapper import ChatCompletionKwargs, ChatModelWrapper
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.core.adapters.openai.chatmodel import AFAASChatOpenAI
+from AFAAS.core.adapters.openai.chatmodel import ChatOpenAIAdapter
 LOG = AFAASLogger(name=__name__)
 
 
@@ -42,10 +42,10 @@ class BasePromptManager(AgentMixin, AbstractPromptManager):
     def __init__(
         self,
         config : LLMConfig = LLMConfig(
-            default = AFAASChatOpenAI(),
-            cheap = AFAASChatOpenAI(),
-            long_context = AFAASChatOpenAI(),
-            code_expert = AFAASChatOpenAI(),
+            default = ChatOpenAIAdapter(),
+            cheap = ChatOpenAIAdapter(),
+            long_context = ChatOpenAIAdapter(),
+            code_expert = ChatOpenAIAdapter(),
         ),
     ) -> None:
         self._prompt_strategies = {}
