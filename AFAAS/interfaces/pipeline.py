@@ -91,7 +91,7 @@ class Pipeline(AgentMixin):
 
     def _parse_response(
         self, strategy_name: str, model_response: AbstractChatModelResponse
-    ):
+    )->Tuple[str, dict, Any]:
         strategy_tools = self.get_strategy(
             strategy_name=strategy_name
         ).get_tools_names()
@@ -111,7 +111,7 @@ class Pipeline(AgentMixin):
         command_name: str,
         command_args: dict,
         assistant_reply_dict: Any,
-    ):
+    )->None:
         pipeline._task.task_text_output = assistant_reply_dict
         pipeline._task.task_context = command_args["note_to_agent"]
         return None
@@ -123,7 +123,7 @@ class Pipeline(AgentMixin):
         command_name: str,
         command_args: dict,
         assistant_reply_dict: Any,
-    ):
+    )->None:
         return cls.default_post_processing(
             pipeline=pipeline,
             command_name=command_name,
