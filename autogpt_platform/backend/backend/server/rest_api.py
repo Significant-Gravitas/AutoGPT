@@ -268,7 +268,9 @@ class AgentServer(AppService):
             tags=["settings"],
         )
 
-        app.add_exception_handler(ValueError, self.handle_internal_http_error(400))
+        app.add_exception_handler(
+            ValueError, self.handle_internal_http_error(400, False)
+        )
         app.add_exception_handler(500, self.handle_internal_http_error(500))
         app.include_router(api_router)
         app.include_router(health_router)
@@ -326,8 +328,10 @@ class AgentServer(AppService):
         return get_service_client(ExecutionScheduler)
 
     @classmethod
-    def handle_internal_http_error(cls, status_code: int = 500):
+    def handle_internal_http_error(cls, status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
+            if log_error:
+                logger.exception(f"{request.method} {request.url.path} failed: {exc}")
             return JSONResponse(
                 content={
                     "message": f"{request.method} {request.url.path} failed",

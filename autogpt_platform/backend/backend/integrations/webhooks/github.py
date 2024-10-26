@@ -19,6 +19,21 @@ class GithubWebhookType(StrEnum):
     REPO = "repo"
 
 
+def extract_github_error_msg(response: requests.Response) -> str:
+    error_msgs = []
+    resp = response.json()
+    if resp.get("message"):
+        error_msgs.append(resp["message"])
+    if resp.get("errors"):
+        error_msgs.extend(f"* {err.get('message', err)}" for err in resp["errors"])
+    if resp.get("error"):
+        if isinstance(resp["error"], dict):
+            error_msgs.append(resp["error"].get("message", resp["error"]))
+        else:
+            error_msgs.append(resp["error"])
+    return "\n".join(error_msgs)
+
+
 class GithubWebhooksManager(BaseWebhooksManager):
     PROVIDER_NAME = ProviderName.GITHUB
 
@@ -70,7 +85,8 @@ class GithubWebhooksManager(BaseWebhooksManager):
         response = requests.post(ping_url, headers=headers)
 
         if response.status_code != 204:
-            raise ValueError(f"Failed to ping GitHub webhook: {response.text}")
+            error_msg = extract_github_error_msg(response)
+            raise ValueError(f"Failed to ping GitHub webhook: {error_msg}")
 
     async def _register_webhook(
         self,
@@ -110,7 +126,8 @@ class GithubWebhooksManager(BaseWebhooksManager):
         )
 
         if response.status_code != 201:
-            raise ValueError(f"Failed to create GitHub webhook: {response.text}")
+            error_msg = extract_github_error_msg(response)
+            raise ValueError(f"Failed to create GitHub webhook: {error_msg}")
 
         webhook_id = response.json()["id"]
         config = response.json()["config"]
@@ -143,6 +160,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         if response.status_code not in [204, 404]:
             # 204 means successful deletion, 404 means the webhook was already deleted
-            raise ValueError(f"Failed to delete GitHub webhook: {response.text}")
+            error_msg = extract_github_error_msg(response)
+            raise ValueError(f"Failed to delete GitHub webhook: {error_msg}")
 
         # If we reach here, the webhook was successfully deleted or didn't exist
