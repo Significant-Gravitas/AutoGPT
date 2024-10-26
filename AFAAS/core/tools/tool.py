@@ -4,7 +4,7 @@ import asyncio
 import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
-from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.interfaces.tools.tool_output import ToolOutput, ErrorOutput
 from AFAAS.interfaces.tools.tool_parameters import ToolParameter
 from AFAAS.lib.utils.json_schema import JSONSchema
 
@@ -165,12 +165,19 @@ class Tool(AFAASBaseTool):
         return _tool_instance
 
     async def default_tool_success_check_callback(
-        self, task: AbstractTask, tool_output: Any
+        self, task: AbstractTask, tool_output: ToolOutput
     ):
-        return True
+        if ErrorOutput.name not in tool_output.output.keys():
+            return True
+
+        if len(tool_output.output[ErrorOutput.name]) > 0 :
+            return False 
+        else : 
+            return True
+
 
     async def default_tool_execution_summarry(
-        self, task: AbstractTask, tool_output: Any
+        self, task: AbstractTask, tool_output: ToolOutput
     ):
         strategy_result = await task.agent.execute_strategy(
             strategy_name="afaas_task_postprocess_default_summary",
@@ -180,6 +187,8 @@ class Tool(AFAASBaseTool):
             documents=[],
         )
 
+        task.tool_output = tool_output.model_dump()
+
         task.task_text_output = strategy_result.parsed_result[0]["command_args"][
             "text_output"
         ]
@@ -188,3 +197,4 @@ class Tool(AFAASBaseTool):
         ].get(
             "text_output_as_uml", ""
         )  # NOTE replace by [] if not present ?
+

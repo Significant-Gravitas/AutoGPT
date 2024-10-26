@@ -22,7 +22,7 @@ from AFAAS.interfaces.task.base import AbstractBaseTask
 from AFAAS.interfaces.task.meta import TaskStatusList
 from AFAAS.interfaces.task.plan import AbstractPlan
 from AFAAS.interfaces.task.task import AbstractTask
-from AFAAS.interfaces.tools.tool_output import ToolOutput
+from AFAAS.interfaces.tools.tool_output import ToolOutput , ErrorOutput , ToolOutputErrorMissing
 from AFAAS.interfaces.workflow import FastTrackedWorkflow
 from AFAAS.lib.sdk.errors import AgentException, ToolExecutionError, UnknownToolError
 from AFAAS.lib.sdk.logger import AFAASLogger, logging
@@ -143,6 +143,7 @@ class Task(AbstractTask):
     command: Optional[str] = Field(default_factory=lambda: Task.default_tool())
     arguments: Optional[dict] = Field(default={})
 
+    task_tool_output: Optional[ToolOutput] = None 
     task_text_output: Optional[str] = None
     """ The agent summary of his own doing while performing the task"""
     task_text_output_as_uml: Optional[str] = None
@@ -510,9 +511,19 @@ class Task(AbstractTask):
         if tool := self.agent._tool_registry.get_tool(tool_name=self.command):
             try:
                 result = await tool(**self.arguments, task=self, agent=self.agent)
-                return tool, result
             except Exception as e:
                 raise ToolExecutionError(str(e))
+
+            if not isinstance(result, ToolOutput):
+                error_message = f"Tool {tool} returned an object of type {type(result)} instead of ToolOutput"
+                result = ToolOutput( 
+                    #action="error",
+                    #reasoning="error_message",
+                    output=ErrorOutput(error_message=error_message)
+                )
+                result.add_output(output=ErrorOutput(error_message=error_message , exception_class = ToolOutputErrorMissing))
+                raise ToolOutputErrorMissing(error_message)
+            return tool, result
         raise UnknownToolError(
             f"Cannot execute command '{self.command}': unknown command."
         )
@@ -581,7 +592,7 @@ class Task(AbstractTask):
 
         return clone
 
-    async def task_postprocessing(self, tool: Tool, tool_output: Any) -> bool:
+    async def task_postprocessing(self, tool: Tool, tool_output: ToolOutput) -> bool:
 
         await self.process_tool_output(tool=tool, tool_output=tool_output)
 
@@ -603,13 +614,13 @@ class Task(AbstractTask):
         except:
             return False
 
-    async def process_tool_output(self, tool: Tool, tool_output: Any):
+    async def process_tool_output(self, tool: Tool, tool_output: ToolOutput):
         LOG.trace(f"Tool.default_success_check_callback() called for {tool}")
         LOG.debug(f"Task = {self}")
         LOG.debug(f"Tool output = {tool_output}")
 
         await tool.make_summarry_function(tool, task = self,  tool_output = tool_output)
-        await self.memorize_output()
+        await self.memorize_task(tool_output = tool_output)
 
         if (self.task_overide_tool_success_check_callback is not None 
         and not await self.task_overide_tool_success_check_callback(tool, task = self,  tool_output = tool_output)):
@@ -620,7 +631,7 @@ class Task(AbstractTask):
 
         return
 
-    async def memorize_output(self):
+    async def memorize_task(self, tool_output : ToolOutput):
         from langchain_core.documents import Document
 
         document = Document(

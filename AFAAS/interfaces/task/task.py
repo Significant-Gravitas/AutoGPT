@@ -123,7 +123,7 @@ class AbstractTask(AbstractBaseTask):
     async def retry(self): ...
 
     @abstractmethod
-    async def memorize_output(self):
+    async def memorize_task(self):
         ...
 
     memory : dict = {}
