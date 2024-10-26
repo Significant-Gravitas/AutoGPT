@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from langchain.vectorstores import VectorStore
 from langchain_core.embeddings import Embeddings
 
-from AFAAS.core.tools.builtins import (
-    BUILTIN_MODULES,  # FIXME: This is a temporary fix but shall not be delt here
-)
 from AFAAS.core.tools.tool_registry import DefaultToolRegistry
-from AFAAS.interfaces.adapters import AbstractLanguageModelProvider
+from AFAAS.interfaces.agent.assistants.prompt_manager import AbstractPromptManager
+from AFAAS.core.agents.prompt_manager import BasePromptManager
 from AFAAS.interfaces.adapters.embeddings.wrapper import (
     ChromaWrapper,
     VectorStoreWrapper,
@@ -46,17 +44,23 @@ class PlannerAgent(BaseAgent):
                 settings=self._settings,
                 db=self.db,
                 workspace=self.workspace,
-                model_providers=self.default_llm_provider,
+                # model_providers=self.default_llm_provider,
             )
             self._tool_registry.add_tool_category(
                 category=AFAASBaseTool.FRAMEWORK_CATEGORY
             )
         return self._tool_registry
 
+
+    @property
+    def prompt_manager(self) -> AbstractPromptManager:
+        if self._prompt_manager is None:
+            self._prompt_manager = BasePromptManager()
+        return self._prompt_manager
+
     @tool_registry.setter
     def tool_registry(self, value: AbstractToolRegistry):
         self._tool_registry = value
-
     class SystemSettings(BaseAgent.SystemSettings):
 
 
@@ -70,12 +74,12 @@ class PlannerAgent(BaseAgent):
         settings: PlannerAgent.SystemSettings,
         user_id: str,
         agent_id: str = SystemSettings.generate_uuid(),
-        prompt_manager: BasePromptManager = BasePromptManager(),
         loop: PlannerLoop = PlannerLoop(),
         tool_handler: ToolExecutor = ToolExecutor(),
         tool_registry=None,
         db: AbstractMemory = None,
-        default_llm_provider: AbstractLanguageModelProvider = None,
+        prompt_manager: BasePromptManager = None,
+        # default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
         vectorstore: VectorStoreWrapper = None,  # Optional parameter for custom vectorstore
         embedding_model: Embeddings = None,  # Optional parameter for custom embedding model
@@ -87,8 +91,6 @@ class PlannerAgent(BaseAgent):
         ## Workarround for attribute where dependancy injection remain to implement
         if agent_id is None:
             agent_id: str = self.SystemSettings.generate_uuid()
-        if prompt_manager is None:
-            prompt_manager: BasePromptManager = BasePromptManager()
         if loop is None:
             loop: PlannerLoop = PlannerLoop()
         if tool_handler is None:
@@ -98,7 +100,7 @@ class PlannerAgent(BaseAgent):
             settings=settings,
             db=db,
             workspace=workspace,
-            default_llm_provider=default_llm_provider,
+            #default_llm_provider=default_llm_provider,
             prompt_manager=prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
@@ -143,7 +145,7 @@ class PlannerAgent(BaseAgent):
         ###
         tool_registry=None,
         db: AbstractMemory = None,
-        default_llm_provider: AbstractLanguageModelProvider = None,
+        # default_llm_provider: AbstractLanguageModelProvider = None,
         workspace: AbstractFileWorkspace = None,
         vectorstore: VectorStoreWrapper = None,
         embedding_model: Embeddings = None,
@@ -160,7 +162,7 @@ class PlannerAgent(BaseAgent):
             tool_handler=tool_handler,
             tool_registry=tool_registry,
             db=db,
-            default_llm_provider=default_llm_provider,
+            #default_llm_provider=default_llm_provider,
             workspace=workspace,
             vectorstore=vectorstore,
             embedding_model=embedding_model,

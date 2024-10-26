@@ -6,6 +6,7 @@ import uuid
 from langchain_core.messages  import AIMessage , HumanMessage, SystemMessage , ChatMessage
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AssistantChatMessage,
     ChatPrompt,
     CompletionModelFunction,
@@ -51,7 +52,7 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class RefineUserContextStrategy(AbstractPromptStrategy):
-    default_configuration = RefineUserContextStrategyConfiguration()
+    default_configuration : RefineUserContextStrategyConfiguration = RefineUserContextStrategyConfiguration()
     STRATEGY_NAME = "refine_user_context"
 
     ###
@@ -81,7 +82,7 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
         self._last_questions_label: list[str] = []
         self._user_last_goal = user_last_goal
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
         self.exit_token: str = exit_token
         self.default_tool_choice = default_tool_choice
 
@@ -292,8 +293,12 @@ class RefineUserContextStrategy(AbstractPromptStrategy):
     ) -> str:
         pass
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

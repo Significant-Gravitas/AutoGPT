@@ -1,32 +1,11 @@
-from AFAAS.interfaces.adapters.chatmodel import (
-    AbstractChatModelProvider,
-    AbstractChatModelResponse,
-    ChatModelInfo,
-    ChatPrompt,
-    CompletionModelFunction,
-)
+from __future__ import annotations
+from AFAAS.interfaces.adapters.chatmodel import *
 from AFAAS.interfaces.adapters.language_model import (
     AbstractLanguageModelProvider,
     AbstractModelProvider,
     AbstractPromptConfiguration,
-    BaseModelInfo,
-    BaseModelProviderSettings,
+    LanguageModelInfo,
+    LanguageModelProviderSettings,
     ModelProviderName,
 )
 
-
-from AFAAS.interfaces.adapters.chatmessage import (
-    AbstractChatMessage,
-    AIMessage,
-    AFAASChatMessage,
-    ChatMessage,
-    FunctionMessage,
-    HumanMessage,
-    Role,
-    SystemMessage,
-    AssistantChatMessage,
-    AssistantChatMessage,
-    AssistantFunctionCall,
-    AssistantFunctionCall,
-    OpenAIChatMessage,
-)

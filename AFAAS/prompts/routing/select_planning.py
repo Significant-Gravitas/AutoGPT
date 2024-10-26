@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from AFAAS.interfaces.adapters import (
     AbstractLanguageModelProvider,
+    AbstractChatModelProvider,
     AbstractPromptConfiguration,
     AssistantChatMessage,
     ChatPrompt,
@@ -42,7 +43,7 @@ class SelectPlanningStrategyConfiguration(PromptStrategiesConfiguration):
 
 
 class SelectPlanningStrategy(AbstractPromptStrategy):
-    default_configuration = SelectPlanningStrategyConfiguration()
+    default_configuration : SelectPlanningStrategyConfiguration = SelectPlanningStrategyConfiguration()
     STRATEGY_NAME = "routing_make_plan"
 
     def __init__(
@@ -50,7 +51,7 @@ class SelectPlanningStrategy(AbstractPromptStrategy):
         default_tool_choice: SelectPlanningStrategyFunctionNames,
         temperature: float,  # if coding 0.05
         count=0,
-        exit_token: str = str(uuid.uuid4()),
+
         use_message: bool = False,
     ):
         """
@@ -78,7 +79,7 @@ class SelectPlanningStrategy(AbstractPromptStrategy):
             Flag to determine whether to use messages.
         """
         self._count = count
-        self._config = self.default_configuration
+        self.temperature = temperature or self.default_configuration.temperature
 
     async def build_message(self, task: AbstractTask, **kwargs) -> ChatPrompt:
         LOG.debug("Building prompt for task : " + await task.debug_dump_str())
@@ -177,8 +178,12 @@ class SelectPlanningStrategy(AbstractPromptStrategy):
     def response_format_instruction(self) -> str:
         return super().response_format_instruction()
 
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
+    def get_llm_provider(self) -> AbstractChatModelProvider:
         return super().get_llm_provider()
 
+
     def get_prompt_config(self) -> AbstractPromptConfiguration:
-        return super().get_prompt_config()
+        return AbstractPromptConfiguration(
+            llm_model_name=self.get_llm_provider().__llmmodel_default__(),
+            temperature=self.temperature,
+        )

@@ -42,7 +42,7 @@ class AbstractAgent(ABC):
     agent_id: str
 
     @property
-    def vectorstores(self) -> VectorStoreWrapper:        
+    def vectorstores(self) -> VectorStoreWrapper:
         if self._vectorstores is None:
             self._vectorstores = ChromaWrapper(vector_store=Chroma(
                 persist_directory=f'data/chroma/',
@@ -76,14 +76,24 @@ class AbstractAgent(ABC):
     def db(self, value: AbstractMemory):
         self._db = value
 
+    # @property
+    # @abstractmethod
+    # def default_llm_provider(self) -> AbstractLanguageModelProvider:
+    #     ...
+
+    # @default_llm_provider.setter
+    # def default_llm_provider(self, value: AbstractLanguageModelProvider):
+    #     self._default_llm_provider = value
+
+
     @property
     @abstractmethod
-    def default_llm_provider(self) -> AbstractLanguageModelProvider:
+    def prompt_manager(self) -> AbstractPromptManager:
         ...
 
-    @default_llm_provider.setter
-    def default_llm_provider(self, value: AbstractLanguageModelProvider):
-        self._default_llm_provider = value
+    @prompt_manager.setter
+    def prompt_manager(self, value: AbstractPromptManager):
+        self._prompt_manager : AbstractPromptManager = value
 
     @property
     @abstractmethod
@@ -103,9 +113,6 @@ class AbstractAgent(ABC):
 
     class SystemSettings(SystemSettings):
 
-
-        
-        
         model_config = update_model_config(original= SystemSettings.model_config ,
                                            new = {
                                                 'AGENT_CLASS_FIELD_NAME' : "settings_agent_class_",
@@ -165,12 +172,12 @@ class AbstractAgent(ABC):
         def settings_agent_module_(cls):
             return cls.__module__ + "." + ".".join(cls.__qualname__.split(".")[:-1])
 
-        def dict(self, include_all=False, *args, **kwargs):
-            self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
+        def model_dump(self, include_all=False, *args, **kwargs):
+            self.prepare_values_before_serialization()  # Call the custom treatment before .model_dump()
             if not include_all:
                 kwargs["exclude"] = self.model_config['default_exclude']
-            # Call the .dict() method with the updated exclude_arg
-            return super().dict(*args, **kwargs)
+            # Call the .model_dump() method with the updated exclude_arg
+            return super().model_dump(*args, **kwargs)
 
         def json(self, *args, **kwargs):
             LOG.warning(
@@ -195,7 +202,7 @@ class AbstractAgent(ABC):
         db: AbstractMemory,
         workspace: AbstractFileWorkspace,
         prompt_manager: AbstractPromptManager,
-        default_llm_provider: AbstractLanguageModelProvider,
+        # default_llm_provider: AbstractLanguageModelProvider,
         vectorstore: VectorStoreWrapper,
         embedding_model : Embeddings,
         workflow_registry: WorkflowRegistry,
@@ -219,14 +226,14 @@ class AbstractAgent(ABC):
         self.settings_agent_module_ = settings.settings_agent_module_
 
         self._prompt_manager : AbstractPromptManager = prompt_manager
-        self._prompt_manager.set_agent(agent=self)
+        self.prompt_manager.set_agent(agent=self)
 
         self._db : AbstractMemory = db
 
         self._workspace : AbstractFileWorkspace = workspace
         self.workspace.initialize()
 
-        self._default_llm_provider : AbstractLanguageModelProvider = default_llm_provider
+        #self._default_llm_provider : AbstractLanguageModelProvider = default_llm_provider
         self._embedding_model : Embeddings = embedding_model
 
         self._vectorstores: VectorStoreWrapper = vectorstore
@@ -235,7 +242,7 @@ class AbstractAgent(ABC):
 
         self._loop : BaseLoop = None
 
-        for key, value in settings.dict().items():
+        for key, value in settings.model_dump().items():
             if key not in self.SystemSettings.model_config['default_exclude']:
                 if(not hasattr(self, key)):
                     LOG.notice(f"Adding {key} to the agent")
@@ -317,7 +324,7 @@ class AbstractAgent(ABC):
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> AbstractChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
-        return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
+        return await self.prompt_manager.execute_strategy(strategy_name=strategy_name, **kwargs)
 
 
 AbstractAgent.SystemSettings.model_rebuild()

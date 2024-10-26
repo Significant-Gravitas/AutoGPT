@@ -47,8 +47,8 @@ class Plan(AbstractPlan):
     _done_task_ids: list[str] = PrivateAttr(default=[])
 
 
-    def dict(self, **kwargs):
-        d = super().dict(**kwargs)
+    def model_dump(self, **kwargs):
+        d = super().model_dump(**kwargs)
         d["_all_task_ids"] = self._all_task_ids
         d["_ready_task_ids"] = self._ready_task_ids
         d["_done_task_ids"] = self._done_task_ids

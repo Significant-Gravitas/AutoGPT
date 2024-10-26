@@ -7,24 +7,23 @@ import sys
 from typing import TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from langchain_core.messages import ChatMessage, AIMessage
 
-from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
-from AFAAS.lib.utils.json_schema import JSONSchema
+
+from AFAAS.configs.schema import SystemConfiguration
 
 if TYPE_CHECKING:
     from AFAAS.interfaces.task.task import AbstractTask
 
-from AFAAS.configs.schema import SystemConfiguration
-from AFAAS.interfaces.adapters import (
+from AFAAS.interfaces.agent.features.agentmixin import AgentMixin
+from AFAAS.interfaces.adapters.language_model import AbstractLanguageModelProvider, AbstractPromptConfiguration
+from AFAAS.interfaces.adapters.chatmodel import  (
+    ChatPrompt,
+    AbstractChatModelProvider,
     AbstractChatModelResponse,
-    AbstractLanguageModelProvider,
     AssistantChatMessage,
     CompletionModelFunction,
 )
-from AFAAS.interfaces.adapters.language_model import AbstractPromptConfiguration
-from AFAAS.interfaces.adapters.chatmodel import  ChatPrompt
-from langchain_core.messages import ChatMessage
-from langchain_core.messages import AIMessage
 from AFAAS.interfaces.prompts.utils.utils import (
     indent,
     json_loads,
@@ -33,6 +32,7 @@ from AFAAS.interfaces.prompts.utils.utils import (
     to_numbered_list,
     to_string_list,
 )
+from AFAAS.lib.utils.json_schema import JSONSchema
 from AFAAS.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)
@@ -74,21 +74,7 @@ RESPONSE_SCHEMA = JSONSchema(
                     required=True,
                 ),
             },
-        ),
-        "command": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "name": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "args": JSONSchema(
-                    type=JSONSchema.Type.OBJECT,
-                    required=True,
-                ),
-            },
-        ),
+        )
     },
 )
 
@@ -102,8 +88,7 @@ class DefaultParsedResponse(dict):
 
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    pass
-    # temperature: float
+    temperature: float
     # top_p: Optional[float] = None
     # max_tokens: Optional[int] = None
     # frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
@@ -124,11 +109,13 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     def set_tools(self, **kwargs): ...
 
     @abc.abstractmethod
-    def get_llm_provider(self) -> AbstractLanguageModelProvider:
-        return self._agent.default_llm_provider
+    def get_llm_provider(self) -> AbstractChatModelProvider:
+        """ Get the Provider : Gemini, OpenAI, Llama, ... """
+        return self._agent.prompt_manager.config.default
 
     @abc.abstractmethod
     def get_prompt_config(self) -> AbstractPromptConfiguration:
+        """ Get the Prompt Configuration : Model version (eg: gpt-3.5, gpt-4...), temperature, top_k, top_p, ... """
         return self.get_llm_provider().get_default_config()
 
     # TODO : This implementation is shit :)
@@ -169,17 +156,9 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     ) -> str:
         language_model_provider = self.get_llm_provider()
         model_name = self.get_prompt_config().llm_model_name
-        use_oa_tools_api = language_model_provider.has_oa_tool_calls_api(
-            model_name=model_name
-        )
 
-        response_schema = RESPONSE_SCHEMA.copy(deep=True)
-        if (
-            use_oa_tools_api
-            and response_schema.properties
-            and "command" in response_schema.properties
-        ):
-            del response_schema.properties["command"]
+        #response_schema = RESPONSE_SCHEMA.copy(deep=True)
+        response_schema = RESPONSE_SCHEMA
 
         # Unindent for performance
         response_format: str = re.sub(
@@ -188,15 +167,8 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
             response_schema.to_typescript_object_interface("Response"),
         )
 
-        if use_oa_tools_api:
-            return (
-                f"Respond strictly with a JSON of type `Response` :\n"
-                f"{response_format}"
-            )
-
         return (
-            f"Respond strictly with JSON{', and also specify a command to use through a tool_calls' if use_oa_tools_api else ''}. "
-            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
+            f"Respond strictly with JSON. The JSON should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
 
@@ -323,27 +295,27 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
 
 
-from pydantic import BaseModel
-def convert_v1_instance_to_v2_dynamic(obj_v1: BaseModel) -> BaseModel:
+# from pydantic import BaseModel
+# def convert_v1_instance_to_v2_dynamic(obj_v1: BaseModel) -> BaseModel:
 
-        from pydantic import  create_model
-        from typing import Type
-        """
-        Converts an instance of a Pydantic v1 model to a dynamically created Pydantic v2 model instance.
+#         from pydantic import  create_model
+#         from typing import Type
+#         """
+#         Converts an instance of a Pydantic v1 model to a dynamically created Pydantic v2 model instance.
 
-        Parameters:
-        - obj_v1: The instance of the Pydantic version 1 model.
+#         Parameters:
+#         - obj_v1: The instance of the Pydantic version 1 model.
 
-        Returns:
-        - An instance of a dynamically created Pydantic version 2 model that mirrors the structure of obj_v1.
-        """
-        # Extract field definitions from the v1 instance
-        fields = {name: (field.outer_type_, ...) for name, field in obj_v1.__fields__.items()}
+#         Returns:
+#         - An instance of a dynamically created Pydantic version 2 model that mirrors the structure of obj_v1.
+#         """
+#         # Extract field definitions from the v1 instance
+#         fields = {name: (field.outer_type_, ...) for name, field in obj_v1.__fields__.items()}
 
-        # Dynamically create a new Pydantic model class
-        DynamicModelV2 = create_model('DynamicModelV2', **fields)
+#         # Dynamically create a new Pydantic model class
+#         DynamicModelV2 = create_model('DynamicModelV2', **fields)
 
-        # Convert the v1 instance to a dictionary and use it to create an instance of the new model
-        obj_v2 = DynamicModelV2.parse_obj(obj_v1.dict())
+#         # Convert the v1 instance to a dictionary and use it to create an instance of the new model
+#         obj_v2 = DynamicModelV2.parse_obj(obj_v1.dict())
 
-        return obj_v2
+#         return obj_v2

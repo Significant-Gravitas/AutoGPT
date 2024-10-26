@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Awaitable, Callable, Coroutine, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Optional, Tuple
 
-from AFAAS.interfaces.adapters import AbstractChatModelResponse
+from AFAAS.interfaces.adapters.chatmodel import AbstractChatModelResponse
 from AFAAS.interfaces.agent.features.agentmixin import AgentMixin 
 from AFAAS.interfaces.agent.main import BaseAgent
 from AFAAS.interfaces.job import JobInterface
@@ -39,7 +39,7 @@ class Pipeline(AgentMixin):
                 self.jobs.insert(i + 1, job)
                 break
 
-    async def execute(self) -> (Optional[AbstractTask], Optional[BaseAgent]):
+    async def execute(self) -> Tuple[Optional[AbstractTask], Optional[BaseAgent]]:
         if self.jobs:
             current_job = self.jobs.pop()
             pipeline_response = await self._execute_job(current_job)
@@ -91,7 +91,7 @@ class Pipeline(AgentMixin):
 
     def _parse_response(
         self, strategy_name: str, model_response: AbstractChatModelResponse
-    ):
+    )->Tuple[str, dict, Any]:
         strategy_tools = self.get_strategy(
             strategy_name=strategy_name
         ).get_tools_names()
@@ -111,7 +111,7 @@ class Pipeline(AgentMixin):
         command_name: str,
         command_args: dict,
         assistant_reply_dict: Any,
-    ):
+    )->None:
         pipeline._task.task_text_output = assistant_reply_dict
         pipeline._task.task_context = command_args["note_to_agent"]
         return None
@@ -123,7 +123,7 @@ class Pipeline(AgentMixin):
         command_name: str,
         command_args: dict,
         assistant_reply_dict: Any,
-    ):
+    )->None:
         return cls.default_post_processing(
             pipeline=pipeline,
             command_name=command_name,

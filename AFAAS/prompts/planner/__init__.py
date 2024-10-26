@@ -2,17 +2,13 @@ from __future__ import annotations
 
 from AFAAS.interfaces.prompts.strategy import PromptStrategiesConfiguration
 from AFAAS.lib.sdk.logger import AFAASLogger
-from AFAAS.prompts.planner.initial_plan import (
-    InitialPlanStrategy,
-    InitialPlanStrategyConfiguration,
-)
+
 from AFAAS.prompts.planner.select_tool import SelectToolStrategyConfiguration
 
 LOG = AFAASLogger(name=__name__)
 
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):
-    initial_plan: InitialPlanStrategyConfiguration
     select_tool: SelectToolStrategyConfiguration
 
 
@@ -22,8 +18,7 @@ class StrategiesSet:
     @staticmethod
     def get_strategies() -> list[AbstractPromptStrategy]:
         return [
-            InitialPlanStrategy(**InitialPlanStrategy.default_configuration.dict()),
             # SelectToolStrategy(
-            #     **SelectToolStrategy.default_configuration.dict()
+            #     **SelectToolStrategy.config.model_dump()
             # ),
         ]
