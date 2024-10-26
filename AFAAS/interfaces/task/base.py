@@ -156,7 +156,7 @@ class AbstractBaseTask(abc.ABC, AFAASModel):
 
                 # Direct check for BaseTask instances
                 if isinstance(field_value, AbstractBaseTask):
-                    d[field] = field_value.task_i
+                    d[field] = field_value.task_id
 
                 # Check for lists of BaseTask instances
                 if isinstance(field_value, list) and issubclass(

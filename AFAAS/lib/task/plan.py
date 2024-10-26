@@ -81,7 +81,7 @@ class Plan(AbstractPlan):
                 # Initialize the instance if needed
                 super().__init__(**kwargs)
                 Plan._instance[kwargs["agent"].agent_id] = self
-                self.agent.plan: Plan = self
+                self.agent.plan = self
                 #self._initialized = True 
                 Plan.initialized = True
 
