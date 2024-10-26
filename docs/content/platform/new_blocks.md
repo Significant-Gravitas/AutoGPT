@@ -415,8 +415,8 @@ If you would like to implement one of these blocks, open a pull request and we w
 
 ### Data/Information
 
-- Summarize top news of today, of this week, this month via Apple News or other large media outlets BBC, TechCrunch, hackernews, etc
-- Create, read, and summarize substack newsletters or any newsletters (blog writer vs blog reader)
+- Summarize top news of today, of this week, this month via Apple News or other large media outlets BBC, TechCrunch, Hacker News, etc
+- Create, read, and summarize Substack newsletters or any newsletters (blog writer vs blog reader)
 - Get/read/summarize the most viral Twitter, Instagram, TikTok (general social media accounts) of the day, week, month
 - Get/Read any LinkedIn posts or profile that mention AI Agents
 - Read/Summarize discord (might not be able to do this because you need access)
