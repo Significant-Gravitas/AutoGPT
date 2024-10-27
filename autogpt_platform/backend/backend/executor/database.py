@@ -4,6 +4,7 @@ from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, ca
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
     ExecutionResult,
+    RedisExecutionEventBus,
     create_graph_execution,
     get_execution_results,
     get_incomplete_executions,
@@ -15,7 +16,6 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.graph import get_graph, get_node
-from backend.data.queue import RedisExecutionEventBus
 from backend.data.user import get_user_metadata, update_user_metadata
 from backend.util.service import AppService, expose
 from backend.util.settings import Config

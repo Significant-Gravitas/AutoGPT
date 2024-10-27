@@ -9,11 +9,8 @@ from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
 
 from backend.data import redis
-from backend.data.execution import ExecutionResult
-from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
-config = Config()
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -36,7 +33,7 @@ class BaseRedisEventBus(Generic[M], ABC):
 
     def _serialize_message(self, item: M, channel_key: str) -> tuple[str, str]:
         message = json.dumps(item.model_dump(), cls=DateTimeEncoder)
-        channel_name = f"{self.event_bus_name}-{channel_key}"
+        channel_name = f"{self.event_bus_name}/{channel_key}"
         logger.info(f"[{channel_name}] Publishing an event to Redis {message}")
         return message, channel_name
 
@@ -54,7 +51,7 @@ class BaseRedisEventBus(Generic[M], ABC):
     def _subscribe(
         self, connection: redis.Redis | redis.AsyncRedis, channel_key: str
     ) -> tuple[PubSub | AsyncPubSub, str]:
-        channel_name = f"{self.event_bus_name}-{channel_key}"
+        channel_name = f"{self.event_bus_name}/{channel_key}"
         pubsub = connection.pubsub()
         return pubsub, channel_name
 
@@ -108,37 +105,3 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         async for message in pubsub.listen():
             if event := self._deserialize_message(message, channel_key):
                 yield event
-
-
-class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
-    Model = ExecutionResult
-
-    @property
-    def event_bus_name(self) -> str:
-        return config.execution_event_bus_name
-
-    def publish(self, res: ExecutionResult):
-        self.publish_event(res, f"{res.graph_id}-{res.graph_exec_id}")
-
-    def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
-    ) -> Generator[ExecutionResult, None, None]:
-        for execution_result in self.listen_events(f"{graph_id}-{graph_exec_id}"):
-            yield execution_result
-
-
-class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
-    Model = ExecutionResult
-
-    @property
-    def event_bus_name(self) -> str:
-        return config.execution_event_bus_name
-
-    async def publish(self, res: ExecutionResult):
-        await self.publish_event(res, f"{res.graph_id}-{res.graph_exec_id}")
-
-    async def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
-    ) -> AsyncGenerator[ExecutionResult, None]:
-        async for execution_result in self.listen_events(f"{graph_id}-{graph_exec_id}"):
-            yield execution_result

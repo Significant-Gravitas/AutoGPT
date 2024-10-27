@@ -1,14 +1,12 @@
-import asyncio
 import logging
-from contextlib import contextmanager
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
 from prisma.types import IntegrationWebhookInclude
 from pydantic import Field
 
-from backend.data import redis
+from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 
 from .db import BaseDbModel
@@ -130,48 +128,32 @@ class WebhookEvent(BaseDbModel):
     payload: dict
 
 
-def publish_webhook_event(event: WebhookEvent):
-    n_receipts = redis.get_redis().publish(
-        channel=f"webhooks/{event.webhook_id}/{event.event_type}",
-        message=event.model_dump_json(),
-    )
-    return cast(int, n_receipts)
+class WebhookEventBus(AsyncRedisEventBus[WebhookEvent]):
+    Model = WebhookEvent
+
+    @property
+    def event_bus_name(self) -> str:
+        return "webhooks"
+
+    async def publish(self, event: WebhookEvent):
+        await self.publish_event(event, f"{event.webhook_id}/{event.event_type}")
+
+    async def listen(
+        self, webhook_id: str, event_type: Optional[str] = None
+    ) -> AsyncGenerator[WebhookEvent, None]:
+        async for event in self.listen_events(f"{webhook_id}/{event_type or '*'}"):
+            yield event
 
 
-def wait_for_webhook_event(
-    webhook_id: str, timeout: Optional[float] = None, event_type: Optional[str] = None
-) -> WebhookEvent:
-    redis_client = redis.get_redis()
-    pubsub = redis_client.pubsub()
-    channel = f"webhooks/{webhook_id}"
-    if event_type:
-        channel += f"/{event_type}"
-        pubsub.subscribe(channel)
-    else:
-        channel += "/*"
-        pubsub.psubscribe(channel)
-
-    try:
-        while message := pubsub.get_message(
-            ignore_subscribe_messages=True,
-            timeout=timeout,  # type: ignore - timeout param isn't typed correctly
-        ):
-            if message["type"] == "message":
-                return WebhookEvent.model_validate_json(message["data"])
-    finally:
-        pubsub.unsubscribe(channel)
-
-    raise TimeoutError(f"No message arrived on {channel} after {timeout} seconds")
+event_bus = WebhookEventBus()
 
 
-@contextmanager
-def listen_for_webhook_event(
-    webhook_id: str, timeout: Optional[float] = None, event_type: Optional[str] = None
-):
-    webhook_event = asyncio.Future()
-    yield webhook_event
-    try:
-        result = wait_for_webhook_event(webhook_id, timeout, event_type)
-        webhook_event.set_result(result)
-    except TimeoutError as e:
-        webhook_event.set_exception(e)
+async def publish_webhook_event(event: WebhookEvent):
+    await event_bus.publish(event)
+
+
+async def listen_for_webhook_event(
+    webhook_id: str, event_type: Optional[str] = None
+) -> WebhookEvent | None:
+    async for event in event_bus.listen(webhook_id, event_type):
+        return event  # Only one event is expected

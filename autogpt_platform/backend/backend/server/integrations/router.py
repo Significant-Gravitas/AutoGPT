@@ -242,7 +242,7 @@ async def webhook_ingress_generic(
         event_type=event_type,
         payload=payload,
     )
-    publish_webhook_event(webhook_event)
+    await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
     if not webhook.attached_nodes:
@@ -273,9 +273,9 @@ async def webhook_ping(
     webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
     webhook = await get_webhook(webhook_id)
 
-    with listen_for_webhook_event(webhook_id, event_type="ping") as ping_event:
-        await webhook_manager.trigger_ping(webhook)
-        await ping_event
+    await webhook_manager.trigger_ping(webhook)
+    if not await listen_for_webhook_event(webhook_id, event_type="ping"):
+        raise HTTPException(status_code=500, detail="Webhook ping event not received")
 
 
 # --------------------------- UTILITIES ---------------------------- #
