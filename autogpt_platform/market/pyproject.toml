@@ -23,15 +23,15 @@ prometheus-fastapi-instrumentator = "^7.0.0"
 
 autogpt-libs = {path = "../autogpt_libs"}
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.2.1"
-pytest-asyncio = "^0.23.7"
+pytest = "^8.3.3"
+pytest-asyncio = "^0.24.0"
 
-pytest-watcher = "^0.4.2"
+pytest-watcher = "^0.4.3"
 requests = "^2.32.3"
-ruff = "^0.5.2"
-pyright = "^1.1.371"
+ruff = "^0.7.1"
+pyright = "^1.1.386"
 isort = "^5.13.2"
-black = "^24.4.2"
+black = "^24.10.0"
 
 [build-system]
 requires = ["poetry-core"]
