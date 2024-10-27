@@ -39,7 +39,7 @@ class LoginResponse(BaseModel):
 
 
 @router.get("/{provider}/login")
-async def login(
+def login(
     provider: Annotated[str, Path(title="The provider to initiate an OAuth flow for")],
     user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
@@ -70,7 +70,7 @@ class CredentialsMetaResponse(BaseModel):
 
 
 @router.post("/{provider}/callback")
-async def callback(
+def callback(
     provider: Annotated[str, Path(title="The target provider for this OAuth exchange")],
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
     state_token: Annotated[str, Body(title="Anti-CSRF nonce")],
@@ -125,7 +125,7 @@ async def callback(
 
 
 @router.get("/{provider}/credentials")
-async def list_credentials(
+def list_credentials(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
@@ -143,7 +143,7 @@ async def list_credentials(
 
 
 @router.get("/{provider}/credentials/{cred_id}")
-async def get_credential(
+def get_credential(
     provider: Annotated[str, Path(title="The provider to retrieve credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -159,7 +159,7 @@ async def get_credential(
 
 
 @router.post("/{provider}/credentials", status_code=201)
-async def create_api_key_credentials(
+def create_api_key_credentials(
     user_id: Annotated[str, Depends(get_user_id)],
     provider: Annotated[str, Path(title="The provider to create credentials for")],
     api_key: Annotated[str, Body(title="The API key to store")],
@@ -194,7 +194,7 @@ class CredentialsDeletionResponse(BaseModel):
 
 
 @router.delete("/{provider}/credentials/{cred_id}")
-async def delete_credentials(
+def delete_credentials(
     request: Request,
     provider: Annotated[str, Path(title="The provider to delete credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
