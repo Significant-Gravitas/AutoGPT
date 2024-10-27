@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.data import redis
-from backend.data.queue import RedisEventQueue
+from backend.data.queue import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
@@ -51,13 +51,9 @@ def get_connection_manager():
 async def event_broadcaster(manager: ConnectionManager):
     try:
         redis.connect()
-        event_queue = RedisEventQueue()
-        while True:
-            event = event_queue.get()
-            if event:
-                await manager.send_execution_result(event)
-            else:
-                await asyncio.sleep(0.1)
+        event_queue = AsyncRedisExecutionEventBus()
+        async for event in event_queue.listen():
+            await manager.send_execution_result(event)
     except Exception as e:
         logger.exception(f"Event broadcaster error: {e}")
         raise
