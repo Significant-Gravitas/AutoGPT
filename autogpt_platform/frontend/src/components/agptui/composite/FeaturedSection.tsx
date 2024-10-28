@@ -42,7 +42,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   }, [featuredAgents.length]);
 
   return (
-    <div className="flex w-full flex-col items-center justify-center px-4 py-8">
+    <div className="flex w-full flex-col items-center justify-center px-4 py-4 md:py-8">
       <div className="w-full max-w-[1360px]">
         <h2 className="font-poppins mb-6 text-lg font-semibold leading-7 text-neutral-800">
           Featured agents
@@ -56,11 +56,10 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           }}
           className="w-full"
         >
-          <CarouselContent className="gap-5 transition-transform duration-500">
-            {" "}
+          <CarouselContent className="ml-0 transition-transform duration-500">
             {/* Add transition */}
             {featuredAgents.map((agent, index) => (
-              <CarouselItem key={index} className="basis-full lg:basis-1/3">
+              <CarouselItem key={index} className="ml-0 basis-auto basis-2/3 min-w-64 max-w-68">
                 <FeaturedStoreCard
                   agentName={agent.agentName}
                   subHeading={agent.subHeading}
@@ -76,7 +75,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           </CarouselContent>
         </Carousel>
 
-        <div className="mt-4 flex w-full items-center justify-between">
+        <div className="md:mt-4 flex w-full items-center justify-between">
           <div className="flex h-3 items-center gap-2">
             {featuredAgents.map((_, index) => (
               <div
@@ -93,13 +92,13 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
             {/* We can't get the exact styling of the button using the button from the component library */}
             <button
               onClick={handlePrevSlide}
-              className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-neutral-400 bg-white"
+              className="flex h-10 w-10 mb:h-12 mb:w-12 items-center justify-center rounded-full border border-neutral-400 bg-white"
             >
               <IconLeftArrow className="h-8 w-8" />
             </button>
             <button
               onClick={handleNextSlide}
-              className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-neutral-900 bg-white"
+              className="flex h-10 w-10 mb:h-12 mb:w-12 items-center justify-center rounded-full border border-neutral-900 bg-white"
             >
               <IconRightArrow className="h-8 w-8" />
             </button>
