@@ -27,7 +27,8 @@ interface NavbarProps {
   }[];
 }
 
-{/* <div className="w-[1408px] h-20 pl-6 pr-3 py-3 bg-white/5 rounded-bl-2xl rounded-br-2xl border border-white/50 backdrop-blur-[26px] justify-between items-center inline-flex">
+{
+  /* <div className="w-[1408px] h-20 pl-6 pr-3 py-3 bg-white/5 rounded-bl-2xl rounded-br-2xl border border-white/50 backdrop-blur-[26px] justify-between items-center inline-flex">
     <div className="justify-start items-center gap-11 flex">
         <div className="w-[88.87px] h-10 relative" />
         <div className="justify-start items-center gap-6 flex">
@@ -55,7 +56,8 @@ interface NavbarProps {
         </div>
         <img className="w-[60px] h-[60px] rounded-full" src="https://via.placeholder.com/60x60" />
     </div>
-</div> */}
+</div> */
+}
 
 export const Navbar: React.FC<NavbarProps> = ({
   isLoggedIn,
@@ -68,7 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <>
-      <nav className="hidden w-[1408px] sticky top-0 h-20 pl-6 pr-3 py-3 bg-white/5 rounded-bl-2xl rounded-br-2xl border border-white/50 backdrop-blur-[26px] justify-between items-center md:inline-flex">
+      <nav className="sticky top-0 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] md:inline-flex">
         <div className="flex items-center space-x-10">
           {links.map((link) => (
             <div key={link.name} className="relative">

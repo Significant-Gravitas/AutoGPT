@@ -23,7 +23,6 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   avatarSrc,
   hideAvatar = false,
 }) => {
-
   const handleClick = () => {
     onClick();
   };
