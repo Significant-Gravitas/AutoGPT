@@ -75,8 +75,6 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             auto_merge_enabled: bool = False
             auto_merge_disabled: bool = False
 
-            # add pull_request prefix on each field when it's serialized as a webhook event
-
         events: EventsFilter = SchemaField(description="The events to subscribe to")
 
     class Output(GitHubTriggerBase.Output):
