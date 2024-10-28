@@ -14,12 +14,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   return (
     <div className="mb-2 mt-8 flex flex-col items-center justify-center px-4 sm:mb-4 sm:mt-12 sm:px-6 md:mb-6 md:mt-16 lg:my-24 lg:px-8 xl:my-16">
       <div className="w-full max-w-3xl lg:max-w-4xl xl:max-w-5xl">
-        <h1 className="mb-2 text-center font-neue text-3xl font-medium leading-tight tracking-wide text-[#272727] sm:mb-3 sm:text-4xl md:mb-4 md:text-5xl">
-          Discover our community made AI Agents
-        </h1>
-        <p className="mb-4 text-center font-neue text-lg font-medium leading-7 tracking-tight text-[#737373] sm:mb-6 sm:text-xl sm:leading-8 md:mb-8 md:text-2xl md:leading-9 lg:text-[26px]">
-          Speed up your workflow with your curated agents
-        </p>
+        <div className="text-center mb-4 8md:mb-8">
+          <span className="text-neutral-950 text-4xl md:text-5xl font-semibold font-['Poppins'] leading-[54px]">Explore AI agents built for </span>
+          <span className="text-violet-600 text-4xl md:text-5xl font-semibold font-['Poppins'] leading-[54px]">you<br /></span>
+          <span className="text-neutral-950 text-4xl md:text-5xl font-semibold font-['Poppins'] leading-[54px]">by the </span>
+          <span className="text-blue-500 text-4xl md:text-5xl font-semibold font-['Poppins'] leading-[54px]">community</span>
+        </div>
+        <div className="text-neutral-700 text-xl mb:text-2xl font-normal font-['Geist'] leading-loose text-center  mb-6 md:mb-12">Bringing you AI agents designed by thinkers from around the world</div>
         <div className="mb-4 sm:mb-5 md:mb-6">
           <SearchBar onSearch={onSearch} />
         </div>
