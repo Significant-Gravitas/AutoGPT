@@ -72,7 +72,7 @@ jobs:
         create_credentials_file: true
 
     - name: 'Set up Cloud SDK'
-      uses: 'google-github-actions/setup-gcloud@v1'
+      uses: 'google-github-actions/setup-gcloud@v2'
 
     - name: 'Configure Docker'
       run: |
