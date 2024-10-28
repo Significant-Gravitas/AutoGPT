@@ -37,7 +37,7 @@ pytest = "^8.2.1"
 pytest-asyncio = "^0.23.7"
 python-dotenv = "^1.0.1"
 redis = "^5.0.8"
-sentry-sdk = "1.45.0"
+sentry-sdk = "2.17.0"
 supabase = "^2.7.2"
 tenacity = "^8.3.0"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
