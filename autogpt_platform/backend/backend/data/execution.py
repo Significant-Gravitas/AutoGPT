@@ -473,12 +473,12 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
         return config.execution_event_bus_name
 
     def publish(self, res: ExecutionResult):
-        self.publish_event(res, f"{res.graph_id}-{res.graph_exec_id}")
+        self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
 
     def listen(
         self, graph_id: str = "*", graph_exec_id: str = "*"
     ) -> Generator[ExecutionResult, None, None]:
-        for execution_result in self.listen_events(f"{graph_id}-{graph_exec_id}"):
+        for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
             yield execution_result
 
 
