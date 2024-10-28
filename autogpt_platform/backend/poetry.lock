@@ -2556,13 +2556,13 @@ rpds-py = ">=0.7.0"
 
 [[package]]
 name = "replicate"
-version = "0.34.1"
+version = "1.0.3"
 description = "Python client for Replicate"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "replicate-0.34.1-py3-none-any.whl", hash = "sha256:beeebbdd83dca46eee960c383dfd8dcc48d7922d9fe9e613f242cc69ed522f2f"},
-    {file = "replicate-0.34.1.tar.gz", hash = "sha256:57cf80c7f4d7f6ae503b1bef400f57c26d494724002d7e9a8750d01394dcfc76"},
+    {file = "replicate-1.0.3-py3-none-any.whl", hash = "sha256:8c49d63444b7ea9ac1d6af99eb23a01efb5b7f079cc8a020d6f52b38843db1da"},
+    {file = "replicate-1.0.3.tar.gz", hash = "sha256:0fd9ca5230fe67c42e4508dd96a5b1414b3fefa5342f8921dbb63c74266cb130"},
 ]
 
 [package.dependencies]
@@ -3733,4 +3733,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "6c7f925070e9e23b317aec96278472d0394797e0a32268140fe50353947d167a"
+content-hash = "ebd5f962e3330e5c8fe2bea33b031349c5ddba9f7e5604f4106d23d78f9551f9"
