@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -79,7 +79,7 @@ jobs:
         gcloud auth configure-docker us-east1-docker.pkg.dev
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
+      uses: docker/setup-buildx-action@v3
 
     - name: Cache Docker layers
       uses: actions/cache@v2
@@ -101,7 +101,7 @@ jobs:
         echo "market_changed=$MARKET_CHANGED" >> $GITHUB_OUTPUT
 
     - name: Get GKE credentials
-      uses: 'google-github-actions/get-gke-credentials@v1'
+      uses: 'google-github-actions/get-gke-credentials@v2'
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ env.GKE_ZONE }}
@@ -145,7 +145,7 @@ jobs:
         mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
     - name: Set up Helm
-      uses: azure/setup-helm@v1
+      uses: azure/setup-helm@v4
       with:
         version: v3.4.0
 
