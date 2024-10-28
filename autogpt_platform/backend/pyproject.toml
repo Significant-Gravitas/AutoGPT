@@ -14,7 +14,7 @@ anthropic = "^0.25.1"
 apscheduler = "^3.10.4"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 click = "^8.1.7"
-croniter = "^2.0.5"
+croniter = "^4.0.0"
 discord-py = "^2.4.0"
 fastapi = "^0.109.0"
 feedparser = "^6.0.11"
