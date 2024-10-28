@@ -1,3 +1,8 @@
+// We need to migrate our database schema to support the domain as we understand it now
+// To do so requires adding a bunch of new tables, but also modiftying old ones and how 
+// they relate to each other. This is a large change, so instead of doing in in one go,
+// We have created the target schema, and will migrate to it incrementally.
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
