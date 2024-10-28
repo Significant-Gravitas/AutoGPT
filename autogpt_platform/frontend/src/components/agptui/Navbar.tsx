@@ -27,6 +27,36 @@ interface NavbarProps {
   }[];
 }
 
+{/* <div className="w-[1408px] h-20 pl-6 pr-3 py-3 bg-white/5 rounded-bl-2xl rounded-br-2xl border border-white/50 backdrop-blur-[26px] justify-between items-center inline-flex">
+    <div className="justify-start items-center gap-11 flex">
+        <div className="w-[88.87px] h-10 relative" />
+        <div className="justify-start items-center gap-6 flex">
+            <div className="px-5 py-4 bg-neutral-800 rounded-2xl justify-start items-center gap-3 flex">
+                <div className="w-6 h-6 relative" />
+                <div className="text-neutral-50 text-xl font-medium font-['Poppins'] leading-7">Marketplace</div>
+            </div>
+            <div className="px-5 justify-start items-center gap-3 flex">
+                <div className="w-6 h-6 relative" />
+                <div className="text-neutral-900 text-xl font-medium font-['Poppins'] leading-7">Monitor</div>
+            </div>
+            <div className="px-5 py-4 rounded-2xl justify-start items-center gap-3 flex">
+                <div className="w-6 h-6 relative" />
+                <div className="text-neutral-900 text-xl font-medium font-['Poppins'] leading-7">Build</div>
+            </div>
+        </div>
+    </div>
+    <div className="justify-start items-center gap-4 flex">
+        <div className="p-4 bg-neutral-200 rounded-2xl justify-start items-center gap-2.5 flex">
+            <div className="justify-start items-center gap-0.5 flex">
+                <div className="text-neutral-900 text-base font-semibold font-['Geist'] leading-7">1500</div>
+                <div className="text-neutral-900 text-base font-normal font-['Geist'] leading-7">credits</div>
+            </div>
+            <div className="w-6 h-6 relative" />
+        </div>
+        <img className="w-[60px] h-[60px] rounded-full" src="https://via.placeholder.com/60x60" />
+    </div>
+</div> */}
+
 export const Navbar: React.FC<NavbarProps> = ({
   isLoggedIn,
   userName,
@@ -38,7 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <>
-      <nav className="hidden h-[5.5rem] w-full items-center justify-between border border-black/10 bg-[#f0f0f0] px-16 md:flex">
+      <nav className="hidden w-[1408px] sticky top-0 h-20 pl-6 pr-3 py-3 bg-white/5 rounded-bl-2xl rounded-br-2xl border border-white/50 backdrop-blur-[26px] justify-between items-center md:inline-flex">
         <div className="flex items-center space-x-10">
           {links.map((link) => (
             <div key={link.name} className="relative">
