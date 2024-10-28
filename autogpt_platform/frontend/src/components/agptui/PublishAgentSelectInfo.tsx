@@ -1,5 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
+import { Button } from "../agptui/Button";
 
 interface PublishAgentInfoProps {
   onBack: () => void;
@@ -114,16 +115,17 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           <div ref={thumbnailsContainerRef} className="flex items-center space-x-2 overflow-x-auto">
             {images.length === 0 ? (
               <div className="w-full flex justify-center">
-                <button
+                <Button
                   onClick={handleAddImage}
-                  className="w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center"
+                  variant="ghost"
+                  className="w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center hover:bg-neutral-300"
                 >
                   <svg width="24" height="24" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M14 5.83334V22.1667" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     <path d="M5.83331 14H22.1666" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                   <span className="text-neutral-600 text-xs font-normal font-['Geist'] mt-1">Add image</span>
-                </button>
+                </Button>
               </div>
             ) : (
               <>
@@ -149,16 +151,17 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                     </button>
                   </div>
                 ))}
-                <button
+                <Button
                   onClick={handleAddImage}
-                  className="flex-shrink-0 w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center"
+                  variant="ghost"
+                  className="w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center hover:bg-neutral-300"
                 >
                   <svg width="24" height="24" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M14 5.83334V22.1667" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     <path d="M5.83331 14H22.1666" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                   <span className="text-neutral-600 text-xs font-normal font-['Geist'] mt-1">Add image</span>
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -168,9 +171,13 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           <label className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">AI image generator</label>
           <div className="flex items-center justify-between">
             <p className="text-slate-700 text-base font-normal font-['Geist'] leading-normal">You can use AI to generate a cover image for you</p>
-            <button className="px-4 py-2 bg-slate-800 rounded-[22px] text-white text-sm font-medium font-['Inter'] leading-normal">
+            <Button
+              variant="default"
+              size="sm"
+              className="text-white bg-neutral-800 hover:bg-neutral-900"
+            >
               Generate
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -210,18 +217,22 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       </div>
       
       <div className="p-6 border-t border-slate-200 flex justify-between gap-4">
-        <button
+        <Button
           onClick={onBack}
-          className="flex-grow h-10 px-4 py-2 bg-white rounded-[59px] border border-neutral-900 text-neutral-800 text-sm font-medium font-['Geist'] leading-normal"
+          variant="outline"
+          size="default"
+          className="w-full sm:flex-1"
         >
           Back
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={onSubmit}
-          className="flex-grow h-10 px-4 py-2 bg-slate-800 rounded-[59px] text-white text-sm font-medium font-['Geist'] leading-normal"
+          variant="default"
+          size="default"
+          className="w-full sm:flex-1 text-white bg-neutral-800 hover:bg-neutral-900"
         >
           Submit for review
-        </button>
+        </Button>
       </div>
     </div>
   );

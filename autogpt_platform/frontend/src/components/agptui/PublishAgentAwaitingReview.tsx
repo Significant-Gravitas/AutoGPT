@@ -1,6 +1,7 @@
 import * as React from "react";
 import { X } from "lucide-react";
 import Image from "next/image";
+import { Button } from "../agptui/Button";
 
 interface PublishAgentAwaitingReviewProps {
   agentName: string;
@@ -87,22 +88,20 @@ export const PublishAgentAwaitingReview: React.FC<PublishAgentAwaitingReviewProp
       </div>
 
       <div className="w-full p-6 flex flex-col sm:flex-row items-center justify-center gap-4 border-t border-slate-200">
-        <button
+        <Button
           onClick={onDone}
-          className="w-full sm:flex-1 h-12 flex items-center justify-center rounded-[59px] border border-neutral-900 bg-white"
+          variant="outline"
+          className="w-full sm:flex-1 h-12 rounded-[59px]"
         >
-          <span className="font-['Geist'] text-sm font-medium leading-normal text-neutral-800">
-            Done
-          </span>
-        </button>
-        <button
+          Done
+        </Button>
+        <Button
           onClick={onViewProgress}
-          className="w-full sm:flex-1 h-12 flex items-center justify-center rounded-[59px] bg-neutral-800"
+          variant="default"
+          className="w-full sm:flex-1 h-12 rounded-[59px] bg-neutral-800 hover:bg-neutral-900 text-white"
         >
-          <span className="font-['Geist'] text-sm font-medium leading-normal text-white">
-            View progress
-          </span>
-        </button>
+          View progress
+        </Button>
       </div>
     </div>
   );

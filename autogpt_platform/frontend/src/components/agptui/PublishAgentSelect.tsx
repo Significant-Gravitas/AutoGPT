@@ -1,5 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
+import { Button } from "../agptui/Button";
 
 interface Agent {
   name: string;
@@ -68,12 +69,14 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             <br />
             We'd suggest you to create an agent in our builder first
           </div>
-          <button
+          <Button
             onClick={onOpenBuilder}
-            className="w-[141px] h-[47px] px-4 py-2 bg-neutral-800 rounded-[59px] justify-center items-center gap-2.5 inline-flex"
+            variant="default"
+            size="lg"
+            className="text-white bg-neutral-800 hover:bg-neutral-900"
           >
-            <span className="text-slate-50 text-sm font-medium font-['Inter'] leading-normal">Open builder</span>
-          </button>
+            Open builder
+          </Button>
         </div>
       ) : (
         <>
@@ -126,23 +129,23 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           </div>
           
           <div className="p-4 sm:p-6 border-t border-slate-200 flex justify-between gap-4">
-            <button
+            <Button
               onClick={onCancel}
-              className="flex-grow h-10 px-4 py-2 bg-white rounded-[59px] border border-neutral-900 justify-center items-center gap-2.5 inline-flex"
+              variant="outline"
+              size="default"
+              className="w-full sm:flex-1"
             >
-              <span className="text-right text-neutral-800 text-sm font-medium font-['Geist'] leading-normal">
-                Back
-              </span>
-            </button>
-            <button
+              Back
+            </Button>
+            <Button
               onClick={onNext}
               disabled={!selectedAgent}
-              className="flex-grow h-10 px-4 py-2 bg-neutral-400 rounded-[59px] justify-center items-center gap-2.5 inline-flex disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="default"
+              size="default"
+              className="w-full sm:flex-1 text-white bg-neutral-800 hover:bg-neutral-900"
             >
-              <span className="text-right text-white text-sm font-medium font-['Geist'] leading-normal">
-                Next
-              </span>
-            </button>
+              Next
+            </Button>
           </div>
         </>
       )}
