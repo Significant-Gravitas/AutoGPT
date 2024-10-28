@@ -1,6 +1,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
+import { IconClose } from "../ui/icons";
 
 interface Agent {
   name: string;
@@ -41,21 +42,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
             aria-label="Close"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M1 1L13 13M1 13L13 1"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <IconClose size="default" className="text-neutral-600" />
           </button>
         </div>
         <h2 className="text-neutral-900 text-xl sm:text-2xl font-semibold font-['Poppins'] leading-loose text-center mb-2">Publish Agent</h2>

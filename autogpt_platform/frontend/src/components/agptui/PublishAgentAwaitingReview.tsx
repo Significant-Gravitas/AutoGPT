@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X } from "lucide-react";
+import { IconClose } from "../ui/icons";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
 
@@ -42,10 +42,10 @@ export const PublishAgentAwaitingReview: React.FC<PublishAgentAwaitingReviewProp
         </div>
         <button 
           onClick={onClose}
-          className="absolute right-4 top-4 h-[38px] w-[38px]"
+          className="absolute right-4 top-4 w-[38px] h-[38px] rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
           aria-label="Close dialog"
         >
-          <X className="h-6 w-6 text-slate-500" />
+          <IconClose size="default" className="text-neutral-600" />
         </button>
       </div>
 

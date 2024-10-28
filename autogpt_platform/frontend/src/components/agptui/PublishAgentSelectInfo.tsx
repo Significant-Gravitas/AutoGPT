@@ -1,6 +1,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
+import { IconClose, IconPlus } from "../ui/icons";
 
 interface PublishAgentInfoProps {
   onBack: () => void;
@@ -52,21 +53,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             className="w-[38px] h-[38px] rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
             aria-label="Close"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M1 1L13 13M1 13L13 1"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <IconClose size="default" className="text-neutral-600" />
           </button>
         </div>
         <h2 className="text-neutral-900 text-2xl font-semibold font-['Poppins'] leading-loose text-center">Publish Agent</h2>
@@ -120,10 +107,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                   variant="ghost"
                   className="w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center hover:bg-neutral-300"
                 >
-                  <svg width="24" height="24" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M14 5.83334V22.1667" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M5.83331 14H22.1666" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <IconPlus size="lg" className="text-neutral-600" />
                   <span className="text-neutral-600 text-xs font-normal font-['Geist'] mt-1">Add image</span>
                 </Button>
               </div>
@@ -145,9 +129,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       className="absolute top-1 right-1 w-5 h-5 bg-white bg-opacity-70 rounded-full flex items-center justify-center hover:bg-opacity-100 transition-opacity"
                       aria-label="Remove image"
                     >
-                      <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M1 1L13 13M1 13L13 1" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <IconClose size="sm" className="text-neutral-600" />
                     </button>
                   </div>
                 ))}
@@ -156,10 +138,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                   variant="ghost"
                   className="w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center hover:bg-neutral-300"
                 >
-                  <svg width="24" height="24" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M14 5.83334V22.1667" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M5.83331 14H22.1666" stroke="#666666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <IconPlus size="lg" className="text-neutral-600" />
                   <span className="text-neutral-600 text-xs font-normal font-['Geist'] mt-1">Add image</span>
                 </Button>
               </>
