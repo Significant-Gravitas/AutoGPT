@@ -39,7 +39,7 @@ python-dotenv = "^1.0.1"
 redis = "^5.0.8"
 sentry-sdk = "2.17.0"
 supabase = "^2.7.2"
-tenacity = "^8.3.0"
+tenacity = "^9.0.0"
 uvicorn = { extras = ["standard"], version = "^0.30.1" }
 websockets = "^13.1"
 youtube-transcript-api = "^0.6.2"
