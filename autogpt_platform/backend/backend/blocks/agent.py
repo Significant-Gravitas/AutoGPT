@@ -26,9 +26,9 @@ def get_executor_manager_client():
 
 @thread_cached
 def get_event_bus():
-    from backend.data.queue import RedisEventBus
+    from backend.data.queue import RedisExecutionEventBus
 
-    return RedisEventBus()
+    return RedisExecutionEventBus()
 
 
 class AgentExecutorBlock(Block):
@@ -66,7 +66,7 @@ class AgentExecutorBlock(Block):
         logger.info(f"Starting execution of {log_id}")
 
         for event in event_bus.listen(
-            graph_id=graph_exec.graph_id, execution_id=graph_exec.graph_exec_id
+            graph_id=graph_exec.graph_id, graph_exec_id=graph_exec.graph_exec_id
         ):
             logger.info(
                 f"Execution {log_id} produced input {event.input_data} output {event.output_data}"

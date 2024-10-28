@@ -166,7 +166,8 @@ class AppService(AppProcess, ABC):
 
     @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
-        daemon = Pyro5.api.Daemon(host=self.get_host(), port=self.get_port())
+        host = Config().pyro_host
+        daemon = Pyro5.api.Daemon(host=host, port=self.get_port())
         self.uri = daemon.register(self, objectId=self.service_name)
         logger.info(f"[{self.service_name}] Connected to Pyro; URI = {self.uri}")
         daemon.requestLoop()
@@ -187,9 +188,8 @@ def get_service_client(service_type: Type[AS]) -> AS:
     class DynamicClient:
         @conn_retry("Pyro", f"Connecting to [{service_name}]")
         def __init__(self):
-            host = service_type.get_host()
-            port = service_type.get_port()
-            uri = f"PYRO:{service_type.service_name}@{host}:{port}"
+            host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
+            uri = f"PYRO:{service_type.service_name}@{host}:{service_type.get_port()}"
             logger.debug(f"Connecting to service [{service_name}]. URI = {uri}")
             self.proxy = Pyro5.api.Proxy(uri)
             # Attempt to bind to ensure the connection is established
