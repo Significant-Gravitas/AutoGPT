@@ -11,12 +11,12 @@ from pydantic import BaseModel
 from pydantic_core import PydanticUndefinedType
 
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
-from backend.data.includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from backend.util import json
 
 from .block import BlockInput, get_block, get_blocks
 from .db import BaseDbModel, transaction
 from .execution import ExecutionStatus
+from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
@@ -168,10 +168,10 @@ class GraphMetaModel(GraphMeta):
 class Graph(GraphMeta):
     nodes: list[Node]
     links: list[Link]
+    subgraphs: dict[str, list[str]] = {}  # subgraph_id -> [node_id]
 
 
 class GraphModel(Graph, GraphMetaModel):
-
     @property
     def starting_nodes(self) -> list[Node]:
         outbound_nodes = {link.sink_id for link in self.links}
@@ -192,6 +192,22 @@ class GraphModel(Graph, GraphMetaModel):
             v for v in self.nodes if isinstance(get_block(v.block_id), AgentOutputBlock)
         ]
 
+    @property
+    def subgraph_map(self) -> dict[str, str]:
+        """
+        Returns a mapping of node_id to subgraph_id.
+        A node in the main graph will be mapped to the graph's id.
+        """
+        subgraph_map = {
+            node_id: subgraph_id
+            for subgraph_id, node_ids in self.subgraphs.items()
+            for node_id in node_ids
+        }
+        subgraph_map.update(
+            {node.id: self.id for node in self.nodes if node.id not in subgraph_map}
+        )
+        return subgraph_map
+
     def reassign_ids(self, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
@@ -199,7 +215,10 @@ class GraphModel(Graph, GraphMetaModel):
         """
         self.validate_graph()
 
-        id_map = {node.id: str(uuid.uuid4()) for node in self.nodes}
+        id_map = {
+            **{node.id: str(uuid.uuid4()) for node in self.nodes},
+            **{subgraph_id: str(uuid.uuid4()) for subgraph_id in self.subgraphs},
+        }
 
         if reassign_graph_id:
             self.id = str(uuid.uuid4())
@@ -210,6 +229,11 @@ class GraphModel(Graph, GraphMetaModel):
         for link in self.links:
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
+
+        self.subgraphs = {
+            id_map[subgraph_id]: [id_map[node_id] for node_id in node_ids]
+            for subgraph_id, node_ids in self.subgraphs.items()
+        }
 
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
@@ -242,6 +266,18 @@ class GraphModel(Graph, GraphMetaModel):
             b = get_block(bid)
             return b.static_output if b else False
 
+        def is_input_output_block(nid: str) -> bool:
+            bid = node_map[nid].block_id
+            b = get_block(bid)
+            return isinstance(b, AgentInputBlock) or isinstance(b, AgentOutputBlock)
+
+        # subgraphs: all nodes in subgraph must be present in the graph.
+        for subgraph_id, node_ids in self.subgraphs.items():
+            for node_id in node_ids:
+                if node_id not in node_map:
+                    raise ValueError(f"Subgraph {subgraph_id}'s node {node_id} invalid")
+        subgraph_map = self.subgraph_map
+
         # Links: links are connected and the connected pin data type are compatible.
         for link in self.links:
             source = (link.source_id, link.source_name)
@@ -269,6 +305,13 @@ class GraphModel(Graph, GraphMetaModel):
                     fields = f"Valid input fields: {block.input_schema.get_fields()}"
                 if sanitized_name not in fields:
                     raise ValueError(f"{suffix}, `{name}` invalid, {fields}")
+
+            if (
+                subgraph_map.get(link.source_id) != subgraph_map.get(link.sink_id)
+                and not is_input_output_block(link.source_id)
+                and not is_input_output_block(link.sink_id)
+            ):
+                raise ValueError(f"{suffix}, Connecting nodes from different subgraph.")
 
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
@@ -313,7 +356,14 @@ class GraphModel(Graph, GraphMetaModel):
 
     @staticmethod
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
-        nodes = graph.AgentNodes or []
+        nodes = [
+            *(graph.AgentNodes or []),
+            *(
+                node
+                for subgraph in graph.AgentSubGraphs or []
+                for node in subgraph.AgentNodes or []
+            ),
+        ]
 
         return GraphModel(
             **GraphMetaModel.from_db(graph).model_dump(),
@@ -325,6 +375,10 @@ class GraphModel(Graph, GraphMetaModel):
                     for link in (node.Input or []) + (node.Output or [])
                 }
             ),
+            subgraphs={
+                subgraph.id: [node.id for node in subgraph.AgentNodes or []]
+                for subgraph in graph.AgentSubGraphs or []
+            },
         )
 
     @staticmethod
@@ -532,11 +586,31 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 
     await asyncio.gather(
         *[
+            AgentGraph.prisma(tx).create(
+                data={
+                    "id": subgraph_id,
+                    "agentGraphParentId": graph.id,
+                    "version": graph.version,
+                    "name": f"SubGraph of {graph.name}",
+                    "description": f"Sub-Graph of {graph.id}",
+                    "isTemplate": graph.is_template,
+                    "isActive": graph.is_active,
+                    "userId": user_id,
+                }
+            )
+            for subgraph_id in graph.subgraphs
+        ]
+    )
+
+    subgraph_map = graph.subgraph_map
+
+    await asyncio.gather(
+        *[
             AgentNode.prisma(tx).create(
                 {
                     "id": node.id,
                     "agentBlockId": node.block_id,
-                    "agentGraphId": graph.id,
+                    "agentGraphId": subgraph_map.get(node.id, graph.id),
                     "agentGraphVersion": graph.version,
                     "constantInput": json.dumps(node.input_default),
                     "metadata": json.dumps(node.metadata),

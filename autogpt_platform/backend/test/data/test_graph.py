@@ -15,8 +15,9 @@ async def test_graph_creation(server: SpinTestServer):
     Test the creation of a graph with nodes and links.
 
     This test ensures that:
-    1. A graph can be successfully created with valid connections.
-    2. The created graph has the correct structure and properties.
+    1. Nodes from different subgraphs cannot be directly connected.
+    2. A graph can be successfully created with valid connections.
+    3. The created graph has the correct structure and properties.
 
     Args:
         server (SpinTestServer): The test server instance.
@@ -41,10 +42,17 @@ async def test_graph_creation(server: SpinTestServer):
                 sink_name="input",
             ),
         ],
+        subgraphs={"subgraph_1": ["node_2", "node_3"]},
     )
     create_graph = CreateGraph(graph=graph)
 
-    # Change node_1 <-> node_3 link to node_1 <-> node_2
+    try:
+        await server.agent_server.create_graph(create_graph, False, DEFAULT_USER_ID)
+        assert False, "Should not be able to connect nodes from different subgraphs"
+    except ValueError as e:
+        assert "different subgraph" in str(e)
+
+    # Change node_1 <-> node_3 link to node_1 <-> node_2 (input for subgraph_1)
     graph.links[0].sink_id = "node_2"
     created_graph = await server.agent_server.create_graph(
         create_graph, False, DEFAULT_USER_ID
@@ -64,6 +72,9 @@ async def test_graph_creation(server: SpinTestServer):
     assert links[0].source_id != links[0].sink_id
     assert links[0].source_id in {nodes[0].id, nodes[1].id, nodes[2].id}
     assert links[0].sink_id in {nodes[0].id, nodes[1].id, nodes[2].id}
+
+    assert len(created_graph.subgraphs) == 1
+    assert len(created_graph.subgraph_map) == len(created_graph.nodes) == 3
 
 
 @pytest.mark.asyncio(scope="session")
