@@ -10,6 +10,3 @@ export default class ClientSideMarketplaceAPI extends BaseMarketplaceAPI {
     super(baseUrl, supabaseClient);
   }
 }
-
-
-

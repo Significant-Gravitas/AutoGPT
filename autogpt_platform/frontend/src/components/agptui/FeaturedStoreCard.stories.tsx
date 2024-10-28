@@ -14,6 +14,7 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     agentName: { control: "text" },
+    subHeading: { control: "text" },
     agentImage: { control: "text" },
     creatorName: { control: "text" },
     description: { control: "text" },
@@ -29,6 +30,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     agentName: "SEO Optimizer Pro",
+    subHeading: "Optimize your website's SEO",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "AI Solutions Inc.",
@@ -43,6 +45,7 @@ export const Default: Story = {
 export const LowRating: Story = {
   args: {
     agentName: "Data Analyzer Lite",
+    subHeading: "Basic data analysis tool",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "DataTech",
@@ -56,6 +59,7 @@ export const LowRating: Story = {
 export const HighRuns: Story = {
   args: {
     agentName: "CodeAssist AI",
+    subHeading: "Your AI coding companion",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "DevTools Co.",
@@ -70,6 +74,7 @@ export const HighRuns: Story = {
 export const LongDescription: Story = {
   args: {
     agentName: "MultiTasker",
+    subHeading: "All-in-one productivity suite",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "Productivity Plus",
@@ -84,6 +89,7 @@ export const LongDescription: Story = {
 export const ShortDescription: Story = {
   args: {
     agentName: "QuickTask",
+    subHeading: "Fast task automation",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "EfficientWorks",
@@ -97,6 +103,7 @@ export const ShortDescription: Story = {
 export const TwoLineName: Story = {
   args: {
     agentName: "Agent name goes here example of agent with two lines of text",
+    subHeading: "Multi-line agent example",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "InnovativeTech Solutions",
@@ -111,6 +118,7 @@ export const TwoLineName: Story = {
 export const TwoLineNameLongDescription: Story = {
   args: {
     agentName: "Advanced Natural Language Processing and Machine Learning",
+    subHeading: "State-of-the-art NLP & ML",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "AI Research Labs",
@@ -125,6 +133,7 @@ export const TwoLineNameLongDescription: Story = {
 export const WithInteraction: Story = {
   args: {
     agentName: "AI Writing Assistant",
+    subHeading: "Enhance your writing",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "WordCraft AI",
