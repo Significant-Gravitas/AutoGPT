@@ -47,7 +47,8 @@
     }
   ],
   "settings": {
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "basic",
+    "dart.showTodos": false
   },
   "extensions": {
     "recommendations": [
