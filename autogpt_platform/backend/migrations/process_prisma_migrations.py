@@ -35,7 +35,7 @@ def wrap_table_with_indexes_and_constraints(
     wrapped_block = f"""
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = '{table_name}') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = '{table_name}' AND schemaname = CURRENT_SCHEMA()) THEN
 {indented_statements}
     END IF;
 END $$;"""
@@ -49,7 +49,7 @@ def wrap_standalone_block(block: str, block_type: str, condition: str) -> str:
     wrapped_block = f"""
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM {block_type} WHERE {condition}) THEN
+    IF NOT EXISTS (SELECT 1 FROM {block_type} WHERE {condition} AND schemaname = CURRENT_SCHEMA()) THEN
 {indent_block(block.strip(), 8)}
     END IF;
 END $$;"""
@@ -217,9 +217,10 @@ def process_sql_file(input_file: str, output_file: str):
             enum_name = enum_name_match.group(1) if enum_name_match else None
             if not enum_name:
                 continue
-            enums.append(
-                wrap_standalone_block(block, "pg_type", f"typname = '{enum_name}'")
-            )
+            # enums.append(
+            #     wrap_standalone_block(block, "pg_type", f"typname = '{enum_name}'")
+            # )
+            enums.append(block)
         elif "CREATE TABLE" in block:
             table_name_match = re.search(r'CREATE TABLE "([^"]+)"', block)
             table_name = table_name_match.group(1) if table_name_match else None
@@ -238,11 +239,12 @@ def process_sql_file(input_file: str, output_file: str):
                 index_name = index_name_match.group(2) if index_name_match else None
                 if not index_name:
                     continue
-                standalone_indexes.append(
-                    wrap_standalone_block(
-                        block, "pg_indexes", f"indexname = '{index_name}'"
-                    )
-                )
+                # standalone_indexes.append(
+                #     wrap_standalone_block(
+                #         block, "pg_indexes", f"indexname = '{index_name}'"
+                #     )
+                # )
+                standalone_indexes.append(block)
         elif "ADD CONSTRAINT" in block and "FOREIGN KEY" in block:
             table_match = re.search(r'ALTER TABLE "([^"]+)"', block)
             if table_match:
@@ -265,11 +267,12 @@ def process_sql_file(input_file: str, output_file: str):
                 )
                 if not constraint_name:
                     continue
-                standalone_constraints.append(
-                    wrap_standalone_block(
-                        block, "pg_constraint", f"conname = '{constraint_name}'"
-                    )
-                )
+                # standalone_constraints.append(
+                #     wrap_standalone_block(
+                #         block, "pg_constraint", f"conname = '{constraint_name}'"
+                #     )
+                # )
+                standalone_constraints.append(block)
         else:
             print(f"Unhandled block: {block}")
 
@@ -307,13 +310,13 @@ def process_sql_file(input_file: str, output_file: str):
         final_sql += "-" * 100 + "\n\n"
         related_indexes = table_related_indexes.get(table_name, [])
         related_constraints = table_related_constraints.get(table_name, [])
-        final_sql += (
-            wrap_table_with_indexes_and_constraints(
-                table_block, related_indexes, related_constraints
-            )
-            + "\n\n"
-        )
-
+        # final_sql += (
+        #     wrap_table_with_indexes_and_constraints(
+        #         table_block, related_indexes, related_constraints
+        #     )
+        #     + "\n\n"
+        # )
+        final_sql += table_block + "\n\n"
     # Add standalone indexes and constraints that were not tied to a table
     if standalone_indexes:
         final_sql += "\n\n".join(standalone_indexes) + "\n\n"
@@ -331,9 +334,10 @@ def process_sql_file(input_file: str, output_file: str):
                 constraint_name_match.group(1) if constraint_name_match else None
             )
             if constraint_name:
-                wrapped_constraint = wrap_standalone_block(
-                    constraint, "pg_constraint", f"conname = '{constraint_name}'"
-                )
+                # wrapped_constraint = wrap_standalone_block(
+                #     constraint, "pg_constraint", f"conname = '{constraint_name}'"
+                # )
+                wrapped_constraint = constraint 
             else:
                 wrapped_constraint = constraint
             final_sql += wrapped_constraint + "\n\n"
