@@ -64,7 +64,7 @@ jobs:
         fetch-depth: 0
 
     - id: 'auth'
-      uses: 'google-github-actions/auth@v1'
+      uses: 'google-github-actions/auth@v2'
       with:
         workload_identity_provider: 'projects/638488734936/locations/global/workloadIdentityPools/dev-pool/providers/github'
         service_account: 'dev-github-actions-sa@agpt-dev.iam.gserviceaccount.com'

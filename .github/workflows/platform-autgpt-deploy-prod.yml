@@ -60,7 +60,7 @@ jobs:
         fetch-depth: 0
 
     - id: 'auth'
-      uses: 'google-github-actions/auth@v1'
+      uses: 'google-github-actions/auth@v2'
       with:
         workload_identity_provider: 'projects/1021527134101/locations/global/workloadIdentityPools/prod-pool/providers/github'
         service_account: 'prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com'
