@@ -25,6 +25,7 @@ type Story = StoryObj<typeof meta>;
 const mockFeaturedAgents = [
   {
     agentName: "SEO Optimizer Pro",
+    subHeading: "Optimize your website's SEO",
     creatorName: "AI Solutions Inc.",
     description:
       "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
@@ -35,6 +36,7 @@ const mockFeaturedAgents = [
   },
   {
     agentName: "Content Writer AI",
+    subHeading: "Create engaging content",
     creatorName: "WordCraft AI",
     description:
       "Generate high-quality, engaging content for your blog, social media, or marketing campaigns.",
@@ -45,10 +47,33 @@ const mockFeaturedAgents = [
   },
   {
     agentName: "Data Analyzer Lite",
+    subHeading: "Analyze data with ease",
     creatorName: "DataTech",
     description: "A basic tool for analyzing small to medium-sized datasets.",
     runs: 10000,
     rating: 3.8,
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+  },
+  {
+    agentName: "Social Media Manager",
+    subHeading: "Automate your social presence",
+    creatorName: "SocialBot Inc",
+    description:
+      "Schedule posts, analyze engagement, and grow your social media following.",
+    runs: 25000,
+    rating: 4.2,
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+  },
+  {
+    agentName: "Email Marketing Assistant",
+    subHeading: "Optimize email campaigns",
+    creatorName: "EmailPro AI",
+    description:
+      "Create and optimize email campaigns with AI-powered suggestions.",
+    runs: 30000,
+    rating: 4.4,
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
   },
