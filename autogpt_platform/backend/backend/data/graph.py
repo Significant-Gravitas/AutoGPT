@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from pydantic_core import PydanticUndefinedType
 
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
+from backend.data.includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from backend.util import json
 
 from .block import BlockInput, get_block, get_blocks
@@ -328,7 +329,7 @@ class GraphModel(Graph, GraphMetaModel):
 
     @staticmethod
     def _process_node(node: AgentNode, hide_credentials: bool) -> NodeModel:
-        node_dict = node.model_dump()
+        node_dict = {field: getattr(node, field) for field in node.model_fields}
         if hide_credentials and "constantInput" in node_dict:
             constant_input = json.loads(node_dict["constantInput"])
             constant_input = GraphModel._hide_credentials_in_input(constant_input)
@@ -350,18 +351,6 @@ class GraphModel(Graph, GraphMetaModel):
             else:
                 result[key] = value
         return result
-
-
-AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
-    "Input": True,
-    "Output": True,
-    "Webhook": True,
-    "AgentBlock": True,
-}
-
-AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
-    "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
-}
 
 
 # --------------------- CRUD functions --------------------- #

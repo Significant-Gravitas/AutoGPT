@@ -28,7 +28,7 @@ class GitHubTriggerBase:
             description="Repository to subscribe to",
             placeholder="{owner}/{repo}",
         )
-        payload: dict = SchemaField(hidden=True)
+        payload: dict = SchemaField(hidden=True, default={})
 
     class Output(BlockSchema):
         event: str = SchemaField(description="The event that triggered the webhook")
@@ -74,6 +74,8 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             review_request_removed: bool = False
             auto_merge_enabled: bool = False
             auto_merge_disabled: bool = False
+
+            # add pull_request prefix on each field when it's serialized as a webhook event
 
         events: EventsFilter = SchemaField(description="The events to subscribe to")
 

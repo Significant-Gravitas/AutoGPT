@@ -755,7 +755,6 @@ export default function useAgentGraph(
           variant: "destructive",
           title: "Error saving agent",
           description: errorMessage,
-          duration: 2000,
         });
       }
     },

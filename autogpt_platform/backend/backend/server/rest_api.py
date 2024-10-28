@@ -269,9 +269,7 @@ class AgentServer(AppService):
             tags=["settings"],
         )
 
-        app.add_exception_handler(
-            ValueError, self.handle_internal_http_error(400, False)
-        )
+        app.add_exception_handler(ValueError, self.handle_internal_http_error(400))
         app.add_exception_handler(500, self.handle_internal_http_error(500))
         app.include_router(api_router)
         app.include_router(health_router)

@@ -129,7 +129,11 @@ async def on_node_activate(
 
         # Shape of the event filter is enforced in Block.__init__
         event_filter = cast(dict, node.input_default[event_filter_input_name])
-        events = [event for event, enabled in event_filter.items() if enabled is True]
+        events = [
+            block.webhook_config.event_format.format(event=event)
+            for event, enabled in event_filter.items()
+            if enabled is True
+        ]
         logger.debug(f"Webhook events to subscribe to: {', '.join(events)}")
 
         # Find/make and attach a suitable webhook to the node

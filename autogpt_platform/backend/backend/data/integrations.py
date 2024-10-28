@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
-from prisma.types import IntegrationWebhookInclude
 from pydantic import Field
 
+from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 
@@ -52,9 +52,6 @@ class Webhook(BaseDbModel):
                 else None
             ),
         )
-
-
-INTEGRATION_WEBHOOK_INCLUDE: IntegrationWebhookInclude = {"AgentNodes": True}
 
 
 # --------------------- CRUD functions --------------------- #

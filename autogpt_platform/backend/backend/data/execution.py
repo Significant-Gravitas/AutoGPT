@@ -9,14 +9,11 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
-from prisma.types import (
-    AgentGraphExecutionInclude,
-    AgentGraphExecutionWhereInput,
-    AgentNodeExecutionInclude,
-)
+from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
+from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.util import json, mock
 from backend.util.settings import Config
@@ -111,24 +108,6 @@ class ExecutionResult(BaseModel):
 
 
 # --------------------- Model functions --------------------- #
-
-EXECUTION_RESULT_INCLUDE: AgentNodeExecutionInclude = {
-    "Input": True,
-    "Output": True,
-    "AgentNode": True,
-    "AgentGraphExecution": True,
-}
-
-GRAPH_EXECUTION_INCLUDE: AgentGraphExecutionInclude = {
-    "AgentNodeExecutions": {
-        "include": {
-            "Input": True,
-            "Output": True,
-            "AgentNode": True,
-            "AgentGraphExecution": True,
-        }
-    }
-}
 
 
 async def create_graph_execution(
