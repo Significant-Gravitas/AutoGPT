@@ -111,9 +111,11 @@ async def on_node_activate(
     )
 
     event_filter_input_name = block.webhook_config.event_filter_input
-    has_everything_for_webhook = resource is not None and all(
-        key in node.input_default
-        for key in [CREDENTIALS_FIELD_NAME, event_filter_input_name]
+    has_everything_for_webhook = (
+        resource is not None
+        and CREDENTIALS_FIELD_NAME in node.input_default
+        and event_filter_input_name in node.input_default
+        and any(is_on for is_on in node.input_default[event_filter_input_name].values())
     )
 
     if has_everything_for_webhook and resource:
