@@ -13,18 +13,6 @@ const meta: Meta<typeof PublishAgentAwaitingReview> = {
 export default meta;
 type Story = StoryObj<typeof PublishAgentAwaitingReview>;
 
-export const Empty: Story = {
-  args: {
-    agentName: "",
-    subheader: "",
-    description: "",
-    thumbnailSrc: undefined,
-    onClose: () => console.log("Close clicked"),
-    onDone: () => console.log("Done clicked"),
-    onViewProgress: () => console.log("View progress clicked"),
-  },
-};
-
 export const Filled: Story = {
   args: {
     agentName: "AI Video Generator",
