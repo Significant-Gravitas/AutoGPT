@@ -1242,6 +1242,62 @@ export const IconGlobe = createIcon((props) => (
   </svg>
 ));
 
+/**
+ * Left Arrow icon component.
+ *
+ * @component IconLeftArrow
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The left arrow icon.
+ */
+export const IconLeftArrow = createIcon((props) => (
+  <svg
+    width="32"
+    height="32"
+    viewBox="0 0 32 32"
+    strokeWidth="2"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-label="Left Arrow Icon"
+    {...props}
+  >
+    <title>Left Arrow</title>
+    <path
+      d="M20 24L12 16L20 8"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+));
+
+/**
+ * Right Arrow icon component.
+ *
+ * @component IconRightArrow
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The right arrow icon.
+ */
+export const IconRightArrow = createIcon((props) => (
+  <svg
+    width="32"
+    height="32"
+    viewBox="0 0 32 32"
+    strokeWidth="2"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-label="Right Arrow Icon"
+    {...props}
+  >
+    <title>Right Arrow</title>
+    <path
+      d="M12 8L20 16L12 24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+));
+
 export const IconBuilder = createIcon((props) => <IconToyBrick {...props} />);
 
 export enum IconType {

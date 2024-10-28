@@ -24,6 +24,19 @@ import {
   IconSettings,
   IconLayoutDashboard,
   IconUploadCloud,
+  IconMedium,
+  IconYoutube,
+  IconTiktok,
+  IconGlobe,
+  IconBuilder,
+  IconLibrary,
+  IconGithub,
+  IconLinkedin,
+  IconFacebook,
+  IconX,
+  IconInstagram,
+  IconLeftArrow,
+  IconRightArrow,
 } from "./icons";
 
 const meta = {
@@ -76,6 +89,19 @@ export const AllIcons: Story = {
       <IconSettings {...args} />
       <IconLayoutDashboard {...args} />
       <IconUploadCloud {...args} />
+      <IconMedium {...args} />
+      <IconYoutube {...args} />
+      <IconTiktok {...args} />
+      <IconGlobe {...args} />
+      <IconBuilder {...args} />
+      <IconLibrary {...args} />
+      <IconGithub {...args} />
+      <IconLinkedin {...args} />
+      <IconFacebook {...args} />
+      <IconX {...args} />
+      <IconInstagram {...args} />
+      <IconLeftArrow {...args} />
+      <IconRightArrow {...args} />
     </IconWrapper>
   ),
 };
