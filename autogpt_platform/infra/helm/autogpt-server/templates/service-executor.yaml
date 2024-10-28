@@ -15,5 +15,9 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    - port: {{ .Values.serviceDBManager.port }}
+      targetPort: db-http
+      protocol: TCP
+      name: db-http
   selector:
     app.kubernetes.io/component: executor

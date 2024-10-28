@@ -98,22 +98,10 @@ export default function LoginPage() {
     setFeedback(null);
   };
 
-  const onSignup = async (data: z.infer<typeof loginFormSchema>) => {
-    if (await form.trigger()) {
-      setIsLoading(true);
-      const error = await signup(data);
-      setIsLoading(false);
-      if (error) {
-        setFeedback(error);
-        return;
-      }
-      setFeedback(null);
-    }
-  };
-
   return (
     <div className="flex h-[80vh] items-center justify-center">
       <div className="w-full max-w-md space-y-6 rounded-lg p-8 shadow-md">
+        <h1 className="text-lg font-medium">Log in to your Account </h1>
         {/* <div className="mb-6 space-y-2">
           <Button
             className="w-full"
@@ -210,23 +198,19 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-            <div className="mb-6 mt-6 flex w-full space-x-4">
+            <div className="mb-6 mt-8 flex w-full space-x-4">
               <Button
-                className="flex w-1/2 justify-center"
+                className="flex w-full justify-center"
                 type="submit"
                 disabled={isLoading}
               >
                 Log in
               </Button>
-              <Button
-                className="flex w-1/2 justify-center"
-                variant="outline"
-                type="button"
-                onClick={form.handleSubmit(onSignup)}
-                disabled={isLoading}
-              >
-                Sign up
-              </Button>
+            </div>
+            <div className="w-full text-center">
+              <Link href={"/signup"} className="w-fit text-xs hover:underline">
+                Create a new Account
+              </Link>
             </div>
           </form>
           <p className="text-sm text-red-500">{feedback}</p>

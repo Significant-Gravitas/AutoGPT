@@ -1,7 +1,7 @@
 # dev values, overwrite base values as needed.
 
 image:
-  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-backend-dev/agpt-backend-dev
   pullPolicy: Always
   tag: "latest"
 
@@ -22,6 +22,13 @@ serviceExecutor:
   type: ClusterIP
   port: 8002
   targetPort: 8002
+  annotations:
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
+
+serviceDBManager:
+  type: ClusterIP
+  port: 8005
+  targetPort: 8005
   annotations:
     beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
 
@@ -58,7 +65,7 @@ resources:
 
 livenessProbe:
   httpGet:
-    path: /heath
+    path: /health
     port: 8006
   initialDelaySeconds: 30
   periodSeconds: 10
@@ -106,6 +113,7 @@ env:
   SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co"
   AGENTSERVER_HOST: "autogpt-server.dev-agpt.svc.cluster.local"
   EXECUTIONMANAGER_HOST: "autogpt-server-executor.dev-agpt.svc.cluster.local"
+  DATABASEMANAGER_HOST: "autogpt-server-executor.dev-agpt.svc.cluster.local"
 
 secrets:
   ANTHROPIC_API_KEY: "AgBllA6KzTdyLs6Tc+HrwIeSjdsPQxdU/4qpqT64H4K3nTehS6kpCW1qtH6eBChs1v+m857sUgsrB9u8+P0aAa3DcgZ/gNg+G1GX6vAY2NJvP/2Q+Hiwi1cAn+R3ChHejG9P2C33hTa6+V9cpUI9xUWOwWLOIQZpLvAc7ltsi0ZJ06qFO0Zhj+H9K768h7U3XaivwywX7PT7BnUTiT6AQkAwD2misBkeSQZdsllOD0th3b2245yieqal9osZHlSlslI9c6EMpH0n+szSND7goyjgsik0Tb0xJU6kGggdcw9hl4x91rYDYNPs0hFES9HUxzfiAid6Y2rDUVBXoNg7K7pMR6/foIkl+gCg/1lqOS0FRlUVyAQGJEx6XphyX/SftgLaI7obaVnzjErrpLWY1ZRiD8VVZD40exf8FddGOXwPvxYHrrrPotlTDLONZMn4Fl46tJCTsoQfHCjco+sz7/nLMMnHx+l1D0eKBuGPVsKTtbWozhLCNuWEgcWb4kxJK5sd1g/GylD43g8hFW531Vbpk1J1rpf7Hurd/aTUjwSXmdxB2qXTT4HRG+Us6PnhMIuf/yxilTs4WNShY0zHhYgnQFSM3oCTL6XXG1dqdOwY2k6+k2wCQtpK45boVN5PpBrQuDuFdWb/jM5jH6L8ns0dMMlY3lHM459u7FEn8rum/xXdP/JvpFb+yct3Rgc54SOT5HuVUNAHzzmbWhY4RG4b3i21L2SlsVUwjKvu+PlN4MN5KPilvHe3yODXZu0Gp0ClzDNZQiKQU67H0uYr6eRccMDsHtMlPELqnjyQZ+OriydzB3qXidAkguKNmzPypz0LyTMnry7YpNRGyUw="
