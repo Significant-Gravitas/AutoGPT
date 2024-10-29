@@ -9,7 +9,7 @@ from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
 if TYPE_CHECKING:
     from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 
-    from backend.data.graph import GraphModel, Node
+    from backend.data.graph import GraphModel, NodeModel
 
     from .base import BaseWebhooksManager
 
@@ -81,10 +81,10 @@ async def on_graph_deactivate(
 
 async def on_node_activate(
     user_id: str,
-    node: "Node",
+    node: "NodeModel",
     *,
     credentials: Optional["Credentials"] = None,
-) -> "Node":
+) -> "NodeModel":
     """Hook to be called when the node is activated/created"""
 
     block = get_block(node.block_id)
@@ -151,11 +151,11 @@ async def on_node_activate(
 
 
 async def on_node_deactivate(
-    node: "Node",
+    node: "NodeModel",
     *,
     credentials: Optional["Credentials"] = None,
     webhooks_manager: Optional["BaseWebhooksManager"] = None,
-) -> "Node":
+) -> "NodeModel":
     """Hook to be called when node is deactivated/deleted"""
 
     logger.debug(f"Deactivating node #{node.id}")

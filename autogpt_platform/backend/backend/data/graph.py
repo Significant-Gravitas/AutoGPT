@@ -58,12 +58,13 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     webhook_id: Optional[str] = None
-    webhook: Optional[Webhook] = None
 
 
 class NodeModel(Node):
     graph_id: str
     graph_version: int
+
+    webhook: Optional[Webhook] = None
 
     @staticmethod
     def from_db(node: AgentNode):
@@ -96,6 +97,10 @@ class NodeModel(Node):
             for k in event_filter
             if event_filter[k] is True
         ]
+
+
+# Fix 2-way reference Node <-> Webhook
+Webhook.model_rebuild()
 
 
 class ExecutionMeta(BaseDbModel):
@@ -172,6 +177,8 @@ class Graph(GraphMeta):
 
 
 class GraphModel(Graph, GraphMetaModel):
+    nodes: list[NodeModel]
+
     @property
     def starting_nodes(self) -> list[Node]:
         outbound_nodes = {link.sink_id for link in self.links}
