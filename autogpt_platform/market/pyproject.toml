@@ -10,28 +10,28 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-prisma = "^0.13.1"
+prisma = "^0.15.0"
 python-dotenv = "^1.0.1"
-uvicorn = "^0.30.3"
-fastapi = "^0.109.0"
-sentry-sdk = { extras = ["fastapi"], version = "^2.11.0" }
+uvicorn = "^0.32.0"
+fastapi = "^0.115.4"
+sentry-sdk = { extras = ["fastapi"], version = "^2.17.0" }
 fuzzywuzzy = "^0.18.0"
-python-levenshtein = "^0.25.1"
+python-levenshtein = "^0.26.1"
 # autogpt-platform-backend = { path = "../backend", develop = true }
 prometheus-fastapi-instrumentator = "^7.0.0"
 
 
 autogpt-libs = {path = "../autogpt_libs"}
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.2.1"
-pytest-asyncio = "^0.23.7"
+pytest = "^8.3.3"
+pytest-asyncio = "^0.24.0"
 
-pytest-watcher = "^0.4.2"
+pytest-watcher = "^0.4.3"
 requests = "^2.32.3"
-ruff = "^0.5.2"
-pyright = "^1.1.371"
+ruff = "^0.7.1"
+pyright = "^1.1.386"
 isort = "^5.13.2"
-black = "^24.4.2"
+black = "^24.10.0"
 
 [build-system]
 requires = ["poetry-core"]

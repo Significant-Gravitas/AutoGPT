@@ -46,6 +46,9 @@ spec:
             - name: http
               containerPort: {{ .Values.serviceExecutor.port }}
               protocol: TCP
+            - name: db-http
+              containerPort: {{ .Values.serviceDBManager.port }}
+              protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.volumeMounts }}

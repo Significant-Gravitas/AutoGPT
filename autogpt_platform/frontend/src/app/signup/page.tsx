@@ -1,6 +1,6 @@
 "use client";
 import useUser from "@/hooks/useUser";
-import { login, signup } from "./actions";
+import { signup } from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -23,7 +23,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 
-const loginFormSchema = z.object({
+const signupFormSchema = z.object({
   email: z.string().email().min(2).max(64),
   password: z.string().min(6).max(64),
   agreeToTerms: z.boolean().refine((value) => value === true, {
@@ -38,8 +38,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
-  const form = useForm<z.infer<typeof loginFormSchema>>({
-    resolver: zodResolver(loginFormSchema),
+  const form = useForm<z.infer<typeof signupFormSchema>>({
+    resolver: zodResolver(signupFormSchema),
     defaultValues: {
       email: "",
       password: "",
@@ -87,21 +87,23 @@ export default function LoginPage() {
     setFeedback(error.message);
   }
 
-  const onLogin = async (data: z.infer<typeof loginFormSchema>) => {
-    setIsLoading(true);
-    const error = await login(data);
-    setIsLoading(false);
-    if (error) {
-      setFeedback(error);
-      return;
+  const onSignup = async (data: z.infer<typeof signupFormSchema>) => {
+    if (await form.trigger()) {
+      setIsLoading(true);
+      const error = await signup(data);
+      setIsLoading(false);
+      if (error) {
+        setFeedback(error);
+        return;
+      }
+      setFeedback(null);
     }
-    setFeedback(null);
   };
 
   return (
     <div className="flex h-[80vh] items-center justify-center">
       <div className="w-full max-w-md space-y-6 rounded-lg p-8 shadow-md">
-        <h1 className="text-lg font-medium">Log in to your Account </h1>
+        <h1 className="text-lg font-medium">Create a New Account</h1>
         {/* <div className="mb-6 space-y-2">
           <Button
             className="w-full"
@@ -135,7 +137,7 @@ export default function LoginPage() {
           </Button>
         </div> */}
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onLogin)}>
+          <form onSubmit={form.handleSubmit(onSignup)}>
             <FormField
               control={form.control}
               name="email"
@@ -201,15 +203,17 @@ export default function LoginPage() {
             <div className="mb-6 mt-8 flex w-full space-x-4">
               <Button
                 className="flex w-full justify-center"
-                type="submit"
+                variant="outline"
+                type="button"
+                onClick={form.handleSubmit(onSignup)}
                 disabled={isLoading}
               >
-                Log in
+                Sign up
               </Button>
             </div>
             <div className="w-full text-center">
-              <Link href={"/signup"} className="w-fit text-xs hover:underline">
-                Create a new Account
+              <Link href={"/login"} className="w-fit text-xs hover:underline">
+                Already a member? Log In here
               </Link>
             </div>
           </form>

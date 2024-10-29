@@ -4,7 +4,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from autogpt_libs.utils.cache import thread_cached_property
+from autogpt_libs.utils.cache import thread_cached
 
 from backend.data.block import BlockInput
 from backend.data.schedule import (
@@ -37,7 +37,8 @@ class ExecutionScheduler(AppService):
     def get_port(cls) -> int:
         return Config().execution_scheduler_port
 
-    @thread_cached_property
+    @property
+    @thread_cached
     def execution_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager)
 
