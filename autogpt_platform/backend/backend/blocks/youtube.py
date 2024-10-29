@@ -7,9 +7,10 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
-class TranscribeYouTubeVideoBlock(Block):
+class TranscribeYoutubeVideoBlock(Block):
     class Input(BlockSchema):
         youtube_url: str = SchemaField(
+            title="YouTube URL",
             description="The URL of the YouTube video to transcribe",
             placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         )
@@ -24,8 +25,8 @@ class TranscribeYouTubeVideoBlock(Block):
     def __init__(self):
         super().__init__(
             id="f3a8f7e1-4b1d-4e5f-9f2a-7c3d5a2e6b4c",
-            input_schema=TranscribeYouTubeVideoBlock.Input,
-            output_schema=TranscribeYouTubeVideoBlock.Output,
+            input_schema=TranscribeYoutubeVideoBlock.Input,
+            output_schema=TranscribeYoutubeVideoBlock.Output,
             description="Transcribes a YouTube video.",
             categories={BlockCategory.SOCIAL},
             test_input={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
@@ -64,14 +65,11 @@ class TranscribeYouTubeVideoBlock(Block):
         return YouTubeTranscriptApi.get_transcript(video_id)
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            video_id = self.extract_video_id(input_data.youtube_url)
-            yield "video_id", video_id
+        video_id = self.extract_video_id(input_data.youtube_url)
+        yield "video_id", video_id
 
-            transcript = self.get_transcript(video_id)
-            formatter = TextFormatter()
-            transcript_text = formatter.format_transcript(transcript)
+        transcript = self.get_transcript(video_id)
+        formatter = TextFormatter()
+        transcript_text = formatter.format_transcript(transcript)
 
-            yield "transcript", transcript_text
-        except Exception as e:
-            yield "error", str(e)
+        yield "transcript", transcript_text

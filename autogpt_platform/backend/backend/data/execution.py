@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from multiprocessing import Manager
 from typing import Any, Generic, TypeVar
 
-from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -26,7 +25,6 @@ class GraphExecution(BaseModel):
     graph_exec_id: str
     graph_id: str
     start_node_execs: list["NodeExecution"]
-    node_input_credentials: dict[str, Credentials]  # dict[node_id, Credentials]
 
 
 class NodeExecution(BaseModel):
@@ -268,10 +266,29 @@ async def update_graph_execution_start_time(graph_exec_id: str):
     )
 
 
-async def update_graph_execution_stats(graph_exec_id: str, stats: dict[str, Any]):
+async def update_graph_execution_stats(
+    graph_exec_id: str,
+    error: Exception | None,
+    wall_time: float,
+    cpu_time: float,
+    node_count: int,
+):
+    status = ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED
+    stats = (
+        {
+            "walltime": wall_time,
+            "cputime": cpu_time,
+            "nodecount": node_count,
+            "error": str(error) if error else None,
+        },
+    )
+
     await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
-        data={"executionStatus": ExecutionStatus.COMPLETED, "stats": json.dumps(stats)},
+        data={
+            "executionStatus": status,
+            "stats": json.dumps(stats),
+        },
     )
 
 

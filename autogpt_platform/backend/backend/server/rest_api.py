@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 from collections import defaultdict
@@ -7,23 +8,22 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
+from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing_extensions import TypedDict
 
 from backend.data import block, db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data import user as user_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
-from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
-from backend.util.lock import KeyedMutex
-from backend.util.service import AppService, expose, get_service_client
-from backend.util.settings import Config, Settings
+from backend.util.service import AppService, get_service_client
+from backend.util.settings import AppEnvironment, Config, Settings
 
 from .utils import get_user_id
 
@@ -32,27 +32,26 @@ logger = logging.getLogger(__name__)
 
 
 class AgentServer(AppService):
-    mutex = KeyedMutex()
-    use_redis = True
     _test_dependency_overrides = {}
     _user_credit_model = get_user_credit_model()
 
-    def __init__(self, event_queue: AsyncEventQueue | None = None):
-        super().__init__(port=Config().agent_server_port)
-        self.event_queue = event_queue or AsyncRedisEventQueue()
+    def __init__(self):
+        super().__init__()
+        self.use_redis = True
+
+    @classmethod
+    def get_port(cls) -> int:
+        return Config().agent_server_port
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
         await db.connect()
-        self.run_and_wait(self.event_queue.connect())
         await block.initialize_blocks()
-        if await user_db.create_default_user(settings.config.enable_auth):
-            await graph_db.import_packaged_templates()
         yield
-        await self.event_queue.close()
         await db.disconnect()
 
     def run_service(self):
+        docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
         app = FastAPI(
             title="AutoGPT Agent Server",
             description=(
@@ -62,6 +61,7 @@ class AgentServer(AppService):
             summary="AutoGPT Agent Server",
             version="0.1",
             lifespan=self.lifespan,
+            docs_url=docs_url,
         )
 
         if self._test_dependency_overrides:
@@ -79,16 +79,24 @@ class AgentServer(AppService):
             allow_headers=["*"],  # Allows all headers
         )
 
+        health_router = APIRouter()
+        health_router.add_api_route(
+            path="/health",
+            endpoint=self.health,
+            methods=["GET"],
+            tags=["health"],
+        )
+
         # Define the API routes
         api_router = APIRouter(prefix="/api")
         api_router.dependencies.append(Depends(auth_middleware))
 
         # Import & Attach sub-routers
+        import backend.server.integrations.router
         import backend.server.routers.analytics
-        import backend.server.routers.integrations
 
         api_router.include_router(
-            backend.server.routers.integrations.router,
+            backend.server.integrations.router.router,
             prefix="/integrations",
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
@@ -167,6 +175,12 @@ class AgentServer(AppService):
             endpoint=self.update_graph,
             methods=["PUT"],
             tags=["templates", "graphs"],
+        )
+        api_router.add_api_route(
+            path="/graphs/{graph_id}",
+            endpoint=self.delete_graph,
+            methods=["DELETE"],
+            tags=["graphs"],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions",
@@ -256,6 +270,7 @@ class AgentServer(AppService):
         app.add_exception_handler(500, self.handle_internal_http_error)
 
         app.include_router(api_router)
+        app.include_router(health_router)
 
         uvicorn.run(
             app,
@@ -294,12 +309,14 @@ class AgentServer(AppService):
         return wrapper
 
     @property
+    @thread_cached
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager, Config().execution_manager_port)
+        return get_service_client(ExecutionManager)
 
     @property
+    @thread_cached
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler, Config().execution_scheduler_port)
+        return get_service_client(ExecutionScheduler)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):
@@ -318,9 +335,9 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        blocks = block.get_blocks()
+        blocks = [cls() for cls in block.get_blocks().values()]
         costs = get_block_costs()
-        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks.values()]
+        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks]
 
     @classmethod
     def execute_graph_block(
@@ -346,8 +363,10 @@ class AgentServer(AppService):
         )
 
     @classmethod
-    async def get_templates(cls) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(filter_by="template")
+    async def get_templates(
+        cls, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> list[graph_db.GraphMeta]:
+        return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
 
     @classmethod
     async def get_graph(
@@ -355,8 +374,11 @@ class AgentServer(AppService):
         graph_id: str,
         user_id: Annotated[str, Depends(get_user_id)],
         version: int | None = None,
+        hide_credentials: bool = False,
     ) -> graph_db.Graph:
-        graph = await graph_db.get_graph(graph_id, version, user_id=user_id)
+        graph = await graph_db.get_graph(
+            graph_id, version, user_id=user_id, hide_credentials=hide_credentials
+        )
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
         return graph
@@ -392,6 +414,17 @@ class AgentServer(AppService):
         cls, create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
     ) -> graph_db.Graph:
         return await cls.create_graph(create_graph, is_template=True, user_id=user_id)
+
+    class DeleteGraphResponse(TypedDict):
+        version_counts: int
+
+    @classmethod
+    async def delete_graph(
+        cls, graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    ) -> DeleteGraphResponse:
+        return {
+            "version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)
+        }
 
     @classmethod
     async def create_graph(
@@ -486,7 +519,7 @@ class AgentServer(AppService):
             user_id=user_id,
         )
 
-    async def execute_graph(
+    def execute_graph(
         self,
         graph_id: str,
         node_input: dict[Any, Any],
@@ -509,7 +542,9 @@ class AgentServer(AppService):
                 404, detail=f"Agent execution #{graph_exec_id} not found"
             )
 
-        self.execution_manager_client.cancel_execution(graph_exec_id)
+        await asyncio.to_thread(
+            lambda: self.execution_manager_client.cancel_execution(graph_exec_id)
+        )
 
         # Retrieve & return canceled graph execution in its final state
         return await execution_db.get_execution_results(graph_exec_id)
@@ -584,10 +619,16 @@ class AgentServer(AppService):
         graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-        execution_scheduler = self.execution_scheduler_client
+
         return {
-            "id": execution_scheduler.add_execution_schedule(
-                graph_id, graph.version, cron, input_data, user_id=user_id
+            "id": await asyncio.to_thread(
+                lambda: self.execution_scheduler_client.add_execution_schedule(
+                    graph_id=graph_id,
+                    graph_version=graph.version,
+                    cron=cron,
+                    input_data=input_data,
+                    user_id=user_id,
+                )
             )
         }
 
@@ -613,18 +654,8 @@ class AgentServer(AppService):
         execution_scheduler = self.execution_scheduler_client
         return execution_scheduler.get_execution_schedules(graph_id, user_id)
 
-    @expose
-    def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        execution_result = execution_db.ExecutionResult(**execution_result_dict)
-        self.run_and_wait(self.event_queue.put(execution_result))
-
-    @expose
-    def acquire_lock(self, key: Any):
-        self.mutex.lock(key)
-
-    @expose
-    def release_lock(self, key: Any):
-        self.mutex.unlock(key)
+    async def health(self):
+        return {"status": "healthy"}
 
     @classmethod
     def update_configuration(

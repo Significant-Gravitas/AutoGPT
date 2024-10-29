@@ -35,7 +35,9 @@ class NotionOAuthHandler(BaseOAuthHandler):
         }
         return f"{self.auth_base_url}?{urlencode(params)}"
 
-    def exchange_code_for_tokens(self, code: str) -> OAuth2Credentials:
+    def exchange_code_for_tokens(
+        self, code: str, scopes: list[str]
+    ) -> OAuth2Credentials:
         request_body = {
             "grant_type": "authorization_code",
             "code": code,
@@ -74,6 +76,10 @@ class NotionOAuthHandler(BaseOAuthHandler):
                 "workspace_icon": token_data.get("workspace_icon"),
             },
         )
+
+    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+        # Notion doesn't support token revocation
+        return False
 
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
         # Notion doesn't support token refresh

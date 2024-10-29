@@ -65,6 +65,7 @@ Here are two examples of what you can do with AutoGPT:
 These examples show just a glimpse of what you can achieve with AutoGPT! You can create customized workflows to build agents for any use case.
 
 ---
+### Mission and Licencing
 Our mission is to provide the tools, so that you can focus on what matters:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
@@ -77,6 +78,13 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 &ensp;|&ensp;
 **🚀 [Contributing](CONTRIBUTING.md)**
 
+**Licensing:**
+
+MIT License: The majority of the AutoGPT repository is under the MIT License.
+
+Polyform Shield License: This license applies to the autogpt_platform folder. 
+
+For more information, see https://agpt.co/blog/introducing-the-autogpt-platform
 
 ---
 ## 🤖 AutoGPT Classic
@@ -101,7 +109,7 @@ This guide will walk you through the process of creating your own agent and usin
 
 📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
 &ensp;|&ensp;
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark) about the Benchmark
+📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) about the Benchmark
 
 ### 💻 UI
 
@@ -150,6 +158,8 @@ To maintain a uniform standard and ensure seamless compatibility with many curre
 
 ---
 
+## Stars stats
+
 <p align="center">
 <a href="https://star-history.com/#Significant-Gravitas/AutoGPT">
   <picture>
@@ -159,3 +169,10 @@ To maintain a uniform standard and ensure seamless compatibility with many curre
   </picture>
 </a>
 </p>
+
+
+## ⚡ Contributors
+
+<a href="https://github.com/Significant-Gravitas/AutoGPT/graphs/contributors" alt="View Contributors">
+  <img src="https://contrib.rocks/image?repo=Significant-Gravitas/AutoGPT&max=1000&columns=10" alt="Contributors" />
+</a>

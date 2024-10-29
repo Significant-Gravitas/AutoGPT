@@ -2,10 +2,9 @@ import asyncio
 
 import aiohttp
 import discord
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SecretField
+from backend.data.model import BlockSecret, SchemaField, SecretField
 
 
 class ReadDiscordMessagesBlock(Block):
@@ -13,22 +12,24 @@ class ReadDiscordMessagesBlock(Block):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
         )
-        continuous_read: bool = Field(
+        continuous_read: bool = SchemaField(
             description="Whether to continuously read messages", default=True
         )
 
     class Output(BlockSchema):
-        message_content: str = Field(description="The content of the message received")
-        channel_name: str = Field(
+        message_content: str = SchemaField(
+            description="The content of the message received"
+        )
+        channel_name: str = SchemaField(
             description="The name of the channel the message was received from"
         )
-        username: str = Field(
+        username: str = SchemaField(
             description="The username of the user who sent the message"
         )
 
     def __init__(self):
         super().__init__(
-            id="d3f4g5h6-1i2j-3k4l-5m6n-7o8p9q0r1s2t",  # Unique ID for the node
+            id="df06086a-d5ac-4abb-9996-2ad0acb2eff7",
             input_schema=ReadDiscordMessagesBlock.Input,  # Assign input schema
             output_schema=ReadDiscordMessagesBlock.Output,  # Assign output schema
             description="Reads messages from a Discord channel using a bot token.",
@@ -134,19 +135,21 @@ class SendDiscordMessageBlock(Block):
         discord_bot_token: BlockSecret = SecretField(
             key="discord_bot_token", description="Discord bot token"
         )
-        message_content: str = Field(description="The content of the message received")
-        channel_name: str = Field(
+        message_content: str = SchemaField(
+            description="The content of the message received"
+        )
+        channel_name: str = SchemaField(
             description="The name of the channel the message was received from"
         )
 
     class Output(BlockSchema):
-        status: str = Field(
+        status: str = SchemaField(
             description="The status of the operation (e.g., 'Message sent', 'Error')"
         )
 
     def __init__(self):
         super().__init__(
-            id="h1i2j3k4-5l6m-7n8o-9p0q-r1s2t3u4v5w6",  # Unique ID for the node
+            id="d0822ab5-9f8a-44a3-8971-531dd0178b6b",
             input_schema=SendDiscordMessageBlock.Input,  # Assign input schema
             output_schema=SendDiscordMessageBlock.Output,  # Assign output schema
             description="Sends a message to a Discord channel using a bot token.",

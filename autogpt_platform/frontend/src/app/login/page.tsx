@@ -27,7 +27,7 @@ const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
   password: z.string().min(6).max(64),
   agreeToTerms: z.boolean().refine((value) => value === true, {
-    message: "You must agree to the Terms of Service and Privacy Policy",
+    message: "You must agree to the Terms of Use and Privacy Policy",
   }),
 });
 
@@ -48,8 +48,8 @@ export default function LoginPage() {
   });
 
   if (user) {
-    console.log("User exists, redirecting to profile");
-    router.push("/profile");
+    console.log("User exists, redirecting to home");
+    router.push("/");
   }
 
   if (isUserLoading || isSupabaseLoading || user) {
@@ -98,23 +98,11 @@ export default function LoginPage() {
     setFeedback(null);
   };
 
-  const onSignup = async (data: z.infer<typeof loginFormSchema>) => {
-    if (await form.trigger()) {
-      setIsLoading(true);
-      const error = await signup(data);
-      setIsLoading(false);
-      if (error) {
-        setFeedback(error);
-        return;
-      }
-      setFeedback(null);
-    }
-  };
-
   return (
     <div className="flex h-[80vh] items-center justify-center">
       <div className="w-full max-w-md space-y-6 rounded-lg p-8 shadow-md">
-        <div className="mb-6 space-y-2">
+        <h1 className="text-lg font-medium">Log in to your Account </h1>
+        {/* <div className="mb-6 space-y-2">
           <Button
             className="w-full"
             onClick={() => handleSignInWithProvider("google")}
@@ -145,7 +133,7 @@ export default function LoginPage() {
             <FaDiscord className="mr-2 h-4 w-4" />
             Sign in with Discord
           </Button>
-        </div>
+        </div> */}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onLogin)}>
             <FormField
@@ -191,8 +179,11 @@ export default function LoginPage() {
                   <div className="space-y-1 leading-none">
                     <FormLabel>
                       I agree to the{" "}
-                      <Link href="/terms-of-service" className="underline">
-                        Terms of Service
+                      <Link
+                        href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                        className="underline"
+                      >
+                        Terms of Use
                       </Link>{" "}
                       and{" "}
                       <Link
@@ -207,23 +198,19 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-            <div className="mb-6 mt-6 flex w-full space-x-4">
+            <div className="mb-6 mt-8 flex w-full space-x-4">
               <Button
-                className="flex w-1/2 justify-center"
+                className="flex w-full justify-center"
                 type="submit"
                 disabled={isLoading}
               >
                 Log in
               </Button>
-              <Button
-                className="flex w-1/2 justify-center"
-                variant="outline"
-                type="button"
-                onClick={form.handleSubmit(onSignup)}
-                disabled={isLoading}
-              >
-                Sign up
-              </Button>
+            </div>
+            <div className="w-full text-center">
+              <Link href={"/signup"} className="w-fit text-xs hover:underline">
+                Create a new Account
+              </Link>
             </div>
           </form>
           <p className="text-sm text-red-500">{feedback}</p>

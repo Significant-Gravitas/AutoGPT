@@ -3,6 +3,7 @@ import re
 from typing import Type
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class BlockInstallationBlock(Block):
@@ -15,11 +16,17 @@ class BlockInstallationBlock(Block):
     """
 
     class Input(BlockSchema):
-        code: str
+        code: str = SchemaField(
+            description="Python code of the block to be installed",
+        )
 
     class Output(BlockSchema):
-        success: str
-        error: str
+        success: str = SchemaField(
+            description="Success message if the block is installed successfully",
+        )
+        error: str = SchemaField(
+            description="Error message if the block installation fails",
+        )
 
     def __init__(self):
         super().__init__(
@@ -37,14 +44,12 @@ class BlockInstallationBlock(Block):
         if search := re.search(r"class (\w+)\(Block\):", code):
             class_name = search.group(1)
         else:
-            yield "error", "No class found in the code."
-            return
+            raise RuntimeError("No class found in the code.")
 
         if search := re.search(r"id=\"(\w+-\w+-\w+-\w+-\w+)\"", code):
             file_name = search.group(1)
         else:
-            yield "error", "No UUID found in the code."
-            return
+            raise RuntimeError("No UUID found in the code.")
 
         block_dir = os.path.dirname(__file__)
         file_path = f"{block_dir}/{file_name}.py"
@@ -63,4 +68,4 @@ class BlockInstallationBlock(Block):
             yield "success", "Block installed successfully."
         except Exception as e:
             os.remove(file_path)
-            yield "error", f"[Code]\n{code}\n\n[Error]\n{str(e)}"
+            raise RuntimeError(f"[Code]\n{code}\n\n[Error]\n{str(e)}")

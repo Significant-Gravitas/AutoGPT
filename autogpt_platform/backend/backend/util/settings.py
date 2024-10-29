@@ -1,5 +1,6 @@
 import json
 import os
+from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -13,6 +14,17 @@ from pydantic_settings import (
 from backend.util.data import get_config_path, get_data_path, get_secrets_path
 
 T = TypeVar("T", bound=BaseSettings)
+
+
+class AppEnvironment(str, Enum):
+    LOCAL = "local"
+    DEVELOPMENT = "dev"
+    PRODUCTION = "prod"
+
+
+class BehaveAs(str, Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
 
 
 class UpdateTrackingModel(BaseModel, Generic[T]):
@@ -57,8 +69,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The default hostname of the Pyro server.",
     )
-    enable_auth: str = Field(
-        default="false",
+    enable_auth: bool = Field(
+        default=True,
         description="If authentication is enabled or not",
     )
     enable_credit: str = Field(
@@ -105,6 +117,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server daemon to run on",
     )
 
+    database_api_port: int = Field(
+        default=8005,
+        description="The port for database server API to run on",
+    )
+
     agent_api_host: str = Field(
         default="0.0.0.0",
         description="The host for agent server API to run on",
@@ -116,9 +133,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     frontend_base_url: str = Field(
-        default="",
+        default="http://localhost:3000",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    app_env: AppEnvironment = Field(
+        default=AppEnvironment.LOCAL,
+        description="The name of the app environment: local or dev or prod",
+    )
+
+    behave_as: BehaveAs = Field(
+        default=BehaveAs.LOCAL,
+        description="What environment to behave as: local or cloud",
+    )
+
+    execution_event_bus_name: str = Field(
+        default="execution_event",
+        description="Name of the event bus",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
@@ -177,10 +209,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     # OAuth server credentials for integrations
+    # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
     github_client_secret: str = Field(
         default="", description="GitHub OAuth client secret"
     )
+    # --8<-- [end:OAuthServerCredentialsExample]
     google_client_id: str = Field(default="", description="Google OAuth client ID")
     google_client_secret: str = Field(
         default="", description="Google OAuth client secret"
@@ -206,7 +240,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_api_key: str = Field(default="", description="Medium API key")
     medium_author_id: str = Field(default="", description="Medium author ID")
     did_api_key: str = Field(default="", description="D-ID API Key")
-
+    revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
 
     smtp_server: str = Field(default="", description="SMTP server IP")
@@ -215,6 +249,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     smtp_password: str = Field(default="", description="SMTP password")
 
     sentry_dsn: str = Field(default="", description="Sentry DSN")
+
+    google_maps_api_key: str = Field(default="", description="Google Maps API Key")
+
+    replicate_api_key: str = Field(default="", description="Replicate API Key")
+    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
+    ideogram_api_key: str = Field(default="", description="Ideogram API Key")
 
     # Add more secret fields as needed
 

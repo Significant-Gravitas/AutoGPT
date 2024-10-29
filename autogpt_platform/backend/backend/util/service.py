@@ -1,16 +1,37 @@
 import asyncio
+import builtins
 import logging
 import os
 import threading
 import time
-from abc import abstractmethod
-from typing import Any, Callable, Coroutine, Type, TypeVar, cast
+import typing
+from abc import ABC, abstractmethod
+from enum import Enum
+from types import NoneType, UnionType
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Coroutine,
+    Dict,
+    FrozenSet,
+    Iterator,
+    List,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+)
 
 import Pyro5.api
+from pydantic import BaseModel
 from Pyro5 import api as pyro
 
-from backend.data import db
-from backend.data.queue import AsyncEventQueue, AsyncRedisEventQueue
+from backend.data import db, redis
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
@@ -27,9 +48,8 @@ def expose(func: C) -> C:
     Decorator to mark a method or class to be exposed for remote calls.
 
     ## ⚠️ Gotcha
-    The types on the exposed function signature are respected **as long as they are
-    fully picklable**. This is not the case for Pydantic models, so if you really need
-    to pass a model, try dumping the model and passing the resulting dict instead.
+    Aside from "simple" types, only Pydantic models are passed unscathed *if annotated*.
+    Any other passed or returned class objects are converted to dictionaries by Pyro.
     """
 
     def wrapper(*args, **kwargs):
@@ -38,29 +58,67 @@ def expose(func: C) -> C:
         except Exception as e:
             msg = f"Error in {func.__name__}: {e.__str__()}"
             logger.exception(msg)
-            raise Exception(msg, e)
+            raise
+
+    # Register custom serializers and deserializers for annotated Pydantic models
+    for name, annotation in func.__annotations__.items():
+        try:
+            pydantic_types = _pydantic_models_from_type_annotation(annotation)
+        except Exception as e:
+            raise TypeError(f"Error while exposing {func.__name__}: {e.__str__()}")
+
+        for model in pydantic_types:
+            logger.debug(
+                f"Registering Pyro (de)serializers for {func.__name__} annotation "
+                f"'{name}': {model.__qualname__}"
+            )
+            pyro.register_class_to_dict(model, _make_custom_serializer(model))
+            pyro.register_dict_to_class(
+                model.__qualname__, _make_custom_deserializer(model)
+            )
 
     return pyro.expose(wrapper)  # type: ignore
 
 
-class AppService(AppProcess):
+def _make_custom_serializer(model: Type[BaseModel]):
+    def custom_class_to_dict(obj):
+        data = {
+            "__class__": obj.__class__.__qualname__,
+            **obj.model_dump(),
+        }
+        logger.debug(f"Serializing {obj.__class__.__qualname__} with data: {data}")
+        return data
+
+    return custom_class_to_dict
+
+
+def _make_custom_deserializer(model: Type[BaseModel]):
+    def custom_dict_to_class(qualname, data: dict):
+        logger.debug(f"Deserializing {model.__qualname__} from data: {data}")
+        return model(**data)
+
+    return custom_dict_to_class
+
+
+class AppService(AppProcess, ABC):
     shared_event_loop: asyncio.AbstractEventLoop
-    event_queue: AsyncEventQueue = AsyncRedisEventQueue()
     use_db: bool = False
     use_redis: bool = False
     use_supabase: bool = False
 
-    def __init__(self, port):
-        self.port = port
+    def __init__(self):
         self.uri = None
 
     @classmethod
-    @property
-    def service_name(cls) -> str:
-        return cls.__name__
-
     @abstractmethod
-    def run_service(self):
+    def get_port(cls) -> int:
+        pass
+
+    @classmethod
+    def get_host(cls) -> str:
+        return os.environ.get(f"{cls.service_name.upper()}_HOST", Config().pyro_host)
+
+    def run_service(self) -> None:
         while True:
             time.sleep(10)
 
@@ -76,7 +134,7 @@ class AppService(AppProcess):
         if self.use_db:
             self.shared_event_loop.run_until_complete(db.connect())
         if self.use_redis:
-            self.shared_event_loop.run_until_complete(self.event_queue.connect())
+            redis.connect()
         if self.use_supabase:
             from supabase import create_client
 
@@ -104,12 +162,12 @@ class AppService(AppProcess):
             self.run_and_wait(db.disconnect())
         if self.use_redis:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
-            self.run_and_wait(self.event_queue.close())
+            redis.disconnect()
 
-    @conn_retry
+    @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
         host = Config().pyro_host
-        daemon = Pyro5.api.Daemon(host=host, port=self.port)
+        daemon = Pyro5.api.Daemon(host=host, port=self.get_port())
         self.uri = daemon.register(self, objectId=self.service_name)
         logger.info(f"[{self.service_name}] Connected to Pyro; URI = {self.uri}")
         daemon.requestLoop()
@@ -118,17 +176,20 @@ class AppService(AppProcess):
         self.shared_event_loop.run_forever()
 
 
+# --------- UTILITIES --------- #
+
+
 AS = TypeVar("AS", bound=AppService)
 
 
-def get_service_client(service_type: Type[AS], port: int) -> AS:
+def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
-        @conn_retry
+        @conn_retry("Pyro", f"Connecting to [{service_name}]")
         def __init__(self):
             host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
-            uri = f"PYRO:{service_type.service_name}@{host}:{port}"
+            uri = f"PYRO:{service_type.service_name}@{host}:{service_type.get_port()}"
             logger.debug(f"Connecting to service [{service_name}]. URI = {uri}")
             self.proxy = Pyro5.api.Proxy(uri)
             # Attempt to bind to ensure the connection is established
@@ -136,6 +197,51 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
             logger.debug(f"Successfully connected to service [{service_name}]")
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
-            return getattr(self.proxy, name)
+            res = getattr(self.proxy, name)
+            return res
 
     return cast(AS, DynamicClient())
+
+
+builtin_types = [*vars(builtins).values(), NoneType, Enum]
+
+
+def _pydantic_models_from_type_annotation(annotation) -> Iterator[type[BaseModel]]:
+    # Peel Annotated parameters
+    if (origin := get_origin(annotation)) and origin is Annotated:
+        annotation = get_args(annotation)[0]
+
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+
+    if origin in (
+        Union,
+        UnionType,
+        list,
+        List,
+        tuple,
+        Tuple,
+        set,
+        Set,
+        frozenset,
+        FrozenSet,
+    ):
+        for arg in args:
+            yield from _pydantic_models_from_type_annotation(arg)
+    elif origin in (dict, Dict):
+        key_type, value_type = args
+        yield from _pydantic_models_from_type_annotation(key_type)
+        yield from _pydantic_models_from_type_annotation(value_type)
+    else:
+        annotype = annotation if origin is None else origin
+
+        # Exclude generic types and aliases
+        if (
+            annotype is not None
+            and not hasattr(typing, getattr(annotype, "__name__", ""))
+            and isinstance(annotype, type)
+        ):
+            if issubclass(annotype, BaseModel):
+                yield annotype
+            elif annotype not in builtin_types and not issubclass(annotype, Enum):
+                raise TypeError(f"Unsupported type encountered: {annotype}")

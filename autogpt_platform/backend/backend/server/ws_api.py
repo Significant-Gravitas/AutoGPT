@@ -1,23 +1,34 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.data.queue import AsyncRedisEventQueue
+from backend.data import redis
+from backend.data.queue import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
 from backend.util.service import AppProcess
-from backend.util.settings import Config, Settings
+from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-app = FastAPI()
-event_queue = AsyncRedisEventQueue()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    manager = get_connection_manager()
+    fut = asyncio.create_task(event_broadcaster(manager))
+    fut.add_done_callback(lambda _: logger.info("Event broadcaster stopped"))
+    yield
+
+
+docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
+app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
 
 logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
@@ -37,27 +48,21 @@ def get_connection_manager():
     return _connection_manager
 
 
-@app.on_event("startup")
-async def startup_event():
-    await event_queue.connect()
-    manager = get_connection_manager()
-    asyncio.create_task(event_broadcaster(manager))
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await event_queue.close()
-
-
 async def event_broadcaster(manager: ConnectionManager):
-    while True:
-        event = await event_queue.get()
-        if event is not None:
+    try:
+        redis.connect()
+        event_queue = AsyncRedisExecutionEventBus()
+        async for event in event_queue.listen():
             await manager.send_execution_result(event)
+    except Exception as e:
+        logger.exception(f"Event broadcaster error: {e}")
+        raise
+    finally:
+        redis.disconnect()
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if settings.config.enable_auth.lower() == "true":
+    if settings.config.enable_auth:
         token = websocket.query_params.get("token")
         if not token:
             await websocket.close(code=4001, reason="Missing authentication token")

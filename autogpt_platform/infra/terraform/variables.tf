@@ -111,3 +111,38 @@ variable "services_ip_cidr_range" {
   type        = string
   default     = "10.2.0.0/20"
 }
+
+variable "public_bucket_names" {
+  description = "List of bucket names that should be publicly accessible"
+  type        = list(string)
+  default     = []
+}
+
+variable "standard_bucket_names" {
+  description = "List of bucket names that should be publicly accessible"
+  type        = list(string)
+  default     = []
+}
+
+variable "bucket_admins" {
+  description = "List of groups that should be admins of the buckets"
+  type        = list(string)
+  default     = ["gcp-devops-agpt@agpt.co", "gcp-developers@agpt.co"]
+}
+
+variable "workload_identity_pools" {
+  type = map(object({
+    display_name = string
+    providers = map(object({
+      issuer_uri = string
+      attribute_mapping = map(string)
+      allowed_audiences = optional(list(string))
+    }))
+    service_accounts = map(list(string))
+  }))
+  default = {}
+  description = "Configuration for workload identity pools and their providers"
+}
+
+
+

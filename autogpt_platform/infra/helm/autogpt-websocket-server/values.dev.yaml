@@ -1,13 +1,16 @@
 replicaCount: 1 # not scaling websocket server for now
 
 image:
-  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-server-dev/agpt-server-dev
+  repository: us-east1-docker.pkg.dev/agpt-dev/agpt-backend-dev/agpt-backend-dev
   tag: latest
   pullPolicy: Always
 
 service:
   type: ClusterIP
   port: 8001
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default": "autogpt-websocket-server-backend-config"}'
 
 ingress:
   enabled: true
@@ -19,7 +22,7 @@ ingress:
   hosts:
     - host: dev-ws-server.agpt.co
       paths:
-        - path: /
+        - path: /ws
           pathType: Prefix
       backend:
         service:
@@ -44,6 +47,20 @@ resources:
 autoscaling:
   enabled: false
 
+cors:
+  allowOrigins: "https://dev-builder.agpt.co"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowHeaders:
+    - "Content-Type"
+    - "Authorization"
+  maxAge: 3600
+  allowCredentials: true
+
 readinessProbe:
   httpGet:
     path: /
@@ -60,5 +77,6 @@ livenessProbe:
 env:
   REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: "password"
-  BACKEND_CORS_ALLOW_ORIGINS: "https://dev-builder.agpt.co"
+
+secrets:
+  REDIS_PASSWORD: "AgBKMJoMuj4Aze7QZFm0mmR+7FJ/1Shc/fvFMc1yv1WcyT12ngDlSdmw6eW6PaAxnrzTRZbjGNxDVONS/8g86OvEEe+OiZjI7iaGxipGkxeKMzHPbHgQt97gKRT0wEQ8K6d67gD72YZDpVmYKMOWlMDIWl64404O1Xq4FJeBQQiB57MpP5VBX0Haxe+piYfyCcli/V9mZqLb8rzutl+IovCzd3z+rpJ2EC9kgCWjGzH0Kaylmrg86ZFFSQScTcv+UQ6/7y2WldVJPohMFEOFbxUXEThzkPxy7rryNNDrQ2M704a+/ixAqhQ9nJmaAfMNdFgp4T0oEQlsTPBEsXwCt3yzqbdAm+eAohe2X60d+trNsHdMGEzgWDFtTLEjCdKml9a7GJMJsZsf2Qb1AnvdwlLFWm9jm8X+x9YXrHvakso+zvRCB1uvVEB+77ys4y0flBXDheFOTsS7cnGfumexGV/0IrJPBujVJM1q6J1ilPGTYqWVpSznl4taCPvkGjFtsKj1JHlc1FMkyV9vmkHfMfC/YuYYzMpKcfMQlUh22gpth69ENhN3DNUUEH3m5Ea4hzG5lsiCJ9XFJyJ4RSqUU3U58zy18ONEzlX1qNb26oqTSe2j5+29JpTAOkmcRyMBH0WHhB1Us5vgYjN0WNKY4EKLO53kxJDJIKiquEb1mWAmy9yzft+LhroqpyhAUtTvh5MLVs1CCpUX2Q=="

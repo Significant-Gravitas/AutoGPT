@@ -2,7 +2,6 @@ import re
 from typing import Any, List
 
 from jinja2 import BaseLoader, Environment
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
@@ -19,18 +18,18 @@ class StoreValueBlock(Block):
     """
 
     class Input(BlockSchema):
-        input: Any = Field(
+        input: Any = SchemaField(
             description="Trigger the block to produce the output. "
             "The value is only used when `data` is None."
         )
-        data: Any = Field(
+        data: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
             default=None,
         )
 
     class Output(BlockSchema):
-        output: Any
+        output: Any = SchemaField(description="The stored data retained in the block.")
 
     def __init__(self):
         super().__init__(
@@ -56,10 +55,10 @@ class StoreValueBlock(Block):
 
 class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
-        text: str
+        text: str = SchemaField(description="The text to print to the console.")
 
     class Output(BlockSchema):
-        status: str
+        status: str = SchemaField(description="The status of the print operation.")
 
     def __init__(self):
         super().__init__(
@@ -79,16 +78,18 @@ class PrintToConsoleBlock(Block):
 
 class FindInDictionaryBlock(Block):
     class Input(BlockSchema):
-        input: Any = Field(description="Dictionary to lookup from")
-        key: str | int = Field(description="Key to lookup in the dictionary")
+        input: Any = SchemaField(description="Dictionary to lookup from")
+        key: str | int = SchemaField(description="Key to lookup in the dictionary")
 
     class Output(BlockSchema):
-        output: Any = Field(description="Value found for the given key")
-        missing: Any = Field(description="Value of the input that missing the key")
+        output: Any = SchemaField(description="Value found for the given key")
+        missing: Any = SchemaField(
+            description="Value of the input that missing the key"
+        )
 
     def __init__(self):
         super().__init__(
-            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id="0e50422c-6dee-4145-83d6-3a5a392f65de",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
             input_schema=FindInDictionaryBlock.Input,
             output_schema=FindInDictionaryBlock.Output,
@@ -330,20 +331,17 @@ class AddToDictionaryBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # If no dictionary is provided, create a new one
-            if input_data.dictionary is None:
-                updated_dict = {}
-            else:
-                # Create a copy of the input dictionary to avoid modifying the original
-                updated_dict = input_data.dictionary.copy()
+        # If no dictionary is provided, create a new one
+        if input_data.dictionary is None:
+            updated_dict = {}
+        else:
+            # Create a copy of the input dictionary to avoid modifying the original
+            updated_dict = input_data.dictionary.copy()
 
-            # Add the new key-value pair
-            updated_dict[input_data.key] = input_data.value
+        # Add the new key-value pair
+        updated_dict[input_data.key] = input_data.value
 
-            yield "updated_dictionary", updated_dict
-        except Exception as e:
-            yield "error", f"Failed to add entry to dictionary: {str(e)}"
+        yield "updated_dictionary", updated_dict
 
 
 class AddToListBlock(Block):
@@ -401,23 +399,20 @@ class AddToListBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # If no list is provided, create a new one
-            if input_data.list is None:
-                updated_list = []
-            else:
-                # Create a copy of the input list to avoid modifying the original
-                updated_list = input_data.list.copy()
+        # If no list is provided, create a new one
+        if input_data.list is None:
+            updated_list = []
+        else:
+            # Create a copy of the input list to avoid modifying the original
+            updated_list = input_data.list.copy()
 
-            # Add the new entry
-            if input_data.position is None:
-                updated_list.append(input_data.entry)
-            else:
-                updated_list.insert(input_data.position, input_data.entry)
+        # Add the new entry
+        if input_data.position is None:
+            updated_list.append(input_data.entry)
+        else:
+            updated_list.insert(input_data.position, input_data.entry)
 
-            yield "updated_list", updated_list
-        except Exception as e:
-            yield "error", f"Failed to add entry to list: {str(e)}"
+        yield "updated_list", updated_list
 
 
 class NoteBlock(Block):
@@ -429,7 +424,7 @@ class NoteBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="31d1064e-7446-4693-o7d4-65e5ca9110d1",
+            id="cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
             description="This block is used to display a sticky note with the given text.",
             categories={BlockCategory.BASIC},
             input_schema=NoteBlock.Input,

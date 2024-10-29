@@ -94,11 +94,13 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
 
 export type CredentialsType = "api_key" | "oauth2";
 
+// --8<-- [start:BlockIOCredentialsSubSchema]
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: "github" | "google" | "notion";
+  credentials_provider: "github" | "google" | "notion" | "jina" | "pinecone";
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
 };
+// --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
@@ -214,13 +216,19 @@ export type NodeExecutionResult = {
   end_time?: Date;
 };
 
-/* Mirror of backend/server/integrations.py:CredentialsMetaResponse */
+/* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
   type: CredentialsType;
   title?: string;
   scopes?: Array<string>;
   username?: string;
+};
+
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
+export type CredentialsDeleteResponse = {
+  deleted: true;
+  revoked: boolean | null;
 };
 
 /* Mirror of backend/data/model.py:CredentialsMetaInput */

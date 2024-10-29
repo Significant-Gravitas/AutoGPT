@@ -3,7 +3,9 @@ import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
 
 export const startTutorial = (
+  emptyNodeList: (forceEmpty: boolean) => boolean,
   setPinBlocksPopover: (value: boolean) => void,
+  setPinSavePopover: (value: boolean) => void,
 ) => {
   const tour = new Shepherd.Tour({
     useModalOverlay: true,
@@ -20,27 +22,20 @@ export const startTutorial = (
 
   // Helper function to disable all blocks except the target block
   const disableOtherBlocks = (targetBlockSelector: string) => {
-    document
-      .querySelectorAll('[data-id^="add-block-button"]')
-      .forEach((block) => {
-        block.classList.toggle(
-          disableClass,
-          !block.matches(targetBlockSelector),
-        );
-        block.classList.toggle(
-          highlightClass,
-          block.matches(targetBlockSelector),
-        );
-      });
+    document.querySelectorAll('[data-id^="block-card-"]').forEach((block) => {
+      block.classList.toggle(disableClass, !block.matches(targetBlockSelector));
+      block.classList.toggle(
+        highlightClass,
+        block.matches(targetBlockSelector),
+      );
+    });
   };
 
   // Helper function to enable all blocks
   const enableAllBlocks = () => {
-    document
-      .querySelectorAll('[data-id^="add-block-button"]')
-      .forEach((block) => {
-        block.classList.remove(disableClass, highlightClass);
-      });
+    document.querySelectorAll('[data-id^="block-card-"]').forEach((block) => {
+      block.classList.remove(disableClass, highlightClass);
+    });
   };
 
   // Inject CSS for disabling and highlighting blocks
@@ -78,7 +73,7 @@ export const startTutorial = (
   const detectConnection = () => {
     const checkForConnection = () => {
       const correctConnection = document.querySelector(
-        '[data-testid="rf__edge-1_result_2_a"]',
+        '[data-testid^="rf__edge-"]',
       );
       if (correctConnection) {
         tour.show("press-run-again");
@@ -117,12 +112,12 @@ export const startTutorial = (
   function handleMouseUp(event: { target: any }) {
     const target = event.target;
     const validConnectionPoint = document.querySelector(
-      '[data-id="2-a-target"]',
+      '[data-id="custom-node-2"] [data-handlepos="left"]',
     );
 
     if (validConnectionPoint && !validConnectionPoint.contains(target)) {
       setTimeout(() => {
-        if (!document.querySelector('[data-testid="rf__edge-1_result_2_a"]')) {
+        if (!document.querySelector('[data-testid^="rf__edge-"]')) {
           stopConnecting();
           tour.show("connect-blocks-output");
         }
@@ -144,10 +139,14 @@ export const startTutorial = (
 
   injectStyles();
 
+  const warningText = emptyNodeList(false)
+    ? ""
+    : "<br/><br/><b>Caution: Clicking next will start a tutorial and will clear the current flow.</b>";
+
   tour.addStep({
     id: "starting-step",
     title: "Welcome to the Tutorial",
-    text: "This is the AutoGPT builder!",
+    text: `This is the AutoGPT builder! ${warningText}`,
     buttons: [
       {
         text: "Skip Tutorial",
@@ -159,7 +158,10 @@ export const startTutorial = (
       },
       {
         text: "Next",
-        action: tour.next,
+        action: () => {
+          emptyNodeList(true);
+          tour.next();
+        },
       },
     ],
   });
@@ -182,7 +184,7 @@ export const startTutorial = (
   tour.addStep({
     id: "scroll-block-menu",
     title: "Scroll Down or Search",
-    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and press the "+" to add the block.',
+    text: 'Scroll down or search in the blocks menu for the "Calculator Block" and press the block to add it.',
     attachTo: {
       element: '[data-id="blocks-control-popover-content"]',
       on: "right",
@@ -191,12 +193,11 @@ export const startTutorial = (
     beforeShowPromise: () =>
       waitForElement('[data-id="blocks-control-popover-content"]').then(() => {
         disableOtherBlocks(
-          '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+          '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
         );
       }),
     advanceOn: {
-      selector:
-        '[data-id="add-block-button-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
+      selector: '[data-id="block-card-b1ab9b19-67a6-406d-abf5-2dba76d00c79"]',
       event: "click",
     },
     when: {
@@ -209,7 +210,7 @@ export const startTutorial = (
     id: "focus-new-block",
     title: "New Block",
     text: "This is the Calculator Block! Let's go over how it works.",
-    attachTo: { element: `[data-id="custom-node-1"]`, on: "left" },
+    attachTo: { element: `[data-id="custom-node-1"]`, on: "top" },
     beforeShowPromise: () => waitForElement('[data-id="custom-node-1"]'),
     buttons: [
       {
@@ -220,7 +221,9 @@ export const startTutorial = (
     when: {
       show: () => {
         setPinBlocksPopover(false);
-        fitViewToScreen();
+        setTimeout(() => {
+          fitViewToScreen();
+        }, 100);
       },
     },
   });
@@ -260,10 +263,10 @@ export const startTutorial = (
   });
 
   tour.addStep({
-    id: "select-operation",
-    title: "Select Operation",
-    text: 'Select a mathematical operation to perform. Let’s choose "Add" for now.',
-    attachTo: { element: ".mt-1.mb-2", on: "right" },
+    id: "select-operation-and-input",
+    title: "Select Operation and Input Numbers",
+    text: "Select any mathematical operation you'd like to perform, and enter numbers in both input fields.",
+    attachTo: { element: '[data-id="input-handles"]', on: "right" },
     buttons: [
       {
         text: "Back",
@@ -274,73 +277,92 @@ export const startTutorial = (
         action: tour.next,
       },
     ],
+  });
+
+  tour.addStep({
+    id: "press-initial-save-button",
+    title: "Press Save",
+    text: "First we need to save the flow before we can run it!",
+    attachTo: {
+      element: '[data-id="save-control-popover-trigger"]',
+      on: "left",
+    },
+    advanceOn: {
+      selector: '[data-id="save-control-popover-trigger"]',
+      event: "click",
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: tour.back,
+      },
+    ],
     when: {
-      show: () => tour.modal.hide(),
-      hide: () => tour.modal.show(),
+      hide: () => setPinSavePopover(true),
     },
   });
 
   tour.addStep({
-    id: "enter-number-1",
-    title: "Enter a Number",
-    text: "Enter a number here to try the Calculator Block!",
-    attachTo: { element: "#a", on: "right" },
-    buttons: [
-      {
-        text: "Back",
-        action: tour.back,
-      },
-      {
-        text: "Next",
-        action: tour.next,
-      },
-    ],
-  });
-
-  tour.addStep({
-    id: "enter-number-2",
-    title: "Enter Another Number",
-    text: "Enter another number here!",
-    attachTo: { element: "#b", on: "right" },
-    buttons: [
-      {
-        text: "Back",
-        action: tour.back,
-      },
-      {
-        text: "Next",
-        action: tour.next,
-      },
-    ],
+    id: "save-agent-details",
+    title: "Save the Agent",
+    text: "Enter a name for your agent, add an optional description, and then click 'Save agent' to save your flow.",
+    attachTo: {
+      element: '[data-id="save-control-popover-content"]',
+      on: "bottom",
+    },
+    buttons: [],
+    beforeShowPromise: () =>
+      waitForElement('[data-id="save-control-popover-content"]'),
+    advanceOn: {
+      selector: '[data-id="save-control-save-agent"]',
+      event: "click",
+    },
+    when: {
+      hide: () => setPinSavePopover(false),
+    },
   });
 
   tour.addStep({
     id: "press-run",
     title: "Press Run",
     text: "Start your first flow by pressing the Run button!",
-    attachTo: { element: '[data-id="control-button-2"]', on: "right" },
-    advanceOn: { selector: '[data-id="control-button-2"]', event: "click" },
-    buttons: [
-      {
-        text: "Back",
-        action: tour.back,
+    attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
+    advanceOn: {
+      selector: '[data-id="primary-action-run-agent"]',
+      event: "click",
+    },
+    buttons: [],
+    beforeShowPromise: () =>
+      waitForElement('[data-id="primary-action-run-agent"]'),
+    when: {
+      hide: () => {
+        setTimeout(() => {
+          fitViewToScreen();
+        }, 500);
       },
-    ],
+    },
   });
 
   tour.addStep({
     id: "wait-for-processing",
     title: "Processing",
     text: "Let's wait for the block to finish being processed...",
-    attachTo: { element: '[data-id="badge-1-QUEUED"]', on: "bottom" },
+    attachTo: {
+      element: '[data-id^="badge-"][data-id$="-QUEUED"]',
+      on: "bottom",
+    },
     buttons: [],
-    beforeShowPromise: () => waitForElement('[data-id="badge-1-QUEUED"]'),
+    beforeShowPromise: () =>
+      waitForElement('[data-id^="badge-"][data-id$="-QUEUED"]').then(
+        fitViewToScreen,
+      ),
     when: {
       show: () => {
-        fitViewToScreen();
-        waitForElement('[data-id="badge-1-COMPLETED"]').then(() => {
-          tour.next();
-        });
+        waitForElement('[data-id^="badge-"][data-id$="-COMPLETED"]').then(
+          () => {
+            tour.next();
+          },
+        );
       },
     },
   });
@@ -372,7 +394,7 @@ export const startTutorial = (
     id: "copy-paste-block",
     title: "Copy and Paste the Block",
     text: "Let’s duplicate this block. Click and hold the block with your mouse, then press Ctrl+C (Cmd+C on Mac) to copy and Ctrl+V (Cmd+V on Mac) to paste.",
-    attachTo: { element: `[data-id="custom-node-1"]`, on: "top" },
+    attachTo: { element: '[data-id^="custom-node-"]', on: "top" },
     buttons: [
       {
         text: "Back",
@@ -393,8 +415,9 @@ export const startTutorial = (
     id: "focus-second-block",
     title: "Focus on the New Block",
     text: "This is your copied Calculator Block. Now, let’s move it to the side of the first block.",
-    attachTo: { element: `[data-id="custom-node-2"]`, on: "top" },
-    beforeShowPromise: () => waitForElement('[data-id="custom-node-2"]'),
+    attachTo: { element: `[data-id^="custom-node-"][data-id$="2"]`, on: "top" },
+    beforeShowPromise: () =>
+      waitForElement('[data-id^="custom-node-"][data-id$="2"]'),
     buttons: [
       {
         text: "Next",
@@ -406,8 +429,13 @@ export const startTutorial = (
   tour.addStep({
     id: "connect-blocks-output",
     title: "Connect the Blocks: Output",
-    text: "Now, let’s connect the output of the first Calculator Block to the input of the second Calculator Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
-    attachTo: { element: '[data-id="1-1-result-source"]', on: "bottom" },
+    text: "Now, let's connect the output of the first Calculator Block to the input of the second Calculator Block. Drag from the output pin of the first block to the input pin (A) of the second block.",
+    attachTo: {
+      element:
+        '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
+      on: "bottom",
+    },
+
     buttons: [
       {
         text: "Back",
@@ -415,7 +443,9 @@ export const startTutorial = (
       },
     ],
     beforeShowPromise: () => {
-      return waitForElement('[data-id="1-1-result-source"]');
+      return waitForElement(
+        '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
+      ).then(() => {});
     },
     when: {
       show: () => {
@@ -423,7 +453,7 @@ export const startTutorial = (
         resetConnectionState(); // Reset state when revisiting this step
         tour.modal.show();
         const outputPin = document.querySelector(
-          '[data-id="1-1-result-source"]',
+          '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
         );
         if (outputPin) {
           outputPin.addEventListener("mousedown", handleMouseDown);
@@ -431,7 +461,7 @@ export const startTutorial = (
       },
       hide: () => {
         const outputPin = document.querySelector(
-          '[data-id="1-1-result-source"]',
+          '[data-id^="1-"][data-id$="-result-source"]:not([data-id="1-2-result-source"])',
         );
         if (outputPin) {
           outputPin.removeEventListener("mousedown", handleMouseDown);
@@ -444,7 +474,10 @@ export const startTutorial = (
     id: "connect-blocks-input",
     title: "Connect the Blocks: Input",
     text: "Now, connect the output to the input pin of the second block (A).",
-    attachTo: { element: '[data-id="1-2-a-target"]', on: "top" },
+    attachTo: {
+      element: '[data-id="1-2-a-target"]',
+      on: "top",
+    },
     buttons: [],
     beforeShowPromise: () => {
       return waitForElement('[data-id="1-2-a-target"]').then(() => {
@@ -467,9 +500,21 @@ export const startTutorial = (
     id: "press-run-again",
     title: "Press Run Again",
     text: "Now, press the Run button again to execute the flow with the new Calculator Block added!",
-    attachTo: { element: '[data-id="control-button-2"]', on: "right" },
-    advanceOn: { selector: '[data-id="control-button-2"]', event: "click" },
+    attachTo: { element: '[data-id="primary-action-run-agent"]', on: "top" },
+    advanceOn: {
+      selector: '[data-id="primary-action-run-agent"]',
+      event: "click",
+    },
     buttons: [],
+    beforeShowPromise: () =>
+      waitForElement('[data-id="primary-action-run-agent"]'),
+    when: {
+      hide: () => {
+        setTimeout(() => {
+          fitViewToScreen();
+        }, 500);
+      },
+    },
   });
 
   tour.addStep({
@@ -488,9 +533,10 @@ export const startTutorial = (
     ],
   });
 
-  // Unpin blocks when the tour is completed or canceled
+  // Unpin blocks and save menu when the tour is completed or canceled
   tour.on("complete", () => {
     setPinBlocksPopover(false);
+    setPinSavePopover(false);
     localStorage.setItem("shepherd-tour", "completed"); // Optionally mark the tutorial as completed
   });
 
@@ -505,7 +551,9 @@ export const startTutorial = (
 
   tour.on("cancel", () => {
     setPinBlocksPopover(false);
+    setPinSavePopover(false);
     localStorage.setItem("shepherd-tour", "canceled"); // Optionally mark the tutorial as canceled
   });
+
   tour.start();
 };
