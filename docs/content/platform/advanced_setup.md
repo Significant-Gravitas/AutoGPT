@@ -1,10 +1,10 @@
 # Advanced Setup
 
-The advanced steps below are intended for people with sysadmin experience. If you are not comfortable with these steps, please refer to the [basic setup guide](setup.md).
+The advanced steps below are intended for people with sysadmin experience. If you are not comfortable with these steps, please refer to the [basic setup guide](../platform/getting-started.md).
 
 ## Introduction
 
-For the advanced setup, first follow the [basic setup guide](setup.md) to get the server up and running. Once you have the server running, you can follow the steps below to configure the server for your specific needs.
+For the advanced setup, first follow the [basic setup guide](../platform/getting-started.md) to get the server up and running. Once you have the server running, you can follow the steps below to configure the server for your specific needs.
 
 ## Configuration
 
