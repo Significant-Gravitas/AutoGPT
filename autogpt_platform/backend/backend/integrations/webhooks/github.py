@@ -19,21 +19,6 @@ class GithubWebhookType(StrEnum):
     REPO = "repo"
 
 
-def extract_github_error_msg(response: requests.Response) -> str:
-    error_msgs = []
-    resp = response.json()
-    if resp.get("message"):
-        error_msgs.append(resp["message"])
-    if resp.get("errors"):
-        error_msgs.extend(f"* {err.get('message', err)}" for err in resp["errors"])
-    if resp.get("error"):
-        if isinstance(resp["error"], dict):
-            error_msgs.append(resp["error"].get("message", resp["error"]))
-        else:
-            error_msgs.append(resp["error"])
-    return "\n".join(error_msgs)
-
-
 class GithubWebhooksManager(BaseWebhooksManager):
     PROVIDER_NAME = ProviderName.GITHUB
 
@@ -128,7 +113,11 @@ class GithubWebhooksManager(BaseWebhooksManager):
         if response.status_code != 201:
             error_msg = extract_github_error_msg(response)
             if "not found" in error_msg.lower():
-                error_msg = f"{error_msg} (Make sure the GitHub account has an add webhook permission to the repository)"
+                error_msg = (
+                    f"{error_msg} "
+                    "(Make sure the GitHub account or API key has 'repo' or "
+                    f"webhook create permissions to '{resource}')"
+                )
             raise ValueError(f"Failed to create GitHub webhook: {error_msg}")
 
         webhook_id = response.json()["id"]
@@ -166,3 +155,18 @@ class GithubWebhooksManager(BaseWebhooksManager):
             raise ValueError(f"Failed to delete GitHub webhook: {error_msg}")
 
         # If we reach here, the webhook was successfully deleted or didn't exist
+
+
+def extract_github_error_msg(response: requests.Response) -> str:
+    error_msgs = []
+    resp = response.json()
+    if resp.get("message"):
+        error_msgs.append(resp["message"])
+    if resp.get("errors"):
+        error_msgs.extend(f"* {err.get('message', err)}" for err in resp["errors"])
+    if resp.get("error"):
+        if isinstance(resp["error"], dict):
+            error_msgs.append(resp["error"].get("message", resp["error"]))
+        else:
+            error_msgs.append(resp["error"])
+    return "\n".join(error_msgs)
