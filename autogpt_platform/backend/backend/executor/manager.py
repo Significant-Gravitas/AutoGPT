@@ -172,7 +172,7 @@ def execute_node(
             input_data, **extra_exec_kwargs
         ):
             output_size += len(json.dumps(output_data))
-            log_metadata.info("Node produced output", output_name=output_data)
+            log_metadata.info("Node produced output", **{output_name: output_data})
             db_client.upsert_execution_output(node_exec_id, output_name, output_data)
 
             for execution in _enqueue_next_nodes(
@@ -757,7 +757,7 @@ class ExecutionManager(AppService):
                 and node.webhook_id
                 and webhook_payload_key in data
             ):
-                input_data = {webhook_payload_key: data["payload"]}
+                input_data = {"payload": data[webhook_payload_key]}
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
