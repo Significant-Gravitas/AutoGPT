@@ -69,8 +69,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The default hostname of the Pyro server.",
     )
-    enable_auth: str = Field(
-        default="false",
+    enable_auth: bool = Field(
+        default=True,
         description="If authentication is enabled or not",
     )
     enable_credit: str = Field(
@@ -117,11 +117,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server daemon to run on",
     )
 
-    database_api_host: str = Field(
-        default="0.0.0.0",
-        description="The host for database server API to run on",
-    )
-
     database_api_port: int = Field(
         default=8005,
         description="The port for database server API to run on",
@@ -138,7 +133,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     frontend_base_url: str = Field(
-        default="",
+        default="http://localhost:3000",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
@@ -151,6 +146,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
+    )
+
+    execution_event_bus_name: str = Field(
+        default="execution_event",
+        description="Name of the event bus",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)

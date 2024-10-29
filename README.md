@@ -109,7 +109,7 @@ This guide will walk you through the process of creating your own agent and usin
 
 📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
 &ensp;|&ensp;
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark) about the Benchmark
+📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/benchmark) about the Benchmark
 
 ### 💻 UI
 
@@ -158,6 +158,8 @@ To maintain a uniform standard and ensure seamless compatibility with many curre
 
 ---
 
+## Stars stats
+
 <p align="center">
 <a href="https://star-history.com/#Significant-Gravitas/AutoGPT">
   <picture>
@@ -167,3 +169,10 @@ To maintain a uniform standard and ensure seamless compatibility with many curre
   </picture>
 </a>
 </p>
+
+
+## ⚡ Contributors
+
+<a href="https://github.com/Significant-Gravitas/AutoGPT/graphs/contributors" alt="View Contributors">
+  <img src="https://contrib.rocks/image?repo=Significant-Gravitas/AutoGPT&max=1000&columns=10" alt="Contributors" />
+</a>

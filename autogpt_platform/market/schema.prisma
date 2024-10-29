@@ -47,7 +47,7 @@ model Agents {
 
 model AnalyticsTracker {
   id        String @id @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agentId   String @db.Uuid
+  agentId   String @unique @db.Uuid
   agent     Agents @relation(fields: [agentId], references: [id], onDelete: Cascade)
   views     Int
   downloads Int
