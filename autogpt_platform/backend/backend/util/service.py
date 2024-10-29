@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import typing
+from abc import ABC, abstractmethod
 from enum import Enum
 from types import NoneType, UnionType
 from typing import (
@@ -99,15 +100,23 @@ def _make_custom_deserializer(model: Type[BaseModel]):
     return custom_dict_to_class
 
 
-class AppService(AppProcess):
+class AppService(AppProcess, ABC):
     shared_event_loop: asyncio.AbstractEventLoop
     use_db: bool = False
     use_redis: bool = False
     use_supabase: bool = False
 
-    def __init__(self, port):
-        self.port = port
+    def __init__(self):
         self.uri = None
+
+    @classmethod
+    @abstractmethod
+    def get_port(cls) -> int:
+        pass
+
+    @classmethod
+    def get_host(cls) -> str:
+        return os.environ.get(f"{cls.service_name.upper()}_HOST", Config().pyro_host)
 
     def run_service(self) -> None:
         while True:
@@ -158,7 +167,7 @@ class AppService(AppProcess):
     @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
         host = Config().pyro_host
-        daemon = Pyro5.api.Daemon(host=host, port=self.port)
+        daemon = Pyro5.api.Daemon(host=host, port=self.get_port())
         self.uri = daemon.register(self, objectId=self.service_name)
         logger.info(f"[{self.service_name}] Connected to Pyro; URI = {self.uri}")
         daemon.requestLoop()
@@ -167,17 +176,20 @@ class AppService(AppProcess):
         self.shared_event_loop.run_forever()
 
 
+# --------- UTILITIES --------- #
+
+
 AS = TypeVar("AS", bound=AppService)
 
 
-def get_service_client(service_type: Type[AS], port: int) -> AS:
+def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
     class DynamicClient:
         @conn_retry("Pyro", f"Connecting to [{service_name}]")
         def __init__(self):
             host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
-            uri = f"PYRO:{service_type.service_name}@{host}:{port}"
+            uri = f"PYRO:{service_type.service_name}@{host}:{service_type.get_port()}"
             logger.debug(f"Connecting to service [{service_name}]. URI = {uri}")
             self.proxy = Pyro5.api.Proxy(uri)
             # Attempt to bind to ensure the connection is established
@@ -190,8 +202,6 @@ def get_service_client(service_type: Type[AS], port: int) -> AS:
 
     return cast(AS, DynamicClient())
 
-
-# --------- UTILITIES --------- #
 
 builtin_types = [*vars(builtins).values(), NoneType, Enum]
 

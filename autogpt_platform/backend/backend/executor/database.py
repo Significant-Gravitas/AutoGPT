@@ -15,7 +15,7 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.graph import get_graph, get_node
-from backend.data.queue import RedisEventQueue
+from backend.data.queue import RedisExecutionEventBus
 from backend.data.user import get_user_metadata, update_user_metadata
 from backend.util.service import AppService, expose
 from backend.util.settings import Config
@@ -27,14 +27,18 @@ R = TypeVar("R")
 class DatabaseManager(AppService):
 
     def __init__(self):
-        super().__init__(port=Config().database_api_port)
+        super().__init__()
         self.use_db = True
         self.use_redis = True
-        self.event_queue = RedisEventQueue()
+        self.event_queue = RedisExecutionEventBus()
+
+    @classmethod
+    def get_port(cls) -> int:
+        return Config().database_api_port
 
     @expose
     def send_execution_update(self, execution_result_dict: dict[Any, Any]):
-        self.event_queue.put(ExecutionResult(**execution_result_dict))
+        self.event_queue.publish(ExecutionResult(**execution_result_dict))
 
     @staticmethod
     def exposed_run_and_wait(

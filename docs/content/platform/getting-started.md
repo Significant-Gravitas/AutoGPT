@@ -1,7 +1,8 @@
-# Setting up the server
+# Getting Started with AutoGPT: Self-Hosting Guide
 
-- [Introduction](#introduction)
-- [Prerequisites](#prerequisites)
+This tutorial will walk you through the process of setting up AutoGPT locally on your machine.
+
+<center><iframe width="560" height="315" src="https://www.youtube.com/embed/4Bycr6_YAMI?si=dXGhFeWrCK2UkKgj" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></center>
 
 ## Introduction
 
@@ -22,7 +23,7 @@ To setup the server, you need to have the following installed:
 - [Docker](https://docs.docker.com/get-docker/)
 - [Git](https://git-scm.com/downloads)
 
-### Checking if you have Node.js & NPM installed
+#### Checking if you have Node.js & NPM installed
 
 We use Node.js to run our frontend application.
 
@@ -41,7 +42,7 @@ npm -v
 
 Once you have Node.js installed, you can proceed to the next step.
 
-### Checking if you have Docker & Docker Compose installed
+#### Checking if you have Docker & Docker Compose installed
 
 Docker containerizes applications, while Docker Compose orchestrates multi-container Docker applications.
 
@@ -60,7 +61,7 @@ docker-compose -v
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
-## Cloning the Repository
+### Cloning the Repository
 The first step is cloning the AutoGPT repository to your computer.
 To do this, open a terminal window in a folder on your computer and run:
 ```
@@ -70,7 +71,7 @@ If you get stuck, follow [this guide](https://docs.github.com/en/repositories/cr
 
 Once that's complete you can close this terminal window.
 
-## Running the backend services
+### Running the backend services
 
 To run the backend services, follow these steps:
 
@@ -94,7 +95,7 @@ To run the backend services, follow these steps:
   This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
 
 
-## Running the frontend application
+### Running the frontend application
 
 To run the frontend application, follow these steps:
 
@@ -116,11 +117,12 @@ To run the frontend application, follow these steps:
   ```
   This command will install the necessary dependencies and start the frontend application in development mode.
 
-## Checking if the application is running
+### Checking if the application is running
 
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Notes: 
+**Notes:**
+ 
 By default the application for different services run on the following ports: 
 
 Frontend UI Server: 3000

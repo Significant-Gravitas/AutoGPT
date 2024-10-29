@@ -7,7 +7,7 @@ import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
-import { FaGithub, FaGoogle } from "react-icons/fa";
+import { FaGithub, FaGoogle, FaKey } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
 import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
@@ -41,6 +41,8 @@ export const providerIcons: Record<string, React.FC<{ className?: string }>> = {
   github: FaGithub,
   google: FaGoogle,
   notion: NotionLogoIcon,
+  jina: FaKey,
+  pinecone: FaKey,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

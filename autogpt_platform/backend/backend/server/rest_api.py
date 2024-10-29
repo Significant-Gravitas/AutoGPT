@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 from collections import defaultdict
@@ -7,6 +8,7 @@ from typing import Annotated, Any, Dict
 
 import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
+from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,10 +21,7 @@ from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler
-from backend.executor.manager import get_db_client
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.model import CreateGraph, SetGraphActiveVersion
-from backend.util.cache import thread_cached_property
 from backend.util.service import AppService, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -37,8 +36,12 @@ class AgentServer(AppService):
     _user_credit_model = get_user_credit_model()
 
     def __init__(self):
-        super().__init__(port=Config().agent_server_port)
+        super().__init__()
         self.use_redis = True
+
+    @classmethod
+    def get_port(cls) -> int:
+        return Config().agent_server_port
 
     @asynccontextmanager
     async def lifespan(self, _: FastAPI):
@@ -98,7 +101,6 @@ class AgentServer(AppService):
             tags=["integrations"],
             dependencies=[Depends(auth_middleware)],
         )
-        self.integration_creds_manager = IntegrationCredentialsManager(get_db_client())
 
         api_router.include_router(
             backend.server.routers.analytics.router,
@@ -306,13 +308,15 @@ class AgentServer(AppService):
 
         return wrapper
 
-    @thread_cached_property
+    @property
+    @thread_cached
     def execution_manager_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager, Config().execution_manager_port)
+        return get_service_client(ExecutionManager)
 
-    @thread_cached_property
+    @property
+    @thread_cached
     def execution_scheduler_client(self) -> ExecutionScheduler:
-        return get_service_client(ExecutionScheduler, Config().execution_scheduler_port)
+        return get_service_client(ExecutionScheduler)
 
     @classmethod
     def handle_internal_http_error(cls, request: Request, exc: Exception):
@@ -331,9 +335,9 @@ class AgentServer(AppService):
 
     @classmethod
     def get_graph_blocks(cls) -> list[dict[Any, Any]]:
-        blocks = block.get_blocks()
+        blocks = [cls() for cls in block.get_blocks().values()]
         costs = get_block_costs()
-        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks.values()]
+        return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks]
 
     @classmethod
     def execute_graph_block(
@@ -515,7 +519,7 @@ class AgentServer(AppService):
             user_id=user_id,
         )
 
-    async def execute_graph(
+    def execute_graph(
         self,
         graph_id: str,
         node_input: dict[Any, Any],
@@ -538,7 +542,9 @@ class AgentServer(AppService):
                 404, detail=f"Agent execution #{graph_exec_id} not found"
             )
 
-        self.execution_manager_client.cancel_execution(graph_exec_id)
+        await asyncio.to_thread(
+            lambda: self.execution_manager_client.cancel_execution(graph_exec_id)
+        )
 
         # Retrieve & return canceled graph execution in its final state
         return await execution_db.get_execution_results(graph_exec_id)
@@ -613,10 +619,16 @@ class AgentServer(AppService):
         graph = await graph_db.get_graph(graph_id, user_id=user_id)
         if not graph:
             raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-        execution_scheduler = self.execution_scheduler_client
+
         return {
-            "id": execution_scheduler.add_execution_schedule(
-                graph_id, graph.version, cron, input_data, user_id=user_id
+            "id": await asyncio.to_thread(
+                lambda: self.execution_scheduler_client.add_execution_schedule(
+                    graph_id=graph_id,
+                    graph_version=graph.version,
+                    cron=cron,
+                    input_data=input_data,
+                    user_id=user_id,
+                )
             )
         }
 
