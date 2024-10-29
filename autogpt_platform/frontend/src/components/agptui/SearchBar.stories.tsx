@@ -10,16 +10,31 @@ const meta = {
       center: true,
       padding: 0,
     },
+    nextjs: {
+      appDirectory: true,
+      navigation: {
+        pathname: '/search',
+        query: {
+          searchTerm: ''
+        }
+      }
+    }
   },
   tags: ["autodocs"],
   argTypes: {
-    onSearch: { action: "searched" },
     placeholder: { control: "text" },
     backgroundColor: { control: "text" },
     iconColor: { control: "text" },
     textColor: { control: "text" },
     placeholderColor: { control: "text" },
   },
+  decorators: [
+    (Story) => (
+      <div className="w-full max-w-screen-lg mx-auto p-4">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof SearchBar>;
 
 export default meta;
@@ -27,17 +42,15 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    onSearch: (query: string) => console.log(`Searched: ${query}`),
     placeholder: 'Search for tasks like "optimise SEO"',
   },
 };
 
 export const CustomStyles: Story = {
   args: {
-    onSearch: (query: string) => console.log(`Searched: ${query}`),
     placeholder: "Enter your search query",
     backgroundColor: "bg-blue-100",
-    iconColor: "text-blue-500",
+    iconColor: "text-blue-500", 
     textColor: "text-blue-700",
     placeholderColor: "text-blue-400",
   },
@@ -45,7 +58,6 @@ export const CustomStyles: Story = {
 
 export const WithInteraction: Story = {
   args: {
-    onSearch: (query: string) => console.log(`Searched: ${query}`),
     placeholder: "Type and press Enter",
   },
   play: async ({ canvasElement }) => {
@@ -61,7 +73,6 @@ export const WithInteraction: Story = {
 
 export const EmptySubmit: Story = {
   args: {
-    onSearch: (query: string) => console.log(`Searched: ${query}`),
     placeholder: "Empty submit test",
   },
   play: async ({ canvasElement }) => {

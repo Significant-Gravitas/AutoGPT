@@ -55,6 +55,7 @@
     "dotenv": "^16.4.5",
     "embla-carousel-react": "^8.3.0",
     "framer-motion": "^11.11.9",
+    "geist": "^1.3.1",
     "lucide-react": "^0.407.0",
     "moment": "^2.30.1",
     "negotiator": "^1.0.0",
@@ -97,6 +98,8 @@
     "eslint": "^8",
     "eslint-config-next": "14.2.4",
     "eslint-plugin-storybook": "^0.9.0",
+    "msw": "^2.5.2",
+    "msw-storybook-addon": "^2.0.3",
     "postcss": "^8",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.6",
@@ -104,5 +107,10 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
+  }
 }

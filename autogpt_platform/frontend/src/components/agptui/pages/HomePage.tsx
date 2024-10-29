@@ -58,10 +58,6 @@ export const Page: React.FC<PageProps> = ({
   featuredCreators,
   menuItemGroups,
 }) => {
-  const handleSearch = (query: string) => {
-    console.log("Search query:", query);
-    // Implement search functionality
-  };
 
   const handleFilterChange = (selectedFilters: string[]) => {
     console.log("Selected filters:", selectedFilters);
@@ -95,7 +91,6 @@ export const Page: React.FC<PageProps> = ({
       />
       <main className="px-4">
         <HeroSection
-          onSearch={handleSearch}
           onFilterChange={handleFilterChange}
         />
         <FeaturedSection
