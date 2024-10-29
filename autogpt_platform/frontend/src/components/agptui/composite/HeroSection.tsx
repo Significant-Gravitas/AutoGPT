@@ -1,16 +1,19 @@
+"use client"
+
 import * as React from "react";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FilterChips } from "@/components/agptui/FilterChips";
+import { useRouter } from "next/navigation";
 
-interface HeroSectionProps {
-  onSearch: (query: string) => void;
-  onFilterChange: (selectedFilters: string[]) => void;
-}
+export const HeroSection: React.FC = () => {
+  const router = useRouter();
 
-export const HeroSection: React.FC<HeroSectionProps> = ({
-  onSearch,
-  onFilterChange,
-}) => {
+  function onFilterChange(selectedFilters: string[]) {
+
+    const encodedTerm = encodeURIComponent(selectedFilters.join(", "));
+    router.push(`/search?searchTerm=${encodedTerm}`);
+  }
+
   return (
     <div className="mb-2 mt-8 flex flex-col items-center justify-center px-4 sm:mb-4 sm:mt-12 sm:px-6 md:mb-6 md:mt-16 lg:my-24 lg:px-8 xl:my-16">
       <div className="w-full max-w-3xl lg:max-w-4xl xl:max-w-5xl">
@@ -33,7 +36,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           Bringing you AI agents designed by thinkers from around the world
         </div>
         <div className="mb-4 sm:mb-5 md:mb-6">
-          <SearchBar onSearch={onSearch} />
+          <SearchBar />
         </div>
         <div>
           <div className="flex justify-center">
@@ -46,6 +49,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 "Lorem ipsum",
               ]}
               onFilterChange={onFilterChange}
+              multiSelect={false}
             />
           </div>
         </div>
