@@ -127,6 +127,6 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         input_data: GitHubTriggerBase.Input,
         **kwargs,
     ) -> BlockOutput:
-        super().run(input_data, **kwargs)
+        yield from super().run(input_data, **kwargs)
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]
