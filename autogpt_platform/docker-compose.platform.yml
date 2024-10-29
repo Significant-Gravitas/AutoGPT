@@ -8,7 +8,7 @@ services:
     develop:
       watch:
         - path: ./
-          target: autogpt_platform/backend/migrate
+          target: autogpt_platform/backend/migrations
           action: rebuild
     depends_on:
       db:
@@ -66,6 +66,7 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - EXECUTIONMANAGER_HOST=executor
+      - DATABASEMANAGER_HOST=executor
       - FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
     ports:

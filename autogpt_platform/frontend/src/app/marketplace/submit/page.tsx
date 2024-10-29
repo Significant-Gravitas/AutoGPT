@@ -144,7 +144,7 @@ const SubmitPage: React.FC = () => {
     setSubmitError(null);
 
     if (!data.agreeToTerms) {
-      throw new Error("You must agree to the terms of service");
+      throw new Error("You must agree to the terms of use");
     }
 
     try {
@@ -404,7 +404,7 @@ const SubmitPage: React.FC = () => {
             <Controller
               name="agreeToTerms"
               control={control}
-              rules={{ required: "You must agree to the terms of service" }}
+              rules={{ required: "You must agree to the terms of use" }}
               render={({ field }) => (
                 <div className="flex items-center space-x-2">
                   <Checkbox
@@ -417,8 +417,11 @@ const SubmitPage: React.FC = () => {
                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                   >
                     I agree to the{" "}
-                    <a href="/terms" className="text-blue-500 hover:underline">
-                      terms of service
+                    <a
+                      href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                      className="text-blue-500 hover:underline"
+                    >
+                      terms of use
                     </a>
                   </label>
                 </div>
