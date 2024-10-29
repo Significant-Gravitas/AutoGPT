@@ -89,7 +89,6 @@ class AgentServer(AppService):
 
         # Define the API routes
         api_router = APIRouter(prefix="/api")
-        api_router.dependencies.append(Depends(auth_middleware))
 
         # Import & Attach sub-routers
         import backend.server.integrations.router
@@ -101,7 +100,6 @@ class AgentServer(AppService):
             backend.server.integrations.router.router,
             prefix="/integrations",
             tags=["integrations"],
-            dependencies=[Depends(auth_middleware)],
         )
 
         api_router.include_router(
@@ -116,6 +114,7 @@ class AgentServer(AppService):
             endpoint=self.get_or_create_user_route,
             methods=["POST"],
             tags=["auth"],
+            dependencies=[Depends(auth_middleware)],
         )
 
         api_router.add_api_route(
@@ -123,143 +122,167 @@ class AgentServer(AppService):
             endpoint=self.get_graph_blocks,
             methods=["GET"],
             tags=["blocks"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/blocks/{block_id}/execute",
             endpoint=self.execute_graph_block,
             methods=["POST"],
             tags=["blocks"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs",
             endpoint=self.get_graphs,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/templates",
             endpoint=self.get_templates,
             methods=["GET"],
             tags=["templates", "graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs",
             endpoint=self.create_new_graph,
             methods=["POST"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/templates",
             endpoint=self.create_new_template,
             methods=["POST"],
             tags=["templates", "graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.get_graph,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.get_template,
             methods=["GET"],
             tags=["templates", "graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/templates/{graph_id}",
             endpoint=self.update_graph,
             methods=["PUT"],
             tags=["templates", "graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}",
             endpoint=self.delete_graph,
             methods=["DELETE"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/templates/{graph_id}/versions",
             endpoint=self.get_graph_all_versions,
             methods=["GET"],
             tags=["templates", "graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions/{version}",
             endpoint=self.get_graph,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/versions/active",
             endpoint=self.set_graph_active_version,
             methods=["PUT"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/input_schema",
             endpoint=self.get_graph_input_schema,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/execute",
             endpoint=self.execute_graph,
             methods=["POST"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/executions",
             endpoint=self.list_graph_runs,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/executions/{graph_exec_id}",
             endpoint=self.get_graph_run_node_execution_results,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
             endpoint=self.stop_graph_run,
             methods=["POST"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.create_schedule,
             methods=["POST"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/{graph_id}/schedules",
             endpoint=self.get_execution_schedules,
             methods=["GET"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/graphs/schedules/{schedule_id}",
             endpoint=self.update_schedule,
             methods=["PUT"],
             tags=["graphs"],
+            dependencies=[Depends(auth_middleware)],
         )
         api_router.add_api_route(
             path="/credits",
             endpoint=self.get_user_credits,
             methods=["GET"],
+            dependencies=[Depends(auth_middleware)],
         )
 
         api_router.add_api_route(
@@ -267,6 +290,7 @@ class AgentServer(AppService):
             endpoint=self.update_configuration,
             methods=["POST"],
             tags=["settings"],
+            dependencies=[Depends(auth_middleware)],
         )
 
         app.add_exception_handler(ValueError, self.handle_internal_http_error(400))

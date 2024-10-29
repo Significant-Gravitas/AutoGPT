@@ -268,7 +268,7 @@ async def webhook_ping(
         ProviderName, Path(title="Provider where the webhook was registered")
     ],
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
-    user_id: Annotated[str, Depends(get_user_id)],
+    user_id: Annotated[str, Depends(get_user_id)],  # require auth
 ):
     webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
     webhook = await get_webhook(webhook_id)
