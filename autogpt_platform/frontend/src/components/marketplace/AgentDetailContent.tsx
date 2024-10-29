@@ -81,7 +81,7 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
         },
       });
       console.debug(`Agent installed successfully`, result);
-      serverAPI.createGraph(agent.id, agent.version).then((newGraph) => {
+      serverAPI.createGraph(result.id, agent.version).then((newGraph) => {
         window.location.href = `/build?flowID=${newGraph.id}`;
       });
     } catch (error) {
