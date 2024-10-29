@@ -47,14 +47,14 @@ googlemaps = "^4.10.0"
 replicate = "^0.34.1"
 pinecone = "^5.3.1"
 [tool.poetry.group.dev.dependencies]
-poethepoet = "^0.26.1"
+poethepoet = "^0.29.0"
 httpx = "^0.27.0"
 pytest-watcher = "^0.4.2"
 requests = "^2.32.3"
-ruff = "^0.5.2"
-pyright = "^1.1.371"
+ruff = "^0.7.1"
+pyright = "^1.1.386"
 isort = "^5.13.2"
-black = "^24.4.2"
+black = "^24.10.0"
 aiohappyeyeballs = "^2.4.3"
 
 [build-system]
