@@ -80,7 +80,7 @@ export const SaveControl = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleSave]);
+  }, [handleSave, toast]);
 
   return (
     <Popover open={pinSavePopover ? true : undefined}>
