@@ -1214,6 +1214,69 @@ export const IconTiktok = createIcon((props) => (
 ));
 
 /**
+ * Close (X) icon component.
+ *
+ * @component IconClose
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The close icon.
+ *
+ * @example
+ * // Default usage
+ * <IconClose />
+ *
+ * @example
+ * // With custom color and size
+ * <IconClose className="text-primary" size="lg" />
+ */
+export const IconClose = createIcon((props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 14 14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-label="Close Icon"
+    {...props}
+  >
+    <path d="M1 1L13 13M1 13L13 1" />
+  </svg>
+));
+
+/**
+ * Plus icon component.
+ *
+ * @component IconPlus
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The plus icon.
+ *
+ * @example
+ * // Default usage
+ * <IconPlus />
+ *
+ * @example
+ * // With custom color and size
+ * <IconPlus className="text-primary" size="lg" />
+ */
+export const IconPlus = createIcon((props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 28 28"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-label="Plus Icon"
+    {...props}
+  >
+    <path d="M14 5.83334V22.1667" />
+    <path d="M5.83331 14H22.1666" />
+  </svg>
+));
+
+/**
  * Globe icon component.
  *
  * @component IconGlobe
