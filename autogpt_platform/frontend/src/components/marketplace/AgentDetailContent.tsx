@@ -20,41 +20,41 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
     try {
       const file = await api.downloadAgentFile(id);
       console.debug(`Agent file downloaded:`, file);
-  
+
       // Create a Blob from the file content
       const blob = new Blob([file], { type: "application/json" });
-  
+
       // Create a temporary URL for the Blob
       const url = window.URL.createObjectURL(blob);
-  
+
       // Create a temporary anchor element
       const a = document.createElement("a");
       a.href = url;
       a.download = `agent_${id}.json`; // Set the filename
-  
+
       // Append the anchor to the body, click it, and remove it
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-  
+
       // Revoke the temporary URL
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error(`Error downloading agent:`, error);
       throw error;
     }
-  }
-  
+  };
+
   const installGraph = async (id: string): Promise<void> => {
     toast({
       title: "Saving and opening a new agent...",
       duration: 2000,
-    })
+    });
     const apiUrl =
       process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
       "http://localhost:8015/api/v1/market";
     const api = new MarketplaceAPI(apiUrl);
-  
+
     const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
     const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
     try {
@@ -81,22 +81,20 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
         },
       });
       console.debug(`Agent installed successfully`, result);
-      serverAPI
-        .createGraph(agent.id, agent.version)
-        .then((newGraph) => {
-          window.location.href = `/build?flowID=${newGraph.id}`;
-        });
+      serverAPI.createGraph(agent.id, agent.version).then((newGraph) => {
+        window.location.href = `/build?flowID=${newGraph.id}`;
+      });
     } catch (error) {
       console.error(`Error installing agent:`, error);
       toast({
         title: "Error saving template",
         variant: "destructive",
         duration: 2000,
-      })
+      });
       throw error;
     }
-  }
-  
+  };
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
       <div className="mb-4 flex items-center justify-between">
