@@ -31,7 +31,6 @@ class GitHubTriggerBase:
         payload: dict = SchemaField(hidden=True, default={})
 
     class Output(BlockSchema):
-        event: str = SchemaField(description="The event that triggered the webhook")
         payload: dict = SchemaField(description="Full payload of the event")
         sender: dict = SchemaField(
             description="Object representing the user who triggered the event"
@@ -41,7 +40,6 @@ class GitHubTriggerBase:
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "event", input_data.payload["action"]
         yield "payload", input_data.payload
         yield "sender", input_data.payload["sender"]
 
@@ -78,6 +76,9 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         events: EventsFilter = SchemaField(description="The events to subscribe to")
 
     class Output(GitHubTriggerBase.Output):
+        event: str = SchemaField(
+            description="The PR event that triggered the webhook (e.g. 'opened')"
+        )
         number: int = SchemaField(description="The number of the affected pull request")
         pull_request: dict = SchemaField(
             description="Object representing the pull request"
@@ -128,5 +129,6 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         **kwargs,
     ) -> BlockOutput:
         yield from super().run(input_data, **kwargs)
+        yield "event", input_data.payload["action"]
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]
