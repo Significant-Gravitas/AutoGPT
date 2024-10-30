@@ -53,7 +53,7 @@ $$ LANGUAGE plpgsql;
 -- Update the table using the function
 UPDATE "AgentNode"
 SET "constantInput" = clean_sensitive_json("constantInput"::jsonb)::json
-WHERE "constantInput"::jsonb ?| array['api_key', 'discord_bot_token', 'creds'];
+WHERE "constantInput"::jsonb ?| array['api_key', 'discord_bot_token', 'creds', 'smtp_username', 'smtp_password', 'client_id', 'client_secret', 'username', 'password'];
 
 -- Drop the function after use
 DROP FUNCTION clean_sensitive_json;
