@@ -6,6 +6,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
 
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from enum import _EnumMemberT
@@ -16,13 +17,7 @@ import openai
 from groq import Groq
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import (
-    BlockSecret,
-    CredentialsField,
-    CredentialsMetaInput,
-    SchemaField,
-    SecretField,
-)
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 
@@ -36,6 +31,15 @@ logger = logging.getLogger(__name__)
 # }
 
 AICredentials = CredentialsMetaInput[Literal["llm"], Literal["api_key"]]
+
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    provider="llm",
+    api_key=SecretStr("mock-openai-api-key"),
+    title="Mock OpenAI API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = TEST_CREDENTIALS.get_ai_credentials()
 
 
 def AICredentialsField() -> AICredentials:
@@ -206,13 +210,14 @@ class AIStructuredResponseGeneratorBlock(Block):
             output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
                 "model": LlmModel.GPT4_TURBO,
-                "api_key": "fake-api",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "expected_format": {
                     "key1": "value1",
                     "key2": "value2",
                 },
                 "prompt": "User prompt",
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=("response", {"key1": "key1Value", "key2": "key2Value"}),
             test_mock={
                 "llm_call": lambda *args, **kwargs: (
@@ -230,7 +235,7 @@ class AIStructuredResponseGeneratorBlock(Block):
 
     @staticmethod
     def llm_call(
-        api_key: str,
+        credentials: APIKeyCredentials,
         llm_model: LlmModel,
         prompt: list[dict],
         json_format: bool,
@@ -252,7 +257,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         provider = llm_model.metadata.provider
 
         if provider == "openai":
-            openai.api_key = api_key
+            oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
             response_format = None
 
             if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
@@ -265,7 +270,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             elif json_format:
                 response_format = {"type": "json_object"}
 
-            response = openai.chat.completions.create(
+            response = oai_client.chat.completions.create(
                 model=llm_model.value,
                 messages=prompt,  # type: ignore
                 response_format=response_format,  # type: ignore
@@ -292,7 +297,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                         # If the role is the same as the last one, combine the content
                         messages[-1]["content"] += "\n" + p["content"]
 
-            client = anthropic.Anthropic(api_key=api_key)
+            client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
             try:
                 resp = client.messages.create(
                     model=llm_model.value,
@@ -311,7 +316,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                 logger.error(error_message)
                 raise ValueError(error_message)
         elif provider == "groq":
-            client = Groq(api_key=api_key)
+            client = Groq(api_key=credentials.api_key.get_secret_value())
             response_format = {"type": "json_object"} if json_format else None
             response = client.chat.completions.create(
                 model=llm_model.value,
@@ -391,15 +396,11 @@ class AIStructuredResponseGeneratorBlock(Block):
         logger.info(f"LLM request: {prompt}")
         retry_prompt = ""
         llm_model = input_data.model
-        api_key = (
-            credentials.api_key.get_secret_value()
-            # or LlmApiKeys[llm_model.metadata.provider].get_secret_value()
-        )
 
         for retry_count in range(input_data.retry):
             try:
                 response_text, input_token, output_token = self.llm_call(
-                    api_key=api_key,
+                    credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
                     json_format=bool(input_data.expected_format),
@@ -471,7 +472,7 @@ class AITextGeneratorBlock(Block):
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
-        api_key: BlockSecret = SecretField(value="")
+        credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
             default="",
@@ -504,7 +505,11 @@ class AITextGeneratorBlock(Block):
             categories={BlockCategory.AI},
             input_schema=AITextGeneratorBlock.Input,
             output_schema=AITextGeneratorBlock.Output,
-            test_input={"prompt": "User prompt"},
+            test_input={
+                "prompt": "User prompt",               
+                "credentials": TEST_CREDENTIALS_INPUT,
+                },
+            test_credentials=TEST_CREDENTIALS,
             test_output=("response", "Response text"),
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
@@ -577,7 +582,10 @@ class AITextSummarizerBlock(Block):
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AITextSummarizerBlock.Input,
             output_schema=AITextSummarizerBlock.Output,
-            test_input={"text": "Lorem ipsum..." * 100},
+            test_input={"text": "Lorem ipsum..." * 100,
+                                        "credentials": TEST_CREDENTIALS_INPUT,
+},
+test_credentials=TEST_CREDENTIALS,
             test_output=("summary", "Final summary of a long text"),
             test_mock={
                 "llm_call": lambda input_data: (
@@ -633,7 +641,7 @@ class AITextSummarizerBlock(Block):
         llm_response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=prompt,
-                credentials=credentials,
+                credentials=credentials.get_ai_credentials(),
                 model=input_data.model,
                 expected_format={"summary": "The summary of the given text."},
             )
@@ -652,7 +660,7 @@ class AITextSummarizerBlock(Block):
             llm_response = self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
                     prompt=prompt,
-                    credentials=credentials,
+                    credentials=credentials.get_ai_credentials(),
                     model=input_data.model,
                     expected_format={
                         "final_summary": "The final summary of all provided summaries."
@@ -718,8 +726,9 @@ class AIConversationBlock(Block):
                     {"role": "user", "content": "Where was it played?"},
                 ],
                 "model": LlmModel.GPT4_TURBO,
-                "api_key": "test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=(
                 "response",
                 "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
@@ -741,7 +750,7 @@ class AIConversationBlock(Block):
         response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt="",
-                credentials=credentials,
+                credentials=credentials.get_ai_credentials(),
                 model=input_data.model,
                 conversation_history=input_data.messages,
                 max_tokens=input_data.max_tokens,
@@ -812,9 +821,10 @@ class AIListGeneratorBlock(Block):
                     "fictional worlds."
                 ),
                 "model": LlmModel.GPT4_TURBO,
-                "api_key": "test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "generated_list",
@@ -930,7 +940,7 @@ class AIListGeneratorBlock(Block):
                     AIStructuredResponseGeneratorBlock.Input(
                         sys_prompt=sys_prompt,
                         prompt=prompt,
-                        credentials=credentials,
+                        credentials=credentials.get_ai_credentials(),
                         model=input_data.model,
                         expected_format={},  # Do not use structured response
                     )
