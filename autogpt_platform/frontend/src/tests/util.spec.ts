@@ -41,7 +41,7 @@ test.describe("Nested Property Setter Tests", () => {
     for (const { name, path, value, expected } of testCases) {
       test(name, () => {
         const obj = {};
-          setNestedProperty(obj, path, value);
+        setNestedProperty(obj, path, value);
         expect(obj).toEqual(expected);
       });
     }
@@ -92,7 +92,6 @@ test.describe("Nested Property Setter Tests", () => {
   });
 
   test.describe("Prototype Pollution Vulnerability Demo", () => {
-
     test("secure implementation prevents prototype pollution", () => {
       const obj = {};
       expect(() => {
