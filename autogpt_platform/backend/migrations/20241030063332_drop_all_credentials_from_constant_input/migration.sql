@@ -19,6 +19,33 @@ BEGIN
     result = result - 'creds';
   END IF;
 
+  -- If the JSON contains smtp credentials
+  IF result ? 'smtp_username' THEN
+    result = result - 'smtp_username';
+  END IF;
+
+  IF result ? 'smtp_password' THEN
+    result = result - 'smtp_password';
+  END IF;
+
+  -- If the JSON contains OAuth credentials
+  IF result ? 'client_id' THEN
+    result = result - 'client_id';
+  END IF;
+
+  IF result ? 'client_secret' THEN
+    result = result - 'client_secret';
+  END IF;
+
+  -- If the JSON contains username/password
+  IF result ? 'username' THEN
+    result = result - 'username';
+  END IF;
+
+  IF result ? 'password' THEN
+    result = result - 'password';
+  END IF;
+
   RETURN result;
 END;
 $$ LANGUAGE plpgsql;
