@@ -49,7 +49,7 @@ jobs:
 
     - name: Create PR ${{ env.BUILD_BRANCH }} -> ${{ github.ref_name }}
       if: github.event_name == 'push'
-      uses: peter-evans/create-pull-request@v6
+      uses: peter-evans/create-pull-request@v7
       with:
         add-paths: classic/frontend/build/web
         base: ${{ github.ref_name }}

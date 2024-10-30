@@ -10,13 +10,13 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-prisma = "^0.13.1"
+prisma = "^0.15.0"
 python-dotenv = "^1.0.1"
-uvicorn = "^0.30.3"
-fastapi = "^0.109.0"
-sentry-sdk = { extras = ["fastapi"], version = "^2.11.0" }
+uvicorn = "^0.32.0"
+fastapi = "^0.115.4"
+sentry-sdk = { extras = ["fastapi"], version = "^2.17.0" }
 fuzzywuzzy = "^0.18.0"
-python-levenshtein = "^0.25.1"
+python-levenshtein = "^0.26.1"
 # autogpt-platform-backend = { path = "../backend", develop = true }
 prometheus-fastapi-instrumentator = "^7.0.0"
 
