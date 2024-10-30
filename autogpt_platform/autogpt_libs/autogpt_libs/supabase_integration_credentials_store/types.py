@@ -41,7 +41,7 @@ class APIKeyCredentials(_BaseCredentials):
 
     def bearer(self) -> str:
         return f"Bearer {self.api_key.get_secret_value()}"
-    
+
     def get_ai_credentials(self) -> dict:
         return {
             "provider": self.provider,
@@ -73,6 +73,11 @@ class UserMetadata(BaseModel):
     integration_oauth_states: list[OAuthState] = Field(default_factory=list)
 
 
-class UserMetadataRaw(BaseModel):
-    integration_credentials: list[dict] = Field(default_factory=list)
-    integration_oauth_states: list[dict] = Field(default_factory=list)
+class UserMetadataRaw(TypedDict, total=False):
+    integration_credentials: list[dict]
+    integration_oauth_states: list[dict]
+
+
+class UserIntegrations(BaseModel):
+    credentials: list[Credentials] = Field(default_factory=list)
+    oauth_states: list[OAuthState] = Field(default_factory=list)

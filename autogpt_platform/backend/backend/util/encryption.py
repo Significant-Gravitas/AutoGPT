@@ -8,7 +8,7 @@ from backend.util.settings import Settings
 ENCRYPTION_KEY = Settings().secrets.encryption_key
 
 
-class EncryptedJson:
+class JSONCryptor:
     def __init__(self, key: Optional[str] = None):
         # Use provided key or get from environment
         self.key = key or ENCRYPTION_KEY
