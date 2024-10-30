@@ -77,13 +77,7 @@ volumeMounts:
 
 env:
   APP_ENV: "prod"
-  NEXT_PUBLIC_AUTH_CALLBACK_URL: "https://backend.agpt.co/auth/callback"
-  NEXT_PUBLIC_AGPT_SERVER_URL: "https://backend.agpt.co/api"
-  NEXT_PUBLIC_AGPT_WS_SERVER_URL: "wss://ws-backend.agpt.co/ws"
-  NEXT_PUBLIC_AGPT_MARKETPLACE_URL: "https://market.agpt.co/api/v1/market"
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
-  NEXT_PUBLIC_SUPABASE_URL: "https://bgwpwdsxblryihinutbx.supabase.co"
+
+secrets:
   GOOGLE_CLIENT_ID: ""
   GOOGLE_CLIENT_SECRET: ""
-  SENTRY_AUTH_TOKEN: ""
-  NEXT_PUBLIC_BEHAVE_AS: "CLOUD"
