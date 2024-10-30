@@ -3,7 +3,9 @@ import logging
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, List, NamedTuple
+from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
+
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 
 if TYPE_CHECKING:
     from enum import _EnumMemberT
@@ -14,18 +16,34 @@ import openai
 from groq import Groq
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import (
+    BlockSecret,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    SecretField,
+)
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 
-LlmApiKeys = {
-    "openai": BlockSecret("openai_api_key"),
-    "anthropic": BlockSecret("anthropic_api_key"),
-    "groq": BlockSecret("groq_api_key"),
-    "ollama": BlockSecret(value=""),
-}
+# LlmApiKeys = {
+#     "openai": BlockSecret("openai_api_key"),
+#     "anthropic": BlockSecret("anthropic_api_key"),
+#     "groq": BlockSecret("groq_api_key"),
+#     "ollama": BlockSecret(value=""),
+# }
+
+AICredentials = CredentialsMetaInput[Literal["llm"], Literal["api_key"]]
+
+
+def AICredentialsField() -> AICredentials:
+    return CredentialsField(
+        description="API key for the LLM provider.",
+        provider="llm",
+        supported_credential_types={"api_key"},
+    )
 
 
 class ModelMetadata(NamedTuple):
@@ -149,7 +167,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
-        api_key: BlockSecret = SecretField(value="")
+        credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
             default="",
@@ -322,7 +340,9 @@ class AIStructuredResponseGeneratorBlock(Block):
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [p.model_dump() for p in input_data.conversation_history]
 
@@ -372,8 +392,8 @@ class AIStructuredResponseGeneratorBlock(Block):
         retry_prompt = ""
         llm_model = input_data.model
         api_key = (
-            input_data.api_key.get_secret_value()
-            or LlmApiKeys[llm_model.metadata.provider].get_secret_value()
+            credentials.api_key.get_secret_value()
+            # or LlmApiKeys[llm_model.metadata.provider].get_secret_value()
         )
 
         for retry_count in range(input_data.retry):
@@ -531,7 +551,7 @@ class AITextSummarizerBlock(Block):
             default=SummaryStyle.CONCISE,
             description="The style of the summary to generate.",
         )
-        api_key: BlockSecret = SecretField(value="")
+        credentials: AICredentials = AICredentialsField()
         # TODO: Make this dynamic
         max_tokens: int = SchemaField(
             title="Max Tokens",
@@ -568,21 +588,23 @@ class AITextSummarizerBlock(Block):
             },
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        for output in self._run(input_data):
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        for output in self._run(input_data, credentials):
             yield output
 
-    def _run(self, input_data: Input) -> BlockOutput:
+    def _run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         chunks = self._split_text(
             input_data.text, input_data.max_tokens, input_data.chunk_overlap
         )
         summaries = []
 
         for chunk in chunks:
-            chunk_summary = self._summarize_chunk(chunk, input_data)
+            chunk_summary = self._summarize_chunk(chunk, input_data, credentials)
             summaries.append(chunk_summary)
 
-        final_summary = self._combine_summaries(summaries, input_data)
+        final_summary = self._combine_summaries(summaries, input_data, credentials)
         yield "summary", final_summary
 
     @staticmethod
@@ -603,13 +625,15 @@ class AITextSummarizerBlock(Block):
         self.merge_stats(block.execution_stats)
         return response
 
-    def _summarize_chunk(self, chunk: str, input_data: Input) -> str:
+    def _summarize_chunk(
+        self, chunk: str, input_data: Input, credentials: APIKeyCredentials
+    ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
         llm_response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=prompt,
-                api_key=input_data.api_key,
+                credentials=credentials,
                 model=input_data.model,
                 expected_format={"summary": "The summary of the given text."},
             )
@@ -617,7 +641,9 @@ class AITextSummarizerBlock(Block):
 
         return llm_response["summary"]
 
-    def _combine_summaries(self, summaries: list[str], input_data: Input) -> str:
+    def _combine_summaries(
+        self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
+    ) -> str:
         combined_text = "\n\n".join(summaries)
 
         if len(combined_text.split()) <= input_data.max_tokens:
@@ -626,7 +652,7 @@ class AITextSummarizerBlock(Block):
             llm_response = self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
                     prompt=prompt,
-                    api_key=input_data.api_key,
+                    credentials=credentials,
                     model=input_data.model,
                     expected_format={
                         "final_summary": "The final summary of all provided summaries."
@@ -640,11 +666,12 @@ class AITextSummarizerBlock(Block):
             return self._run(
                 AITextSummarizerBlock.Input(
                     text=combined_text,
-                    api_key=input_data.api_key,
+                    credentials=credentials,
                     model=input_data.model,
                     max_tokens=input_data.max_tokens,
                     chunk_overlap=input_data.chunk_overlap,
-                )
+                ),
+                credentials=credentials,
             ).send(None)[
                 1
             ]  # Get the first yielded value
@@ -660,9 +687,7 @@ class AIConversationBlock(Block):
             default=LlmModel.GPT4_TURBO,
             description="The language model to use for the conversation.",
         )
-        api_key: BlockSecret = SecretField(
-            value="", description="API key for the chosen language model provider."
-        )
+        credentials: AICredentials = AICredentialsField()
         max_tokens: int | None = SchemaField(
             advanced=True,
             default=None,
@@ -710,11 +735,13 @@ class AIConversationBlock(Block):
         self.merge_stats(block.execution_stats)
         return response["response"]
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt="",
-                api_key=input_data.api_key,
+                credentials=credentials,
                 model=input_data.model,
                 conversation_history=input_data.messages,
                 max_tokens=input_data.max_tokens,
@@ -745,7 +772,7 @@ class AIListGeneratorBlock(Block):
             description="The language model to use for generating the list.",
             advanced=True,
         )
-        api_key: BlockSecret = SecretField(value="")
+        credentials: AICredentials = AICredentialsField()
         max_retries: int = SchemaField(
             default=3,
             description="Maximum number of retries for generating a valid list.",
@@ -833,14 +860,13 @@ class AIListGeneratorBlock(Block):
             logger.error(f"Failed to convert string to list: {e}")
             raise ValueError("Invalid list format. Could not convert to list.")
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 
         # Check for API key
-        api_key_check = (
-            input_data.api_key.get_secret_value()
-            or LlmApiKeys[input_data.model.metadata.provider].get_secret_value()
-        )
+        api_key_check = credentials.api_key.get_secret_value()
         if not api_key_check:
             raise ValueError("No LLM API key provided.")
 
@@ -904,7 +930,7 @@ class AIListGeneratorBlock(Block):
                     AIStructuredResponseGeneratorBlock.Input(
                         sys_prompt=sys_prompt,
                         prompt=prompt,
-                        api_key=input_data.api_key,
+                        credentials=credentials,
                         model=input_data.model,
                         expected_format={},  # Do not use structured response
                     )

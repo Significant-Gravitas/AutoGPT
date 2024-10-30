@@ -47,21 +47,21 @@ replicate_credentials = APIKeyCredentials(
 )
 openai_credentials = APIKeyCredentials(
     id="53c25cb8-e3ee-465c-a4d1-e75a4c899c2a",
-    provider="openai",
+    provider="llm",
     api_key=SecretStr(settings.secrets.openai_api_key),
     title="Use Credits for OpenAI",
     expires_at=None,
 )
 anthropic_credentials = APIKeyCredentials(
     id="24e5d942-d9e3-4798-8151-90143ee55629",
-    provider="anthropic",
+    provider="llm",
     api_key=SecretStr(settings.secrets.anthropic_api_key),
     title="Use Credits for Anthropic",
     expires_at=None,
 )
 groq_credentials = APIKeyCredentials(
     id="4ec22295-8f97-4dd1-b42b-2c6957a02545",
-    provider="groq",
+    provider="llm",
     api_key=SecretStr(settings.secrets.groq_api_key),
     title="Use Credits for Groq",
     expires_at=None,
