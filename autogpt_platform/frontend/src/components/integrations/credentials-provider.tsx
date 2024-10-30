@@ -28,6 +28,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   ideogram: "Ideogram",
   jina: "Jina",
   medium: "Medium",
+  llm: "LLM",
   notion: "Notion",
   openai: "OpenAI",
   openweathermap: "OpenWeatherMap",

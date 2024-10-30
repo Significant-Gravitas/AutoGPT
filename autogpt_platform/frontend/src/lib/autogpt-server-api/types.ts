@@ -103,6 +103,7 @@ export const PROVIDER_NAMES = {
   GOOGLE_MAPS: "google_maps",
   IDEOGRAM: "ideogram",
   JINA: "jina",
+  LLM: "llm",
   MEDIUM: "medium",
   NOTION: "notion",
   OPENAI: "openai",

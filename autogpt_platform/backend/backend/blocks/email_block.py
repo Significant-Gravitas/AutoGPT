@@ -2,9 +2,10 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from pydantic import BaseModel, ConfigDict
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
-from pydantic import BaseModel, ConfigDict
 
 
 class EmailCredentials(BaseModel):

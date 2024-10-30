@@ -4,10 +4,9 @@ from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
-from pydantic import SecretStr
-
 
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from enum import _EnumMemberT
@@ -18,13 +17,7 @@ import openai
 from groq import Groq
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import (
-    BlockSecret,
-    CredentialsField,
-    CredentialsMetaInput,
-    SchemaField,
-    SecretField,
-)
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 
@@ -693,7 +686,7 @@ class AITextSummarizerBlock(Block):
             return self._run(
                 AITextSummarizerBlock.Input(
                     text=combined_text,
-                    credentials=credentials,
+                    credentials=input_data.credentials,
                     model=input_data.model,
                     max_tokens=input_data.max_tokens,
                     chunk_overlap=input_data.chunk_overlap,

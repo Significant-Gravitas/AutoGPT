@@ -54,6 +54,7 @@ export const providerIcons: Record<
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
+  llm: fallbackIcon,
   medium: FaMedium,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,
