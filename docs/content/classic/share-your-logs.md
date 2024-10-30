@@ -14,7 +14,7 @@ To print out debug logs:
 
 .\autogpt.bat --debug    # on Windows
 
-docker-compose run --rm auto-gpt --debug    # in Docker
+docker compose run --rm auto-gpt --debug    # in Docker
 ```
 
 ## Inspect and share logs
