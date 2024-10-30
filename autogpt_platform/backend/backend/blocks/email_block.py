@@ -2,10 +2,9 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from pydantic import BaseModel, ConfigDict
-
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
+from pydantic import BaseModel, ConfigDict
 
 
 class EmailCredentials(BaseModel):
@@ -43,6 +42,7 @@ class SendEmailBlock(Block):
 
     def __init__(self):
         super().__init__(
+            disabled=True,
             id="4335878a-394e-4e67-adf2-919877ff49ae",
             description="This block sends an email using the provided SMTP credentials.",
             categories={BlockCategory.OUTPUT},
