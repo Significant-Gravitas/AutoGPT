@@ -53,6 +53,7 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.title,
 }
 
+
 def AICredentialsField() -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
@@ -407,10 +408,6 @@ class AIStructuredResponseGeneratorBlock(Block):
         logger.info(f"LLM request: {prompt}")
         retry_prompt = ""
         llm_model = input_data.model
-        api_key = (
-            credentials.api_key.get_secret_value()
-            # or LlmApiKeys[llm_model.metadata.provider].get_secret_value()
-        )
 
         for retry_count in range(input_data.retry):
             try:
@@ -521,9 +518,9 @@ class AITextGeneratorBlock(Block):
             input_schema=AITextGeneratorBlock.Input,
             output_schema=AITextGeneratorBlock.Output,
             test_input={
-                "prompt": "User prompt",               
+                "prompt": "User prompt",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                },
+            },
             test_credentials=TEST_CREDENTIALS,
             test_output=("response", "Response text"),
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
@@ -597,10 +594,11 @@ class AITextSummarizerBlock(Block):
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AITextSummarizerBlock.Input,
             output_schema=AITextSummarizerBlock.Output,
-            test_input={"text": "Lorem ipsum..." * 100,
-                                        "credentials": TEST_CREDENTIALS_INPUT,
-},
-test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "text": "Lorem ipsum..." * 100,
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
             test_output=("summary", "Final summary of a long text"),
             test_mock={
                 "llm_call": lambda input_data: (
@@ -642,9 +640,13 @@ test_credentials=TEST_CREDENTIALS,
 
         return chunks
 
-    def llm_call(self, input_data: AIStructuredResponseGeneratorBlock.Input) -> dict:
+    def llm_call(
+        self,
+        input_data: AIStructuredResponseGeneratorBlock.Input,
+        credentials: APIKeyCredentials,
+    ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response")
+        response = block.run_once(input_data, "response", credentials=credentials)
         self.merge_stats(block.execution_stats)
         return response
 
@@ -656,10 +658,11 @@ test_credentials=TEST_CREDENTIALS,
         llm_response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=prompt,
-                credentials=credentials.get_ai_credentials(),
+                credentials=input_data.credentials,
                 model=input_data.model,
                 expected_format={"summary": "The summary of the given text."},
-            )
+            ),
+            credentials=credentials,
         )
 
         return llm_response["summary"]
@@ -675,12 +678,13 @@ test_credentials=TEST_CREDENTIALS,
             llm_response = self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
                     prompt=prompt,
-                    credentials=credentials.get_ai_credentials(),
+                    credentials=input_data.credentials,
                     model=input_data.model,
                     expected_format={
                         "final_summary": "The final summary of all provided summaries."
                     },
-                )
+                ),
+                credentials=credentials,
             )
 
             return llm_response["final_summary"]
@@ -753,9 +757,13 @@ class AIConversationBlock(Block):
             },
         )
 
-    def llm_call(self, input_data: AIStructuredResponseGeneratorBlock.Input) -> str:
+    def llm_call(
+        self,
+        input_data: AIStructuredResponseGeneratorBlock.Input,
+        credentials: APIKeyCredentials,
+    ) -> str:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response")
+        response = block.run_once(input_data, "response", credentials=credentials)
         self.merge_stats(block.execution_stats)
         return response["response"]
 
@@ -765,12 +773,13 @@ class AIConversationBlock(Block):
         response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt="",
-                credentials=credentials.get_ai_credentials(),
+                credentials=input_data.credentials,
                 model=input_data.model,
                 conversation_history=input_data.messages,
                 max_tokens=input_data.max_tokens,
                 expected_format={},
-            )
+            ),
+            credentials=credentials,
         )
 
         yield "response", response
@@ -861,9 +870,10 @@ class AIListGeneratorBlock(Block):
     @staticmethod
     def llm_call(
         input_data: AIStructuredResponseGeneratorBlock.Input,
+        credentials: APIKeyCredentials,
     ) -> dict[str, str]:
         llm_block = AIStructuredResponseGeneratorBlock()
-        response = llm_block.run_once(input_data, "response")
+        response = llm_block.run_once(input_data, "response", credentials=credentials)
         return response
 
     @staticmethod
@@ -955,10 +965,11 @@ class AIListGeneratorBlock(Block):
                     AIStructuredResponseGeneratorBlock.Input(
                         sys_prompt=sys_prompt,
                         prompt=prompt,
-                        credentials=credentials.get_ai_credentials(),
+                        credentials=input_data.credentials,
                         model=input_data.model,
                         expected_format={},  # Do not use structured response
-                    )
+                    ),
+                    credentials=credentials,
                 )
 
                 logger.debug(f"LLM response: {llm_response}")
