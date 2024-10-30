@@ -4,9 +4,10 @@ from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
+from pydantic import SecretStr
+
 
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
-from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from enum import _EnumMemberT
@@ -17,7 +18,13 @@ import openai
 from groq import Groq
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    BlockSecret,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    SecretField,
+)
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 
@@ -39,8 +46,12 @@ TEST_CREDENTIALS = APIKeyCredentials(
     title="Mock OpenAI API key",
     expires_at=None,
 )
-TEST_CREDENTIALS_INPUT = TEST_CREDENTIALS.get_ai_credentials()
-
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
+}
 
 def AICredentialsField() -> AICredentials:
     return CredentialsField(
@@ -396,6 +407,10 @@ class AIStructuredResponseGeneratorBlock(Block):
         logger.info(f"LLM request: {prompt}")
         retry_prompt = ""
         llm_model = input_data.model
+        api_key = (
+            credentials.api_key.get_secret_value()
+            # or LlmApiKeys[llm_model.metadata.provider].get_secret_value()
+        )
 
         for retry_count in range(input_data.retry):
             try:

@@ -41,6 +41,15 @@ class APIKeyCredentials(_BaseCredentials):
 
     def bearer(self) -> str:
         return f"Bearer {self.api_key.get_secret_value()}"
+    
+    def get_ai_credentials(self) -> dict:
+        return {
+            "id": self.id,
+            "provider": self.provider,
+            "api_key": self.api_key,
+            "title": self.title,
+            "expires_at": self.expires_at,
+        }
 
 
 Credentials = Annotated[
