@@ -520,7 +520,9 @@ class AITextGeneratorBlock(Block):
         )
 
     def llm_call(
-        self, input_data: AIStructuredResponseGeneratorBlock.Input, credentials: APIKeyCredentials
+        self,
+        input_data: AIStructuredResponseGeneratorBlock.Input,
+        credentials: APIKeyCredentials,
     ) -> str:
         block = AIStructuredResponseGeneratorBlock()
         response = block.run_once(input_data, "response", credentials=credentials)
