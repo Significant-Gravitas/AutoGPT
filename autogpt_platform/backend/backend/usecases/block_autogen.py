@@ -124,7 +124,7 @@ and it should be enclosed within this block format:
 
 Here are a couple of sample of the Block class implementation:
 
-{"--------------\n".join([sample_block_codes[v] for v in sample_block_modules])}
+{"--------------".join([sample_block_codes[v] for v in sample_block_modules])}
 """,
         },
     )
