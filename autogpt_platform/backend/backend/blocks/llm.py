@@ -519,9 +519,11 @@ class AITextGeneratorBlock(Block):
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
 
-    def llm_call(self, input_data: AIStructuredResponseGeneratorBlock.Input) -> str:
+    def llm_call(
+        self, input_data: AIStructuredResponseGeneratorBlock.Input, credentials: APIKeyCredentials
+    ) -> str:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response")
+        response = block.run_once(input_data, "response", credentials=credentials)
         self.merge_stats(block.execution_stats)
         return response["response"]
 
