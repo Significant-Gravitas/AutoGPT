@@ -12,12 +12,13 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id        String   @id // This should match the Supabase user ID
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  metadata  Json?
+  id           String   @id // This should match the Supabase user ID
+  email        String   @unique
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  metadata     Json     @default("{}")
+  integrations String   @default("")
 
   // Relations
   AgentGraphs                  AgentGraph[]
