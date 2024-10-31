@@ -519,18 +519,24 @@ class AITextGeneratorBlock(Block):
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
 
-    def llm_call(self, input_data: AIStructuredResponseGeneratorBlock.Input) -> str:
+    def llm_call(
+        self,
+        input_data: AIStructuredResponseGeneratorBlock.Input,
+        credentials: APIKeyCredentials,
+    ) -> str:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response")
+        response = block.run_once(input_data, "response", credentials=credentials)
         self.merge_stats(block.execution_stats)
         return response["response"]
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
             **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
             expected_format={},
         )
-        yield "response", self.llm_call(object_input_data)
+        yield "response", self.llm_call(object_input_data, credentials)
 
 
 class SummaryStyle(Enum):
