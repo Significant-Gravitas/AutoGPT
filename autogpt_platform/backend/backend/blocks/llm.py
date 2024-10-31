@@ -525,11 +525,12 @@ class AITextGeneratorBlock(Block):
         self.merge_stats(block.execution_stats)
         return response["response"]
 
-    def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
             **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
             expected_format={},
-            credentials=input_data.credentials,
         )
         yield "response", self.llm_call(object_input_data, credentials)
 
