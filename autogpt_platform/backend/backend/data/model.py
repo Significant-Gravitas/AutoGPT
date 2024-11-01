@@ -173,7 +173,7 @@ def CredentialsField(
             "credentials_scopes": list(required_scopes) or None,  # omit if empty
             "credentials_types": list(supported_credential_types),
             "discriminator": discriminator,
-            "discriminator_mapping": discriminator_mapping
+            "discriminator_mapping": discriminator_mapping,
         }.items()
         if v is not None
     }
