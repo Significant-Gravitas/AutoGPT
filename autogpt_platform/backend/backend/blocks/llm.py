@@ -52,6 +52,11 @@ def AICredentialsField() -> AICredentials:
         description="API key for the LLM provider.",
         provider="llm",
         supported_credential_types={"api_key"},
+        discriminator="model",
+        discriminator_mapping={
+            model.value: model.metadata.provider
+            for model in LlmModel
+        }
     )
 
 

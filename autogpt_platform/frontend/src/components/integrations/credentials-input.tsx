@@ -91,12 +91,8 @@ export const CredentialsInput: FC<{
     useState<AbortController | null>(null);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
 
-  if (!credentials) {
+  if (!credentials || credentials.isLoading) {
     return null;
-  }
-
-  if (credentials.isLoading) {
-    return <div>Loading...</div>;
   }
 
   const {
@@ -226,6 +222,7 @@ export const CredentialsInput: FC<{
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
     return (
       <>
+        <span className="text-m green mb-0 text-gray-900">Credentials</span>
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
             <Button onClick={handleOAuthLogin}>
@@ -246,6 +243,31 @@ export const CredentialsInput: FC<{
         )}
       </>
     );
+    // Only one saved credential
+  } else if (
+    savedApiKeys.length === 0 &&
+    savedOAuthCredentials.length === 1 &&
+    selectedCredentials === undefined
+  ) {
+    if (selectedCredentials === undefined) {
+      onSelectCredentials({
+        id: savedOAuthCredentials[0].id,
+        type: "oauth2",
+        provider,
+        title: savedOAuthCredentials[0].title,
+      });
+    }
+    return null;
+  } else if (savedApiKeys.length === 1 && savedOAuthCredentials.length === 0) {
+    if (selectedCredentials === undefined) {
+      onSelectCredentials({
+        id: savedApiKeys[0].id,
+        type: "api_key",
+        provider,
+        title: savedApiKeys[0].title,
+      });
+    }
+    return null;
   }
 
   function handleValueChange(newValue: string) {
@@ -263,7 +285,7 @@ export const CredentialsInput: FC<{
       onSelectCredentials({
         id: selectedCreds.id,
         type: selectedCreds.type,
-        provider: schema.credentials_provider,
+        provider: provider,
         // title: customTitle, // TODO: add input for title
       });
     }
@@ -272,6 +294,7 @@ export const CredentialsInput: FC<{
   // Saved credentials exist
   return (
     <>
+      <span className="text-m green mb-0 text-gray-900">Credentials</span>
       <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={schema.placeholder} />
