@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Button } from "./Button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
-import { IconDashboardLayout, IconIntegrations, IconProfile, IconSettings } from "../ui/icons";
+import { IconDashboardLayout, IconIntegrations, IconProfile, IconSliders } from "../ui/icons";
 
 interface SidebarLinkGroup {
   links: {
@@ -51,7 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 </div>
               </Link>
               <Link href="/settings" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-                <IconSettings className="w-6 h-6" />
+                <IconSliders className="w-6 h-6" />
                 <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
                   Settings
                 </div>
@@ -83,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               </div>
             </Link>
             <Link href="/settings" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-              <IconSettings className="w-6 h-6" />
+              <IconSliders className="w-6 h-6" />
               <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
                 Settings
               </div>
