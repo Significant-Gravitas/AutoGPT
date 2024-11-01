@@ -70,6 +70,7 @@ class GetRedditPostsBlock(Block):
 
     def __init__(self):
         super().__init__(
+            disabled=True,
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             description="This block fetches Reddit posts from a defined subreddit name.",
             categories={BlockCategory.SOCIAL},
