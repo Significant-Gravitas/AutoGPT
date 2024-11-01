@@ -75,7 +75,7 @@ const ProfilePage = ({
 
   return (
     <div className="min-h-screen w-full bg-white">
-      <header className="relative z-50">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-white">
         <ProfileNavBar
           userName={userName}
           userEmail={userEmail}
@@ -85,24 +85,26 @@ const ProfilePage = ({
         />
       </header>
 
-      <div className="flex flex-1">
-        <nav 
-          className="fixed left-[10px] top-[80px] z-40"
-          aria-label="Main navigation"
-        >
-          <div className="bg-gray-50 rounded-lg">
-            <Sidebar linkGroups={sidebarLinkGroups} />
-          </div>
-        </nav>
+      <div className="pt-[64px]">
+        <div className="flex flex-1">
+          <nav 
+            className="fixed left-[10px] top-[80px] z-40"
+            aria-label="Main navigation"
+          >
+            <div className="bg-gray-50 rounded-lg">
+              <Sidebar linkGroups={sidebarLinkGroups} />
+            </div>
+          </nav>
 
-        <div className="w-full lg:ml-[200px] flex-1 px-4 md:px-8 py-6">
-          <ProfileInfoForm 
-            displayName={displayName}
-            handle={handle}
-            bio={bio}
-            links={links}
-            categories={categories}
-          />
+          <div className="w-full lg:ml-[200px] flex-1 px-4 md:px-8 py-6">
+            <ProfileInfoForm 
+              displayName={displayName}
+              handle={handle}
+              bio={bio}
+              links={links}
+              categories={categories}
+            />
+          </div>
         </div>
       </div>
     </div>
