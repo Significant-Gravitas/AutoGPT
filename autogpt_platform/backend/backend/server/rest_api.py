@@ -1,13 +1,16 @@
 import contextlib
+import typing
 
 import fastapi
 import fastapi.middleware.cors
 import fastapi.responses
+import uvicorn
 
 import backend.data.block
 import backend.data.db
 import backend.data.user
 import backend.server.routers.v1
+import backend.util.service
 import backend.util.settings
 
 settings = backend.util.settings.Settings()
@@ -64,3 +67,45 @@ def handle_internal_http_error(request: fastapi.Request, exc: Exception):
         },
         status_code=500,
     )
+
+
+class AgentServer(backend.util.service.AppProcess):
+    def run(self):
+        uvicorn.run(
+            app,
+            host=backend.util.settings.Config().agent_api_host,
+            port=backend.util.settings.Config().agent_api_port,
+        )
+
+    @staticmethod
+    async def execute_graph(
+        graph_id: str, node_input: dict[typing.Any, typing.Any], user_id: str
+    ):
+        return await backend.server.routers.v1.execute_graph(
+            graph_id, node_input, user_id
+        )
+
+    @staticmethod
+    async def create_graph(
+        create_graph: backend.server.routers.v1.CreateGraph,
+        user_id: str,
+        is_template=False,
+    ):
+        return await backend.server.routers.v1.create_new_graph(create_graph, user_id)
+
+    @staticmethod
+    async def get_graph_run_status(graph_id: str, graph_exec_id: str, user_id: str):
+        return await backend.server.routers.v1.get_graph_run_node_execution_results(
+            graph_id, graph_exec_id, user_id
+        )
+
+    @staticmethod
+    async def get_graph_run_node_execution_results(
+        graph_id: str, graph_exec_id: str, user_id: str
+    ):
+        return await backend.server.routers.v1.get_graph_run_node_execution_results(
+            graph_id, graph_exec_id, user_id
+        )
+
+    def set_test_dependency_overrides(self, overrides: dict):
+        app.dependency_overrides = overrides

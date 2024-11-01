@@ -421,12 +421,10 @@ async def create_new_template(
 ########################################################
 
 
-# TODO: Fix the scheular service as it was still packaged with the rest api
 @v1_router.post(
     path="/graphs/{graph_id}/schedules",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
-    deprecated=True, # Deprecated until fixed
 )
 async def create_schedule(
     graph_id: str,
@@ -450,12 +448,11 @@ async def create_schedule(
         )
     }
 
-# TODO: Fix the scheular service as it was still packaged with the rest api
+
 @v1_router.put(
     path="/graphs/schedules/{schedule_id}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
-    deprecated=True, # Deprecated until fixed
 )
 async def update_schedule(
     schedule_id: str,
@@ -468,12 +465,11 @@ async def update_schedule(
     )
     return {"id": schedule_id}
 
-# TODO: Fix the scheular service as it was still packaged with the rest api
+
 @v1_router.get(
     path="/graphs/{graph_id}/schedules",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
-    deprecated=True, # Deprecated until fixed
 )
 async def get_execution_schedules(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
