@@ -3,14 +3,14 @@ import logging
 from collections import defaultdict
 from typing import Annotated, Any, Dict
 
-from autogpt_libs.auth.middleware import auth_middleware
-from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException
 from typing_extensions import TypedDict
 
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
+from autogpt_libs.auth.middleware import auth_middleware
+from autogpt_libs.utils.cache import thread_cached
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
@@ -342,6 +342,23 @@ async def get_graph_run_node_execution_results(
 
     return await execution_db.get_execution_results(graph_exec_id)
 
+# NOTE: This is used for testing
+async def get_graph_run_status(
+        graph_id: str,
+        graph_exec_id: str,
+        user_id: Annotated[str, Depends(get_user_id)],
+    ) -> execution_db.ExecutionStatus:
+        graph = await graph_db.get_graph(graph_id, user_id=user_id)
+        if not graph:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+
+        execution = await execution_db.get_graph_execution(graph_exec_id, user_id)
+        if not execution:
+            raise HTTPException(
+                status_code=404, detail=f"Execution #{graph_exec_id} not found."
+            )
+
+        return execution.executionStatus
 
 ########################################################
 ##################### Templates ########################

@@ -97,7 +97,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_get_graph_run_status(
         graph_id: str, graph_exec_id: str, user_id: str
     ):
-        return await backend.server.routers.v1.get_graph_run_node_execution_results(
+        return await backend.server.routers.v1.get_graph_run_status(
             graph_id, graph_exec_id, user_id
         )
 
@@ -114,4 +114,4 @@ class AgentServer(backend.util.service.AppProcess):
         return await backend.server.routers.v1.delete_graph(graph_id, user_id)
 
     def set_test_dependency_overrides(self, overrides: dict):
-        app.dependency_overrides = overrides
+        app.dependency_overrides.update(overrides)

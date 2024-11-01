@@ -12,7 +12,7 @@ async def server():
 @pytest.fixture(scope="session", autouse=True)
 async def graph_cleanup(server):
     created_graph_ids = []
-    original_create_graph = server.agent_server.create_graph
+    original_create_graph = server.agent_server.test_create_graph
 
     async def create_graph_wrapper(*args, **kwargs):
         created_graph = await original_create_graph(*args, **kwargs)
