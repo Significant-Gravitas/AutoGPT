@@ -14,10 +14,10 @@ This project supports Linux (Debian-based), Mac, and Windows Subsystem for Linux
    To fork the repository, follow these steps:
    - Navigate to the main page of the repository.
 
-   ![Repository](docs/content/imgs/quickstart/001_repo.png)
+   ![Repository](../docs/content/imgs/quickstart/001_repo.png)
    - In the top-right corner of the page, click Fork.
 
-   ![Create Fork UI](docs/content/imgs/quickstart/002_fork.png)
+   ![Create Fork UI](../docs/content/imgs/quickstart/002_fork.png)
    - On the next page, select your GitHub account to create the fork.
    - Wait for the forking process to complete. You now have a copy of the repository in your GitHub account.
 
@@ -27,11 +27,11 @@ This project supports Linux (Debian-based), Mac, and Windows Subsystem for Linux
    - Navigate to the directory where you want to clone the repository.
    - Run the git clone command for the fork you just created
 
-   ![Clone the Repository](docs/content/imgs/quickstart/003_clone.png)
+   ![Clone the Repository](../docs/content/imgs/quickstart/003_clone.png)
 
    - Then open your project in your ide
 
-   ![Open the Project in your IDE](docs/content/imgs/quickstart/004_ide.png)
+   ![Open the Project in your IDE](../docs/content/imgs/quickstart/004_ide.png)
 
 4. **Setup the Project**
     Next, we need to set up the required dependencies. We have a tool to help you perform all the tasks on the repo.
@@ -40,7 +40,7 @@ This project supports Linux (Debian-based), Mac, and Windows Subsystem for Linux
     The first command you need to use is `./run setup.` This will guide you through setting up your system.
     Initially, you will get instructions for installing Flutter and Chrome and setting up your GitHub access token like the following image:
     
-    ![Setup the Project](docs/content/imgs/quickstart/005_setup.png)
+    ![Setup the Project](../docs/content/imgs/quickstart/005_setup.png)
 
 ### For Windows Users
 
@@ -78,7 +78,7 @@ If you continue to experience issues, consider storing your project files within
 You can keep running the command to get feedback on where you are up to with your setup. 
 When setup has been completed, the command will return an output like this:
 
-![Setup Complete](docs/content/imgs/quickstart/006_setup_complete.png)
+![Setup Complete](../docs/content/imgs/quickstart/006_setup_complete.png)
 
 ## Creating Your Agent
 
@@ -91,7 +91,7 @@ Tips for naming your agent:
 
 Examples: `SwiftyosAssistant`, `PwutsPRAgent`, `MySuperAgent`
 
-![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
+![Create an Agent](../docs/content/imgs/quickstart/007_create_agent.png)
 
 ## Running your Agent
 
@@ -99,15 +99,15 @@ Your agent can be started using the command: `./run agent start YOUR_AGENT_NAME`
 
 This starts the agent on the URL: `http://localhost:8000/`
 
-![Start the Agent](docs/content/imgs/quickstart/009_start_agent.png)
+![Start the Agent](../docs/content/imgs/quickstart/009_start_agent.png)
 
 The front end can be accessed from `http://localhost:8000/`; first, you must log in using either a Google account or your GitHub account.
 
-![Login](docs/content/imgs/quickstart/010_login.png)
+![Login](../docs/content/imgs/quickstart/010_login.png)
 
 Upon logging in, you will get a page that looks something like this: your task history down the left-hand side of the page, and the 'chat' window to send tasks to your agent.
 
-![Login](docs/content/imgs/quickstart/011_home.png)
+![Login](../docs/content/imgs/quickstart/011_home.png)
 
 When you have finished with your agent or just need to restart it, use Ctl-C to end the session. Then, you can re-run the start command.
 
@@ -160,7 +160,7 @@ The benchmark has been split into different categories of skills you can test yo
 ./run benchmark tests list
 ```
 
-![Login](docs/content/imgs/quickstart/012_tests.png)
+![Login](../docs/content/imgs/quickstart/012_tests.png)
 
 
 Finally, you can run the benchmark with
