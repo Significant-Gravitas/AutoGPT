@@ -45,12 +45,9 @@ export default function useCredentials(): CredentialsData | null {
 
   const discriminatorValue: CredentialsProviderName | null =
     credentialsSchema.discriminator
-      ? getValue(
-          credentialsSchema.discriminator_mapping![
-            credentialsSchema.discriminator
-          ],
-          data.hardcodedValues,
-        )
+      ? credentialsSchema.discriminator_mapping![
+          getValue(credentialsSchema.discriminator, data.hardcodedValues)
+        ]
       : null;
 
   const providerName =

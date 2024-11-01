@@ -126,7 +126,7 @@ export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
-  discriminator_mapping?: { [key: string]: string };
+  discriminator_mapping?: { [key: string]: CredentialsProviderName };
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
