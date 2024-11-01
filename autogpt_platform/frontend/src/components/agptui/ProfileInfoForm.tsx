@@ -173,8 +173,8 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
                   variant="default" 
                   className={`h-[43px] px-4 py-2 
                     ${link?.url 
-                      ? 'bg-slate-900 hover:bg-white hover:text-slate-900 border border-slate-900' 
-                      : 'bg-gray-500 hover:bg-gray-600 text-white'} 
+                      ? 'bg-slate-900 text-slate-50 hover:bg-white hover:text-slate-900 border border-slate-900' 
+                      : 'bg-gray-500 hover:bg-gray-600 text-slate-50'} 
                     rounded-[22px] text-sm font-medium font-['Inter'] transition-colors`}
                 >
                   Save
