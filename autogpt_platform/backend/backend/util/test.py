@@ -58,7 +58,7 @@ async def wait_execution(
     timeout: int = 20,
 ) -> list:
     async def is_execution_completed():
-        status = await AgentServer().get_graph_run_status(
+        status = await AgentServer().test_get_graph_run_status(
             graph_id, graph_exec_id, user_id
         )
         if status == ExecutionStatus.FAILED:
@@ -68,7 +68,7 @@ async def wait_execution(
     # Wait for the executions to complete
     for i in range(timeout):
         if await is_execution_completed():
-            return await AgentServer().get_graph_run_node_execution_results(
+            return await AgentServer().test_get_graph_run_node_execution_results(
                 graph_id, graph_exec_id, user_id
             )
         time.sleep(1)

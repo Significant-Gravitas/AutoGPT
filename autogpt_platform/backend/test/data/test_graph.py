@@ -47,14 +47,14 @@ async def test_graph_creation(server: SpinTestServer):
     create_graph = CreateGraph(graph=graph)
 
     try:
-        await server.agent_server.create_graph(create_graph, DEFAULT_USER_ID)
+        await server.agent_server.test_create_graph(create_graph, DEFAULT_USER_ID)
         assert False, "Should not be able to connect nodes from different subgraphs"
     except ValueError as e:
         assert "different subgraph" in str(e)
 
     # Change node_1 <-> node_3 link to node_1 <-> node_2 (input for subgraph_1)
     graph.links[0].sink_id = "node_2"
-    created_graph = await server.agent_server.create_graph(
+    created_graph = await server.agent_server.test_create_graph(
         create_graph, DEFAULT_USER_ID
     )
 
@@ -102,7 +102,7 @@ async def test_get_input_schema(server: SpinTestServer):
     )
 
     create_graph = CreateGraph(graph=graph)
-    created_graph = await server.agent_server.create_graph(
+    created_graph = await server.agent_server.test_create_graph(
         create_graph, DEFAULT_USER_ID
     )
 
@@ -138,7 +138,7 @@ async def test_get_input_schema_none_required(server: SpinTestServer):
     )
 
     create_graph = CreateGraph(graph=graph)
-    created_graph = await server.agent_server.create_graph(
+    created_graph = await server.agent_server.test_create_graph(
         create_graph, DEFAULT_USER_ID
     )
 
@@ -180,7 +180,7 @@ async def test_get_input_schema_with_linked_blocks(server: SpinTestServer):
     )
 
     create_graph = CreateGraph(graph=graph)
-    created_graph = await server.agent_server.create_graph(
+    created_graph = await server.agent_server.test_create_graph(
         create_graph, DEFAULT_USER_ID
     )
 

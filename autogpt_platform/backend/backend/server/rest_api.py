@@ -78,7 +78,7 @@ class AgentServer(backend.util.service.AppProcess):
         )
 
     @staticmethod
-    async def execute_graph(
+    async def test_execute_graph(
         graph_id: str, node_input: dict[typing.Any, typing.Any], user_id: str
     ):
         return await backend.server.routers.v1.execute_graph(
@@ -86,7 +86,7 @@ class AgentServer(backend.util.service.AppProcess):
         )
 
     @staticmethod
-    async def create_graph(
+    async def test_create_graph(
         create_graph: backend.server.routers.v1.CreateGraph,
         user_id: str,
         is_template=False,
@@ -94,18 +94,24 @@ class AgentServer(backend.util.service.AppProcess):
         return await backend.server.routers.v1.create_new_graph(create_graph, user_id)
 
     @staticmethod
-    async def get_graph_run_status(graph_id: str, graph_exec_id: str, user_id: str):
-        return await backend.server.routers.v1.get_graph_run_node_execution_results(
-            graph_id, graph_exec_id, user_id
-        )
-
-    @staticmethod
-    async def get_graph_run_node_execution_results(
+    async def test_get_graph_run_status(
         graph_id: str, graph_exec_id: str, user_id: str
     ):
         return await backend.server.routers.v1.get_graph_run_node_execution_results(
             graph_id, graph_exec_id, user_id
         )
+
+    @staticmethod
+    async def test_get_graph_run_node_execution_results(
+        graph_id: str, graph_exec_id: str, user_id: str
+    ):
+        return await backend.server.routers.v1.get_graph_run_node_execution_results(
+            graph_id, graph_exec_id, user_id
+        )
+
+    @staticmethod
+    async def test_delete_graph(graph_id: str, user_id: str):
+        return await backend.server.routers.v1.delete_graph(graph_id, user_id)
 
     def set_test_dependency_overrides(self, overrides: dict):
         app.dependency_overrides = overrides
