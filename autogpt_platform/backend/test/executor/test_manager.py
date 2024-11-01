@@ -11,17 +11,7 @@ from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
-#  NOTE: You can run tests like with the --log-cli-level=INFO to see the logs
-# Set up logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-# Create console handler with formatting
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
 
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
