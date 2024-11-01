@@ -74,5 +74,6 @@ COPY autogpt_platform/backend /app/autogpt_platform/backend
 
 ENV DATABASE_URL=""
 ENV PORT=8000
+ENV HOST=0.0.0.0
 
-CMD ["poetry", "run", "rest"]
+CMD ["uvicorn", "backend.server.app:app", "--host", "$HOST", "--port", "$PORT"]
