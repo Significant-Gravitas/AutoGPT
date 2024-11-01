@@ -24,6 +24,7 @@ interface ProfilePopoutMenuProps {
   userName?: string;
   userEmail?: string;
   avatarSrc?: string;
+  hideNavBarUsername?: boolean;
   menuItemGroups: {
     groupName?: string;
     items: {
@@ -50,25 +51,35 @@ const PopoutMenuItem: React.FC<PopoutMenuItemProps> = ({
 }) => {
   const getIcon = (iconType: IconType) => {
     let iconClass = "w-6 h-6 relative";
+    const getIconWithAccessibility = (Icon: React.ComponentType<any>, label: string) => (
+      <Icon 
+        className={iconClass} 
+        role="img"
+        aria-label={label}
+      >
+        <title>{label}</title>
+      </Icon>
+    );
+
     switch (iconType) {
       case IconType.Marketplace:
-        return <IconMarketplace className={iconClass} />;
+        return getIconWithAccessibility(IconMarketplace, "Marketplace");
       case IconType.Library:
-        return <IconLibrary className={iconClass} />;
+        return getIconWithAccessibility(IconLibrary, "Library");
       case IconType.Builder:
-        return <IconBuilder className={iconClass} />;
+        return getIconWithAccessibility(IconBuilder, "Builder");
       case IconType.Edit:
-        return <IconEdit className={iconClass} />;
+        return getIconWithAccessibility(IconEdit, "Edit");
       case IconType.LayoutDashboard:
-        return <IconLayoutDashboard className={iconClass} />;
+        return getIconWithAccessibility(IconLayoutDashboard, "Dashboard");
       case IconType.UploadCloud:
-        return <IconUploadCloud className={iconClass} />;
+        return getIconWithAccessibility(IconUploadCloud, "Upload");
       case IconType.Settings:
-        return <IconSettings className={iconClass} />;
+        return getIconWithAccessibility(IconSettings, "Settings");
       case IconType.LogOut:
-        return <IconLogOut className={iconClass} />;
+        return getIconWithAccessibility(IconLogOut, "Log Out");
       default:
-        return <IconRefresh className={iconClass} />;
+        return getIconWithAccessibility(IconRefresh, "Refresh");
     }
   };
   if (onClick && href) {
@@ -106,26 +117,40 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
   userName,
   userEmail,
   avatarSrc,
+  hideNavBarUsername = false,
   menuItemGroups,
 }) => {
+  const popupId = React.useId();
+  
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <div className="hidden cursor-pointer items-center space-x-5 md:flex">
-          <div className="font-neue text-2xl font-medium leading-9 tracking-tight text-[#474747]">
-            {userName || "Unknown User"}
-          </div>
+        <button 
+          type="button"
+          className="hidden cursor-pointer items-center space-x-5 md:flex"
+          aria-label="Open profile menu"
+          aria-controls={popupId}
+          aria-haspopup="true"
+        >
+          {!hideNavBarUsername && (
+            <span className="font-neue text-2xl font-medium leading-9 tracking-tight text-[#474747]">
+              {userName || "Unknown User"}
+            </span>
+          )}
           <Avatar className="h-10 w-10">
-            <AvatarImage src={avatarSrc} alt={userName || "Unknown User"} />
-            <AvatarFallback>{userName?.charAt(0) || "U"}</AvatarFallback>
+            <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
+            <AvatarFallback aria-hidden="true">{userName?.charAt(0) || "U"}</AvatarFallback>
           </Avatar>
-        </div>
+        </button>
       </PopoverTrigger>
-      <PopoverContent className="ml-2 inline-flex w-[280px] flex-col items-start justify-start gap-3.5 rounded-[10px] border border-black/10 bg-[#efefef] px-4 py-5 shadow">
+      <PopoverContent 
+        id={popupId}
+        className="ml-2 inline-flex w-[280px] flex-col items-start justify-start gap-3.5 rounded-[10px] border border-black/10 bg-[#efefef] px-4 py-5 shadow"
+      >
         <div className="inline-flex items-end justify-start gap-4">
           <Avatar className="h-14 w-14 border border-[#474747]">
-            <AvatarImage src={avatarSrc} alt={userName || "Unknown User"} />
-            <AvatarFallback>{userName?.charAt(0) || "U"}</AvatarFallback>
+            <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
+            <AvatarFallback aria-hidden="true">{userName?.charAt(0) || "U"}</AvatarFallback>
           </Avatar>
           <div className="relative h-14 w-[153px]">
             <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747]">
