@@ -40,7 +40,7 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
 )
 
-app.include_router(backend.server.routers.v1.v1_router)
+app.include_router(backend.server.routers.v1.v1_router, tags=["v1"])
 app.add_middleware(
     fastapi.middleware.cors.CORSMiddleware,
     allow_origins=settings.config.backend_cors_allow_origins,
