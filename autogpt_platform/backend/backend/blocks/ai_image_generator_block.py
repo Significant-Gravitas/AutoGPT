@@ -1,6 +1,5 @@
-import uuid
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 import replicate
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
@@ -12,14 +11,47 @@ from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaFie
 
 class ImageSize(str, Enum):
     """
-    Universal sizes that work across all models via aspect ratio
+    Semantic sizes that map reliably across all models
     """
+    SQUARE = "square"      # For profile pictures, icons, etc.
+    LANDSCAPE = "landscape" # For traditional photos, scenes
+    PORTRAIT = "portrait"  # For vertical photos, portraits
+    WIDE = "wide"         # For cinematic, desktop wallpapers
+    TALL = "tall"         # For mobile wallpapers, stories
 
-    SQUARE = "1:1"
-    LANDSCAPE = "3:2"
-    PORTRAIT = "2:3"
-    WIDE = "16:9"
-    TALL = "9:16"
+
+# Mapping semantic sizes to model-specific formats
+SIZE_TO_SD_RATIO = {
+    ImageSize.SQUARE: "1:1",
+    ImageSize.LANDSCAPE: "4:3",
+    ImageSize.PORTRAIT: "3:4",
+    ImageSize.WIDE: "16:9",
+    ImageSize.TALL: "9:16",
+}
+
+SIZE_TO_FLUX_RATIO = {
+    ImageSize.SQUARE: "1:1",
+    ImageSize.LANDSCAPE: "4:3",
+    ImageSize.PORTRAIT: "3:4",
+    ImageSize.WIDE: "16:9",
+    ImageSize.TALL: "9:16",
+}
+
+SIZE_TO_FLUX_DIMENSIONS = {
+    ImageSize.SQUARE: (1024, 1024),
+    ImageSize.LANDSCAPE: (1365, 1024),
+    ImageSize.PORTRAIT: (1024, 1365),
+    ImageSize.WIDE: (1440, 810),    # Adjusted to maintain 16:9 within 1440 limit
+    ImageSize.TALL: (810, 1440),    # Adjusted to maintain 9:16 within 1440 limit
+}
+
+SIZE_TO_RECRAFT_DIMENSIONS = {
+    ImageSize.SQUARE: "1024x1024",
+    ImageSize.LANDSCAPE: "1365x1024",
+    ImageSize.PORTRAIT: "1024x1365",
+    ImageSize.WIDE: "1536x1024",
+    ImageSize.TALL: "1024x1536",
+}
 
 
 class ImageStyle(str, Enum):
@@ -34,12 +66,20 @@ class ImageStyle(str, Enum):
     REALISTIC_HDR = "realistic_image/hdr"
     REALISTIC_NATURAL = "realistic_image/natural_light"
     REALISTIC_STUDIO = "realistic_image/studio_portrait"
+    REALISTIC_ENTERPRISE = "realistic_image/enterprise"
+    REALISTIC_HARD_FLASH = "realistic_image/hard_flash"
+    REALISTIC_MOTION_BLUR = "realistic_image/motion_blur"
     # Digital illustration styles
     DIGITAL_ART = "digital_illustration"
     PIXEL_ART = "digital_illustration/pixel_art"
     HAND_DRAWN = "digital_illustration/hand_drawn"
+    GRAIN = "digital_illustration/grain"
     SKETCH = "digital_illustration/infantile_sketch"
     POSTER = "digital_illustration/2d_art_poster"
+    POSTER_2 = "digital_illustration/2d_art_poster_2"
+    HANDMADE_3D = "digital_illustration/handmade_3d"
+    HAND_DRAWN_OUTLINE = "digital_illustration/hand_drawn_outline"
+    ENGRAVING_COLOR = "digital_illustration/engraving_color"
 
 
 class ModelProvider(str, Enum):
@@ -47,35 +87,9 @@ class ModelProvider(str, Enum):
     Available model providers
     """
 
-    FLUX = "flux"
-    RECRAFT = "recraft"
-    SD3_5 = "sd3.5"
-
-
-# Size to dimension mappings for models that need explicit dimensions
-SIZE_DIMENSIONS = {
-    ImageSize.SQUARE: (1024, 1024),
-    ImageSize.LANDSCAPE: (1365, 1024),
-    ImageSize.PORTRAIT: (1024, 1365),
-    ImageSize.WIDE: (1536, 1024),
-    ImageSize.TALL: (1024, 1536),
-}
-
-# Test credentials for the block
-TEST_CREDENTIALS = APIKeyCredentials(
-    id="01234567-89ab-cdef-0123-456789abcdef",
-    provider="replicate",
-    api_key=SecretStr("mock-replicate-api-key"),
-    title="Mock Replicate API key",
-    expires_at=None,
-)
-
-TEST_CREDENTIALS_INPUT = {
-    "provider": TEST_CREDENTIALS.provider,
-    "id": TEST_CREDENTIALS.id,
-    "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.title,
-}
+    FLUX = "Flux 1.1 Pro"
+    RECRAFT = "Recraft v3"
+    SD3_5 = "Stable Diffusion 3.5 Medium"
 
 
 class AIImageGeneratorBlock(Block):
@@ -99,38 +113,21 @@ class AIImageGeneratorBlock(Block):
             title="Model Provider",
         )
         size: ImageSize = SchemaField(
-            description="Aspect ratio/size for the generated image",
+            description=(
+                "Format of the generated image:\n"
+                "- Square: Perfect for profile pictures, icons\n"
+                "- Landscape: Traditional photo format\n"
+                "- Portrait: Vertical photos, portraits\n"
+                "- Wide: Cinematic format, desktop wallpapers\n"
+                "- Tall: Mobile wallpapers, social media stories"
+            ),
             default=ImageSize.SQUARE,
-            title="Image Size",
+            title="Image Format",
         )
         style: ImageStyle = SchemaField(
             description="Visual style for the generated image",
             default=ImageStyle.ANY,
             title="Image Style",
-        )
-        steps: int = SchemaField(
-            description="Number of diffusion steps",
-            default=40,
-            title="Steps",
-            advanced=True,
-        )
-        cfg: float = SchemaField(
-            description="Classifier Free Guidance scale - higher values make image match prompt more closely",
-            default=5.0,
-            title="CFG Scale",
-            advanced=True,
-        )
-        output_format: str = SchemaField(
-            description="Output image format",
-            default="webp",
-            title="Output Format",
-            advanced=True,
-        )
-        output_quality: int = SchemaField(
-            description="Output image quality (0-100)",
-            default=90,
-            title="Output Quality",
-            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -146,14 +143,10 @@ class AIImageGeneratorBlock(Block):
             output_schema=AIImageGeneratorBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "prompt": "A red panda using a laptop in a snowy forest",
-                "model": ModelProvider.SD3_5,
+                "prompt": "An octopus using a laptop in a snowy forest with 'AutoGPT' clearly visible on the screen",
+                "model": ModelProvider.RECRAFT,
                 "size": ImageSize.SQUARE,
-                "style": ImageStyle.PIXEL_ART,
-                "steps": 40,
-                "cfg": 5.0,
-                "output_format": "webp",
-                "output_quality": 90,
+                "style": ImageStyle.REALISTIC,
             },
             test_output=[
                 (
@@ -163,6 +156,66 @@ class AIImageGeneratorBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
         )
+
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            # Initialize Replicate client
+            client = replicate.Client(api_token=credentials.api_key.get_secret_value())
+
+            # Handle style-based prompt modification for models without native style support
+            modified_prompt = input_data.prompt
+            if input_data.model != ModelProvider.RECRAFT:
+                style_prefix = self._style_to_prompt_prefix(input_data.style)
+                modified_prompt = f"{style_prefix} {modified_prompt}".strip()
+
+            if input_data.model == ModelProvider.SD3_5:
+                # Use Stable Diffusion 3.5 with aspect ratio
+                output = client.run(
+                    "stability-ai/stable-diffusion-3.5-medium",
+                    input={
+                        "prompt": modified_prompt,
+                        "aspect_ratio": SIZE_TO_SD_RATIO[input_data.size],
+                        "output_format": "webp",
+                        "output_quality": 90,
+                        "steps": 40,
+                        "cfg_scale": 7.0,
+                    },
+                )
+                output_list = list(output) if hasattr(output, "__iter__") else [output]
+                yield "image_url", output_list[0]
+
+            elif input_data.model == ModelProvider.FLUX:
+                # Use Flux-specific dimensions that respect the 1440px limit
+                width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
+                
+                output = client.run(
+                    "black-forest-labs/flux-1.1-pro",
+                    input={
+                        "prompt": modified_prompt,
+                        "width": width,
+                        "height": height,
+                        "aspect_ratio": SIZE_TO_FLUX_RATIO[input_data.size],
+                        "output_format": "webp",
+                        "output_quality": 90,
+                    },
+                )
+                yield "image_url", output
+
+            elif input_data.model == ModelProvider.RECRAFT:
+                output = client.run(
+                    "recraft-ai/recraft-v3",
+                    input={
+                        "prompt": input_data.prompt,
+                        "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
+                        "style": input_data.style.value,
+                    },
+                )
+                yield "image_url", output
+
+        except Exception as e:
+            yield "error", str(e)
 
     def _style_to_prompt_prefix(self, style: ImageStyle) -> str:
         """
@@ -177,81 +230,37 @@ class AIImageGeneratorBlock(Block):
             ImageStyle.REALISTIC_HDR: "HDR photograph",
             ImageStyle.REALISTIC_NATURAL: "natural light photograph",
             ImageStyle.REALISTIC_STUDIO: "studio portrait photograph",
+            ImageStyle.REALISTIC_ENTERPRISE: "enterprise photograph",
+            ImageStyle.REALISTIC_HARD_FLASH: "hard flash photograph",
+            ImageStyle.REALISTIC_MOTION_BLUR: "motion blur photograph",
             ImageStyle.DIGITAL_ART: "digital art",
             ImageStyle.PIXEL_ART: "pixel art",
             ImageStyle.HAND_DRAWN: "hand drawn illustration",
+            ImageStyle.GRAIN: "grainy digital illustration",
             ImageStyle.SKETCH: "sketchy illustration",
             ImageStyle.POSTER: "2D art poster",
+            ImageStyle.POSTER_2: "alternate 2D art poster",
+            ImageStyle.HANDMADE_3D: "handmade 3D illustration",
+            ImageStyle.HAND_DRAWN_OUTLINE: "hand drawn outline illustration",
+            ImageStyle.ENGRAVING_COLOR: "color engraving illustration",
         }
 
         style_text = style_map.get(style, "")
         return f"{style_text} of" if style_text else ""
 
-    def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            # Initialize Replicate client
-            client = replicate.Client(api_token=credentials.api_key.get_secret_value())
 
-            # Handle style-based prompt modification for models without native style support
-            modified_prompt = input_data.prompt
-            if (
-                input_data.model != ModelProvider.RECRAFT
-            ):  # Recraft has native style support
-                style_prefix = self._style_to_prompt_prefix(input_data.style)
-                modified_prompt = f"{style_prefix} {modified_prompt}".strip()
+# Test credentials stay the same
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="replicate",
+    api_key=SecretStr("mock-replicate-api-key"),
+    title="Mock Replicate API key",
+    expires_at=None,
+)
 
-            # Get dimensions for the selected size
-            width, height = SIZE_DIMENSIONS[input_data.size]
-
-            if input_data.model == ModelProvider.SD3_5:
-                # Use Stable Diffusion 3.5
-                output = client.run(
-                    "stability-ai/stable-diffusion-3.5-medium",
-                    input={
-                        "prompt": modified_prompt,
-                        "aspect_ratio": input_data.size.value,
-                        "output_format": input_data.output_format,
-                        "output_quality": input_data.output_quality,
-                        "steps": input_data.steps,
-                        "cfg_scale": input_data.cfg,
-                    },
-                )
-                # Convert output to list if it's an iterator
-                output_list = list(output) if hasattr(output, "__iter__") else [output]
-                # SD3.5 returns a list of URLs, take the first one
-                yield "image_url", output_list[0]
-
-            elif input_data.model == ModelProvider.FLUX:
-                # Use Flux
-                output = client.run(
-                    "black-forest-labs/flux-1.1-pro",
-                    input={
-                        "prompt": modified_prompt,
-                        "width": width,
-                        "height": height,
-                        "output_format": input_data.output_format,
-                        "output_quality": input_data.output_quality,
-                        "steps": input_data.steps,
-                        "guidance": input_data.cfg,
-                    },
-                )
-                yield "image_url", output
-
-            elif input_data.model == ModelProvider.RECRAFT:
-                # Use Recraft
-                output = client.run(
-                    "recraft-ai/recraft-v3",
-                    input={
-                        "prompt": input_data.prompt,  # Use original prompt
-                        "size": f"{width}x{height}",
-                        "style": input_data.style.value,  # Use native style support
-                        "steps": input_data.steps,
-                        "guidance_scale": input_data.cfg,
-                    },
-                )
-                yield "image_url", output
-
-        except Exception as e:
-            yield "error", str(e)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
+}
