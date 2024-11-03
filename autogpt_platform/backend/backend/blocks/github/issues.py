@@ -1,4 +1,6 @@
 import requests
+from urllib.parse import urlparse
+
 from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -12,6 +14,8 @@ from ._auth import (
     GithubCredentialsInput,
 )
 
+def is_github_url(url: str) -> bool:
+    return urlparse(url).netloc == "github.com"
 
 # --8<-- [start:GithubCommentBlockExample]
 class GithubCommentBlock(Block):
@@ -62,6 +66,10 @@ class GithubCommentBlock(Block):
     def post_comment(
         credentials: GithubCredentials, issue_url: str, body_text: str
     ) -> tuple[int, str]:
+        
+        if is_github_url(issue_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+    
         if "/pull/" in issue_url:
             api_url = (
                 issue_url.replace("github.com", "api.github.com/repos").replace(
@@ -156,6 +164,9 @@ class GithubMakeIssueBlock(Block):
     def create_issue(
         credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> tuple[int, str]:
+        if is_github_url(repo_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+
         api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
         headers = {
             "Authorization": credentials.bearer(),
@@ -232,6 +243,10 @@ class GithubReadIssueBlock(Block):
     def read_issue(
         credentials: GithubCredentials, issue_url: str
     ) -> tuple[str, str, str]:
+        
+        if is_github_url(issue_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+        
         api_url = issue_url.replace("github.com", "api.github.com/repos")
 
         headers = {
@@ -318,6 +333,10 @@ class GithubListIssuesBlock(Block):
     def list_issues(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.IssueItem]:
+
+        if is_github_url(repo_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+    
         api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
         headers = {
             "Authorization": credentials.bearer(),
@@ -385,6 +404,11 @@ class GithubAddLabelBlock(Block):
 
     @staticmethod
     def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
+        
+        if is_github_url(issue_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+    
+
         # Convert the provided GitHub URL to the API URL
         if "/pull/" in issue_url:
             api_url = (
@@ -463,6 +487,10 @@ class GithubRemoveLabelBlock(Block):
 
     @staticmethod
     def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
+        if is_github_url(issue_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+    
+
         # Convert the provided GitHub URL to the API URL
         if "/pull/" in issue_url:
             api_url = (
@@ -550,6 +578,9 @@ class GithubAssignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
+        if is_github_url(issue_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+
         # Extracting repo path and issue number from the issue URL
         repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
             "/issues/"
@@ -629,6 +660,9 @@ class GithubUnassignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
+        if is_github_url(issue_url) is False:
+            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+        
         # Extracting repo path and issue number from the issue URL
         repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
             "/issues/"
