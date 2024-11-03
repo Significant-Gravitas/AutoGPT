@@ -4,16 +4,17 @@ from typing_extensions import TypedDict
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
-from issues import is_github_url
-
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     GithubCredentials,
     GithubCredentialsField,
-    GithubCredentialsInput,
+    GithubCredentialsInput
 )
 
+from urllib.parse import urlparse
+def is_github_url(url: str) -> bool:
+    return urlparse(url).netloc == "github.com"
 
 class GithubListPullRequestsBlock(Block):
     class Input(BlockSchema):
@@ -67,7 +68,7 @@ class GithubListPullRequestsBlock(Block):
     @staticmethod
     def list_prs(credentials: GithubCredentials, repo_url: str) -> list[Output.PRItem]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
 
         api_url = repo_url.replace("github.com", "api.github.com/repos") + "/pulls"
         headers = {
@@ -168,7 +169,7 @@ class GithubMakePullRequestBlock(Block):
         base: str,
     ) -> tuple[int, str]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/pulls"
         headers = {
@@ -263,7 +264,7 @@ class GithubReadPullRequestBlock(Block):
     @staticmethod
     def read_pr(credentials: GithubCredentials, pr_url: str) -> tuple[str, str, str]:
         if is_github_url(pr_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
             
         api_url = pr_url.replace("github.com", "api.github.com/repos").replace(
             "/pull/", "/issues/"
@@ -378,7 +379,7 @@ class GithubAssignPRReviewerBlock(Block):
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
         if is_github_url(pr_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
             
         # Convert the PR URL to the appropriate API endpoint
         api_url = (
@@ -470,7 +471,7 @@ class GithubUnassignPRReviewerBlock(Block):
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
         if is_github_url(pr_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
             
         api_url = (
             pr_url.replace("github.com", "api.github.com/repos").replace(
@@ -561,7 +562,7 @@ class GithubListPRReviewersBlock(Block):
         credentials: GithubCredentials, pr_url: str
     ) -> list[Output.ReviewerItem]:
         if is_github_url(pr_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
             
         api_url = (
             pr_url.replace("github.com", "api.github.com/repos").replace(

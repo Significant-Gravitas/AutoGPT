@@ -6,8 +6,6 @@ from typing_extensions import TypedDict
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
-from issues import is_github_url
-
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +14,9 @@ from ._auth import (
     GithubCredentialsInput,
 )
 
+from urllib.parse import urlparse
+def is_github_url(url: str) -> bool:
+    return urlparse(url).netloc == "github.com"
 
 class GithubListTagsBlock(Block):
     class Input(BlockSchema):
@@ -71,7 +72,7 @@ class GithubListTagsBlock(Block):
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.TagItem]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
             
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/tags"
@@ -163,7 +164,7 @@ class GithubListBranchesBlock(Block):
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.BranchItem]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         
         api_url = repo_url.replace("github.com", "api.github.com/repos") + "/branches"
         headers = {
@@ -255,7 +256,7 @@ class GithubListDiscussionsBlock(Block):
         credentials: GithubCredentials, repo_url: str, num_discussions: int
     ) -> list[Output.DiscussionItem]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         repo_path = repo_url.replace("https://github.com/", "")
         owner, repo = repo_path.split("/")
         query = """
@@ -359,7 +360,7 @@ class GithubListReleasesBlock(Block):
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.ReleaseItem]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/releases"
         headers = {
@@ -445,7 +446,7 @@ class GithubReadFileBlock(Block):
         credentials: GithubCredentials, repo_url: str, file_path: str, branch: str
     ) -> tuple[str, int]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/contents/{file_path}?ref={branch}"
         headers = {
@@ -564,7 +565,7 @@ class GithubReadFolderBlock(Block):
         credentials: GithubCredentials, repo_url: str, folder_path: str, branch: str
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/contents/{folder_path}?ref={branch}"
         headers = {
@@ -673,7 +674,7 @@ class GithubMakeBranchBlock(Block):
         source_branch: str,
     ) -> str:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         repo_path = repo_url.replace("https://github.com/", "")
         ref_api_url = (
             f"https://api.github.com/repos/{repo_path}/git/refs/heads/{source_branch}"
@@ -754,7 +755,7 @@ class GithubDeleteBranchBlock(Block):
         credentials: GithubCredentials, repo_url: str, branch: str
     ) -> str:
         if is_github_url(repo_url) is False:
-            raise ValueError("The input issue_url must be a valid GitHub URL (https://github.com/...)")
+            raise ValueError("The input URL must be a valid GitHub URL.")
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/git/refs/heads/{branch}"
         headers = {
