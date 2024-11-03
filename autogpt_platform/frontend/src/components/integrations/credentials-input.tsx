@@ -60,6 +60,7 @@ export const providerIcons: Record<
   openweathermap: fallbackIcon,
   pinecone: fallbackIcon,
   replicate: fallbackIcon,
+  fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
 };
