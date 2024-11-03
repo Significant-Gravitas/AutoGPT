@@ -1,9 +1,7 @@
 import logging
-import os
 import time
 from enum import Enum
 from typing import Literal
-from urllib.error import URLError
 
 import replicate
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
@@ -28,16 +26,19 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.type,
 }
 
+
 # Model version enum
 class MusicGenModelVersion(str, Enum):
     STEREO_LARGE = "stereo-large"
     MELODY_LARGE = "melody-large"
     LARGE = "large"
 
+
 # Audio format enum
 class AudioFormat(str, Enum):
     WAV = "wav"
     MP3 = "mp3"
+
 
 # Normalization strategy enum
 class NormalizationStrategy(str, Enum):
@@ -45,6 +46,7 @@ class NormalizationStrategy(str, Enum):
     CLIP = "clip"
     PEAK = "peak"
     RMS = "rms"
+
 
 class AIMusicGeneratorBlock(Block):
     class Input(BlockSchema):
@@ -146,7 +148,9 @@ class AIMusicGeneratorBlock(Block):
 
         for attempt in range(max_retries):
             try:
-                logger.debug(f"[AIMusicGeneratorBlock] - Running model (attempt {attempt + 1})")
+                logger.debug(
+                    f"[AIMusicGeneratorBlock] - Running model (attempt {attempt + 1})"
+                )
                 result = self.run_model(
                     api_key=credentials.api_key,
                     model_version=input_data.model_version,
@@ -164,25 +168,14 @@ class AIMusicGeneratorBlock(Block):
                     return
                 else:
                     last_error = "Model returned empty or invalid response"
-            except replicate.exceptions.ModelError as e:
-                last_error = f"Model error: {str(e)}"
-                logger.error(f"[AIMusicGeneratorBlock] - Error: {last_error}")                    
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    continue
-            except (replicate.exceptions.ReplicateError, URLError) as e:
-                last_error = f"Replicate API error: {str(e)}"
-                logger.error(f"[AIMusicGeneratorBlock] - Error: {last_error}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    continue
+                    raise ValueError(last_error)
             except Exception as e:
-                last_error = f"Unexpected error: {str(e)}"  
+                last_error = f"Unexpected error: {str(e)}"
                 logger.error(f"[AIMusicGeneratorBlock] - Error: {last_error}")
-            
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-            
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+
         # If we've exhausted all retries, yield the error
         yield "error", f"Failed after {max_retries} attempts. Last error: {last_error}"
 
@@ -224,6 +217,8 @@ class AIMusicGeneratorBlock(Block):
         elif isinstance(output, str):
             result_url = output  # If output is a string, use it directly
         else:
-            result_url = "No output received"  # Fallback message if output is not as expected
+            result_url = (
+                "No output received"  # Fallback message if output is not as expected
+            )
 
         return result_url
