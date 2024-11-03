@@ -71,11 +71,12 @@ class ConditionBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        value1 = input_data.value1
         operator = input_data.operator
-        value2 = input_data.value2
+        # cast value 1 and value 2 to float or int if possible
+        value1 = float(input_data.value1)
+        value2 = float(input_data.value2)
         yes_value = input_data.yes_value if input_data.yes_value is not None else value1
-        no_value = input_data.no_value if input_data.no_value is not None else value1
+        no_value = input_data.no_value if input_data.no_value is not None else value2
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
@@ -86,17 +87,11 @@ class ConditionBlock(Block):
             ComparisonOperator.LESS_THAN_OR_EQUAL: lambda a, b: a <= b,
         }
 
-        try:
-            result = comparison_funcs[operator](value1, value2)
+        result = comparison_funcs[operator](value1, value2)
 
-            yield "result", result
+        yield "result", result
 
-            if result:
-                yield "yes_output", yes_value
-            else:
-                yield "no_output", no_value
-
-        except Exception:
-            yield "result", None
-            yield "yes_output", None
-            yield "no_output", None
+        if result:
+            yield "yes_output", yes_value
+        else:
+            yield "no_output", no_value

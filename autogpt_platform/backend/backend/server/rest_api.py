@@ -10,8 +10,8 @@ import uvicorn
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 from typing_extensions import TypedDict
 
 from backend.data import block, db
@@ -70,14 +70,6 @@ class AgentServer(AppService):
 
         logger.debug(
             f"FastAPI CORS allow origins: {Config().backend_cors_allow_origins}"
-        )
-
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=Config().backend_cors_allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],  # Allows all methods
-            allow_headers=["*"],  # Allows all headers
         )
 
         health_router = APIRouter()
@@ -208,12 +200,6 @@ class AgentServer(AppService):
             tags=["graphs"],
         )
         api_router.add_api_route(
-            path="/graphs/{graph_id}/input_schema",
-            endpoint=self.get_graph_input_schema,
-            methods=["GET"],
-            tags=["graphs"],
-        )
-        api_router.add_api_route(
             path="/graphs/{graph_id}/execute",
             endpoint=self.execute_graph,
             methods=["POST"],
@@ -272,6 +258,14 @@ class AgentServer(AppService):
 
         app.include_router(api_router)
         app.include_router(health_router)
+
+        app = CORSMiddleware(
+            app=app,
+            allow_origins=Config().backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],  # Allows all methods
+            allow_headers=["*"],  # Allows all headers
+        )
 
         uvicorn.run(
             app,
@@ -358,16 +352,16 @@ class AgentServer(AppService):
         cls,
         user_id: Annotated[str, Depends(get_user_id)],
         with_runs: bool = False,
-    ) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(
+    ) -> list[graph_db.Graph]:
+        return await graph_db.get_graphs(
             include_executions=with_runs, filter_by="active", user_id=user_id
         )
 
     @classmethod
     async def get_templates(
         cls, user_id: Annotated[str, Depends(get_user_id)]
-    ) -> list[graph_db.GraphMeta]:
-        return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
+    ) -> list[graph_db.Graph]:
+        return await graph_db.get_graphs(filter_by="template", user_id=user_id)
 
     @classmethod
     async def get_graph(
@@ -549,18 +543,6 @@ class AgentServer(AppService):
 
         # Retrieve & return canceled graph execution in its final state
         return await execution_db.get_execution_results(graph_exec_id)
-
-    @classmethod
-    async def get_graph_input_schema(
-        cls,
-        graph_id: str,
-        user_id: Annotated[str, Depends(get_user_id)],
-    ) -> list[graph_db.InputSchemaItem]:
-        try:
-            graph = await graph_db.get_graph(graph_id, user_id=user_id)
-            return graph.get_input_schema() if graph else []
-        except Exception:
-            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     @classmethod
     async def list_graph_runs(
