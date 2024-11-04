@@ -29,7 +29,7 @@ def populate_database():
 
     import market.model
 
-    templates = pathlib.Path(__file__).parent.parent / "backend" / "graph_templates"
+    templates = pathlib.Path(__file__).parent.parent / "graph_templates"
 
     all_files = glob.glob(str(templates / "*.json"))
 
