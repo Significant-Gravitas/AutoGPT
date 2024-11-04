@@ -19,7 +19,7 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
-from backend.data.user import get_or_create_user
+from backend.data.user import get_or_create_user, migrate_and_encrypt_user_integrations
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.util.service import AppService, get_service_client
@@ -47,6 +47,7 @@ class AgentServer(AppService):
     async def lifespan(self, _: FastAPI):
         await db.connect()
         await block.initialize_blocks()
+        await migrate_and_encrypt_user_integrations()
         yield
         await db.disconnect()
 

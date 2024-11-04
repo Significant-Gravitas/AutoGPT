@@ -60,15 +60,15 @@ jobs:
         fetch-depth: 0
 
     - id: 'auth'
-      uses: 'google-github-actions/auth@v1'
+      uses: 'google-github-actions/auth@v2'
       with:
-        workload_identity_provider: 'projects/638488734936/locations/global/workloadIdentityPools/prod-pool/providers/github'
+        workload_identity_provider: 'projects/1021527134101/locations/global/workloadIdentityPools/prod-pool/providers/github'
         service_account: 'prod-github-actions-sa@agpt-prod.iam.gserviceaccount.com'
         token_format: 'access_token'
         create_credentials_file: true
 
     - name: 'Set up Cloud SDK'
-      uses: 'google-github-actions/setup-gcloud@v1'
+      uses: 'google-github-actions/setup-gcloud@v2'
 
     - name: 'Configure Docker'
       run: |
@@ -78,7 +78,7 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Cache Docker layers
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: /tmp/.buildx-cache
         key: ${{ runner.os }}-buildx-${{ github.sha }}
