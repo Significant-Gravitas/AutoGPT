@@ -43,8 +43,8 @@ async def test_graph_creation(server: SpinTestServer):
         ],
     )
     create_graph = CreateGraph(graph=graph)
-    created_graph = await server.agent_server.create_graph(
-        create_graph, False, DEFAULT_USER_ID
+    created_graph = await server.agent_server.test_create_graph(
+        create_graph, DEFAULT_USER_ID
     )
 
     assert UUID(created_graph.id)
@@ -116,8 +116,8 @@ async def test_get_input_schema(server: SpinTestServer):
     )
 
     create_graph = CreateGraph(graph=graph)
-    created_graph = await server.agent_server.create_graph(
-        create_graph, False, DEFAULT_USER_ID
+    created_graph = await server.agent_server.test_create_graph(
+        create_graph, DEFAULT_USER_ID
     )
 
     input_schema = created_graph.input_schema
