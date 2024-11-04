@@ -36,9 +36,10 @@ class AgentExecutorBlock(Block):
         user_id: str = SchemaField(description="User ID")
         graph_id: str = SchemaField(description="Graph ID")
         graph_version: int = SchemaField(description="Graph Version")
-        data: BlockInput = SchemaField(
-            advanced=False, description="Input data for the graph", default={}
-        )
+
+        data: BlockInput = SchemaField(description="Input data for the graph")
+        input_schema: dict = SchemaField(description="Input schema for the graph")
+        output_schema: dict = SchemaField(description="Output schema for the graph")
 
     class Output(BlockSchema):
         pass

@@ -145,6 +145,9 @@ class AgentInputBlock(Block):
     class Input(BlockSchema):
         value: Any = SchemaField(description="The value to be passed as input.")
         name: str = SchemaField(description="The name of the input.")
+        title: str = SchemaField(
+            description="The title of the input.", default="", advanced=True
+        )
         description: str = SchemaField(
             description="The description of the input.",
             default="",
@@ -192,6 +195,7 @@ class AgentInputBlock(Block):
             ],
             categories={BlockCategory.INPUT, BlockCategory.BASIC},
             block_type=BlockType.INPUT,
+            static_output=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -258,6 +262,7 @@ class AgentOutputBlock(Block):
             ],
             categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
             block_type=BlockType.OUTPUT,
+            static_output=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
