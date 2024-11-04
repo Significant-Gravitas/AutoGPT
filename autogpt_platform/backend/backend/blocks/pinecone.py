@@ -1,5 +1,5 @@
 import uuid
-from typing import Literal, Any
+from typing import Any, Literal
 
 from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
 from pinecone import Pinecone, ServerlessSpec
@@ -104,7 +104,9 @@ class PineconeQueryBlock(Block):
 
     class Output(BlockSchema):
         results: Any = SchemaField(description="Query results from Pinecone")
-        combined_results: Any = SchemaField(description="Combined results from Pinecone")
+        combined_results: Any = SchemaField(
+            description="Combined results from Pinecone"
+        )
 
     def __init__(self):
         super().__init__(
@@ -116,11 +118,11 @@ class PineconeQueryBlock(Block):
         )
 
     def run(
-            self,
-            input_data: Input,
-            *,
-            credentials: APIKeyCredentials,
-            **kwargs,
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         try:
             # Create a new client instance
@@ -144,14 +146,17 @@ class PineconeQueryBlock(Block):
             ).to_dict()
             combined_text = ""
             if results["matches"]:
-                texts = [match["metadata"]["text"] for match in results["matches"] if
-                         match.get("metadata", {}).get("text")]
+                texts = [
+                    match["metadata"]["text"]
+                    for match in results["matches"]
+                    if match.get("metadata", {}).get("text")
+                ]
                 combined_text = "\n\n".join(texts)
 
             # Return both the raw matches and combined text
             yield "results", {
                 "matches": results["matches"],
-                "combined_text": combined_text
+                "combined_text": combined_text,
             }
             yield "combined_results", combined_text
 
@@ -165,12 +170,20 @@ class PineconeInsertBlock(Block):
         credentials: PineconeCredentialsInput = PineconeCredentialsField()
         index: str = SchemaField(description="Initialized Pinecone index")
         chunks: list = SchemaField(description="List of text chunks to ingest")
-        embeddings: list = SchemaField(description="List of embeddings corresponding to the chunks")
-        namespace: str = SchemaField(description="Namespace to use in Pinecone", default="")
-        metadata: dict = SchemaField(description="Additional metadata to store with each vector", default={})
+        embeddings: list = SchemaField(
+            description="List of embeddings corresponding to the chunks"
+        )
+        namespace: str = SchemaField(
+            description="Namespace to use in Pinecone", default=""
+        )
+        metadata: dict = SchemaField(
+            description="Additional metadata to store with each vector", default={}
+        )
 
     class Output(BlockSchema):
-        upsert_response: str = SchemaField(description="Response from Pinecone upsert operation")
+        upsert_response: str = SchemaField(
+            description="Response from Pinecone upsert operation"
+        )
 
     def __init__(self):
         super().__init__(
@@ -182,11 +195,11 @@ class PineconeInsertBlock(Block):
         )
 
     def run(
-            self,
-            input_data: Input,
-            *,
-            credentials: APIKeyCredentials,
-            **kwargs,
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         try:
             # Create a new client instance
@@ -198,16 +211,15 @@ class PineconeInsertBlock(Block):
             vectors = []
             for chunk, embedding in zip(input_data.chunks, input_data.embeddings):
                 vector_metadata = input_data.metadata.copy()
-                vector_metadata['text'] = chunk
-                vectors.append({
-                    "id": str(uuid.uuid4()),
-                    "values": embedding,
-                    "metadata": vector_metadata
-                })
-            idx.upsert(
-                vectors=vectors,
-                namespace=input_data.namespace
-            )
+                vector_metadata["text"] = chunk
+                vectors.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "values": embedding,
+                        "metadata": vector_metadata,
+                    }
+                )
+            idx.upsert(vectors=vectors, namespace=input_data.namespace)
 
             yield "upsert_response", "successfully upserted"
 

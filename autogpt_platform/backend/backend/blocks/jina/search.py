@@ -1,5 +1,3 @@
-from typing import Any
-
 import requests
 from groq._utils._utils import quote
 
@@ -37,7 +35,7 @@ class SearchTheWebBlock(Block, GetRequest):
         )
 
     def run(
-            self, input_data: Input, *, credentials: JinaCredentials, **kwargs
+        self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
         # Encode the search query
         encoded_query = quote(input_data.query)
