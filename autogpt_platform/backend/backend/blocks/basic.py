@@ -143,14 +143,16 @@ class AgentInputBlock(Block):
     """
 
     class Input(BlockSchema):
-        value: Any = SchemaField(description="The value to be passed as input.")
-        name: str = SchemaField(description="The name of the input.")
-        title: str = SchemaField(
-            description="The title of the input.", default="", advanced=True
+        value: Any = SchemaField(
+            description="The value to be passed as input.", default=None, advanced=False
         )
-        description: str = SchemaField(
+        name: str = SchemaField(description="The name of the input.")
+        title: str | None = SchemaField(
+            description="The title of the input.", default=None, advanced=True
+        )
+        description: str | None = SchemaField(
             description="The description of the input.",
-            default="",
+            default=None,
             advanced=True,
         )
         placeholder_values: List[Any] = SchemaField(
@@ -160,6 +162,16 @@ class AgentInputBlock(Block):
         )
         limit_to_placeholder_values: bool = SchemaField(
             description="Whether to limit the selection to placeholder values.",
+            default=False,
+            advanced=True,
+        )
+        advanced: bool = SchemaField(
+            description="Whether to show the input in the advanced section, if the field is not required.",
+            default=False,
+            advanced=True,
+        )
+        secret: bool = SchemaField(
+            description="Whether the input should be treated as a secret.",
             default=False,
             advanced=True,
         )
@@ -213,16 +225,35 @@ class AgentOutputBlock(Block):
     """
 
     class Input(BlockSchema):
-        value: Any = SchemaField(description="The value to be recorded as output.")
+        value: Any = SchemaField(
+            description="The value to be recorded as output.",
+            default=None,
+            advanced=False,
+        )
         name: str = SchemaField(description="The name of the output.")
-        description: str = SchemaField(
+        title: str | None = SchemaField(
+            description="The title of the output.",
+            default=None,
+            advanced=True,
+        )
+        description: str | None = SchemaField(
             description="The description of the output.",
-            default="",
+            default=None,
             advanced=True,
         )
         format: str = SchemaField(
             description="The format string to be used to format the recorded_value.",
             default="",
+            advanced=True,
+        )
+        advanced: bool = SchemaField(
+            description="Whether to treat the output as advanced.",
+            default=False,
+            advanced=True,
+        )
+        secret: bool = SchemaField(
+            description="Whether the output should be treated as a secret.",
+            default=False,
             advanced=True,
         )
 

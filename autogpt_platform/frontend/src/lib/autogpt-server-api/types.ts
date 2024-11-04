@@ -26,6 +26,7 @@ export type Block = {
   staticOutput: boolean;
   uiType: BlockUIType;
   costs: BlockCost[];
+  hardcodedValues: { [key: string]: any } | null;
 };
 
 export type BlockIORootSchema = {
@@ -190,6 +191,8 @@ export type GraphMeta = {
   is_template: boolean;
   name: string;
   description: string;
+  input_schema: BlockIOObjectSubSchema;
+  output_schema: BlockIOObjectSubSchema;
 };
 
 export type GraphMetaWithRuns = GraphMeta & {
@@ -299,6 +302,7 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  AGENT = "Agent",
 }
 
 export type AnalyticsMetrics = {

@@ -93,6 +93,12 @@ export function CustomNode({
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
 
+  if (data.uiType === BlockUIType.AGENT) {
+    // Display the graph's schema instead AgentExecutorBlock's schema.
+    data.inputSchema = data.hardcodedValues?.input_schema || {};
+    data.outputSchema = data.hardcodedValues?.output_schema || {};
+  }
+
   if (!flowContext) {
     throw new Error("FlowContext consumer must be inside FlowEditor component");
   }
@@ -254,6 +260,9 @@ export function CustomNode({
         });
 
       default:
+        const getInputPropKey = (key: string) =>
+          nodeType == BlockUIType.AGENT ? `data.${key}` : key;
+
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
           const isConnected = isHandleConnected(propKey);
@@ -277,9 +286,9 @@ export function CustomNode({
                 {!isConnected && (
                   <NodeGenericInputField
                     nodeId={id}
-                    propKey={propKey}
+                    propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
-                    currentValue={getValue(propKey)}
+                    currentValue={getValue(getInputPropKey(propKey))}
                     connections={data.connections}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
@@ -317,8 +326,6 @@ export function CustomNode({
     } else {
       current[lastKey.key] = value;
     }
-
-    // console.log(`Updating hardcoded values for node ${id}:`, newValues);
 
     if (!isInitialSetup.current) {
       history.push({

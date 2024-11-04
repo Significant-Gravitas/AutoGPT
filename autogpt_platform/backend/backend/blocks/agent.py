@@ -4,6 +4,7 @@ from autogpt_libs.utils.cache import thread_cached
 
 from backend.data.block import (
     Block,
+    BlockCategory,
     BlockInput,
     BlockOutput,
     BlockSchema,
@@ -51,6 +52,7 @@ class AgentExecutorBlock(Block):
             input_schema=AgentExecutorBlock.Input,
             output_schema=AgentExecutorBlock.Output,
             block_type=BlockType.AGENT,
+            categories={BlockCategory.AGENT},
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:

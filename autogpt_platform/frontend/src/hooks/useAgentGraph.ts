@@ -17,6 +17,7 @@ import { Connection, MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { GraphMeta } from "@/lib/autogpt-server-api";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -34,6 +35,7 @@ export default function useAgentGraph(
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
+  const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
   /**
@@ -91,11 +93,16 @@ export default function useAgentGraph(
     };
   }, [api]);
 
-  // Load available blocks
+  // Load available blocks & flows
   useEffect(() => {
     api
       .getBlocks()
       .then((blocks) => setAvailableNodes(blocks))
+      .catch();
+
+    api
+      .listGraphs()
+      .then((flows) => setAvailableFlows(flows))
       .catch();
   }, [api]);
 
@@ -801,6 +808,7 @@ export default function useAgentGraph(
     setAgentDescription,
     savedAgent,
     availableNodes,
+    availableFlows,
     getOutputType,
     requestSave,
     requestSaveAndRun,
