@@ -28,9 +28,9 @@ To run the AutoGPT Platform, follow these steps:
 
 3. Run the following command:
    ```
-   cp supabase/docker/.env.example .env.local
+   cp supabase/docker/.env.example .env
    ```
-   This command will copy the `.env.example` file to `.env.local` in the `supabase/docker` directory. You can modify the `.env.local` file to add your own environment variables.
+   This command will copy the `.env.example` file to `.env` in the `supabase/docker` directory. You can modify the `.env` file to add your own environment variables.
 
 4. Run the following command:
    ```
@@ -46,9 +46,9 @@ To run the AutoGPT Platform, follow these steps:
 
 6. Run the following command: 
    ```
-   cp .env.example .env
+   cp .env.example .env.local
    ```
-   This command will copy the `.env.example` file to `.env` in the `frontend` directory. You can modify the `.env` within this folder to add your own environment variables for the frontend application.
+   This command will copy the `.env.example` file to `.env.local` in the `frontend` directory. You can modify the `.env.local` within this folder to add your own environment variables for the frontend application.
 
 7. Run the following command:
    ```
