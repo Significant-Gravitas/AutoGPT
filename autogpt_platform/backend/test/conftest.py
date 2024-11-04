@@ -42,6 +42,7 @@ async def graph_cleanup(server):
 
         # Delete the created graphs and assert they were deleted
         for graph_id, user_id in created_graph_ids:
-            resp = await server.agent_server.delete_graph(graph_id, user_id)
-            num_deleted = resp["version_counts"]
-            assert num_deleted > 0, f"Graph {graph_id} was not deleted."
+            if user_id:
+                resp = await server.agent_server.test_delete_graph(graph_id, user_id)
+                num_deleted = resp["version_counts"]
+                assert num_deleted > 0, f"Graph {graph_id} was not deleted."
