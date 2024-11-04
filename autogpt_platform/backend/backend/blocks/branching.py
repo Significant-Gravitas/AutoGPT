@@ -72,9 +72,15 @@ class ConditionBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
-        # cast value 1 and value 2 to float or int if possible
-        value1 = float(input_data.value1)
-        value2 = float(input_data.value2)
+
+        value1 = input_data.value1
+        if isinstance(value1, str):
+            value1 = float(value1.strip())
+
+        value2 = input_data.value2
+        if isinstance(value2, str):
+            value2 = float(value2.strip())
+
         yes_value = input_data.yes_value if input_data.yes_value is not None else value1
         no_value = input_data.no_value if input_data.no_value is not None else value2
 
