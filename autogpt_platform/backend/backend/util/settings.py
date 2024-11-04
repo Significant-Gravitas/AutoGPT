@@ -214,6 +214,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="", description="Supabase service role key"
     )
 
+    encryption_key: str = Field(default="", description="Encryption key")
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")

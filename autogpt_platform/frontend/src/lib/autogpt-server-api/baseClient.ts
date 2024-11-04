@@ -28,7 +28,7 @@ export default class BaseAutoGPTServerAPI {
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-      "http://localhost:8006/api",
+      "http://localhost:8006/api/v1",
     wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
       "ws://localhost:8001/ws",
     supabaseClient: SupabaseClient | null = null,
