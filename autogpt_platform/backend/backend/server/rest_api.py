@@ -1,9 +1,10 @@
 import contextlib
+import logging
 import typing
 
 import fastapi
-import fastapi.middleware.cors
 import fastapi.responses
+import starlette.middleware.cors
 import uvicorn
 
 import backend.data.block
@@ -14,6 +15,7 @@ import backend.util.service
 import backend.util.settings
 
 settings = backend.util.settings.Settings()
+logger = logging.getLogger(__name__)
 
 
 @contextlib.asynccontextmanager
@@ -23,6 +25,21 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.user.migrate_and_encrypt_user_integrations()
     yield
     await backend.data.db.disconnect()
+
+
+def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
+    def handler(request: fastapi.Request, exc: Exception):
+        if log_error:
+            logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+        return fastapi.responses.JSONResponse(
+            content={
+                "message": f"{request.method} {request.url.path} failed",
+                "detail": str(exc),
+            },
+            status_code=status_code,
+        )
+
+    return handler
 
 
 docs_url = (
@@ -43,14 +60,9 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
 )
 
+app.add_exception_handler(ValueError, handle_internal_http_error(400))
+app.add_exception_handler(500, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"])
-app.add_middleware(
-    fastapi.middleware.cors.CORSMiddleware,
-    allow_origins=settings.config.backend_cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])
@@ -58,15 +70,13 @@ async def health():
     return {"status": "healthy"}
 
 
-@app.exception_handler(Exception)
-def handle_internal_http_error(request: fastapi.Request, exc: Exception):
-    return fastapi.responses.JSONResponse(
-        content={
-            "message": f"{request.method} {request.url.path} failed",
-            "error": str(exc),
-        },
-        status_code=500,
-    )
+app = starlette.middleware.cors.CORSMiddleware(
+    app=app,
+    allow_origins=settings.config.backend_cors_allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 
 class AgentServer(backend.util.service.AppProcess):
