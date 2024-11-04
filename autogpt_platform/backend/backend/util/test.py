@@ -1,3 +1,4 @@
+import logging
 import time
 
 from backend.data import db
@@ -6,9 +7,10 @@ from backend.data.execution import ExecutionStatus
 from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
-from backend.server.rest_api import AgentServer, get_user_id
+from backend.server.rest_api import AgentServer
+from backend.server.utils import get_user_id
 
-log = print
+log = logging.getLogger(__name__)
 
 
 class SpinTestServer:
@@ -57,17 +59,19 @@ async def wait_execution(
     timeout: int = 20,
 ) -> list:
     async def is_execution_completed():
-        status = await AgentServer().get_graph_run_status(
+        status = await AgentServer().test_get_graph_run_status(
             graph_id, graph_exec_id, user_id
         )
+        log.info(f"Execution status: {status}")
         if status == ExecutionStatus.FAILED:
+            log.info("Execution failed")
             raise Exception("Execution failed")
         return status == ExecutionStatus.COMPLETED
 
     # Wait for the executions to complete
     for i in range(timeout):
         if await is_execution_completed():
-            return await AgentServer().get_graph_run_node_execution_results(
+            return await AgentServer().test_get_graph_run_node_execution_results(
                 graph_id, graph_exec_id, user_id
             )
         time.sleep(1)
@@ -79,7 +83,7 @@ def execute_block_test(block: Block):
     prefix = f"[Test-{block.name}]"
 
     if not block.test_input or not block.test_output:
-        log(f"{prefix} No test data provided")
+        log.info(f"{prefix} No test data provided")
         return
     if not isinstance(block.test_input, list):
         block.test_input = [block.test_input]
@@ -87,15 +91,15 @@ def execute_block_test(block: Block):
         block.test_output = [block.test_output]
 
     output_index = 0
-    log(f"{prefix} Executing {len(block.test_input)} tests...")
+    log.info(f"{prefix} Executing {len(block.test_input)} tests...")
     prefix = " " * 4 + prefix
 
     for mock_name, mock_obj in (block.test_mock or {}).items():
-        log(f"{prefix} mocking {mock_name}...")
+        log.info(f"{prefix} mocking {mock_name}...")
         if hasattr(block, mock_name):
             setattr(block, mock_name, mock_obj)
         else:
-            log(f"{prefix} mock {mock_name} not found in block")
+            log.info(f"{prefix} mock {mock_name} not found in block")
 
     extra_exec_kwargs = {}
 
@@ -107,7 +111,7 @@ def execute_block_test(block: Block):
         extra_exec_kwargs[CREDENTIALS_FIELD_NAME] = block.test_credentials
 
     for input_data in block.test_input:
-        log(f"{prefix} in: {input_data}")
+        log.info(f"{prefix} in: {input_data}")
 
         for output_name, output_data in block.execute(input_data, **extra_exec_kwargs):
             if output_index >= len(block.test_output):
@@ -125,7 +129,7 @@ def execute_block_test(block: Block):
                     is_matching = False
 
                 mark = "✅" if is_matching else "❌"
-                log(f"{prefix} {mark} comparing `{data}` vs `{expected_data}`")
+                log.info(f"{prefix} {mark} comparing `{data}` vs `{expected_data}`")
                 if not is_matching:
                     raise ValueError(
                         f"{prefix}: wrong output {data} vs {expected_data}"
