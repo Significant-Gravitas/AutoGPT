@@ -24,7 +24,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
 }) => {
   return (
     <div
-      className="group flex h-[90%] w-[90%] cursor-pointer flex-col items-start justify-start gap-3 rounded-[26px] bg-neutral-200 px-[22px] pb-5 pt-[30px] font-neue text-sm tracking-tight transition-shadow duration-300 hover:shadow-lg md:max-h-[705px] lg:w-[440px] md:gap-5"
+      className="group flex h-[90%] w-[90%] cursor-pointer flex-col items-start justify-start gap-3 rounded-[26px] bg-neutral-200 px-[22px] pb-5 pt-[30px] font-neue text-sm tracking-tight transition-shadow duration-300 hover:shadow-lg md:max-h-[705px] md:gap-5 lg:w-[440px]"
       onClick={onClick}
       data-testid="featured-store-card"
     >

@@ -47,10 +47,7 @@ export const ProfileNavBar: React.FC<ProfileNavBarProps> = ({
 
         {/* Right side content */}
         <div className="flex items-center gap-4">
-          <CreditsCard 
-            credits={credits} 
-            onRefresh={onRefreshCredits}
-          />
+          <CreditsCard credits={credits} onRefresh={onRefreshCredits} />
           <ProfilePopoutMenu
             userName={userName}
             userEmail={userEmail}

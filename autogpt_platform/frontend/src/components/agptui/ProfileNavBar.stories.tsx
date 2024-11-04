@@ -8,30 +8,30 @@ const meta: Meta<typeof ProfileNavBar> = {
   parameters: {
     layout: "fullscreen",
   },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
   argTypes: {
-    userName: { 
+    userName: {
       control: "text",
-      description: "The display name of the user shown in the navbar" 
+      description: "The display name of the user shown in the navbar",
     },
-    userEmail: { 
+    userEmail: {
       control: "text",
-      description: "The email address shown in the profile popout menu" 
+      description: "The email address shown in the profile popout menu",
     },
-    credits: { 
+    credits: {
       control: "number",
-      description: "Number of credits the user has" 
+      description: "Number of credits the user has",
     },
-    avatarSrc: { 
+    avatarSrc: {
       control: "text",
-      description: "URL of the user's profile picture" 
+      description: "URL of the user's profile picture",
     },
-    onRefreshCredits: { 
-      description: "Callback function when refresh credits button is clicked" 
+    onRefreshCredits: {
+      description: "Callback function when refresh credits button is clicked",
     },
-    menuItemGroups: { 
+    menuItemGroups: {
       control: "object",
-      description: "Array of menu item groups for the profile popout menu" 
+      description: "Array of menu item groups for the profile popout menu",
     },
   },
 };

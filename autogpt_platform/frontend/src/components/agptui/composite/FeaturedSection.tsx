@@ -59,7 +59,10 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           <CarouselContent className="ml-0 transition-transform duration-500">
             {/* Add transition */}
             {featuredAgents.map((agent, index) => (
-              <CarouselItem key={index} className="ml-0 basis-auto basis-2/3 min-w-64 max-w-68">
+              <CarouselItem
+                key={index}
+                className="ml-0 min-w-64 max-w-68 basis-2/3 basis-auto"
+              >
                 <FeaturedStoreCard
                   agentName={agent.agentName}
                   subHeading={agent.subHeading}
@@ -75,7 +78,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           </CarouselContent>
         </Carousel>
 
-        <div className="md:mt-4 flex w-full items-center justify-between">
+        <div className="flex w-full items-center justify-between md:mt-4">
           <div className="flex h-3 items-center gap-2">
             {featuredAgents.map((_, index) => (
               <div
@@ -92,13 +95,13 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
             {/* We can't get the exact styling of the button using the button from the component library */}
             <button
               onClick={handlePrevSlide}
-              className="flex h-10 w-10 mb:h-12 mb:w-12 items-center justify-center rounded-full border border-neutral-400 bg-white"
+              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 bg-white"
             >
               <IconLeftArrow className="h-8 w-8" />
             </button>
             <button
               onClick={handleNextSlide}
-              className="flex h-10 w-10 mb:h-12 mb:w-12 items-center justify-center rounded-full border border-neutral-900 bg-white"
+              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-900 bg-white"
             >
               <IconRightArrow className="h-8 w-8" />
             </button>

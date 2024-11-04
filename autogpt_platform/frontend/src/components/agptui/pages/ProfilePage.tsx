@@ -1,8 +1,8 @@
-import * as React from "react"
-import { Sidebar } from "@/components/agptui/Sidebar"
-import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm"
-import { IconType } from "@/components/ui/icons"
-import { ProfileNavBar } from "@/components/agptui/ProfileNavBar"
+import * as React from "react";
+import { Sidebar } from "@/components/agptui/Sidebar";
+import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
+import { IconType } from "@/components/ui/icons";
+import { ProfileNavBar } from "@/components/agptui/ProfileNavBar";
 
 interface ProfilePageProps {
   userName?: string;
@@ -13,7 +13,14 @@ interface ProfilePageProps {
   bio?: string;
   links?: Array<{ id: number; url: string }>;
   categories?: Array<{ id: number; name: string }>;
-  menuItemGroups?: Array<{ items: Array<{ icon: IconType; text: string; href?: string; onClick?: () => void }> }>;
+  menuItemGroups?: Array<{
+    items: Array<{
+      icon: IconType;
+      text: string;
+      href?: string;
+      onClick?: () => void;
+    }>;
+  }>;
 }
 
 const ProfilePage = ({
@@ -37,7 +44,7 @@ const ProfilePage = ({
         { text: "Settings", href: "/settings" },
       ],
     },
-  ]
+  ];
 
   const updatedMenuItemGroups = [
     {
@@ -71,33 +78,33 @@ const ProfilePage = ({
         },
       ],
     },
-  ]
+  ];
 
   return (
     <div className="min-h-screen w-full bg-white">
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white">
+      <header className="fixed left-0 right-0 top-0 z-50 bg-white">
         <ProfileNavBar
           userName={userName}
           userEmail={userEmail}
           credits={credits}
-          onRefreshCredits={() => console.log('Refresh credits')}
+          onRefreshCredits={() => console.log("Refresh credits")}
           menuItemGroups={updatedMenuItemGroups}
         />
       </header>
 
       <div className="pt-[64px]">
         <div className="flex flex-1">
-          <nav 
+          <nav
             className="fixed left-[10px] top-[80px] z-40"
             aria-label="Main navigation"
           >
-            <div className="bg-gray-50 rounded-lg">
+            <div className="rounded-lg bg-gray-50">
               <Sidebar linkGroups={sidebarLinkGroups} />
             </div>
           </nav>
 
-          <div className="w-full lg:ml-[200px] flex-1 px-4 md:px-8 py-6">
-            <ProfileInfoForm 
+          <div className="w-full flex-1 px-4 py-6 md:px-8 lg:ml-[200px]">
+            <ProfileInfoForm
               displayName={displayName}
               handle={handle}
               bio={bio}
@@ -108,7 +115,7 @@ const ProfilePage = ({
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default ProfilePage
+export default ProfilePage;

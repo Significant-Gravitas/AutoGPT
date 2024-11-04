@@ -9,31 +9,31 @@ const meta: Meta<typeof ProfileInfoForm> = {
   },
   tags: ["autodocs"],
   argTypes: {
-    displayName: { 
+    displayName: {
       control: "text",
-      description: "The display name of the user" 
+      description: "The display name of the user",
     },
-    handle: { 
+    handle: {
       control: "text",
-      description: "The user's handle/username" 
+      description: "The user's handle/username",
     },
-    bio: { 
+    bio: {
       control: "text",
-      description: "User's biography text" 
+      description: "User's biography text",
     },
-    profileImage: { 
+    profileImage: {
       control: "text",
-      description: "URL of the user's profile image" 
+      description: "URL of the user's profile image",
     },
-    links: { 
+    links: {
       control: "object",
-      description: "Array of social media links" 
+      description: "Array of social media links",
     },
-    categories: { 
+    categories: {
       control: "object",
-      description: "Array of selected categories" 
+      description: "Array of selected categories",
     },
-  }
+  },
 };
 
 export default meta;
@@ -64,7 +64,7 @@ export const Filled: Story = {
     categories: [
       { id: 1, name: "Entertainment" },
       { id: 2, name: "Blog" },
-      { id: 3, name: "Content creation" }
-    ]
+      { id: 3, name: "Content creation" },
+    ],
   },
 };

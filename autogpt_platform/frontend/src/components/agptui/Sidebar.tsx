@@ -3,7 +3,12 @@ import Link from "next/link";
 import { Button } from "./Button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
-import { IconDashboardLayout, IconIntegrations, IconProfile, IconSliders } from "../ui/icons";
+import {
+  IconDashboardLayout,
+  IconIntegrations,
+  IconProfile,
+  IconSliders,
+} from "../ui/icons";
 
 interface SidebarLinkGroup {
   links: {
@@ -29,30 +34,45 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
             <span className="sr-only">Open sidebar menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-[280px] p-0 sm:w-[280px] border-none">
-          <div className="h-full w-full bg-zinc-200 rounded-2xl">
-            <div className="h-[264px] flex-col justify-start items-start gap-6 inline-flex p-3">
-              <Link href="/dashboard" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-                <IconDashboardLayout className="w-6 h-6" />
-                <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+        <SheetContent
+          side="left"
+          className="w-[280px] border-none p-0 sm:w-[280px]"
+        >
+          <div className="h-full w-full rounded-2xl bg-zinc-200">
+            <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+              >
+                <IconDashboardLayout className="h-6 w-6" />
+                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                   Agent dashboard
                 </div>
               </Link>
-              <Link href="/integrations" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-                <IconIntegrations className="w-6 h-6" />
-                <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+              <Link
+                href="/integrations"
+                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+              >
+                <IconIntegrations className="h-6 w-6" />
+                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                   Integrations
                 </div>
               </Link>
-              <Link href="/profile" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-                <IconProfile className="w-6 h-6" />
-                <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+              <Link
+                href="/profile"
+                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+              >
+                <IconProfile className="h-6 w-6" />
+                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                   Profile
                 </div>
               </Link>
-              <Link href="/settings" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-                <IconSliders className="w-6 h-6" />
-                <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+              <Link
+                href="/settings"
+                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+              >
+                <IconSliders className="h-6 w-6" />
+                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                   Settings
                 </div>
               </Link>
@@ -60,31 +80,43 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
           </div>
         </SheetContent>
       </Sheet>
-      
-      <div className="relative hidden w-[234px] h-[912px] lg:block border-none">
-        <div className="h-full w-full bg-zinc-200 rounded-2xl">
-          <div className="h-[264px] flex-col justify-start items-start gap-6 inline-flex p-3">
-            <Link href="/dashboard" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-              <IconDashboardLayout className="w-6 h-6" />
-              <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+
+      <div className="relative hidden h-[912px] w-[234px] border-none lg:block">
+        <div className="h-full w-full rounded-2xl bg-zinc-200">
+          <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+            >
+              <IconDashboardLayout className="h-6 w-6" />
+              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                 Agent dashboard
               </div>
             </Link>
-            <Link href="/integrations" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-              <IconIntegrations className="w-6 h-6" />
-              <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+            <Link
+              href="/integrations"
+              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+            >
+              <IconIntegrations className="h-6 w-6" />
+              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                 Integrations
               </div>
             </Link>
-            <Link href="/profile" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-              <IconProfile className="w-6 h-6" />
-              <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+            <Link
+              href="/profile"
+              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+            >
+              <IconProfile className="h-6 w-6" />
+              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                 Profile
               </div>
             </Link>
-            <Link href="/settings" className="self-stretch px-7 py-3 rounded-xl justify-center items-center gap-2.5 inline-flex hover:bg-neutral-800 hover:text-white text-neutral-800">
-              <IconSliders className="w-6 h-6" />
-              <div className="grow shrink basis-0 text-base font-medium font-['Inter'] leading-normal">
+            <Link
+              href="/settings"
+              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
+            >
+              <IconSliders className="h-6 w-6" />
+              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
                 Settings
               </div>
             </Link>

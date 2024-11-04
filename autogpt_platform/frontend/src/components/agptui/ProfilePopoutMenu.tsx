@@ -51,12 +51,11 @@ const PopoutMenuItem: React.FC<PopoutMenuItemProps> = ({
 }) => {
   const getIcon = (iconType: IconType) => {
     let iconClass = "w-6 h-6 relative";
-    const getIconWithAccessibility = (Icon: React.ComponentType<any>, label: string) => (
-      <Icon 
-        className={iconClass} 
-        role="img"
-        aria-label={label}
-      >
+    const getIconWithAccessibility = (
+      Icon: React.ComponentType<any>,
+      label: string,
+    ) => (
+      <Icon className={iconClass} role="img" aria-label={label}>
         <title>{label}</title>
       </Icon>
     );
@@ -121,11 +120,11 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
   menuItemGroups,
 }) => {
   const popupId = React.useId();
-  
+
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button 
+        <button
           type="button"
           className="hidden cursor-pointer items-center space-x-5 md:flex"
           aria-label="Open profile menu"
@@ -139,18 +138,22 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
           )}
           <Avatar className="h-10 w-10">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
-            <AvatarFallback aria-hidden="true">{userName?.charAt(0) || "U"}</AvatarFallback>
+            <AvatarFallback aria-hidden="true">
+              {userName?.charAt(0) || "U"}
+            </AvatarFallback>
           </Avatar>
         </button>
       </PopoverTrigger>
-      <PopoverContent 
+      <PopoverContent
         id={popupId}
         className="ml-2 inline-flex w-[280px] flex-col items-start justify-start gap-3.5 rounded-[10px] border border-black/10 bg-[#efefef] px-4 py-5 shadow"
       >
         <div className="inline-flex items-end justify-start gap-4">
           <Avatar className="h-14 w-14 border border-[#474747]">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
-            <AvatarFallback aria-hidden="true">{userName?.charAt(0) || "U"}</AvatarFallback>
+            <AvatarFallback aria-hidden="true">
+              {userName?.charAt(0) || "U"}
+            </AvatarFallback>
           </Avatar>
           <div className="relative h-14 w-[153px]">
             <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747]">
