@@ -70,19 +70,17 @@ async def health():
     return {"status": "healthy"}
 
 
-app = starlette.middleware.cors.CORSMiddleware(
-    app=app,
-    allow_origins=settings.config.backend_cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
-
-
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
+        server_app = starlette.middleware.cors.CORSMiddleware(
+            app=app,
+            allow_origins=settings.config.backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],  # Allows all methods
+            allow_headers=["*"],  # Allows all headers
+        )
         uvicorn.run(
-            app,
+            server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
         )
