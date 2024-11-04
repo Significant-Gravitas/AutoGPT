@@ -69,6 +69,7 @@ services:
       - DATABASEMANAGER_HOST=executor
       - FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
+      - ENCRYPTION_KEY=some-long-random-string-encryption-key
     ports:
       - "8006:8006"
       - "8003:8003" # execution scheduler
@@ -104,7 +105,8 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
-      - DATABASEMANAGER_HOST=0.0.0.0
+      - DATABASEMANAGER_HOST=0.0.0.0 
+      - ENCRYPTION_KEY=some-long-random-string-encryption-key
     ports:
       - "8002:8000"
     networks:
