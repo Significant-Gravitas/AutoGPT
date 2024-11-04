@@ -9,6 +9,15 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: debug-statements
+  
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detect secrets
+        description: Detects high entropy strings that are likely to be passwords.
+        files: ^autogpt_platform/
+        stages: [push]
 
   - repo: local
     # isort needs the context of which packages are installed to function, so we
@@ -42,7 +51,7 @@ repos:
     hooks:
       - id: black
         name: Lint (Black)
-        language_version: python3.10
+        language_version: python3.12
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.0.0
