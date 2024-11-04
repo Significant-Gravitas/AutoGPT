@@ -1,13 +1,15 @@
-import json
-from enum import Enum
 import ipaddress
-import requests
+import json
 import socket
+from enum import Enum
 from urllib.parse import urlparse
+
+import requests
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.settings import Config
+
 
 class HttpMethod(Enum):
     GET = "GET"
@@ -18,9 +20,10 @@ class HttpMethod(Enum):
     OPTIONS = "OPTIONS"
     HEAD = "HEAD"
 
+
 def validate_url(url: str) -> str:
     """
-    To avoid SSRF attacks, the URL should not be a private IP address 
+    To avoid SSRF attacks, the URL should not be a private IP address
     unless it is whitelisted in TRUST_ENDPOINTS_FOR_REQUESTS config.
     """
     if any(url.startswith(origin) for origin in Config().trust_endpoints_for_requests):
@@ -28,7 +31,7 @@ def validate_url(url: str) -> str:
 
     parsed_url = urlparse(url)
     hostname = parsed_url.hostname
-    
+
     if not hostname:
         raise ValueError(f"Invalid URL: Unable to determine hostname from {url}")
 
@@ -38,11 +41,14 @@ def validate_url(url: str) -> str:
             ip_addr = ipaddress.ip_address(ip)
             if ip_addr.is_global:
                 return url
-        raise ValueError(f"Access to private or untrusted IP address at {hostname} is not allowed.")
+        raise ValueError(
+            f"Access to private or untrusted IP address at {hostname} is not allowed."
+        )
     except ValueError:
         raise
     except Exception as e:
         raise ValueError(f"Invalid or unresolvable URL: {url}") from e
+
 
 class SendWebRequestBlock(Block):
     class Input(BlockSchema):
@@ -87,8 +93,8 @@ class SendWebRequestBlock(Block):
             input_data.method.value,
             validated_url,
             headers=input_data.headers,
-            json=input_data.body
-            allow_redirects=False
+            json=input_data.body,
+            allow_redirects=False,
         )
         if response.status_code // 100 == 2:
             yield "response", response.json()

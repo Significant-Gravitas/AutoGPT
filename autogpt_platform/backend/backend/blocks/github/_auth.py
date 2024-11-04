@@ -20,6 +20,7 @@ GithubCredentialsInput = CredentialsMetaInput[
     Literal["api_key", "oauth2"] if GITHUB_OAUTH_IS_CONFIGURED else Literal["api_key"],
 ]
 
+
 def GithubCredentialsField(scope: str) -> GithubCredentialsInput:
     """
     Creates a GitHub credentials input on a block.

@@ -1,4 +1,5 @@
 import base64
+from urllib.parse import urlparse
 
 import requests
 from typing_extensions import TypedDict
@@ -14,9 +15,10 @@ from ._auth import (
     GithubCredentialsInput,
 )
 
-from urllib.parse import urlparse
+
 def is_github_url(url: str) -> bool:
     return urlparse(url).netloc == "github.com"
+
 
 class GithubListTagsBlock(Block):
     class Input(BlockSchema):
@@ -73,7 +75,7 @@ class GithubListTagsBlock(Block):
     ) -> list[Output.TagItem]:
         if is_github_url(repo_url) is False:
             raise ValueError("The input URL must be a valid GitHub URL.")
-            
+
         repo_path = repo_url.replace("https://github.com/", "")
         api_url = f"https://api.github.com/repos/{repo_path}/tags"
         headers = {
@@ -165,7 +167,7 @@ class GithubListBranchesBlock(Block):
     ) -> list[Output.BranchItem]:
         if is_github_url(repo_url) is False:
             raise ValueError("The input URL must be a valid GitHub URL.")
-        
+
         api_url = repo_url.replace("github.com", "api.github.com/repos") + "/branches"
         headers = {
             "Authorization": credentials.bearer(),

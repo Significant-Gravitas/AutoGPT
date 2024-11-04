@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 import requests
 from typing_extensions import TypedDict
 
@@ -12,9 +14,10 @@ from ._auth import (
     GithubCredentialsInput,
 )
 
-from urllib.parse import urlparse
+
 def is_github_url(url: str) -> bool:
     return urlparse(url).netloc == "github.com"
+
 
 # --8<-- [start:GithubCommentBlockExample]
 class GithubCommentBlock(Block):
@@ -65,10 +68,10 @@ class GithubCommentBlock(Block):
     def post_comment(
         credentials: GithubCredentials, issue_url: str, body_text: str
     ) -> tuple[int, str]:
-        
+
         if is_github_url(issue_url) is False:
             raise ValueError("The input URL must be a valid GitHub URL.")
-    
+
         if "/pull/" in issue_url:
             api_url = (
                 issue_url.replace("github.com", "api.github.com/repos").replace(
@@ -242,10 +245,10 @@ class GithubReadIssueBlock(Block):
     def read_issue(
         credentials: GithubCredentials, issue_url: str
     ) -> tuple[str, str, str]:
-        
+
         if not is_github_url(issue_url):
             raise ValueError("The input URL must be a valid GitHub URL.")
-        
+
         api_url = issue_url.replace("github.com", "api.github.com/repos")
 
         headers = {
@@ -335,7 +338,7 @@ class GithubListIssuesBlock(Block):
 
         if not is_github_url(repo_url):
             raise ValueError("The input URL must be a valid GitHub URL.")
-    
+
         api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
         headers = {
             "Authorization": credentials.bearer(),
@@ -403,10 +406,9 @@ class GithubAddLabelBlock(Block):
 
     @staticmethod
     def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        
+
         if is_github_url(issue_url) is False:
             raise ValueError("The input URL must be a valid GitHub URL.")
-    
 
         # Convert the provided GitHub URL to the API URL
         if "/pull/" in issue_url:
@@ -488,7 +490,6 @@ class GithubRemoveLabelBlock(Block):
     def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
         if is_github_url(issue_url) is False:
             raise ValueError("The input URL must be a valid GitHub URL.")
-    
 
         # Convert the provided GitHub URL to the API URL
         if "/pull/" in issue_url:
@@ -661,7 +662,7 @@ class GithubUnassignIssueBlock(Block):
     ) -> str:
         if is_github_url(issue_url) is False:
             raise ValueError("The input URL must be a valid GitHub URL.")
-        
+
         # Extracting repo path and issue number from the issue URL
         repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
             "/issues/"

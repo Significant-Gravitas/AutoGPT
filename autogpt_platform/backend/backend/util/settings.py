@@ -154,11 +154,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     trust_endpoints_for_requests: List[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
