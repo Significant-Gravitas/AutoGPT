@@ -18,7 +18,7 @@ python-dotenv = "^1.0.1"
 supabase = "^2.9.1"
 
 [tool.poetry.group.dev.dependencies]
-redis = "^5.0.8"
+redis = "^5.2.0"
 
 [build-system]
 requires = ["poetry-core"]
