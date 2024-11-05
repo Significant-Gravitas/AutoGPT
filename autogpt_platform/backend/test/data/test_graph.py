@@ -33,7 +33,7 @@ async def test_graph_creation(server: SpinTestServer):
         description="Test graph",
         nodes=[
             Node(id="node_1", block_id=value_block),
-            Node(id="node_2", block_id=input_block),
+            Node(id="node_2", block_id=input_block, input_default={"name": "input"}),
             Node(id="node_3", block_id=value_block),
         ],
         links=[
@@ -96,7 +96,7 @@ async def test_get_input_schema(server: SpinTestServer):
             Node(
                 id="node_0_b",
                 block_id=input_block,
-                input_default={"name": "in_key_b"},
+                input_default={"name": "in_key_b", "advanced": True},
                 metadata={"id": "node_0_b"},
             ),
             Node(id="node_1", block_id=value_block, metadata={"id": "node_1"}),
@@ -138,11 +138,15 @@ async def test_get_input_schema(server: SpinTestServer):
     )
 
     class ExpectedInputSchema(BlockSchema):
-        in_key_a: Any = SchemaField(title="Key A", default="A")
-        in_key_b: Any = SchemaField(title="in_key_b")
+        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=False)
+        in_key_b: Any = SchemaField(title="in_key_b", advanced=True)
 
     class ExpectedOutputSchema(BlockSchema):
-        out_key: Any = SchemaField(description="This is an output key", title="out_key")
+        out_key: Any = SchemaField(
+            description="This is an output key",
+            title="out_key",
+            advanced=False,
+        )
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
