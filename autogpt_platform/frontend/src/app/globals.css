@@ -74,7 +74,7 @@
   }
 
   .agpt-border-input {
-    @apply border-input focus-visible:border-gray-400 focus-visible:outline-none;
+    @apply border border-input focus-visible:border-gray-400 focus-visible:outline-none;
   }
 
   .agpt-shadow-input {

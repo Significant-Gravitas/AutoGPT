@@ -73,7 +73,9 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             auto_merge_enabled: bool = False
             auto_merge_disabled: bool = False
 
-        events: EventsFilter = SchemaField(description="The events to subscribe to")
+        events: EventsFilter = SchemaField(
+            title="Events", description="The events to subscribe to"
+        )
 
     class Output(GitHubTriggerBase.Output):
         event: str = SchemaField(

@@ -11,22 +11,6 @@ code {
     monospace;
 }
 
-input,
-textarea {
-  background-color: #ffffff;
-  color: #000000;
-  border: 1px solid #555;
-  padding: 8px;
-  border-radius: 4px;
-  width: calc(100% - 18px);
-  box-sizing: border-box;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: #aaa;
-}
-
 .modal {
   position: absolute;
   top: 50%;

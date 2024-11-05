@@ -21,6 +21,14 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Input } from "./ui/input";
+import {
+  MultiSelector,
+  MultiSelectorContent,
+  MultiSelectorInput,
+  MultiSelectorItem,
+  MultiSelectorList,
+  MultiSelectorTrigger,
+} from "./ui/multiselect";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
 import { CredentialsInput } from "./integrations/credentials-input";
@@ -134,6 +142,37 @@ export const NodeGenericInputField: FC<{
   }
 
   if ("properties" in propSchema) {
+    // Render a multi-select for all-boolean sub-schemas with more than 3 properties
+    if (
+      Object.values(propSchema.properties).every(
+        (subSchema) => "type" in subSchema && subSchema.type == "boolean",
+      ) &&
+      Object.keys(propSchema.properties).length >= 3
+    ) {
+      const options = Object.keys(propSchema.properties);
+      const selectedKeys = Object.entries(currentValue || {})
+        .filter(([_, v]) => v)
+        .map(([k, _]) => k);
+      return (
+        <NodeMultiSelectInput
+          selfKey={propKey}
+          schema={propSchema}
+          selection={selectedKeys}
+          error={errors[propKey]}
+          className={className}
+          displayName={displayName}
+          handleInputChange={(key, selection) => {
+            handleInputChange(
+              key,
+              Object.fromEntries(
+                options.map((option) => [option, selection.includes(option)]),
+              ),
+            );
+          }}
+        />
+      )
+    }
+
     return (
       <NodeObjectInputTree
         nodeId={nodeId}
@@ -579,6 +618,59 @@ const NodeArrayInput: FC<{
   );
 };
 
+const NodeMultiSelectInput: FC<{
+  selfKey: string;
+  schema: BlockIOObjectSubSchema;  // TODO: Support BlockIOArraySubSchema
+  selection?: string[];
+  error?: string;
+  className?: string;
+  displayName?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+}> = ({
+  selfKey,
+  schema,
+  selection = [],
+  error,
+  className,
+  displayName,
+  handleInputChange,
+}) => {
+  const options = Object.keys(schema.properties);
+
+  return (
+    <div className={cn("flex flex-col", className)}>
+      <MultiSelector
+        values={selection}
+        onValuesChange={(v) => handleInputChange(selfKey, v)}
+      >
+        <MultiSelectorTrigger>
+          <MultiSelectorInput
+            placeholder={
+              schema.placeholder ?? `Select ${displayName || schema.title}...`
+            }
+          />
+        </MultiSelectorTrigger>
+        <MultiSelectorContent>
+          <MultiSelectorList>
+            {options
+              .map(key => ({ ...schema.properties[key], key }))
+              .map(({ key, title, description }) => (
+                <MultiSelectorItem
+                  key={key}
+                  value={key}
+                  title={description}
+                >
+                  {title ?? key}
+                </MultiSelectorItem>
+              ))}
+          </MultiSelectorList>
+        </MultiSelectorContent>
+      </MultiSelector>
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+}
+
 const NodeStringInput: FC<{
   selfKey: string;
   schema: BlockIOStringSubSchema;
@@ -759,7 +851,7 @@ const NodeBooleanInput: FC<{
           checked={value}
           onCheckedChange={(v) => handleInputChange(selfKey, v)}
         />
-        <span className="ml-3">{displayName}</span>
+        {displayName && <span className="ml-3">{displayName}</span>}
       </div>
       {error && <span className="error-message">{error}</span>}
     </div>
