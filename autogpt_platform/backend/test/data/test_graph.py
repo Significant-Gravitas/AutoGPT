@@ -1,9 +1,12 @@
+from typing import Any
 from uuid import UUID
 
 import pytest
 
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock, StoreValueBlock
+from backend.data.block import BlockSchema
 from backend.data.graph import Graph, Link, Node
+from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.model import CreateGraph
 from backend.util.test import SpinTestServer
@@ -38,7 +41,7 @@ async def test_graph_creation(server: SpinTestServer):
                 source_id="node_1",
                 sink_id="node_2",
                 source_name="output",
-                sink_name="input",
+                sink_name="name",
             ),
         ],
     )
@@ -85,11 +88,18 @@ async def test_get_input_schema(server: SpinTestServer):
         description="Test input schema",
         nodes=[
             Node(
-                id="node_0",
+                id="node_0_a",
                 block_id=input_block,
-                input_default={"name": "in_key", "title": "Input Key"},
+                input_default={"name": "in_key_a", "title": "Key A", "value": "A"},
+                metadata={"id": "node_0_a"},
             ),
-            Node(id="node_1", block_id=value_block),
+            Node(
+                id="node_0_b",
+                block_id=input_block,
+                input_default={"name": "in_key_b", "advanced": True},
+                metadata={"id": "node_0_b"},
+            ),
+            Node(id="node_1", block_id=value_block, metadata={"id": "node_1"}),
             Node(
                 id="node_2",
                 block_id=output_block,
@@ -97,13 +107,20 @@ async def test_get_input_schema(server: SpinTestServer):
                     "name": "out_key",
                     "description": "This is an output key",
                 },
+                metadata={"id": "node_2"},
             ),
         ],
         links=[
             Link(
-                source_id="node_0",
+                source_id="node_0_a",
                 sink_id="node_1",
-                source_name="output",
+                source_name="result",
+                sink_name="input",
+            ),
+            Link(
+                source_id="node_0_b",
+                sink_id="node_1",
+                source_name="result",
                 sink_name="input",
             ),
             Link(
@@ -120,12 +137,21 @@ async def test_get_input_schema(server: SpinTestServer):
         create_graph, DEFAULT_USER_ID
     )
 
+    class ExpectedInputSchema(BlockSchema):
+        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=False)
+        in_key_b: Any = SchemaField(title="in_key_b", advanced=True)
+
+    class ExpectedOutputSchema(BlockSchema):
+        out_key: Any = SchemaField(
+            description="This is an output key",
+            title="out_key",
+            advanced=False,
+        )
+
     input_schema = created_graph.input_schema
-    assert len(input_schema) == 1
-    assert input_schema["in_key"].node_id == created_graph.nodes[0].id
-    assert input_schema["in_key"].title == "Input Key"
+    input_schema["title"] = "ExpectedInputSchema"
+    assert input_schema == ExpectedInputSchema.jsonschema()
 
     output_schema = created_graph.output_schema
-    assert len(output_schema) == 1
-    assert output_schema["out_key"].node_id == created_graph.nodes[2].id
-    assert output_schema["out_key"].description == "This is an output key"
+    output_schema["title"] = "ExpectedOutputSchema"
+    assert output_schema == ExpectedOutputSchema.jsonschema()

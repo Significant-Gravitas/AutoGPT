@@ -3,13 +3,13 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, Type
 
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
 from prisma.types import AgentGraphWhereInput
-from pydantic import BaseModel
 from pydantic.fields import computed_field
 
+from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockInput, BlockType, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
 from backend.data.execution import ExecutionStatus
@@ -17,19 +17,6 @@ from backend.data.includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from backend.util import json
 
 logger = logging.getLogger(__name__)
-
-
-class InputSchemaItem(BaseModel):
-    node_id: str
-    title: str | None = None
-    description: str | None = None
-    default: Any | None = None
-
-
-class OutputSchemaItem(BaseModel):
-    node_id: str
-    title: str | None = None
-    description: str | None = None
 
 
 class Link(BaseDbModel):
@@ -118,36 +105,60 @@ class Graph(BaseDbModel):
     nodes: list[Node] = []
     links: list[Link] = []
 
-    @computed_field
-    @property
-    def input_schema(self) -> dict[str, InputSchemaItem]:
+    @staticmethod
+    def _generate_schema(
+        type_class: Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input],
+        data: list[dict],
+    ) -> dict[str, Any]:
+        props = []
+        for p in data:
+            try:
+                props.append(type_class(**p))
+            except Exception as e:
+                logger.warning(f"Invalid {type_class}: {p}, {e}")
+
         return {
-            node.input_default["name"]: InputSchemaItem(
-                node_id=node.id,
-                title=node.input_default.get("title"),
-                description=node.input_default.get("description"),
-                default=node.input_default.get("value"),
-            )
-            for node in self.nodes
-            if (b := get_block(node.block_id))
-            and b.block_type == BlockType.INPUT
-            and "name" in node.input_default
+            "type": "object",
+            "properties": {
+                p.name: {
+                    "secret": p.secret,
+                    "advanced": p.advanced,
+                    "title": p.title or p.name,
+                    **({"description": p.description} if p.description else {}),
+                    **({"default": p.value} if p.value is not None else {}),
+                }
+                for p in props
+            },
+            "required": [p.name for p in props if p.value is None],
         }
 
     @computed_field
     @property
-    def output_schema(self) -> dict[str, OutputSchemaItem]:
-        return {
-            node.input_default["name"]: OutputSchemaItem(
-                node_id=node.id,
-                title=node.input_default.get("title"),
-                description=node.input_default.get("description"),
-            )
-            for node in self.nodes
-            if (b := get_block(node.block_id))
-            and b.block_type == BlockType.OUTPUT
-            and "name" in node.input_default
-        }
+    def input_schema(self) -> dict[str, Any]:
+        return self._generate_schema(
+            AgentInputBlock.Input,
+            [
+                node.input_default
+                for node in self.nodes
+                if (b := get_block(node.block_id))
+                and b.block_type == BlockType.INPUT
+                and "name" in node.input_default
+            ],
+        )
+
+    @computed_field
+    @property
+    def output_schema(self) -> dict[str, Any]:
+        return self._generate_schema(
+            AgentOutputBlock.Input,
+            [
+                node.input_default
+                for node in self.nodes
+                if (b := get_block(node.block_id))
+                and b.block_type == BlockType.OUTPUT
+                and "name" in node.input_default
+            ],
+        )
 
     @property
     def starting_nodes(self) -> list[Node]:
