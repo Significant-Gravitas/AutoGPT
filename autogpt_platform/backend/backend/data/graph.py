@@ -10,7 +10,7 @@ from prisma.types import AgentGraphInclude
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefinedType
 
-from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
+from backend.blocks.basic import AgentInputBlock, AgentOutputBlock, BlockType
 from backend.data.block import BlockInput, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
 from backend.data.execution import ExecutionStatus
@@ -209,16 +209,15 @@ class Graph(GraphMeta):
             if block is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
-            if not for_run:
-                continue  # Skip input completion validation, unless when executing.
-
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
                 + [sanitize(link.sink_name) for link in node.input_links]
             )
             for name in block.input_schema.get_required_fields():
-                if name not in provided_inputs and not isinstance(
-                    block, AgentInputBlock
+                if name not in provided_inputs and (
+                    for_run  # Skip input completion validation, unless when executing.
+                    or block.block_type == BlockType.INPUT
+                    or block.block_type == BlockType.OUTPUT
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
