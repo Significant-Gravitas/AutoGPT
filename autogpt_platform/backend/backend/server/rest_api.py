@@ -3,8 +3,8 @@ import logging
 import typing
 
 import fastapi
-import fastapi.middleware.cors
 import fastapi.responses
+import starlette.middleware.cors
 import uvicorn
 
 import backend.data.block
@@ -45,20 +45,6 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
 )
 
-app.include_router(backend.server.routers.v1.v1_router, tags=["v1"])
-app.add_middleware(
-    fastapi.middleware.cors.CORSMiddleware,
-    allow_origins=settings.config.backend_cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
-
-
-@app.get(path="/health", tags=["health"], dependencies=[])
-async def health():
-    return {"status": "healthy"}
-
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
@@ -67,22 +53,34 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         return fastapi.responses.JSONResponse(
             content={
                 "message": f"{request.method} {request.url.path} failed",
-                "error": str(exc),
+                "detail": str(exc),
             },
             status_code=status_code,
         )
 
     return handler
 
-
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
+app.include_router(backend.server.routers.v1.v1_router, tags=["v1"])
+
+
+@app.get(path="/health", tags=["health"], dependencies=[])
+async def health():
+    return {"status": "healthy"}
 
 
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
+        server_app = starlette.middleware.cors.CORSMiddleware(
+            app=app,
+            allow_origins=settings.config.backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],  # Allows all methods
+            allow_headers=["*"],  # Allows all headers
+        )
         uvicorn.run(
-            app,
+            server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
         )

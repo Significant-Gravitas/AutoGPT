@@ -590,158 +590,174 @@ export default function useAgentGraph(
     [availableNodes],
   );
 
-  const _saveAgent = async (asTemplate: boolean = false) => {
-    //FIXME frontend ids should be resolved better (e.g. returned from the server)
-    // currently this relays on block_id and position
-    const blockIdToNodeIdMap: Record<string, string> = {};
+  const _saveAgent = useCallback(
+    async (asTemplate: boolean = false) => {
+      //FIXME frontend ids should be resolved better (e.g. returned from the server)
+      // currently this relays on block_id and position
+      const blockIdToNodeIdMap: Record<string, string> = {};
 
-    nodes.forEach((node) => {
-      const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
-      blockIdToNodeIdMap[key] = node.id;
-    });
+      nodes.forEach((node) => {
+        const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
+        blockIdToNodeIdMap[key] = node.id;
+      });
 
-    const formattedNodes = nodes.map((node) => {
-      const inputDefault = prepareNodeInputData(node);
-      const inputNodes = edges
-        .filter((edge) => edge.target === node.id)
-        .map((edge) => ({
-          name: edge.targetHandle || "",
-          node_id: edge.source,
-        }));
+      const formattedNodes = nodes.map((node) => {
+        const inputDefault = prepareNodeInputData(node);
+        const inputNodes = edges
+          .filter((edge) => edge.target === node.id)
+          .map((edge) => ({
+            name: edge.targetHandle || "",
+            node_id: edge.source,
+          }));
 
-      const outputNodes = edges
-        .filter((edge) => edge.source === node.id)
-        .map((edge) => ({
-          name: edge.sourceHandle || "",
-          node_id: edge.target,
-        }));
+        const outputNodes = edges
+          .filter((edge) => edge.source === node.id)
+          .map((edge) => ({
+            name: edge.sourceHandle || "",
+            node_id: edge.target,
+          }));
 
-      return {
-        id: node.id,
-        block_id: node.data.block_id,
-        input_default: inputDefault,
-        input_nodes: inputNodes,
-        output_nodes: outputNodes,
-        data: {
-          ...node.data,
-          hardcodedValues: removeEmptyStringsAndNulls(
-            node.data.hardcodedValues,
-          ),
-        },
-        metadata: { position: node.position },
-      };
-    });
+        return {
+          id: node.id,
+          block_id: node.data.block_id,
+          input_default: inputDefault,
+          input_nodes: inputNodes,
+          output_nodes: outputNodes,
+          data: {
+            ...node.data,
+            hardcodedValues: removeEmptyStringsAndNulls(
+              node.data.hardcodedValues,
+            ),
+          },
+          metadata: { position: node.position },
+        };
+      });
 
-    const links = edges.map((edge) => ({
-      source_id: edge.source,
-      sink_id: edge.target,
-      source_name: edge.sourceHandle || "",
-      sink_name: edge.targetHandle || "",
-    }));
-
-    const payload = {
-      id: savedAgent?.id!,
-      name: agentName || "Agent Name",
-      description: agentDescription || "Agent Description",
-      nodes: formattedNodes,
-      links: links,
-    };
-
-    // To avoid saving the same graph, we compare the payload with the saved agent.
-    // Differences in IDs are ignored.
-    const comparedPayload = {
-      ...(({ id, ...rest }) => rest)(payload),
-      nodes: payload.nodes.map(
-        ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
-      ),
-      links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
-    };
-    const comparedSavedAgent = {
-      name: savedAgent?.name,
-      description: savedAgent?.description,
-      nodes: savedAgent?.nodes.map((v) => ({
-        block_id: v.block_id,
-        input_default: v.input_default,
-        metadata: v.metadata,
-      })),
-      links: savedAgent?.links.map((v) => ({
-        sink_name: v.sink_name,
-        source_name: v.source_name,
-      })),
-    };
-
-    let newSavedAgent = null;
-    if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
-      console.warn("No need to save: Graph is the same as version on server");
-      newSavedAgent = savedAgent;
-    } else {
-      console.debug(
-        "Saving new Graph version; old vs new:",
-        comparedPayload,
-        payload,
-      );
-      setNodesSyncedWithSavedAgent(false);
-
-      newSavedAgent = savedAgent
-        ? await (savedAgent.is_template
-            ? api.updateTemplate(savedAgent.id, payload)
-            : api.updateGraph(savedAgent.id, payload))
-        : await (asTemplate
-            ? api.createTemplate(payload)
-            : api.createGraph(payload));
-
-      console.debug("Response from the API:", newSavedAgent);
-    }
-
-    // Route the URL to the new flow ID if it's a new agent.
-    if (!savedAgent) {
-      const path = new URLSearchParams(searchParams);
-      path.set("flowID", newSavedAgent.id);
-      router.push(`${pathname}?${path.toString()}`);
-      return;
-    }
-
-    // Update the node IDs on the frontend
-    setSavedAgent(newSavedAgent);
-    setNodes((prev) => {
-      return newSavedAgent.nodes
-        .map((backendNode) => {
-          const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-          const frontendNodeId = blockIdToNodeIdMap[key];
-          const frontendNode = prev.find((node) => node.id === frontendNodeId);
-
-          return frontendNode
-            ? {
-                ...frontendNode,
-                position: backendNode.metadata.position,
-                data: {
-                  ...frontendNode.data,
-                  hardcodedValues: removeEmptyStringsAndNulls(
-                    frontendNode.data.hardcodedValues,
-                  ),
-                  status: undefined,
-                  backend_id: backendNode.id,
-                  executionResults: [],
-                },
-              }
-            : null;
-        })
-        .filter((node) => node !== null);
-    });
-    // Reset bead count
-    setEdges((edges) => {
-      return edges.map((edge) => ({
-        ...edge,
-        data: {
-          ...edge.data,
-          edgeColor: edge.data?.edgeColor!,
-          beadUp: 0,
-          beadDown: 0,
-          beadData: [],
-        },
+      const links = edges.map((edge) => ({
+        source_id: edge.source,
+        sink_id: edge.target,
+        source_name: edge.sourceHandle || "",
+        sink_name: edge.targetHandle || "",
       }));
-    });
-  };
+
+      const payload = {
+        id: savedAgent?.id!,
+        name: agentName || "Agent Name",
+        description: agentDescription || "Agent Description",
+        nodes: formattedNodes,
+        links: links,
+      };
+
+      // To avoid saving the same graph, we compare the payload with the saved agent.
+      // Differences in IDs are ignored.
+      const comparedPayload = {
+        ...(({ id, ...rest }) => rest)(payload),
+        nodes: payload.nodes.map(
+          ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
+        ),
+        links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
+      };
+      const comparedSavedAgent = {
+        name: savedAgent?.name,
+        description: savedAgent?.description,
+        nodes: savedAgent?.nodes.map((v) => ({
+          block_id: v.block_id,
+          input_default: v.input_default,
+          metadata: v.metadata,
+        })),
+        links: savedAgent?.links.map((v) => ({
+          sink_name: v.sink_name,
+          source_name: v.source_name,
+        })),
+      };
+
+      let newSavedAgent = null;
+      if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
+        console.warn("No need to save: Graph is the same as version on server");
+        newSavedAgent = savedAgent;
+      } else {
+        console.debug(
+          "Saving new Graph version; old vs new:",
+          comparedPayload,
+          payload,
+        );
+        setNodesSyncedWithSavedAgent(false);
+
+        newSavedAgent = savedAgent
+          ? await (savedAgent.is_template
+              ? api.updateTemplate(savedAgent.id, payload)
+              : api.updateGraph(savedAgent.id, payload))
+          : await (asTemplate
+              ? api.createTemplate(payload)
+              : api.createGraph(payload));
+
+        console.debug("Response from the API:", newSavedAgent);
+      }
+
+      // Route the URL to the new flow ID if it's a new agent.
+      if (!savedAgent) {
+        const path = new URLSearchParams(searchParams);
+        path.set("flowID", newSavedAgent.id);
+        router.push(`${pathname}?${path.toString()}`);
+        return;
+      }
+
+      // Update the node IDs on the frontend
+      setSavedAgent(newSavedAgent);
+      setNodes((prev) => {
+        return newSavedAgent.nodes
+          .map((backendNode) => {
+            const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
+            const frontendNodeId = blockIdToNodeIdMap[key];
+            const frontendNode = prev.find(
+              (node) => node.id === frontendNodeId,
+            );
+
+            return frontendNode
+              ? {
+                  ...frontendNode,
+                  position: backendNode.metadata.position,
+                  data: {
+                    ...frontendNode.data,
+                    hardcodedValues: removeEmptyStringsAndNulls(
+                      frontendNode.data.hardcodedValues,
+                    ),
+                    status: undefined,
+                    backend_id: backendNode.id,
+                    executionResults: [],
+                  },
+                }
+              : null;
+          })
+          .filter((node) => node !== null);
+      });
+      // Reset bead count
+      setEdges((edges) => {
+        return edges.map((edge) => ({
+          ...edge,
+          data: {
+            ...edge.data,
+            edgeColor: edge.data?.edgeColor!,
+            beadUp: 0,
+            beadDown: 0,
+            beadData: [],
+          },
+        }));
+      });
+    },
+    [
+      api,
+      nodes,
+      edges,
+      pathname,
+      router,
+      searchParams,
+      savedAgent,
+      agentName,
+      agentDescription,
+      prepareNodeInputData,
+    ],
+  );
 
   const saveAgent = useCallback(
     async (asTemplate: boolean = false) => {
@@ -758,18 +774,7 @@ export default function useAgentGraph(
         });
       }
     },
-    [
-      api,
-      nodes,
-      edges,
-      pathname,
-      router,
-      searchParams,
-      savedAgent,
-      agentName,
-      agentDescription,
-      prepareNodeInputData,
-    ],
+    [_saveAgent, toast],
   );
 
   const requestSave = useCallback(
