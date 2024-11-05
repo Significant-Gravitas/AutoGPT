@@ -1,11 +1,12 @@
 import asyncio
 import logging
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
+from prisma.types import AgentGraphWhereInput
 from pydantic import BaseModel
 from pydantic.fields import computed_field
 
@@ -184,7 +185,7 @@ class Graph(BaseDbModel):
         def sanitize(name):
             return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
 
-        input_links = {node.id: [] for node in self.nodes}
+        input_links = defaultdict(list)
         for link in self.links:
             input_links[link.sink_id].append(link)
 
@@ -328,7 +329,7 @@ async def get_graphs(
     Returns:
         list[Graph]: A list of objects representing the retrieved graph metadata.
     """
-    where_clause: prisma.types.AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {}
 
     if filter_by == "active":
         where_clause["isActive"] = True
@@ -364,7 +365,7 @@ async def get_graph(
 
     Returns `None` if the record is not found.
     """
-    where_clause: prisma.types.AgentGraphWhereInput = {
+    where_clause: AgentGraphWhereInput = {
         "id": graph_id,
         "isTemplate": template,
     }
