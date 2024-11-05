@@ -143,8 +143,11 @@ class AgentInputBlock(Block):
     """
 
     class Input(BlockSchema):
-        value: Any = SchemaField(description="The value to be passed as input.")
         name: str = SchemaField(description="The name of the input.")
+        value: Any = SchemaField(
+            description="The value to be passed as input.",
+            default=None,
+        )
         description: str = SchemaField(
             description="The description of the input.",
             default="",
