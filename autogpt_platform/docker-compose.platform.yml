@@ -69,7 +69,7 @@ services:
       - DATABASEMANAGER_HOST=executor
       - FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
-      - ENCRYPTION_KEY=some-long-random-string-encryption-key
+      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=  # DO NOT USE IN PRODUCTION!!
     ports:
       - "8006:8006"
       - "8003:8003" # execution scheduler
