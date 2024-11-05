@@ -296,7 +296,7 @@ colorama = "^0.4.6"
 expiringdict = "^1.2.2"
 google-cloud-logging = "^3.11.3"
 pydantic = "^2.9.2"
-pydantic-settings = "^2.6.0"
+pydantic-settings = "^2.6.1"
 pyjwt = "^2.8.0"
 python-dotenv = "^1.0.1"
 supabase = "^2.9.1"
@@ -1988,8 +1988,8 @@ python-dateutil = ">=2.5.3"
 tqdm = ">=4.64.1"
 typing-extensions = ">=3.7.4"
 urllib3 = [
-    {version = ">=1.26.5", markers = "python_version >= \"3.12\" and python_version < \"4.0\""},
     {version = ">=1.26.0", markers = "python_version >= \"3.8\" and python_version < \"3.12\""},
+    {version = ">=1.26.5", markers = "python_version >= \"3.12\" and python_version < \"4.0\""},
 ]
 
 [package.extras]
@@ -2285,8 +2285,8 @@ files = [
 annotated-types = ">=0.6.0"
 pydantic-core = "2.23.4"
 typing-extensions = [
-    {version = ">=4.12.2", markers = "python_version >= \"3.13\""},
     {version = ">=4.6.1", markers = "python_version < \"3.13\""},
+    {version = ">=4.12.2", markers = "python_version >= \"3.13\""},
 ]
 
 [package.extras]
@@ -2396,13 +2396,13 @@ typing-extensions = ">=4.6.0,<4.7.0 || >4.7.0"
 
 [[package]]
 name = "pydantic-settings"
-version = "2.6.0"
+version = "2.6.1"
 description = "Settings management using Pydantic"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "pydantic_settings-2.6.0-py3-none-any.whl", hash = "sha256:4a819166f119b74d7f8c765196b165f95cc7487ce58ea27dec8a5a26be0970e0"},
-    {file = "pydantic_settings-2.6.0.tar.gz", hash = "sha256:44a1804abffac9e6a30372bb45f6cafab945ef5af25e66b1c634c01dd39e0188"},
+    {file = "pydantic_settings-2.6.1-py3-none-any.whl", hash = "sha256:7fb0637c786a558d3103436278a7c4f1cfd29ba8973238a50c5bb9a55387da87"},
+    {file = "pydantic_settings-2.6.1.tar.gz", hash = "sha256:e0f92546d8a9923cb8941689abf85d6601a8c19a23e97a34b2964a2e3f813ca0"},
 ]
 
 [package.dependencies]
@@ -2698,13 +2698,13 @@ rpds-py = ">=0.7.0"
 
 [[package]]
 name = "replicate"
-version = "0.34.1"
+version = "1.0.3"
 description = "Python client for Replicate"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "replicate-0.34.1-py3-none-any.whl", hash = "sha256:beeebbdd83dca46eee960c383dfd8dcc48d7922d9fe9e613f242cc69ed522f2f"},
-    {file = "replicate-0.34.1.tar.gz", hash = "sha256:57cf80c7f4d7f6ae503b1bef400f57c26d494724002d7e9a8750d01394dcfc76"},
+    {file = "replicate-1.0.3-py3-none-any.whl", hash = "sha256:8c49d63444b7ea9ac1d6af99eb23a01efb5b7f079cc8a020d6f52b38843db1da"},
+    {file = "replicate-1.0.3.tar.gz", hash = "sha256:0fd9ca5230fe67c42e4508dd96a5b1414b3fefa5342f8921dbb63c74266cb130"},
 ]
 
 [package.dependencies]
@@ -3880,4 +3880,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "bbad5245c6bd3cd1d93d9f047b65e40beda081d83c2eed59eed508c41a9b5ff1"
+content-hash = "aa0e24af7168780d5a06b239e5379d6f11dd0398ace124ab40eadca09c57fe67"
