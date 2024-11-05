@@ -224,9 +224,9 @@ export const CredentialsInput: FC<{
   // Deselect credentials if they do not exist (e.g. llm provider was changed)
   if (
     selectedCredentials &&
-    !savedApiKeys.concat(savedOAuthCredentials).some(
-      (c) => c.id === selectedCredentials.id,
-    )
+    !savedApiKeys
+      .concat(savedOAuthCredentials)
+      .some((c) => c.id === selectedCredentials.id)
   ) {
     onSelectCredentials(undefined);
   }

@@ -11,9 +11,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { LogOutIcon, Trash2Icon } from "lucide-react";
 import { providerIcons } from "@/components/integrations/credentials-input";
-import {
-  CredentialsProvidersContext,
-} from "@/components/integrations/credentials-provider";
+import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import {
   Table,
   TableBody,
@@ -76,16 +74,15 @@ export default function PrivatePage() {
   }
 
   const allCredentials = Object.values(providers).flatMap((provider) =>
-    [...provider.savedOAuthCredentials, ...provider.savedApiKeys].filter((cred) => !cred.hidden)
-      .map(
-      (credentials) => ({
+    [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+      .filter((cred) => !cred.hidden)
+      .map((credentials) => ({
         ...credentials,
         provider: provider.provider,
         providerName: provider.providerName,
         ProviderIcon: providerIcons[provider.provider],
         TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
-      }),
-    ),
+      })),
   );
 
   return (
