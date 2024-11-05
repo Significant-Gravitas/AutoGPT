@@ -150,8 +150,10 @@ services:
     image: busybox
     command: /bin/true
     depends_on:
+      - studio
       - kong
       - auth
+      - meta
       - analytics
       - db
       - vector
