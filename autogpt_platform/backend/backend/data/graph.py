@@ -361,7 +361,6 @@ async def get_node(node_id: str) -> Node:
 async def get_graphs(
     user_id: str,
     include_executions: bool = False,
-    include_nodes: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
 ) -> list[Graph]:
     """
