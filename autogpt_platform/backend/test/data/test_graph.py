@@ -30,7 +30,7 @@ async def test_graph_creation(server: SpinTestServer):
         description="Test graph",
         nodes=[
             Node(id="node_1", block_id=value_block),
-            Node(id="node_2", block_id=input_block),
+            Node(id="node_2", block_id=input_block, input_default={"name": "input"}),
             Node(id="node_3", block_id=value_block),
         ],
         links=[
