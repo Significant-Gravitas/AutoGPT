@@ -80,6 +80,7 @@ export default function useCredentials(): CredentialsData | null {
 
   return {
     ...provider,
+    provider: providerName,
     schema: credentialsSchema,
     supportsApiKey,
     supportsOAuth2,

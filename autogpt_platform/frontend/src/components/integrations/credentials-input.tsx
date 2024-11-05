@@ -83,7 +83,7 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 export const CredentialsInput: FC<{
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
-  onSelectCredentials: (newValue: CredentialsMetaInput) => void;
+  onSelectCredentials: (newValue: CredentialsMetaInput | undefined) => void;
 }> = ({ className, selectedCredentials, onSelectCredentials }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const credentials = useCredentials();
@@ -220,6 +220,16 @@ export const CredentialsInput: FC<{
       )}
     </>
   );
+
+  // Deselect credentials if they do not exist (e.g. llm provider was changed)
+  if (
+    selectedCredentials &&
+    !savedApiKeys.concat(savedOAuthCredentials).some(
+      (c) => c.id === selectedCredentials.id,
+    )
+  ) {
+    onSelectCredentials(undefined);
+  }
 
   // No saved credentials yet
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
