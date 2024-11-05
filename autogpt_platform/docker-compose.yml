@@ -71,13 +71,14 @@ services:
 #      service: frontend
 
   # Supabase services
-  # Uncomment these 2 if you want to use the ui
+  # Uncomment theis if you want to use the ui
   # studio:
   #   <<: *supabase-services
   #   extends:
   #     file: ./supabase/docker/docker-compose.yml
   #     service: studio
 
+  # Required for auth api routing
   kong:
     <<: *supabase-services
     extends:
