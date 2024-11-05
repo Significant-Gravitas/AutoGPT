@@ -7,7 +7,6 @@ from typing import Any, Literal, Type
 
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
 from prisma.types import AgentGraphWhereInput
-from pydantic import BaseModel
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -19,19 +18,6 @@ from backend.data.includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from backend.util import json
 
 logger = logging.getLogger(__name__)
-
-
-class InputSchemaItem(BaseModel):
-    node_id: str
-    title: str | None = None
-    description: str | None = None
-    default: Any | None = None
-
-
-class OutputSchemaItem(BaseModel):
-    node_id: str
-    title: str | None = None
-    description: str | None = None
 
 
 class Link(BaseDbModel):
