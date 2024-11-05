@@ -184,7 +184,11 @@ class Graph(BaseDbModel):
         def sanitize(name):
             return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
 
-        # Nodes: required fields are filled or connected, except for InputBlock.
+        input_links = {node.id: [] for node in self.nodes}
+        for link in self.links:
+            input_links[link.sink_id].append(link)
+
+        # Nodes: required fields are filled or connected
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
@@ -192,11 +196,7 @@ class Graph(BaseDbModel):
 
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
-                + [
-                    sanitize(link.sink_name)
-                    for link in self.links
-                    if link.sink_id == node.id
-                ]
+                + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
             for name in block.input_schema.get_required_fields():
                 if name not in provided_inputs and (
@@ -207,6 +207,7 @@ class Graph(BaseDbModel):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
                     )
+
         node_map = {v.id: v for v in self.nodes}
 
         def is_static_output_block(nid: str) -> bool:
