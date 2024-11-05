@@ -464,7 +464,6 @@ const FlowEditor: React.FC<{
           uiType: nodeSchema.uiType,
         },
       };
-      console.log(">>>>>> ", newNode);
 
       addNodes(newNode);
       setNodeId((prevId) => prevId + 1);

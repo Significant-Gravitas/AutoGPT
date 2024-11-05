@@ -746,7 +746,7 @@ class ExecutionManager(AppService):
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
         if not graph:
-            raise Exception(f"Graph #{graph_id} not found.")
+            raise ValueError(f"Graph #{graph_id} not found.")
 
         graph.validate_graph(for_run=True)
         self._validate_node_input_credentials(graph, user_id)
@@ -768,7 +768,7 @@ class ExecutionManager(AppService):
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
-                raise Exception(error)
+                raise ValueError(error)
             else:
                 nodes_input.append((node.id, input_data))
 

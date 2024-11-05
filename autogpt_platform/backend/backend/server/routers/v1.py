@@ -209,7 +209,7 @@ async def update_graph(
             400, detail="Changing is_template on an existing graph is forbidden"
         )
     graph.is_active = not graph.is_template
-    graph.reassign_ids()
+    graph.reassign_ids(user_id=user_id)
 
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
@@ -403,7 +403,7 @@ async def do_create_graph(
 
     graph.is_template = is_template
     graph.is_active = not is_template
-    graph.reassign_ids(reassign_graph_id=True)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     return await graph_db.create_graph(graph, user_id=user_id)
 

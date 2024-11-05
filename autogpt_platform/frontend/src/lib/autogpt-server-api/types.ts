@@ -207,7 +207,12 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  "version" | "is_active" | "is_template" | "links" | "input_schema" | "output_schema"
+  | "version"
+  | "is_active"
+  | "is_template"
+  | "links"
+  | "input_schema"
+  | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;

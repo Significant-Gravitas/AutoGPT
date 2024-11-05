@@ -49,9 +49,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [filteredBlocks, setFilteredBlocks] = useState<Block[]>([]);
 
-  const constructBlocklist = useCallback((): Block[] => {
+  const getFilteredBlockList = (): Block[] => {
     const blockList = blocks
       .filter((b) => b.uiType !== BlockUIType.AGENT)
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -59,8 +58,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
       (flow) =>
         ({
           id: "e189baac-8c20-45a1-94a7-55177ea42565", // TODO: fetch this programmatically.
-          name: flow.name,
-          description: flow.description,
+          name: `${flow.name} - ID#${flow.id.split("-")[0]} Ver.${flow.version}`,
+          description: `${flow.description}`,
           categories: [{ category: "AGENT", description: "" }],
           inputSchema: flow.input_schema,
           outputSchema: flow.output_schema,
@@ -88,13 +87,12 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           (!selectedCategory ||
             block.categories.some((cat) => cat.category === selectedCategory)),
       );
-  }, [blocks, flows, searchQuery, selectedCategory]);
+  };
 
   const resetFilters = React.useCallback(() => {
     setSearchQuery("");
     setSelectedCategory(null);
-    setFilteredBlocks(constructBlocklist());
-  }, [constructBlocklist]);
+  }, []);
 
   // Extract unique categories from blocks
   const categories = Array.from(
@@ -105,10 +103,6 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         .sort(),
     ]),
   );
-
-  React.useEffect(() => {
-    setFilteredBlocks(constructBlocklist());
-  }, [constructBlocklist]);
 
   return (
     <Popover
@@ -187,9 +181,9 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               className="h-[60vh] w-fit w-full"
               data-id="blocks-control-scroll-area"
             >
-              {filteredBlocks.map((block) => (
+              {getFilteredBlockList().map((block) => (
                 <Card
-                  key={block.id}
+                  key={`${block.id}-${block.name}`}
                   className="m-2 my-4 flex h-20 cursor-pointer shadow-none hover:shadow-lg"
                   data-id={`block-card-${block.id}`}
                   onClick={() =>
