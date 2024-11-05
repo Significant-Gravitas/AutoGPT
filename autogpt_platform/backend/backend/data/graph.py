@@ -192,7 +192,11 @@ class Graph(BaseDbModel):
 
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
-                + [sanitize(link.sink_name) for link in node.input_links]
+                + [
+                    sanitize(link.sink_name)
+                    for link in self.links
+                    if link.sink_id == node.id
+                ]
             )
             for name in block.input_schema.get_required_fields():
                 if name not in provided_inputs and (
@@ -309,7 +313,6 @@ async def get_node(node_id: str) -> Node:
 async def get_graphs(
     user_id: str,
     include_executions: bool = False,
-    include_nodes: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
 ) -> list[Graph]:
     """

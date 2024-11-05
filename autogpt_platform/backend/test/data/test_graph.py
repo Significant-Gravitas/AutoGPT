@@ -110,7 +110,7 @@ async def test_get_input_schema(server: SpinTestServer):
                 source_id="node_1",
                 sink_id="node_2",
                 source_name="output",
-                sink_name="input",
+                sink_name="value",
             ),
         ],
     )
