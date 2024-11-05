@@ -9,7 +9,7 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: debug-statements
-  
+
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
@@ -23,22 +23,25 @@ repos:
     # isort needs the context of which packages are installed to function, so we
     # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
     hooks:
-      - id: isort-autogpt
-        name: Lint (isort) - AutoGPT
+      - id: isort
+        name: Lint (isort) - Classic - AutoGPT
+        alias: isort-classic-autogpt
         entry: poetry -C classic/original_autogpt run isort
         files: ^classic/original_autogpt/
         types: [file, python]
         language: system
 
-      - id: isort-forge
-        name: Lint (isort) - Forge
+      - id: isort
+        name: Lint (isort) - Classic - Forge
+        alias: isort-classic-forge
         entry: poetry -C classic/forge run isort
         files: ^classic/forge/
         types: [file, python]
         language: system
 
-      - id: isort-benchmark
-        name: Lint (isort) - Benchmark
+      - id: isort
+        name: Lint (isort) - Classic - Benchmark
+        alias: isort-classic-benchmark
         entry: poetry -C classic/benchmark run isort
         files: ^classic/benchmark/
         types: [file, python]
@@ -51,7 +54,7 @@ repos:
     hooks:
       - id: black
         name: Lint (Black)
-        language_version: python3.12
+        language_version: python3.10
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.0.0
@@ -59,20 +62,20 @@ repos:
     # them separately.
     hooks:
       - id: flake8
-        name: Lint (Flake8) - AutoGPT
-        alias: flake8-autogpt
+        name: Lint (Flake8) - Classic - AutoGPT
+        alias: flake8-classic-autogpt
         files: ^classic/original_autogpt/(autogpt|scripts|tests)/
         args: [--config=classic/original_autogpt/.flake8]
 
       - id: flake8
-        name: Lint (Flake8) - Forge
-        alias: flake8-forge
+        name: Lint (Flake8) - Classic - Forge
+        alias: flake8-classic-forge
         files: ^classic/forge/(forge|tests)/
         args: [--config=classic/forge/.flake8]
 
       - id: flake8
-        name: Lint (Flake8) - Benchmark
-        alias: flake8-benchmark
+        name: Lint (Flake8) - Classic - Benchmark
+        alias: flake8-classic-benchmark
         files: ^classic/benchmark/(agbenchmark|tests)/((?!reports).)*[/.]
         args: [--config=classic/benchmark/.flake8]
 
@@ -81,8 +84,8 @@ repos:
     # project. To trigger on poetry.lock we also reset the file `types` filter.
     hooks:
       - id: pyright
-        name: Typecheck - AutoGPT
-        alias: pyright-autogpt
+        name: Typecheck - Classic - AutoGPT
+        alias: pyright-classic-autogpt
         entry: poetry -C classic/original_autogpt run pyright
         args: [-p, autogpt, autogpt]
         # include forge source (since it's a path dependency) but exclude *_test.py files:
@@ -92,8 +95,8 @@ repos:
         pass_filenames: false
 
       - id: pyright
-        name: Typecheck - Forge
-        alias: pyright-forge
+        name: Typecheck - Classic - Forge
+        alias: pyright-classic-forge
         entry: poetry -C classic/forge run pyright
         args: [-p, forge, forge]
         files: ^classic/forge/(classic/forge/|poetry\.lock$)
@@ -102,8 +105,8 @@ repos:
         pass_filenames: false
 
       - id: pyright
-        name: Typecheck - Benchmark
-        alias: pyright-benchmark
+        name: Typecheck - Classic - Benchmark
+        alias: pyright-classic-benchmark
         entry: poetry -C classic/benchmark run pyright
         args: [-p, benchmark, benchmark]
         files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
@@ -113,23 +116,26 @@ repos:
 
   - repo: local
     hooks:
-      - id: pytest-autogpt
-        name: Run tests - AutoGPT (excl. slow tests)
+      - id: pytest
+        name: Run tests - Classic - AutoGPT (excl. slow tests)
+        alias: pytest-classic-autogpt
         entry: bash -c 'cd classic/original_autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
         # include forge source (since it's a path dependency) but exclude *_test.py files:
         files: ^(classic/original_autogpt/((autogpt|tests)/|poetry\.lock$)|classic/forge/(classic/forge/.*(?<!_test)\.py|poetry\.lock)$)
         language: system
         pass_filenames: false
 
-      - id: pytest-forge
-        name: Run tests - Forge (excl. slow tests)
+      - id: pytest
+        name: Run tests - Classic - Forge (excl. slow tests)
+        alias: pytest-classic-forge
         entry: bash -c 'cd classic/forge && poetry run pytest --cov=forge -m "not slow"'
         files: ^classic/forge/(classic/forge/|tests/|poetry\.lock$)
         language: system
         pass_filenames: false
 
-      - id: pytest-benchmark
-        name: Run tests - Benchmark
+      - id: pytest
+        name: Run tests - Classic - Benchmark
+        alias: pytest-classic-benchmark
         entry: bash -c 'cd classic/benchmark && poetry run pytest --cov=benchmark'
         files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
         language: system
