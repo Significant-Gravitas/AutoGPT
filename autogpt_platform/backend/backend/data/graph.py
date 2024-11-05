@@ -1,11 +1,12 @@
 import asyncio
 import logging
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal, Type
 
-import prisma.types
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
+from prisma.types import AgentGraphWhereInput
 from pydantic import BaseModel
 from pydantic.fields import computed_field
 
@@ -221,7 +222,11 @@ class Graph(BaseDbModel):
         def sanitize(name):
             return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
 
-        # Nodes: required fields are filled or connected, except for InputBlock.
+        input_links = defaultdict(list)
+        for link in self.links:
+            input_links[link.sink_id].append(link)
+
+        # Nodes: required fields are filled or connected
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
@@ -229,7 +234,7 @@ class Graph(BaseDbModel):
 
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
-                + [sanitize(link.sink_name) for link in node.input_links]
+                + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
             for name in block.input_schema.get_required_fields():
                 if name not in provided_inputs and (
@@ -241,6 +246,7 @@ class Graph(BaseDbModel):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
                     )
+
         node_map = {v.id: v for v in self.nodes}
 
         def is_static_output_block(nid: str) -> bool:
@@ -370,7 +376,7 @@ async def get_graphs(
     Returns:
         list[Graph]: A list of objects representing the retrieved graph metadata.
     """
-    where_clause: prisma.types.AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {}
 
     if filter_by == "active":
         where_clause["isActive"] = True
@@ -406,7 +412,7 @@ async def get_graph(
 
     Returns `None` if the record is not found.
     """
-    where_clause: prisma.types.AgentGraphWhereInput = {
+    where_clause: AgentGraphWhereInput = {
         "id": graph_id,
         "isTemplate": template,
     }
