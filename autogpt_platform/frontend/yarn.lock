@@ -1015,12 +1015,12 @@
   resolved "https://registry.npmjs.org/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
-"@chromatic-com/storybook@^1.9.0":
-  version "1.9.0"
-  resolved "https://registry.npmjs.org/@chromatic-com/storybook/-/storybook-1.9.0.tgz"
-  integrity sha512-vYQ+TcfktEE3GHnLZXHCzXF/sN9dw+KivH8a5cmPyd9YtQs7fZtHrEgsIjWpYycXiweKMo1Lm1RZsjxk8DH3rA==
+"@chromatic-com/storybook@^3.2.2":
+  version "3.2.2"
+  resolved "https://registry.yarnpkg.com/@chromatic-com/storybook/-/storybook-3.2.2.tgz#08754443de55618f802f88450c35266fd6d25db5"
+  integrity sha512-xmXt/GW0hAPbzNTrxYuVo43Adrtjue4DeVrsoIIEeJdGaPNNeNf+DHMlJKOBdlHmCnFUoe9R/0mLM9zUp5bKWw==
   dependencies:
-    chromatic "^11.4.0"
+    chromatic "^11.15.0"
     filesize "^10.0.12"
     jsonfile "^6.1.0"
     react-confetti "^6.1.0"
@@ -4856,10 +4856,10 @@ chokidar@^3.5.3:
   optionalDependencies:
     fsevents "~2.3.2"
 
-chromatic@^11.4.0:
-  version "11.12.5"
-  resolved "https://registry.npmjs.org/chromatic/-/chromatic-11.12.5.tgz"
-  integrity sha512-5z+BXQy3TMyXIzCdCDO9Psc8aMs9kIrCFHhMgYbwA6dTXxAL0oUjHZbICn5h4Ay/fM9cZQPaCH9T7a3myPA8Sw==
+chromatic@^11.15.0:
+  version "11.16.5"
+  resolved "https://registry.yarnpkg.com/chromatic/-/chromatic-11.16.5.tgz#edbc6e407f7d0158e8395896deab194fb0a5ff94"
+  integrity sha512-wUEKXyu3GYmUg6Jq13uyRE9iC8ph5gbfDHdyHH0vQathkGQrcjHHdoxI/GXKIjU6d+xupLon8sxRV9NuZKTWbA==
 
 chrome-trace-event@^1.0.2:
   version "1.0.4"
