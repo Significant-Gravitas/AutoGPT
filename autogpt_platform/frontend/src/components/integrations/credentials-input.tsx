@@ -46,8 +46,10 @@ export const providerIcons: Record<
   CredentialsProviderName,
   React.FC<{ className?: string }>
 > = {
+  anthropic: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
+  groq: fallbackIcon,
   notion: NotionLogoIcon,
   discord: FaDiscord,
   d_id: fallbackIcon,
@@ -56,6 +58,7 @@ export const providerIcons: Record<
   ideogram: fallbackIcon,
   llm: fallbackIcon,
   medium: FaMedium,
+  ollama: fallbackIcon,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,
   pinecone: fallbackIcon,

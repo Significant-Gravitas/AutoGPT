@@ -29,6 +29,7 @@ revid_credentials = APIKeyCredentials(
     api_key=SecretStr(settings.secrets.revid_api_key),
     title="Use Credits for Revid",
     expires_at=None,
+    hidden=True,
 )
 ideogram_credentials = APIKeyCredentials(
     id="760f84fc-b270-42de-91f6-08efe1b512d0",
@@ -36,6 +37,7 @@ ideogram_credentials = APIKeyCredentials(
     api_key=SecretStr(settings.secrets.ideogram_api_key),
     title="Use Credits for Ideogram",
     expires_at=None,
+    hidden=True,
 )
 replicate_credentials = APIKeyCredentials(
     id="6b9fc200-4726-4973-86c9-cd526f5ce5db",
@@ -43,6 +45,7 @@ replicate_credentials = APIKeyCredentials(
     api_key=SecretStr(settings.secrets.replicate_api_key),
     title="Use Credits for Replicate",
     expires_at=None,
+    hidden=True,
 )
 openai_credentials = APIKeyCredentials(
     id="53c25cb8-e3ee-465c-a4d1-e75a4c899c2a",
@@ -50,6 +53,7 @@ openai_credentials = APIKeyCredentials(
     api_key=SecretStr(settings.secrets.openai_api_key),
     title="Use Credits for OpenAI",
     expires_at=None,
+    hidden=True,
 )
 anthropic_credentials = APIKeyCredentials(
     id="24e5d942-d9e3-4798-8151-90143ee55629",
@@ -57,6 +61,7 @@ anthropic_credentials = APIKeyCredentials(
     api_key=SecretStr(settings.secrets.anthropic_api_key),
     title="Use Credits for Anthropic",
     expires_at=None,
+    hidden=True,
 )
 groq_credentials = APIKeyCredentials(
     id="4ec22295-8f97-4dd1-b42b-2c6957a02545",
@@ -64,6 +69,7 @@ groq_credentials = APIKeyCredentials(
     api_key=SecretStr(settings.secrets.groq_api_key),
     title="Use Credits for Groq",
     expires_at=None,
+    hidden=True,
 )
 did_credentials = APIKeyCredentials(
     id="7f7b0654-c36b-4565-8fa7-9a52575dfae2",
@@ -71,6 +77,7 @@ did_credentials = APIKeyCredentials(
     api_key=SecretStr(settings.secrets.did_api_key),
     title="Use Credits for D-ID",
     expires_at=None,
+    hidden=True,
 )
 
 DEFAULT_CREDENTIALS = [

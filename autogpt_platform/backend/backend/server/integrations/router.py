@@ -57,6 +57,7 @@ class CredentialsMetaResponse(BaseModel):
     title: str | None
     scopes: list[str] | None
     username: str | None
+    hidden: bool | None
 
 
 @router.post("/{provider}/callback")
@@ -111,6 +112,7 @@ def callback(
         title=credentials.title,
         scopes=credentials.scopes,
         username=credentials.username,
+        hidden=credentials.hidden,
     )
 
 
@@ -127,6 +129,7 @@ def list_credentials(
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
+            hidden=cred.hidden,
         )
         for cred in credentials
     ]

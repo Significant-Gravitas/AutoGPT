@@ -12,7 +12,6 @@ import { IconKey, IconUser } from "@/components/ui/icons";
 import { LogOutIcon, Trash2Icon } from "lucide-react";
 import { providerIcons } from "@/components/integrations/credentials-input";
 import {
-  CredentialsProviderName,
   CredentialsProvidersContext,
 } from "@/components/integrations/credentials-provider";
 import {
@@ -23,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 
 export default function PrivatePage() {
   const { user, isLoading, error } = useUser();
@@ -62,7 +62,7 @@ export default function PrivatePage() {
     [providers, toast],
   );
 
-  if (isLoading || !providers || !providers) {
+  if (isLoading || !providers) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
@@ -76,7 +76,8 @@ export default function PrivatePage() {
   }
 
   const allCredentials = Object.values(providers).flatMap((provider) =>
-    [...provider.savedOAuthCredentials, ...provider.savedApiKeys].map(
+    [...provider.savedOAuthCredentials, ...provider.savedApiKeys].filter((cred) => !cred.hidden)
+      .map(
       (credentials) => ({
         ...credentials,
         provider: provider.provider,

@@ -8,6 +8,7 @@ class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
     title: Optional[str]
+    hidden: Optional[bool] = False
 
     @field_serializer("*")
     def dump_secret_strings(value: Any, _info):
