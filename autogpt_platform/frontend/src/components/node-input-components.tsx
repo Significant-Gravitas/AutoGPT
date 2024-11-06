@@ -352,14 +352,9 @@ const NodeKeyValueInput: FC<{
     const defaultEntries = new Map(
       Object.entries(entries ?? schema.default ?? {}),
     );
-    const prefix = `${selfKey}_#_`;
-    connections
-      .filter((c) => c.targetHandle.startsWith(prefix))
-      .map((c) => c.targetHandle.slice(prefix.length))
-      .forEach((k) => !defaultEntries.has(k) && defaultEntries.set(k, ""));
 
     return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
-  }, [connections, entries, schema.default, selfKey]);
+  }, [entries, schema.default]);
 
   const [keyValuePairs, setKeyValuePairs] = useState<
     { key: string; value: string | number | null }[]
