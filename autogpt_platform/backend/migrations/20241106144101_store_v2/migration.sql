@@ -1,12 +1,59 @@
 -- CreateEnum
 CREATE TYPE "SubmissionStatus" AS ENUM ('DAFT', 'PENDING', 'APPROVED', 'REJECTED');
 
+-- AlterTable
+ALTER TABLE "AgentGraphExecution" ADD COLUMN     "agentPresetId" TEXT;
+
+-- AlterTable
+ALTER TABLE "AgentGraphExecutionSchedule" ADD COLUMN     "agentPresetId" TEXT;
+
+-- AlterTable
+ALTER TABLE "AgentNodeExecutionInputOutput" ADD COLUMN     "agentPresetId" TEXT;
+
+-- AlterTable
+ALTER TABLE "AnalyticsDetails" ALTER COLUMN "id" DROP DEFAULT;
+
+-- AlterTable
+ALTER TABLE "AnalyticsMetrics" ALTER COLUMN "id" DROP DEFAULT;
+
 -- CreateTable
-CREATE TABLE "Profile" (
-    "id" UUID NOT NULL,
+CREATE TABLE "AgentPreset" (
+    "id" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "userId" TEXT NOT NULL,
+    "agentId" TEXT NOT NULL,
+    "agentVersion" INTEGER NOT NULL,
+
+    CONSTRAINT "AgentPreset_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserAgent" (
+    "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT NOT NULL,
+    "agentId" TEXT NOT NULL,
+    "agentVersion" INTEGER NOT NULL,
+    "agentPresetId" TEXT,
+    "isFavorite" BOOLEAN NOT NULL DEFAULT false,
+    "isCreatedByUser" BOOLEAN NOT NULL DEFAULT false,
+    "isArchived" BOOLEAN NOT NULL DEFAULT false,
+    "isDeleted" BOOLEAN NOT NULL DEFAULT false,
+
+    CONSTRAINT "UserAgent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Profile" (
+    "id" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "userId" TEXT,
     "username" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "links" TEXT[],
@@ -17,7 +64,7 @@ CREATE TABLE "Profile" (
 
 -- CreateTable
 CREATE TABLE "StoreListing" (
-    "id" UUID NOT NULL,
+    "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "isDeleted" BOOLEAN NOT NULL DEFAULT false,
@@ -31,7 +78,7 @@ CREATE TABLE "StoreListing" (
 
 -- CreateTable
 CREATE TABLE "StoreListingVersion" (
-    "id" UUID NOT NULL,
+    "id" TEXT NOT NULL,
     "version" INTEGER NOT NULL DEFAULT 1,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -47,17 +94,17 @@ CREATE TABLE "StoreListingVersion" (
     "isDeleted" BOOLEAN NOT NULL DEFAULT false,
     "isAvailable" BOOLEAN NOT NULL DEFAULT true,
     "isApproved" BOOLEAN NOT NULL DEFAULT false,
-    "storeListingId" UUID,
+    "storeListingId" TEXT,
 
     CONSTRAINT "StoreListingVersion_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "StoreListingReview" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "storeListingVersionId" UUID NOT NULL,
+    "storeListingVersionId" TEXT NOT NULL,
     "reviewByUserId" TEXT NOT NULL,
     "score" INTEGER NOT NULL,
     "comments" TEXT,
@@ -67,17 +114,23 @@ CREATE TABLE "StoreListingReview" (
 
 -- CreateTable
 CREATE TABLE "StoreListingSubmission" (
-    "id" UUID NOT NULL,
+    "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "storeListingId" UUID NOT NULL,
-    "storeListingVersionId" UUID NOT NULL,
+    "storeListingId" TEXT NOT NULL,
+    "storeListingVersionId" TEXT NOT NULL,
     "reviewerId" TEXT NOT NULL,
     "Status" "SubmissionStatus" NOT NULL DEFAULT 'PENDING',
     "reviewComments" TEXT,
 
     CONSTRAINT "StoreListingSubmission_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE INDEX "AgentPreset_userId_idx" ON "AgentPreset"("userId");
+
+-- CreateIndex
+CREATE INDEX "UserAgent_userId_idx" ON "UserAgent"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Profile_username_key" ON "Profile"("username");
@@ -105,6 +158,30 @@ CREATE INDEX "StoreListingSubmission_storeListingId_idx" ON "StoreListingSubmiss
 
 -- CreateIndex
 CREATE INDEX "StoreListingSubmission_Status_idx" ON "StoreListingSubmission"("Status");
+
+-- AddForeignKey
+ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_agentId_agentVersion_fkey" FOREIGN KEY ("agentId", "agentVersion") REFERENCES "AgentGraph"("id", "version") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserAgent" ADD CONSTRAINT "UserAgent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserAgent" ADD CONSTRAINT "UserAgent_agentId_agentVersion_fkey" FOREIGN KEY ("agentId", "agentVersion") REFERENCES "AgentGraph"("id", "version") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserAgent" ADD CONSTRAINT "UserAgent_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AgentGraphExecution" ADD CONSTRAINT "AgentGraphExecution_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AgentNodeExecutionInputOutput" ADD CONSTRAINT "AgentNodeExecutionInputOutput_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSchedule_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Profile" ADD CONSTRAINT "Profile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
