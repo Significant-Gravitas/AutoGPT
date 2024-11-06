@@ -1,10 +1,14 @@
 import fastapi
 import fastapi.responses
 
-store_router = fastapi.APIRouter()
+router = fastapi.APIRouter()
+
+##############################################
+############### Agent Endpoints #############
+##############################################
 
 
-@store_router.get("agents", tags=["store"])
+@router.get("agents", tags=["store"])
 def get_agents(
     featured: bool, top: bool, categories: str, page: int = 1, page_size: int = 20
 ):
@@ -30,3 +34,25 @@ def get_agents(
             },
         ]
     )
+
+
+@router.get("agents/{username}/{slug}")
+def get_agent(agent_id: str, agent_version: int):
+    """Gets the details of an agent"""
+    pass
+
+
+##############################################
+############# Creator Endpoints #############
+##############################################
+
+
+@router.get("creators", tags=["store"])
+def get_creators(page: int = 1, page_size: int = 20):
+    """Get a list of creators"""
+    pass
+
+
+@router.get("creator/{username}", tags=["store"])
+def get_ceator(username: string):
+    """Get the details of a creator"""
