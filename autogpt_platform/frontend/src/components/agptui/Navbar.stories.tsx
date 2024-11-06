@@ -73,6 +73,8 @@ export const Default: Story = {
     avatarSrc: "https://avatars.githubusercontent.com/u/123456789?v=4",
     userEmail: "john.doe@example.com",
     menuItemGroups: defaultMenuItemGroups,
+    credits: 1500,
+    onRefreshCredits: () => console.log("Refreshing credits"),
   },
 };
 
@@ -121,5 +123,27 @@ export const NotLoggedIn: Story = {
     userName: undefined,
     userEmail: undefined,
     avatarSrc: undefined,
+    credits: undefined,
+  },
+};
+
+export const WithCredits: Story = {
+  args: {
+    ...Default.args,
+    credits: 9999,
+  },
+};
+
+export const WithLargeCredits: Story = {
+  args: {
+    ...Default.args,
+    credits: 1000000,
+  },
+};
+
+export const WithZeroCredits: Story = {
+  args: {
+    ...Default.args,
+    credits: 0,
   },
 };

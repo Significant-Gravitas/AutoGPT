@@ -2,7 +2,7 @@ import * as React from "react";
 import { Sidebar } from "@/components/agptui/Sidebar";
 import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 import { IconType } from "@/components/ui/icons";
-import { ProfileNavBar } from "@/components/agptui/ProfileNavBar";
+import { Navbar } from "@/components/agptui/Navbar";
 
 interface ProfilePageProps {
   userName?: string;
@@ -21,6 +21,8 @@ interface ProfilePageProps {
       onClick?: () => void;
     }>;
   }>;
+  isLoggedIn?: boolean;
+  avatarSrc?: string;
 }
 
 const ProfilePage = ({
@@ -33,6 +35,8 @@ const ProfilePage = ({
   links = [],
   categories = [],
   menuItemGroups = [],
+  isLoggedIn = true,
+  avatarSrc,
 }: ProfilePageProps) => {
   const sidebarLinkGroups = [
     {
@@ -80,28 +84,42 @@ const ProfilePage = ({
     },
   ];
 
+  const navLinks = [
+    { name: "Marketplace", href: "/marketplace" },
+    { name: "Library", href: "/library" },
+    { name: "Build", href: "/build" },
+  ];
+
   return (
     <div className="min-h-screen w-full bg-white">
-      <header className="fixed left-0 right-0 top-0 z-50 bg-white">
-        <ProfileNavBar
+      <header className="fixed left-0 right-0 top-0 z-40 bg-white">
+        <Navbar
+          isLoggedIn={isLoggedIn}
           userName={userName}
           userEmail={userEmail}
-          credits={credits}
-          onRefreshCredits={() => console.log("Refresh credits")}
+          links={navLinks}
+          activeLink="/profile"
+          avatarSrc={avatarSrc}
           menuItemGroups={updatedMenuItemGroups}
+          credits={credits}
         />
       </header>
 
-      <div className="pt-[64px]">
+      <div className="pt-[80px]">
         <div className="flex flex-1">
           <nav
-            className="fixed left-[10px] top-[80px] z-40"
+            className="fixed left-[10px] top-[80px] z-30 hidden lg:block"
             aria-label="Main navigation"
           >
             <div className="rounded-lg bg-gray-50">
               <Sidebar linkGroups={sidebarLinkGroups} />
             </div>
           </nav>
+
+          {/* Mobile Sidebar */}
+          <div className="fixed left-4 top-4 z-50 block lg:hidden">
+            <Sidebar linkGroups={sidebarLinkGroups} />
+          </div>
 
           <div className="w-full flex-1 px-4 py-6 md:px-8 lg:ml-[200px]">
             <ProfileInfoForm

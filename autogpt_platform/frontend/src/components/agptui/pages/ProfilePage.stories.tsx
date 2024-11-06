@@ -65,6 +65,8 @@ export const Empty: Story = {
     categories: [],
     credits: 0,
     menuItemGroups: defaultMenuItemGroups,
+    isLoggedIn: true,
+    avatarSrc: undefined,
   },
 };
 
@@ -91,5 +93,14 @@ export const Filled: Story = {
     ].filter((cat) => AVAILABLE_CATEGORIES.includes(cat.name as any)),
     credits: 1500,
     menuItemGroups: defaultMenuItemGroups,
+    isLoggedIn: true,
+    avatarSrc: "https://github.com/alexchen-ai.png",
+  },
+};
+
+export const LoggedOut: Story = {
+  args: {
+    ...Empty.args,
+    isLoggedIn: false,
   },
 };
