@@ -1,11 +1,9 @@
-from urllib.parse import urlparse
-
-import requests
 from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+from ._api import GitHubAPI
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -13,10 +11,6 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
-
-
-def is_github_url(url: str) -> bool:
-    return urlparse(url).netloc == "github.com"
 
 
 class GithubListPullRequestsBlock(Block):
@@ -70,23 +64,13 @@ class GithubListPullRequestsBlock(Block):
 
     @staticmethod
     def list_prs(credentials: GithubCredentials, repo_url: str) -> list[Output.PRItem]:
-        if is_github_url(repo_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/pulls"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = GitHubAPI(credentials)
+        pulls_url = repo_url + "/pulls"
+        response = api.get(pulls_url)
         data = response.json()
         pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = [
             {"title": pr["title"], "url": pr["html_url"]} for pr in data
         ]
-
         return pull_requests
 
     def run(
@@ -119,7 +103,11 @@ class GithubMakePullRequestBlock(Block):
             placeholder="Enter the pull request body",
         )
         head: str = SchemaField(
-            description="The name of the branch where your changes are implemented. For cross-repository pull requests in the same network, namespace head with a user like this: username:branch.",
+            description=(
+                "The name of the branch where your changes are implemented. "
+                "For cross-repository pull requests in the same network, "
+                "namespace head with a user like this: username:branch."
+            ),
             placeholder="Enter the head branch",
         )
         base: str = SchemaField(
@@ -171,19 +159,10 @@ class GithubMakePullRequestBlock(Block):
         head: str,
         base: str,
     ) -> tuple[int, str]:
-        if is_github_url(repo_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-        repo_path = repo_url.replace("https://github.com/", "")
-        api_url = f"https://api.github.com/repos/{repo_path}/pulls"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
+        pulls_url = repo_url + "/pulls"
         data = {"title": title, "body": body, "head": head, "base": base}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        response = api.post(pulls_url, json=data)
         pr_data = response.json()
         return pr_data["number"], pr_data["html_url"]
 
@@ -205,13 +184,8 @@ class GithubMakePullRequestBlock(Block):
             )
             yield "number", number
             yield "url", url
-        except requests.exceptions.HTTPError as http_err:
-            if http_err.response.status_code == 422:
-                error_details = http_err.response.json()
-                error_message = error_details.get("message", "Unknown error")
-            else:
-                error_message = str(http_err)
-            raise RuntimeError(f"Failed to create pull request: {error_message}")
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubReadPullRequestBlock(Block):
@@ -266,45 +240,21 @@ class GithubReadPullRequestBlock(Block):
 
     @staticmethod
     def read_pr(credentials: GithubCredentials, pr_url: str) -> tuple[str, str, str]:
-        if is_github_url(pr_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        api_url = pr_url.replace("github.com", "api.github.com/repos").replace(
-            "/pull/", "/issues/"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = GitHubAPI(credentials)
+        # Adjust the URL to access the issue endpoint for PR metadata
+        issue_url = pr_url.replace("/pull/", "/issues/")
+        response = api.get(issue_url)
         data = response.json()
         title = data.get("title", "No title found")
         body = data.get("body", "No body content found")
         author = data.get("user", {}).get("login", "No user found")
-
         return title, body, author
 
     @staticmethod
     def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
-        api_url = (
-            pr_url.replace("github.com", "api.github.com/repos").replace(
-                "/pull/", "/pulls/"
-            )
-            + "/files"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = GitHubAPI(credentials)
+        files_url = pr_url + "/files"
+        response = api.get(files_url)
         files = response.json()
         changes = []
         for file in files:
@@ -312,7 +262,6 @@ class GithubReadPullRequestBlock(Block):
             patch = file.get("patch")
             if filename and patch:
                 changes.append(f"File: {filename}\n{patch}")
-
         return "\n\n".join(changes)
 
     def run(
@@ -381,26 +330,10 @@ class GithubAssignPRReviewerBlock(Block):
     def assign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
-        if is_github_url(pr_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        # Convert the PR URL to the appropriate API endpoint
-        api_url = (
-            pr_url.replace("github.com", "api.github.com/repos").replace(
-                "/pull/", "/pulls/"
-            )
-            + "/requested_reviewers"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
+        reviewers_url = pr_url + "/requested_reviewers"
         data = {"reviewers": [reviewer]}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        api.post(reviewers_url, json=data)
         return "Reviewer assigned successfully"
 
     def run(
@@ -417,17 +350,8 @@ class GithubAssignPRReviewerBlock(Block):
                 input_data.reviewer,
             )
             yield "status", status
-        except requests.exceptions.HTTPError as http_err:
-            if http_err.response.status_code == 422:
-                error_msg = (
-                    "Failed to assign reviewer: "
-                    f"The reviewer '{input_data.reviewer}' may not have permission "
-                    "or the pull request is not in a valid state. "
-                    f"Detailed error: {http_err.response.text}"
-                )
-            else:
-                error_msg = f"HTTP error: {http_err} - {http_err.response.text}"
-            raise RuntimeError(error_msg)
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubUnassignPRReviewerBlock(Block):
@@ -473,24 +397,10 @@ class GithubUnassignPRReviewerBlock(Block):
     def unassign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
-        if is_github_url(pr_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        api_url = (
-            pr_url.replace("github.com", "api.github.com/repos").replace(
-                "/pull/", "/pulls/"
-            )
-            + "/requested_reviewers"
-        )
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
+        reviewers_url = pr_url + "/requested_reviewers"
         data = {"reviewers": [reviewer]}
-
-        response = requests.delete(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        api.delete(reviewers_url, json=data)
         return "Reviewer unassigned successfully"
 
     def run(
@@ -500,12 +410,15 @@ class GithubUnassignPRReviewerBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.unassign_reviewer(
-            credentials,
-            input_data.pr_url,
-            input_data.reviewer,
-        )
-        yield "status", status
+        try:
+            status = self.unassign_reviewer(
+                credentials,
+                input_data.pr_url,
+                input_data.reviewer,
+            )
+            yield "status", status
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubListPRReviewersBlock(Block):
@@ -564,29 +477,14 @@ class GithubListPRReviewersBlock(Block):
     def list_reviewers(
         credentials: GithubCredentials, pr_url: str
     ) -> list[Output.ReviewerItem]:
-        if is_github_url(pr_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        api_url = (
-            pr_url.replace("github.com", "api.github.com/repos").replace(
-                "/pull/", "/pulls/"
-            )
-            + "/requested_reviewers"
-        )
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = GitHubAPI(credentials)
+        reviewers_url = pr_url + "/requested_reviewers"
+        response = api.get(reviewers_url)
         data = response.json()
         reviewers: list[GithubListPRReviewersBlock.Output.ReviewerItem] = [
             {"username": reviewer["login"], "url": reviewer["html_url"]}
             for reviewer in data.get("users", [])
         ]
-
         return reviewers
 
     def run(

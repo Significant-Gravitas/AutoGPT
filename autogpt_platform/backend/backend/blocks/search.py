@@ -22,7 +22,7 @@ class GetRequest:
         return response.json() if json else response.text
 
     @classmethod
-    def validate_url(self, url: str) -> str:
+    def validate_url(cls, url: str) -> str:
         """
         To avoid SSRF attacks, the URL should not be a private IP address
         unless it is whitelisted in TRUST_ENDPOINTS_FOR_REQUESTS config.

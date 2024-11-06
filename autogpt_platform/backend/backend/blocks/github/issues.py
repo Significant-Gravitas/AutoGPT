@@ -1,11 +1,11 @@
 from urllib.parse import urlparse
 
-import requests
 from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+from ._api import GitHubAPI
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -68,31 +68,10 @@ class GithubCommentBlock(Block):
     def post_comment(
         credentials: GithubCredentials, issue_url: str, body_text: str
     ) -> tuple[int, str]:
-
-        if is_github_url(issue_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + "/comments"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos") + "/comments"
-            )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
         data = {"body": body_text}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        comments_url = issue_url + "/comments"
+        response = api.post(comments_url, json=data)
         comment = response.json()
         return comment["id"], comment["html_url"]
 
@@ -166,19 +145,10 @@ class GithubMakeIssueBlock(Block):
     def create_issue(
         credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> tuple[int, str]:
-        if is_github_url(repo_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
         data = {"title": title, "body": body}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        issues_url = repo_url + "/issues"
+        response = api.post(issues_url, json=data)
         issue = response.json()
         return issue["number"], issue["html_url"]
 
@@ -245,25 +215,12 @@ class GithubReadIssueBlock(Block):
     def read_issue(
         credentials: GithubCredentials, issue_url: str
     ) -> tuple[str, str, str]:
-
-        if not is_github_url(issue_url):
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        api_url = issue_url.replace("github.com", "api.github.com/repos")
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = GitHubAPI(credentials)
+        response = api.get(issue_url)
         data = response.json()
         title = data.get("title", "No title found")
         body = data.get("body", "No body content found")
         user = data.get("user", {}).get("login", "No user found")
-
         return title, body, user
 
     def run(
@@ -335,24 +292,13 @@ class GithubListIssuesBlock(Block):
     def list_issues(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.IssueItem]:
-
-        if not is_github_url(repo_url):
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = GitHubAPI(credentials)
+        issues_url = repo_url + "/issues"
+        response = api.get(issues_url)
         data = response.json()
         issues: list[GithubListIssuesBlock.Output.IssueItem] = [
             {"title": issue["title"], "url": issue["html_url"]} for issue in data
         ]
-
         return issues
 
     def run(
@@ -406,32 +352,11 @@ class GithubAddLabelBlock(Block):
 
     @staticmethod
     def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-
-        if is_github_url(issue_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        # Convert the provided GitHub URL to the API URL
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + "/labels"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos") + "/labels"
-            )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
         data = {"labels": [label]}
-
-        response = requests.post(api_url, headers=headers, json=data)
+        labels_url = issue_url + "/labels"
+        response = api.post(labels_url, json=data)
         response.raise_for_status()
-
         return "Label added successfully"
 
     def run(
@@ -488,34 +413,10 @@ class GithubRemoveLabelBlock(Block):
 
     @staticmethod
     def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        if is_github_url(issue_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        # Convert the provided GitHub URL to the API URL
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + f"/labels/{label}"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos")
-                + f"/labels/{label}"
-            )
-
-        # Log the constructed API URL for debugging
-        print(f"Constructed API URL: {api_url}")
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.delete(api_url, headers=headers)
+        api = GitHubAPI(credentials)
+        label_url = issue_url + f"/labels/{label}"
+        response = api.delete(label_url)
         response.raise_for_status()
-
         return "Label removed successfully"
 
     def run(
@@ -578,26 +479,11 @@ class GithubAssignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        if is_github_url(issue_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        # Extracting repo path and issue number from the issue URL
-        repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
-            "/issues/"
-        )
-        api_url = (
-            f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
+        assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-
-        response = requests.post(api_url, headers=headers, json=data)
+        response = api.post(assignees_url, json=data)
         response.raise_for_status()
-
         return "Issue assigned successfully"
 
     def run(
@@ -660,26 +546,11 @@ class GithubUnassignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        if is_github_url(issue_url) is False:
-            raise ValueError("The input URL must be a valid GitHub URL.")
-
-        # Extracting repo path and issue number from the issue URL
-        repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
-            "/issues/"
-        )
-        api_url = (
-            f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = GitHubAPI(credentials)
+        assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-
-        response = requests.delete(api_url, headers=headers, json=data)
+        response = api.delete(assignees_url, json=data)
         response.raise_for_status()
-
         return "Issue unassigned successfully"
 
     def run(
