@@ -311,8 +311,15 @@ class AIStructuredResponseGeneratorBlock(Block):
                     max_tokens=max_tokens or 8192,
                 )
 
+                if not resp.content:
+                    raise ValueError("No content returned from Anthropic.")
+
                 return (
-                    resp.content[0].text if resp.content else "",
+                    (
+                        resp.content[0].name
+                        if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
+                        else resp.content[0].text
+                    ),
                     resp.usage.input_tokens,
                     resp.usage.output_tokens,
                 )
