@@ -5,7 +5,13 @@ const meta: Meta<typeof PublishAgentInfo> = {
   title: "AGPT UI/Publish Agent Info",
   component: PublishAgentInfo,
   tags: ["autodocs"],
-  decorators: [(Story) => <div style={{ maxWidth: "670px", margin: "0 auto" }}><Story /></div>],
+  decorators: [
+    (Story) => (
+      <div style={{ maxWidth: "670px", margin: "0 auto" }}>
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 export default meta;
@@ -28,7 +34,8 @@ export const Filled: Story = {
       thumbnailSrc: "https://picsum.photos/seed/seo/500/350",
       youtubeLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       category: "SEO",
-      description: "This AI agent specializes in analyzing websites and providing actionable recommendations to improve search engine optimization. It can perform keyword research, analyze backlinks, and suggest content improvements.",
+      description:
+        "This AI agent specializes in analyzing websites and providing actionable recommendations to improve search engine optimization. It can perform keyword research, analyze backlinks, and suggest content improvements.",
     },
   },
 };
@@ -42,7 +49,8 @@ export const ThreeImages: Story = {
       thumbnailSrc: "https://picsum.photos/seed/initial/500/350",
       youtubeLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       category: "SEO",
-      description: "This agent allows you to upload and manage multiple images.",
+      description:
+        "This agent allows you to upload and manage multiple images.",
       additionalImages: [
         "https://picsum.photos/seed/second/500/350",
         "https://picsum.photos/seed/third/500/350",

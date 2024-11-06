@@ -58,7 +58,6 @@ export const Page: React.FC<PageProps> = ({
   featuredCreators,
   menuItemGroups,
 }) => {
-
   const handleFilterChange = (selectedFilters: string[]) => {
     console.log("Selected filters:", selectedFilters);
     // Implement filter functionality
@@ -90,9 +89,7 @@ export const Page: React.FC<PageProps> = ({
         menuItemGroups={menuItemGroups}
       />
       <main className="px-4">
-        <HeroSection
-          onFilterChange={handleFilterChange}
-        />
+        <HeroSection onFilterChange={handleFilterChange} />
         <FeaturedSection
           featuredAgents={featuredAgents}
           onCardClick={handleCardClick}

@@ -103,7 +103,7 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
 
 @v1_router.get(path="/credits", dependencies=[Depends(auth_middleware)])
 async def get_user_credits(
-    user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
     return {"credits": await _user_credit_model.get_or_refill_credit(user_id)}
 
@@ -373,7 +373,7 @@ async def get_graph_run_status(
     dependencies=[Depends(auth_middleware)],
 )
 async def get_templates(
-    user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[graph_db.GraphMeta]:
     return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
 

@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import * as React from "react";
 import { SearchBar } from "@/components/agptui/SearchBar";
@@ -9,7 +9,6 @@ export const HeroSection: React.FC = () => {
   const router = useRouter();
 
   function onFilterChange(selectedFilters: string[]) {
-
     const encodedTerm = encodeURIComponent(selectedFilters.join(", "));
     router.push(`/search?searchTerm=${encodedTerm}`);
   }

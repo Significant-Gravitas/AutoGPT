@@ -24,57 +24,68 @@ type Story = StoryObj<typeof meta>;
 
 const mockFeaturedAgents = [
   {
-    agentName: "SEO Optimizer Pro",
-    subHeading: "Optimize your website's SEO",
+    agentName: "Personalized Morning Coffee Newsletter example of three lines",
+    subHeading:
+      "Transform ideas into breathtaking images with this AI-powered Image Generator.",
     creatorName: "AI Solutions Inc.",
     description:
-      "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
+      "Elevate your web content with this powerful AI Webpage Copy Improver. Designed for marketers, SEO specialists, and web developers, this tool analyses and enhances website copy for maximum impact. Using advanced language models, it optimizes text for better clarity, SEO performance, and increased conversion rates.",
     runs: 50000,
     rating: 4.7,
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-  },
-  {
-    agentName: "Content Writer AI",
-    subHeading: "Create engaging content",
-    creatorName: "WordCraft AI",
-    description:
-      "Generate high-quality, engaging content for your blog, social media, or marketing campaigns.",
-    runs: 75000,
-    rating: 4.5,
-    agentImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
   },
   {
     agentName: "Data Analyzer Lite",
-    subHeading: "Analyze data with ease",
+    subHeading: "Basic data analysis tool",
     creatorName: "DataTech",
-    description: "A basic tool for analyzing small to medium-sized datasets.",
+    description:
+      "A lightweight data analysis tool for basic data processing needs.",
     runs: 10000,
-    rating: 3.8,
+    rating: 2.8,
     agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
   },
   {
-    agentName: "Social Media Manager",
-    subHeading: "Automate your social presence",
-    creatorName: "SocialBot Inc",
+    agentName: "CodeAssist AI",
+    subHeading: "Your AI coding companion",
+    creatorName: "DevTools Co.",
     description:
-      "Schedule posts, analyze engagement, and grow your social media following.",
-    runs: 25000,
+      "An intelligent coding assistant that helps developers write better code faster.",
+    runs: 1000000,
+    rating: 4.9,
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+  },
+  {
+    agentName: "MultiTasker",
+    subHeading: "All-in-one productivity suite",
+    creatorName: "Productivity Plus",
+    description:
+      "A comprehensive productivity suite that combines task management, note-taking, and project planning into one seamless interface. Features include smart task prioritization, automated scheduling, and AI-powered insights to help you work more efficiently.",
+    runs: 75000,
+    rating: 4.5,
+    agentImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+  },
+  {
+    agentName: "QuickTask",
+    subHeading: "Fast task automation",
+    creatorName: "EfficientWorks",
+    description: "Simple and efficient task automation tool.",
+    runs: 50000,
     rating: 4.2,
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-  },
-  {
-    agentName: "Email Marketing Assistant",
-    subHeading: "Optimize email campaigns",
-    creatorName: "EmailPro AI",
-    description:
-      "Create and optimize email campaigns with AI-powered suggestions.",
-    runs: 30000,
-    rating: 4.4,
-    agentImage:
+    creatorImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
   },
 ];
@@ -107,9 +118,11 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const firstCard = canvas.getAllByRole("featured-store-card")[0];
-    await userEvent.click(firstCard);
-    await userEvent.hover(firstCard);
-    await expect(firstCard).toHaveClass("hover:shadow-lg");
+    const featuredCard = canvas.getByText(
+      "Personalized Morning Coffee Newsletter example of three lines",
+    );
+
+    await userEvent.hover(featuredCard);
+    await userEvent.click(featuredCard);
   },
 };

@@ -28,10 +28,12 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     initialData?.additionalImages
       ? [initialData.thumbnailSrc, ...initialData.additionalImages]
       : initialData?.thumbnailSrc
-      ? [initialData.thumbnailSrc]
-      : []
+        ? [initialData.thumbnailSrc]
+        : [],
   );
-  const [selectedImage, setSelectedImage] = React.useState<string | null>(initialData?.thumbnailSrc || null);
+  const [selectedImage, setSelectedImage] = React.useState<string | null>(
+    initialData?.thumbnailSrc || null,
+  );
   const thumbnailsContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const handleRemoveImage = (indexToRemove: number) => {
@@ -45,47 +47,63 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[670px] bg-white rounded-3xl shadow-lg border border-slate-200 flex flex-col mx-auto">
-      <div className="p-6 border-b border-slate-200 relative">
-        <div className="absolute top-2 right-4">
+    <div className="mx-auto flex w-full max-w-[670px] flex-col rounded-3xl border border-slate-200 bg-white shadow-lg">
+      <div className="relative border-b border-slate-200 p-6">
+        <div className="absolute right-4 top-2">
           <button
             onClick={onClose}
-            className="w-[38px] h-[38px] rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+            className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200"
             aria-label="Close"
           >
             <IconClose size="default" className="text-neutral-600" />
           </button>
         </div>
-        <h2 className="text-neutral-900 text-2xl font-semibold font-['Poppins'] leading-loose text-center">Publish Agent</h2>
-        <p className="text-neutral-600 text-base font-normal font-['Geist'] leading-7 text-center">Write a bit of details about your agent</p>
+        <h2 className="text-center font-['Poppins'] text-2xl font-semibold leading-loose text-neutral-900">
+          Publish Agent
+        </h2>
+        <p className="text-center font-['Geist'] text-base font-normal leading-7 text-neutral-600">
+          Write a bit of details about your agent
+        </p>
       </div>
-      
-      <div className="flex-grow p-6 space-y-5 overflow-y-auto">
+
+      <div className="flex-grow space-y-5 overflow-y-auto p-6">
         <div className="space-y-1.5">
-          <label htmlFor="title" className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">Title</label>
+          <label
+            htmlFor="title"
+            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950"
+          >
+            Title
+          </label>
           <input
             id="title"
             type="text"
             placeholder="Agent name"
             defaultValue={initialData?.title}
-            className="w-full pl-4 pr-14 py-2.5 rounded-[55px] border border-slate-200 text-slate-500 text-base font-normal font-['Geist'] leading-normal"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="subheader" className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">Subheader</label>
+          <label
+            htmlFor="subheader"
+            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950"
+          >
+            Subheader
+          </label>
           <input
             id="subheader"
             type="text"
             placeholder="A tagline for your agent"
             defaultValue={initialData?.subheader}
-            className="w-full pl-4 pr-14 py-2.5 rounded-[55px] border border-slate-200 text-slate-500 text-base font-normal font-['Geist'] leading-normal"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           />
         </div>
 
         <div className="space-y-2.5">
-          <label className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">Thumbnail images</label>
-          <div className="h-[350px] p-2.5 rounded-[20px] border border-neutral-300 flex items-center justify-center overflow-hidden">
+          <label className="font-['Geist'] text-sm font-medium leading-tight text-slate-950">
+            Thumbnail images
+          </label>
+          <div className="flex h-[350px] items-center justify-center overflow-hidden rounded-[20px] border border-neutral-300 p-2.5">
             {selectedImage ? (
               <Image
                 src={selectedImage}
@@ -96,19 +114,26 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                 className="rounded-md"
               />
             ) : (
-              <p className="text-neutral-600 text-sm font-normal font-['Geist']">No images yet</p>
+              <p className="font-['Geist'] text-sm font-normal text-neutral-600">
+                No images yet
+              </p>
             )}
           </div>
-          <div ref={thumbnailsContainerRef} className="flex items-center space-x-2 overflow-x-auto">
+          <div
+            ref={thumbnailsContainerRef}
+            className="flex items-center space-x-2 overflow-x-auto"
+          >
             {images.length === 0 ? (
-              <div className="w-full flex justify-center">
+              <div className="flex w-full justify-center">
                 <Button
                   onClick={handleAddImage}
                   variant="ghost"
-                  className="w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center hover:bg-neutral-300"
+                  className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300"
                 >
                   <IconPlus size="lg" className="text-neutral-600" />
-                  <span className="text-neutral-600 text-xs font-normal font-['Geist'] mt-1">Add image</span>
+                  <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600">
+                    Add image
+                  </span>
                 </Button>
               </div>
             ) : (
@@ -121,12 +146,12 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       width={100}
                       height={70}
                       objectFit="cover"
-                      className="rounded-md cursor-pointer"
+                      className="cursor-pointer rounded-md"
                       onClick={() => setSelectedImage(src)}
                     />
                     <button
                       onClick={() => handleRemoveImage(index)}
-                      className="absolute top-1 right-1 w-5 h-5 bg-white bg-opacity-70 rounded-full flex items-center justify-center hover:bg-opacity-100 transition-opacity"
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white bg-opacity-70 transition-opacity hover:bg-opacity-100"
                       aria-label="Remove image"
                     >
                       <IconClose size="sm" className="text-neutral-600" />
@@ -136,10 +161,12 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                 <Button
                   onClick={handleAddImage}
                   variant="ghost"
-                  className="w-[100px] h-[70px] bg-neutral-200 rounded-md flex flex-col items-center justify-center hover:bg-neutral-300"
+                  className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300"
                 >
                   <IconPlus size="lg" className="text-neutral-600" />
-                  <span className="text-neutral-600 text-xs font-normal font-['Geist'] mt-1">Add image</span>
+                  <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600">
+                    Add image
+                  </span>
                 </Button>
               </>
             )}
@@ -147,13 +174,17 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">AI image generator</label>
+          <label className="font-['Geist'] text-sm font-medium leading-tight text-slate-950">
+            AI image generator
+          </label>
           <div className="flex items-center justify-between">
-            <p className="text-slate-700 text-base font-normal font-['Geist'] leading-normal">You can use AI to generate a cover image for you</p>
+            <p className="font-['Geist'] text-base font-normal leading-normal text-slate-700">
+              You can use AI to generate a cover image for you
+            </p>
             <Button
               variant="default"
               size="sm"
-              className="text-white bg-neutral-800 hover:bg-neutral-900"
+              className="bg-neutral-800 text-white hover:bg-neutral-900"
             >
               Generate
             </Button>
@@ -161,22 +192,32 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="youtube" className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">YouTube video link</label>
+          <label
+            htmlFor="youtube"
+            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950"
+          >
+            YouTube video link
+          </label>
           <input
             id="youtube"
             type="text"
             placeholder="Paste a video link here"
             defaultValue={initialData?.youtubeLink}
-            className="w-full pl-4 pr-14 py-2.5 rounded-[55px] border border-slate-200 text-slate-500 text-base font-normal font-['Geist'] leading-normal"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="category" className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">Category</label>
+          <label
+            htmlFor="category"
+            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950"
+          >
+            Category
+          </label>
           <select
             id="category"
             defaultValue={initialData?.category}
-            className="w-full pl-4 pr-5 py-2.5 rounded-[55px] border border-slate-200 text-slate-500 text-base font-normal font-['Geist'] leading-normal appearance-none"
+            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           >
             <option value="">Select a category for your agent</option>
             <option value="SEO">SEO</option>
@@ -185,17 +226,22 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="description" className="text-slate-950 text-sm font-medium font-['Geist'] leading-tight">Description</label>
+          <label
+            htmlFor="description"
+            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950"
+          >
+            Description
+          </label>
           <textarea
             id="description"
             placeholder="Describe your agent and what it does"
             defaultValue={initialData?.description}
-            className="w-full h-[100px] pl-4 pr-14 py-2.5 rounded-2xl border border-slate-200 text-slate-900 text-base font-normal font-['Geist'] leading-normal resize-none bg-white"
+            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-900"
           ></textarea>
         </div>
       </div>
-      
-      <div className="p-6 border-t border-slate-200 flex justify-between gap-4">
+
+      <div className="flex justify-between gap-4 border-t border-slate-200 p-6">
         <Button
           onClick={onBack}
           variant="outline"
@@ -208,7 +254,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           onClick={onSubmit}
           variant="default"
           size="default"
-          className="w-full sm:flex-1 text-white bg-neutral-800 hover:bg-neutral-900"
+          className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
         >
           Submit for review
         </Button>
