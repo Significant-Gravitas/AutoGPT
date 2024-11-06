@@ -13,12 +13,12 @@ const meta = {
     nextjs: {
       appDirectory: true,
       navigation: {
-        pathname: '/search',
+        pathname: "/search",
         query: {
-          searchTerm: ''
-        }
-      }
-    }
+          searchTerm: "",
+        },
+      },
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -30,7 +30,7 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div className="w-full max-w-screen-lg mx-auto p-4">
+      <div className="mx-auto w-full max-w-screen-lg p-4">
         <Story />
       </div>
     ),
@@ -50,7 +50,7 @@ export const CustomStyles: Story = {
   args: {
     placeholder: "Enter your search query",
     backgroundColor: "bg-blue-100",
-    iconColor: "text-blue-500", 
+    iconColor: "text-blue-500",
     textColor: "text-blue-700",
     placeholderColor: "text-blue-400",
   },

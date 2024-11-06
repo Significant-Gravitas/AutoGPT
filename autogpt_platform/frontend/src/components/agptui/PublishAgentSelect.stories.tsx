@@ -11,15 +11,51 @@ export default meta;
 type Story = StoryObj<typeof PublishAgentSelect>;
 
 const mockAgents = [
-  { name: "SEO Optimizer", lastEdited: "2 days ago", imageSrc: "https://picsum.photos/seed/seo/300/200" },
-  { name: "Content Writer", lastEdited: "5 days ago", imageSrc: "https://picsum.photos/seed/writer/300/200" },
-  { name: "Data Analyzer", lastEdited: "1 week ago", imageSrc: "https://picsum.photos/seed/data/300/200" },
-  { name: "Image Recognition", lastEdited: "2 weeks ago", imageSrc: "https://picsum.photos/seed/image/300/200" },
-  { name: "Chatbot Assistant", lastEdited: "3 weeks ago", imageSrc: "https://picsum.photos/seed/chat/300/200" },
-  { name: "Code Generator", lastEdited: "1 month ago", imageSrc: "https://picsum.photos/seed/code/300/200" },
-  { name: "AI Translator", lastEdited: "6 weeks ago", imageSrc: "https://picsum.photos/seed/translate/300/200" },
-  { name: "Voice Assistant", lastEdited: "2 months ago", imageSrc: "https://picsum.photos/seed/voice/300/200" },
-  { name: "Data Visualizer", lastEdited: "3 months ago", imageSrc: "https://picsum.photos/seed/visualize/300/200" },
+  {
+    name: "SEO Optimizer",
+    lastEdited: "2 days ago",
+    imageSrc: "https://picsum.photos/seed/seo/300/200",
+  },
+  {
+    name: "Content Writer",
+    lastEdited: "5 days ago",
+    imageSrc: "https://picsum.photos/seed/writer/300/200",
+  },
+  {
+    name: "Data Analyzer",
+    lastEdited: "1 week ago",
+    imageSrc: "https://picsum.photos/seed/data/300/200",
+  },
+  {
+    name: "Image Recognition",
+    lastEdited: "2 weeks ago",
+    imageSrc: "https://picsum.photos/seed/image/300/200",
+  },
+  {
+    name: "Chatbot Assistant",
+    lastEdited: "3 weeks ago",
+    imageSrc: "https://picsum.photos/seed/chat/300/200",
+  },
+  {
+    name: "Code Generator",
+    lastEdited: "1 month ago",
+    imageSrc: "https://picsum.photos/seed/code/300/200",
+  },
+  {
+    name: "AI Translator",
+    lastEdited: "6 weeks ago",
+    imageSrc: "https://picsum.photos/seed/translate/300/200",
+  },
+  {
+    name: "Voice Assistant",
+    lastEdited: "2 months ago",
+    imageSrc: "https://picsum.photos/seed/voice/300/200",
+  },
+  {
+    name: "Data Visualizer",
+    lastEdited: "3 months ago",
+    imageSrc: "https://picsum.photos/seed/visualize/300/200",
+  },
 ];
 
 const defaultArgs = {
