@@ -49,6 +49,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
+    "cookie": "0.7.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
     "elliptic": "6.6.0",
