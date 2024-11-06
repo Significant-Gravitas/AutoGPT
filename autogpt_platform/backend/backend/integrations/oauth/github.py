@@ -56,13 +56,12 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-        response = requests.delete(
+        requests.delete(
             url=self.revoke_url.format(client_id=self.client_id),
             auth=(self.client_id, self.client_secret),
             headers=headers,
             json={"access_token": credentials.access_token.get_secret_value()},
         )
-        response.raise_for_status()
         return True
 
     def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
@@ -88,7 +87,6 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         }
         headers = {"Accept": "application/json"}
         response = requests.post(self.token_url, data=request_body, headers=headers)
-        response.raise_for_status()
         token_data: dict = response.json()
 
         username = self._request_username(token_data["access_token"])

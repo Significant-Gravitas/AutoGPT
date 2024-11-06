@@ -49,7 +49,6 @@ class NotionOAuthHandler(BaseOAuthHandler):
             "Accept": "application/json",
         }
         response = requests.post(self.token_url, json=request_body, headers=headers)
-        response.raise_for_status()
         token_data = response.json()
         # Email is only available for non-bot users
         email = (

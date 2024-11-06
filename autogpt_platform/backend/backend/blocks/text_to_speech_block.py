@@ -86,7 +86,6 @@ class UnrealTextToSpeechBlock(Block):
         }
 
         response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
         return response.json()
 
     def run(

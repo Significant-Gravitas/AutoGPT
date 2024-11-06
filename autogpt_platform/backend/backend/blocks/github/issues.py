@@ -355,8 +355,7 @@ class GithubAddLabelBlock(Block):
         api = get_api(credentials)
         data = {"labels": [label]}
         labels_url = issue_url + "/labels"
-        response = api.post(labels_url, json=data)
-        response.raise_for_status()
+        api.post(labels_url, json=data)
         return "Label added successfully"
 
     def run(
@@ -415,8 +414,7 @@ class GithubRemoveLabelBlock(Block):
     def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
         api = get_api(credentials)
         label_url = issue_url + f"/labels/{label}"
-        response = api.delete(label_url)
-        response.raise_for_status()
+        api.delete(label_url)
         return "Label removed successfully"
 
     def run(
@@ -482,8 +480,7 @@ class GithubAssignIssueBlock(Block):
         api = get_api(credentials)
         assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-        response = api.post(assignees_url, json=data)
-        response.raise_for_status()
+        api.post(assignees_url, json=data)
         return "Issue assigned successfully"
 
     def run(
@@ -549,8 +546,7 @@ class GithubUnassignIssueBlock(Block):
         api = get_api(credentials)
         assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-        response = api.delete(assignees_url, json=data)
-        response.raise_for_status()
+        api.delete(assignees_url, json=data)
         return "Issue unassigned successfully"
 
     def run(

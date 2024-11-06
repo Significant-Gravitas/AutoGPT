@@ -118,7 +118,6 @@ class CreateTalkingAvatarVideoBlock(Block):
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
         response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
         return response.json()
 
     def get_clip_status(self, api_key: SecretStr, clip_id: str) -> dict:
@@ -128,7 +127,6 @@ class CreateTalkingAvatarVideoBlock(Block):
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
         return response.json()
 
     def run(

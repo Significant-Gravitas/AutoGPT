@@ -56,7 +56,6 @@ class JinaChunkingBlock(Block):
             }
 
             response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
             result = response.json()
 
             all_chunks.extend(result.get("chunks", []))

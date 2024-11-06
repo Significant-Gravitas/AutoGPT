@@ -50,12 +50,14 @@ class Requests:
 
     def __init__(
         self,
-        trusted_origins: list[str],
+        trusted_origins: list[str] | None = None,
+        allow_redirects: bool = False,
         raise_for_status: bool = True,
         extra_url_validator: Callable[[str], str] | None = None,
         extra_headers: dict[str, str] | None = None,
     ):
-        self.trusted_origins = trusted_origins
+        self.trusted_origins = trusted_origins or []
+        self.allow_redirects = allow_redirects
         self.raise_for_status = raise_for_status
         self.extra_url_validator = extra_url_validator
         self.extra_headers = extra_headers
@@ -68,7 +70,14 @@ class Requests:
             url = self.extra_url_validator(url)
         url = validate_url(url, self.trusted_origins)
 
-        response = req.request(method, url, headers=headers, *args, **kwargs)
+        response = req.request(
+            method,
+            url,
+            headers=headers,
+            allow_redirects=self.allow_redirects,
+            *args,
+            **kwargs,
+        )
         if self.raise_for_status:
             response.raise_for_status()
 
@@ -96,4 +105,4 @@ class Requests:
         return self.request("PATCH", url, *args, **kwargs)
 
 
-requests = Requests(Config().trust_endpoints_for_requests)
+requests = Requests(trusted_origins=Config().trust_endpoints_for_requests)

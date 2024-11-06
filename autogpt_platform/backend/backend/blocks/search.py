@@ -1,7 +1,5 @@
-import ipaddress
-import socket
 from typing import Any, Literal
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
@@ -9,48 +7,13 @@ from pydantic import SecretStr
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 from backend.util.request import requests
-from backend.util.settings import Config
 
 
 class GetRequest:
     @classmethod
     def get_request(cls, url: str, json=False) -> Any:
-        validated_url = cls().validate_url(url)
-
-        response = requests.get(validated_url, allow_redirects=False)
-        response.raise_for_status()
+        response = requests.get(url)
         return response.json() if json else response.text
-
-    @classmethod
-    def validate_url(cls, url: str) -> str:
-        """
-        To avoid SSRF attacks, the URL should not be a private IP address
-        unless it is whitelisted in TRUST_ENDPOINTS_FOR_REQUESTS config.
-        """
-        if any(
-            url.startswith(origin) for origin in Config().trust_endpoints_for_requests
-        ):
-            return url
-
-        parsed_url = urlparse(url)
-        hostname = parsed_url.hostname
-
-        if not hostname:
-            raise ValueError(f"Invalid URL: Unable to determine hostname from {url}")
-
-        try:
-            host = socket.gethostbyname_ex(hostname)
-            for ip in host[2]:
-                ip_addr = ipaddress.ip_address(ip)
-                if ip_addr.is_global:
-                    return url
-            raise ValueError(
-                f"Access to private or untrusted IP address at {hostname} is not allowed."
-            )
-        except ValueError:
-            raise
-        except Exception as e:
-            raise ValueError(f"Invalid or unresolvable URL: {url}") from e
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):

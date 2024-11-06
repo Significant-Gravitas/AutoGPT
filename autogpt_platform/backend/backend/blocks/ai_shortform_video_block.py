@@ -217,7 +217,6 @@ class AIShortformVideoCreatorBlock(Block):
         url = "https://webhook.site/token"
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
         response = requests.post(url, headers=headers)
-        response.raise_for_status()
         webhook_data = response.json()
         return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
 
@@ -228,14 +227,12 @@ class AIShortformVideoCreatorBlock(Block):
         logger.debug(
             f"API Response Status Code: {response.status_code}, Content: {response.text}"
         )
-        response.raise_for_status()
         return response.json()
 
     def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
         url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
         headers = {"key": api_key.get_secret_value()}
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
         return response.json()
 
     def wait_for_video(
