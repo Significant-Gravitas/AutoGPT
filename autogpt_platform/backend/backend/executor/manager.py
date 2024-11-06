@@ -36,7 +36,12 @@ from backend.util import json
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import (
+    AppService,
+    close_service_client,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Settings
 from backend.util.type import convert
 
@@ -452,6 +457,8 @@ class Executor:
         cls.creds_manager.release_all_locks()
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
         redis.disconnect()
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB manager...")
+        close_service_client(cls.db_client)
         logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
 
     @classmethod
@@ -536,6 +543,8 @@ class Executor:
         prefix = f"[on_graph_executor_stop {cls.pid}]"
         logger.info(f"{prefix} ⏳ Terminating node executor pool...")
         cls.executor.terminate()
+        logger.info(f"{prefix} ⏳ Disconnecting DB manager...")
+        close_service_client(cls.db_client)
         logger.info(f"{prefix} ✅ Finished cleanup")
 
     @classmethod
