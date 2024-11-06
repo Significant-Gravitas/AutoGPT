@@ -51,7 +51,6 @@ services:
       file: ./docker-compose.platform.yml
       service: websocket_server
 
-  # Agent Store v2 will be integrated with the rest service 
   market:
     <<: *agpt-services
     extends:
@@ -71,14 +70,12 @@ services:
 #      service: frontend
 
   # Supabase services
-  # Uncomment theis if you want to use the ui
-  # studio:
-  #   <<: *supabase-services
-  #   extends:
-  #     file: ./supabase/docker/docker-compose.yml
-  #     service: studio
+  studio:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: studio
 
-  # Required for auth api routing
   kong:
     <<: *supabase-services
     extends:
@@ -93,43 +90,42 @@ services:
     environment:
       GOTRUE_MAILER_AUTOCONFIRM: true
 
-  # rest:
-  #   <<: *supabase-services
-  #   extends:
-  #     file: ./supabase/docker/docker-compose.yml
-  #     service: rest
+  rest:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: rest
 
-  # realtime:
-  #   <<: *supabase-services
-  #   extends:
-  #     file: ./supabase/docker/docker-compose.yml
-  #     service: realtime
+  realtime:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: realtime
 
-  # storage:
-  #   <<: *supabase-services
-  #   extends:
-  #     file: ./supabase/docker/docker-compose.yml
-  #     service: storage
+  storage:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: storage
 
-  # imgproxy:
-  #   <<: *supabase-services
-  #   extends:
-  #     file: ./supabase/docker/docker-compose.yml
-  #     service: imgproxy
+  imgproxy:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: imgproxy
 
-  # meta:
-  #   <<: *supabase-services
-  #   extends:
-  #     file: ./supabase/docker/docker-compose.yml
-  #     service: meta
+  meta:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: meta
 
-  # functions:
-  #   <<: *supabase-services
-  #   extends:
-  #     file: ./supabase/docker/docker-compose.yml
-  #     service: functions
+  functions:
+    <<: *supabase-services
+    extends:
+      file: ./supabase/docker/docker-compose.yml
+      service: functions
 
-  #  Required for Auth
   analytics:
     <<: *supabase-services
     extends:
@@ -141,31 +137,29 @@ services:
     extends:
       file: ./supabase/docker/docker-compose.yml
       service: db
-  
-  # Required for db
   vector:
     <<: *supabase-services
     extends:
       file: ./supabase/docker/docker-compose.yml
       service: vector
 
-  # deps:
-  #   <<: *supabase-services
-  #   profiles:
-  #     - local
-  #   image: busybox
-  #   command: /bin/true
-  #   depends_on:
-  #     - studio
-  #     - kong
-  #     - auth
-  #     - rest
-  #     - realtime
-  #     - storage
-  #     - imgproxy
-  #     - meta
-  #     - functions
-  #     - analytics
-  #     - db
-  #     - vector
-  #     - redis
+  deps:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - studio
+      - kong
+      - auth
+      - rest
+      - realtime
+      - storage
+      - imgproxy
+      - meta
+      - functions
+      - analytics
+      - db
+      - vector
+      - redis
