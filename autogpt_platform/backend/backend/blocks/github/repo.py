@@ -5,7 +5,7 @@ from typing_extensions import TypedDict
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
-from ._api import GitHubAPI
+from ._api import get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -68,7 +68,7 @@ class GithubListTagsBlock(Block):
     def list_tags(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.TagItem]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         tags_url = repo_url + "/tags"
         response = api.get(tags_url)
         data = response.json()
@@ -150,7 +150,7 @@ class GithubListBranchesBlock(Block):
     def list_branches(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.BranchItem]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         branches_url = repo_url + "/branches"
         response = api.get(branches_url)
         data = response.json()
@@ -237,7 +237,7 @@ class GithubListDiscussionsBlock(Block):
     def list_discussions(
         credentials: GithubCredentials, repo_url: str, num_discussions: int
     ) -> list[Output.DiscussionItem]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         # GitHub GraphQL API endpoint is different; we'll use api.post with custom URL
         repo_path = repo_url.replace("https://github.com/", "")
         owner, repo = repo_path.split("/")
@@ -332,7 +332,7 @@ class GithubListReleasesBlock(Block):
     def list_releases(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.ReleaseItem]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         releases_url = repo_url + "/releases"
         response = api.get(releases_url)
         data = response.json()
@@ -408,7 +408,7 @@ class GithubReadFileBlock(Block):
     def read_file(
         credentials: GithubCredentials, repo_url: str, file_path: str, branch: str
     ) -> tuple[str, int]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         content_url = repo_url + f"/contents/{file_path}?ref={branch}"
         response = api.get(content_url)
         content = response.json()
@@ -518,7 +518,7 @@ class GithubReadFolderBlock(Block):
     def read_folder(
         credentials: GithubCredentials, repo_url: str, folder_path: str, branch: str
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         contents_url = repo_url + f"/contents/{folder_path}?ref={branch}"
         response = api.get(contents_url)
         content = response.json()
@@ -612,7 +612,7 @@ class GithubMakeBranchBlock(Block):
         new_branch: str,
         source_branch: str,
     ) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         # Get the SHA of the source branch
         ref_url = repo_url + f"/git/refs/heads/{source_branch}"
         response = api.get(ref_url)
@@ -681,7 +681,7 @@ class GithubDeleteBranchBlock(Block):
     def delete_branch(
         credentials: GithubCredentials, repo_url: str, branch: str
     ) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         ref_url = repo_url + f"/git/refs/heads/{branch}"
         api.delete(ref_url)
         return "Branch deleted successfully"

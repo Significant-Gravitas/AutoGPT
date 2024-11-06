@@ -1,14 +1,9 @@
-import ipaddress
 import json
-import socket
 from enum import Enum
-from urllib.parse import urlparse
-
-import requests
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.settings import Config
+from backend.util.request import requests
 
 
 class HttpMethod(Enum):
@@ -19,35 +14,6 @@ class HttpMethod(Enum):
     PATCH = "PATCH"
     OPTIONS = "OPTIONS"
     HEAD = "HEAD"
-
-
-def validate_url(url: str) -> str:
-    """
-    To avoid SSRF attacks, the URL should not be a private IP address
-    unless it is whitelisted in TRUST_ENDPOINTS_FOR_REQUESTS config.
-    """
-    if any(url.startswith(origin) for origin in Config().trust_endpoints_for_requests):
-        return url
-
-    parsed_url = urlparse(url)
-    hostname = parsed_url.hostname
-
-    if not hostname:
-        raise ValueError(f"Invalid URL: Unable to determine hostname from {url}")
-
-    try:
-        host = socket.gethostbyname_ex(hostname)
-        for ip in host[2]:
-            ip_addr = ipaddress.ip_address(ip)
-            if ip_addr.is_global:
-                return url
-        raise ValueError(
-            f"Access to private or untrusted IP address at {hostname} is not allowed."
-        )
-    except ValueError:
-        raise
-    except Exception as e:
-        raise ValueError(f"Invalid or unresolvable URL: {url}") from e
 
 
 class SendWebRequestBlock(Block):
@@ -87,11 +53,9 @@ class SendWebRequestBlock(Block):
         if isinstance(input_data.body, str):
             input_data.body = json.loads(input_data.body)
 
-        validated_url = validate_url(input_data.url)
-
         response = requests.request(
             input_data.method.value,
-            validated_url,
+            input_data.url,
             headers=input_data.headers,
             json=input_data.body,
             allow_redirects=False,

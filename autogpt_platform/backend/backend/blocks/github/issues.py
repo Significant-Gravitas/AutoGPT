@@ -5,7 +5,7 @@ from typing_extensions import TypedDict
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
-from ._api import GitHubAPI
+from ._api import get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -68,7 +68,7 @@ class GithubCommentBlock(Block):
     def post_comment(
         credentials: GithubCredentials, issue_url: str, body_text: str
     ) -> tuple[int, str]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         data = {"body": body_text}
         comments_url = issue_url + "/comments"
         response = api.post(comments_url, json=data)
@@ -145,7 +145,7 @@ class GithubMakeIssueBlock(Block):
     def create_issue(
         credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> tuple[int, str]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         data = {"title": title, "body": body}
         issues_url = repo_url + "/issues"
         response = api.post(issues_url, json=data)
@@ -215,7 +215,7 @@ class GithubReadIssueBlock(Block):
     def read_issue(
         credentials: GithubCredentials, issue_url: str
     ) -> tuple[str, str, str]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         response = api.get(issue_url)
         data = response.json()
         title = data.get("title", "No title found")
@@ -292,7 +292,7 @@ class GithubListIssuesBlock(Block):
     def list_issues(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.IssueItem]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         issues_url = repo_url + "/issues"
         response = api.get(issues_url)
         data = response.json()
@@ -352,7 +352,7 @@ class GithubAddLabelBlock(Block):
 
     @staticmethod
     def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         data = {"labels": [label]}
         labels_url = issue_url + "/labels"
         response = api.post(labels_url, json=data)
@@ -413,7 +413,7 @@ class GithubRemoveLabelBlock(Block):
 
     @staticmethod
     def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         label_url = issue_url + f"/labels/{label}"
         response = api.delete(label_url)
         response.raise_for_status()
@@ -479,7 +479,7 @@ class GithubAssignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
         response = api.post(assignees_url, json=data)
@@ -546,7 +546,7 @@ class GithubUnassignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
         response = api.delete(assignees_url, json=data)

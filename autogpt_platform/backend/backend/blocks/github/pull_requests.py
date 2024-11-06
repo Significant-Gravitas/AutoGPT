@@ -3,7 +3,7 @@ from typing_extensions import TypedDict
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
-from ._api import GitHubAPI
+from ._api import get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -64,7 +64,7 @@ class GithubListPullRequestsBlock(Block):
 
     @staticmethod
     def list_prs(credentials: GithubCredentials, repo_url: str) -> list[Output.PRItem]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         pulls_url = repo_url + "/pulls"
         response = api.get(pulls_url)
         data = response.json()
@@ -159,7 +159,7 @@ class GithubMakePullRequestBlock(Block):
         head: str,
         base: str,
     ) -> tuple[int, str]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         pulls_url = repo_url + "/pulls"
         data = {"title": title, "body": body, "head": head, "base": base}
         response = api.post(pulls_url, json=data)
@@ -240,7 +240,7 @@ class GithubReadPullRequestBlock(Block):
 
     @staticmethod
     def read_pr(credentials: GithubCredentials, pr_url: str) -> tuple[str, str, str]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         # Adjust the URL to access the issue endpoint for PR metadata
         issue_url = pr_url.replace("/pull/", "/issues/")
         response = api.get(issue_url)
@@ -252,7 +252,7 @@ class GithubReadPullRequestBlock(Block):
 
     @staticmethod
     def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         files_url = pr_url + "/files"
         response = api.get(files_url)
         files = response.json()
@@ -330,7 +330,7 @@ class GithubAssignPRReviewerBlock(Block):
     def assign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         reviewers_url = pr_url + "/requested_reviewers"
         data = {"reviewers": [reviewer]}
         api.post(reviewers_url, json=data)
@@ -397,7 +397,7 @@ class GithubUnassignPRReviewerBlock(Block):
     def unassign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         reviewers_url = pr_url + "/requested_reviewers"
         data = {"reviewers": [reviewer]}
         api.delete(reviewers_url, json=data)
@@ -477,7 +477,7 @@ class GithubListPRReviewersBlock(Block):
     def list_reviewers(
         credentials: GithubCredentials, pr_url: str
     ) -> list[Output.ReviewerItem]:
-        api = GitHubAPI(credentials)
+        api = get_api(credentials)
         reviewers_url = pr_url + "/requested_reviewers"
         response = api.get(reviewers_url)
         data = response.json()

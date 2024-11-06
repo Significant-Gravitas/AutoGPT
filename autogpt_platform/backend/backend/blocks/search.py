@@ -3,12 +3,12 @@ import socket
 from typing import Any, Literal
 from urllib.parse import quote, urlparse
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.util.request import requests
 from backend.util.settings import Config
 
 
