@@ -51,6 +51,7 @@
     "cmdk": "1.0.4",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
+    "elliptic": "6.6.0",
     "lucide-react": "^0.454.0",
     "moment": "^2.30.1",
     "next": "^14.2.13",
