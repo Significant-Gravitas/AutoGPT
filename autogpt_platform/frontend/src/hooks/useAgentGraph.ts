@@ -495,7 +495,16 @@ export default function useAgentGraph(
               },
             );
           })
-          .catch(() => setSaveRunRequest({ request: "run", state: "error" }));
+          .catch((error) => {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            toast({
+              variant: "destructive",
+              title: "Error saving agent",
+              description: errorMessage,
+            });
+            setSaveRunRequest({ request: "run", state: "error" });
+          });
 
         processedUpdates.current = processedUpdates.current = [];
       }
@@ -518,6 +527,7 @@ export default function useAgentGraph(
     }
   }, [
     api,
+    toast,
     saveRunRequest,
     savedAgent,
     nodesSyncedWithSavedAgent,
