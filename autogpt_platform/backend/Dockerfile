@@ -72,7 +72,7 @@ FROM server_dependencies AS server
 
 COPY autogpt_platform/backend /app/autogpt_platform/backend
 
-ENV DATABASE_URL=""
+ENV DATABASE_URL="postgresql://postgres:EasieHR96b!@db:5432/postgres?connect_timeout=60&schema=platform"
 ENV PORT=8000
 
 CMD ["poetry", "run", "rest"]

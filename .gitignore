@@ -171,3 +171,4 @@ ig*
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py
+autogpt_platform/docker-compose-prod.platform.yml
