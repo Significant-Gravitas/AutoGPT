@@ -4,18 +4,11 @@ from backend.blocks.github._auth import GithubCredentials
 from backend.util.request import Requests
 
 
-def _validate_github_url(url: str) -> None:
-    parsed_url = urlparse(url)
-    if parsed_url.netloc != "github.com":
-        raise ValueError("The input URL must be a valid GitHub URL.")
-
-
 def _convert_to_api_url(url: str) -> str:
     """
     Converts a standard GitHub URL to the corresponding GitHub API URL.
     Handles repository URLs, issue URLs, pull request URLs, and more.
     """
-    _validate_github_url(url)
     parsed_url = urlparse(url)
     path_parts = parsed_url.path.strip("/").split("/")
 

@@ -33,6 +33,10 @@ def validate_url(url: str, trusted_origins: list[str]) -> str:
     Validates the URL to prevent SSRF attacks by ensuring it does not point to a private
     or untrusted IP address, unless whitelisted.
     """
+    url = url.strip().strip("/")
+    if not url.startswith(("http://", "https://")):
+        url = "http://" + url
+
     parsed_url = urlparse(url)
     hostname = parsed_url.hostname
 
@@ -86,9 +90,9 @@ class Requests:
         if self.extra_headers is not None:
             headers = {**(headers or {}), **self.extra_headers}
 
+        url = validate_url(url, self.trusted_origins)
         if self.extra_url_validator is not None:
             url = self.extra_url_validator(url)
-        url = validate_url(url, self.trusted_origins)
 
         response = req.request(
             method,
