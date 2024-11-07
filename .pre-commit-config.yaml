@@ -70,10 +70,33 @@ repos:
         language: system
         pass_filenames: false
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.2
+    hooks:
+      - id: ruff
+        name: Lint (Ruff) - AutoGPT Platform - Backend
+        alias: ruff-lint-platform-backend
+        files: ^autogpt_platform/backend/
+        args: [--fix]
+
+      - id: ruff
+        name: Lint (Ruff) - AutoGPT Platform - Libs
+        alias: ruff-lint-platform-libs
+        files: ^autogpt_platform/autogpt_libs/
+        args: [--fix]
+
   - repo: local
     # isort needs the context of which packages are installed to function, so we
     # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
     hooks:
+      - id: isort
+        name: Lint (isort) - AutoGPT Platform - Backend
+        alias: isort-platform-backend
+        entry: poetry -C autogpt_platform/backend run isort
+        files: ^autogpt_platform/backend/
+        types: [file, python]
+        language: system
+
       - id: isort
         name: Lint (isort) - Classic - AutoGPT
         alias: isort-classic-autogpt
@@ -135,6 +158,27 @@ repos:
     # project. To trigger on poetry.lock we also reset the file `types` filter.
     hooks:
       - id: pyright
+        name: Typecheck - AutoGPT Platform - Backend
+        alias: pyright-platform-backend
+        entry: poetry -C autogpt_platform/backend run pyright
+        args: [-p, backend, backend]
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^autogpt_platform/(backend/((backend|test)/|(\w+\.py|poetry\.lock)$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: pyright
+        name: Typecheck - AutoGPT Platform - Libs
+        alias: pyright-platform-libs
+        entry: poetry -C autogpt_platform/autogpt_libs run pyright
+        args: [-p, autogpt_libs, autogpt_libs]
+        files: ^autogpt_platform/autogpt_libs/(autogpt_libs/|poetry\.lock$)
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: pyright
         name: Typecheck - Classic - AutoGPT
         alias: pyright-classic-autogpt
         entry: poetry -C classic/original_autogpt run pyright
@@ -167,6 +211,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: pytest
+        name: Run tests - AutoGPT Platform - Backend
+        alias: pytest-platform-backend
+        entry: bash -c 'cd autogpt_platform/backend && poetry run pytest'
+        # include autogpt_libs source (since it's a path dependency) but exclude *_test.py files:
+        files: ^autogpt_platform/(backend/((backend|test)/|poetry\.lock$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
+        language: system
+        pass_filenames: false
+
       - id: pytest
         name: Run tests - Classic - AutoGPT (excl. slow tests)
         alias: pytest-classic-autogpt
