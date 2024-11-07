@@ -1,10 +1,12 @@
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 import requests
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
 class GetRequest:
@@ -120,12 +122,34 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         yield "content", content
 
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="openweathermap",
+    api_key=SecretStr("mock-openweathermap-api-key"),
+    title="Mock OpenWeatherMap API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
+
 class GetWeatherInformationBlock(Block, GetRequest):
     class Input(BlockSchema):
         location: str = SchemaField(
             description="Location to get weather information for"
         )
-        api_key: BlockSecret = SecretField(key="openweathermap_api_key")
+        credentials: CredentialsMetaInput[
+            Literal["openweathermap"], Literal["api_key"]
+        ] = CredentialsField(
+            provider="openweathermap",
+            supported_credential_types={"api_key"},
+            description="The OpenWeatherMap integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
+        )
         use_celsius: bool = SchemaField(
             default=True,
             description="Whether to use Celsius or Fahrenheit for temperature",
@@ -151,8 +175,8 @@ class GetWeatherInformationBlock(Block, GetRequest):
             description="Retrieves weather information for a specified location using OpenWeatherMap API.",
             test_input={
                 "location": "New York",
-                "api_key": "YOUR_API_KEY",
                 "use_celsius": True,
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
                 ("temperature", "21.66"),
@@ -165,11 +189,14 @@ class GetWeatherInformationBlock(Block, GetRequest):
                     "weather": [{"description": "overcast clouds"}],
                 }
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         units = "metric" if input_data.use_celsius else "imperial"
-        api_key = input_data.api_key.get_secret_value()
+        api_key = credentials.api_key
         location = input_data.location
         url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
         weather_data = self.get_request(url, json=True)
