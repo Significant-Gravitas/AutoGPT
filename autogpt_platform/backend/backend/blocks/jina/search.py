@@ -2,6 +2,8 @@ import requests
 from groq._utils._utils import quote
 
 from backend.blocks.jina._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     JinaCredentials,
     JinaCredentialsField,
     JinaCredentialsInput,
@@ -29,7 +31,11 @@ class SearchTheWebBlock(Block, GetRequest):
             categories={BlockCategory.SEARCH},
             input_schema=SearchTheWebBlock.Input,
             output_schema=SearchTheWebBlock.Output,
-            test_input={"query": "Artificial Intelligence"},
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "query": "Artificial Intelligence",
+            },
+            test_credentials=TEST_CREDENTIALS,
             test_output=("results", "search content"),
             test_mock={"get_request": lambda url, json: "search content"},
         )
