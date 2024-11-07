@@ -1,5 +1,11 @@
 -- CreateEnum
+CREATE TYPE "UserGroupRole" AS ENUM ('MEMBER', 'OWNER');
+
+-- CreateEnum
 CREATE TYPE "SubmissionStatus" AS ENUM ('DAFT', 'PENDING', 'APPROVED', 'REJECTED');
+
+-- AlterTable
+ALTER TABLE "AgentGraph" ADD COLUMN     "groupId" TEXT;
 
 -- AlterTable
 ALTER TABLE "AgentGraphExecution" ADD COLUMN     "agentPresetId" TEXT;
@@ -15,6 +21,30 @@ ALTER TABLE "AnalyticsDetails" ALTER COLUMN "id" DROP DEFAULT;
 
 -- AlterTable
 ALTER TABLE "AnalyticsMetrics" ALTER COLUMN "id" DROP DEFAULT;
+
+-- CreateTable
+CREATE TABLE "UserGroup" (
+    "id" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "groupIconUrl" TEXT,
+
+    CONSTRAINT "UserGroup_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserGroupMembership" (
+    "id" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "userId" TEXT NOT NULL,
+    "userGroupId" TEXT NOT NULL,
+    "Role" "UserGroupRole" NOT NULL DEFAULT 'MEMBER',
+
+    CONSTRAINT "UserGroupMembership_pkey" PRIMARY KEY ("id")
+);
 
 -- CreateTable
 CREATE TABLE "AgentPreset" (
@@ -54,6 +84,7 @@ CREATE TABLE "Profile" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT,
+    "groupId" TEXT,
     "username" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "links" TEXT[],
@@ -72,6 +103,7 @@ CREATE TABLE "StoreListing" (
     "agentId" TEXT NOT NULL,
     "agentVersion" INTEGER NOT NULL,
     "owningUserId" TEXT NOT NULL,
+    "owningGroupId" TEXT,
 
     CONSTRAINT "StoreListing_pkey" PRIMARY KEY ("id")
 );
@@ -127,6 +159,18 @@ CREATE TABLE "StoreListingSubmission" (
 );
 
 -- CreateIndex
+CREATE INDEX "UserGroup_name_idx" ON "UserGroup"("name");
+
+-- CreateIndex
+CREATE INDEX "UserGroupMembership_userId_idx" ON "UserGroupMembership"("userId");
+
+-- CreateIndex
+CREATE INDEX "UserGroupMembership_userGroupId_idx" ON "UserGroupMembership"("userGroupId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserGroupMembership_userId_userGroupId_key" ON "UserGroupMembership"("userId", "userGroupId");
+
+-- CreateIndex
 CREATE INDEX "AgentPreset_userId_idx" ON "AgentPreset"("userId");
 
 -- CreateIndex
@@ -160,6 +204,15 @@ CREATE INDEX "StoreListingSubmission_storeListingId_idx" ON "StoreListingSubmiss
 CREATE INDEX "StoreListingSubmission_Status_idx" ON "StoreListingSubmission"("Status");
 
 -- AddForeignKey
+ALTER TABLE "UserGroupMembership" ADD CONSTRAINT "UserGroupMembership_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserGroupMembership" ADD CONSTRAINT "UserGroupMembership_userGroupId_fkey" FOREIGN KEY ("userGroupId") REFERENCES "UserGroup"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AgentGraph" ADD CONSTRAINT "AgentGraph_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "UserGroup"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -187,10 +240,16 @@ ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSch
 ALTER TABLE "Profile" ADD CONSTRAINT "Profile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Profile" ADD CONSTRAINT "Profile_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "UserGroup"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "StoreListing" ADD CONSTRAINT "StoreListing_agentId_agentVersion_fkey" FOREIGN KEY ("agentId", "agentVersion") REFERENCES "AgentGraph"("id", "version") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StoreListing" ADD CONSTRAINT "StoreListing_owningUserId_fkey" FOREIGN KEY ("owningUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StoreListing" ADD CONSTRAINT "StoreListing_owningGroupId_fkey" FOREIGN KEY ("owningGroupId") REFERENCES "UserGroup"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StoreListingVersion" ADD CONSTRAINT "StoreListingVersion_agentId_agentVersion_fkey" FOREIGN KEY ("agentId", "agentVersion") REFERENCES "AgentGraph"("id", "version") ON DELETE RESTRICT ON UPDATE CASCADE;
