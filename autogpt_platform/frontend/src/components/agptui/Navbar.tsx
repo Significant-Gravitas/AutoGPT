@@ -143,7 +143,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             ]}
             userEmail={userEmail}
             avatarSrc={avatarSrc}
-            className="z-50 fixed right-4 top-4"
+            className="fixed right-4 top-4 z-50"
           />
         ) : (
           <Link

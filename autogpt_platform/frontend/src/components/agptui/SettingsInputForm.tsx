@@ -10,39 +10,48 @@ interface SettingsInputFormProps {
   };
 }
 
-export const SettingsInputForm = ({ 
+export const SettingsInputForm = ({
   email = "johndoe@email.com",
-  desktopNotifications = { first: false, second: true }
+  desktopNotifications = { first: false, second: true },
 }: SettingsInputFormProps) => {
-  const [notifications, setNotifications] = React.useState(desktopNotifications);
+  const [notifications, setNotifications] =
+    React.useState(desktopNotifications);
 
   const handleToggleFirst = () => {
-    setNotifications(prev => ({
+    setNotifications((prev) => ({
       ...prev,
-      first: !prev.first
+      first: !prev.first,
     }));
   };
 
   const handleToggleSecond = () => {
-    setNotifications(prev => ({
+    setNotifications((prev) => ({
       ...prev,
-      second: !prev.second
+      second: !prev.second,
     }));
   };
 
   return (
     <div className="mx-auto w-full max-w-[1077px] px-4 pt-8 sm:px-6 sm:pt-16">
-      <h1 className="mb-8 text-2xl font-semibold sm:mb-16 sm:text-3xl">Settings</h1>
-      
+      <h1 className="mb-8 text-2xl font-semibold sm:mb-16 sm:text-3xl">
+        Settings
+      </h1>
+
       {/* My Account Section */}
       <section aria-labelledby="account-heading">
-        <h2 id="account-heading" className="mb-8 text-lg font-medium text-neutral-500 sm:mb-12">
+        <h2
+          id="account-heading"
+          className="mb-8 text-lg font-medium text-neutral-500 sm:mb-12"
+        >
           My account
         </h2>
         <div className="flex flex-col gap-7">
           <div className="relative">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="email-input" className="text-base font-medium text-slate-950">
+              <label
+                htmlFor="email-input"
+                className="text-base font-medium text-slate-950"
+              >
                 Email
               </label>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -70,7 +79,10 @@ export const SettingsInputForm = ({
 
           <div className="relative">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="password-input" className="text-base font-medium text-slate-950">
+              <label
+                htmlFor="password-input"
+                className="text-base font-medium text-slate-950"
+              >
                 Password
               </label>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -98,25 +110,35 @@ export const SettingsInputForm = ({
         </div>
       </section>
 
-      <div className="my-8 border-t border-neutral-200 sm:my-12" role="separator" />
+      <div
+        className="my-8 border-t border-neutral-200 sm:my-12"
+        role="separator"
+      />
 
       {/* Notifications Section */}
       <section aria-labelledby="notifications-heading">
-        <h2 id="notifications-heading" className="mb-8 text-lg font-medium text-neutral-500 sm:mb-12">
+        <h2
+          id="notifications-heading"
+          className="mb-8 text-lg font-medium text-neutral-500 sm:mb-12"
+        >
           Notifications
         </h2>
         <div className="flex flex-col gap-7">
           <div className="flex flex-col gap-4 sm:flex-row">
             <div className="w-full sm:w-[638px]">
-              <h3 id="desktop-notif-1" className="text-base font-medium text-slate-950">
+              <h3
+                id="desktop-notif-1"
+                className="text-base font-medium text-slate-950"
+              >
                 Enable desktop notifications
               </h3>
               <p className="mt-2 text-base text-neutral-600">
-                More detailed explanation for the notifications that this person is enabling
+                More detailed explanation for the notifications that this person
+                is enabling
               </p>
             </div>
             <div className="flex h-[43px] items-center sm:ml-4 sm:w-[88px] sm:justify-center">
-              <Switch 
+              <Switch
                 checked={notifications.first}
                 onCheckedChange={handleToggleFirst}
                 aria-labelledby="desktop-notif-1"
@@ -127,15 +149,19 @@ export const SettingsInputForm = ({
 
           <div className="flex flex-col gap-4 sm:flex-row">
             <div className="w-full sm:w-[638px]">
-              <h3 id="desktop-notif-2" className="text-base font-medium text-slate-950">
+              <h3
+                id="desktop-notif-2"
+                className="text-base font-medium text-slate-950"
+              >
                 Enable desktop notifications
               </h3>
               <p className="mt-2 text-base text-neutral-600">
-                More detailed explanation for the notifications that this person is enabling
+                More detailed explanation for the notifications that this person
+                is enabling
               </p>
             </div>
             <div className="flex h-[43px] items-center sm:ml-4 sm:w-[88px] sm:justify-center">
-              <Switch 
+              <Switch
                 checked={notifications.second}
                 onCheckedChange={handleToggleSecond}
                 aria-labelledby="desktop-notif-2"
