@@ -161,7 +161,7 @@ repos:
         name: Typecheck - AutoGPT Platform - Backend
         alias: pyright-platform-backend
         entry: poetry -C autogpt_platform/backend run pyright
-        args: [-p, backend, backend]
+        args: [-p, autogpt_platform/backend, autogpt_platform/backend]
         # include forge source (since it's a path dependency) but exclude *_test.py files:
         files: ^autogpt_platform/(backend/((backend|test)/|(\w+\.py|poetry\.lock)$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
         types: [file]
@@ -172,7 +172,7 @@ repos:
         name: Typecheck - AutoGPT Platform - Libs
         alias: pyright-platform-libs
         entry: poetry -C autogpt_platform/autogpt_libs run pyright
-        args: [-p, autogpt_libs, autogpt_libs]
+        args: [-p, autogpt_platform/autogpt_libs, autogpt_platform/autogpt_libs]
         files: ^autogpt_platform/autogpt_libs/(autogpt_libs/|poetry\.lock$)
         types: [file]
         language: system
@@ -182,7 +182,7 @@ repos:
         name: Typecheck - Classic - AutoGPT
         alias: pyright-classic-autogpt
         entry: poetry -C classic/original_autogpt run pyright
-        args: [-p, autogpt, autogpt]
+        args: [-p, classic/original_autogpt, classic/original_autogpt]
         # include forge source (since it's a path dependency) but exclude *_test.py files:
         files: ^(classic/original_autogpt/((autogpt|scripts|tests)/|poetry\.lock$)|classic/forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
         types: [file]
@@ -193,7 +193,7 @@ repos:
         name: Typecheck - Classic - Forge
         alias: pyright-classic-forge
         entry: poetry -C classic/forge run pyright
-        args: [-p, forge, forge]
+        args: [-p, classic/forge, classic/forge]
         files: ^classic/forge/(forge/|poetry\.lock$)
         types: [file]
         language: system
@@ -203,7 +203,7 @@ repos:
         name: Typecheck - Classic - Benchmark
         alias: pyright-classic-benchmark
         entry: poetry -C classic/benchmark run pyright
-        args: [-p, benchmark, benchmark]
+        args: [-p, classic/benchmark, classic/benchmark]
         files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
         types: [file]
         language: system
