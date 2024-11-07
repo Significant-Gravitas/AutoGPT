@@ -9,14 +9,11 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
-from prisma.types import (
-    AgentGraphExecutionInclude,
-    AgentGraphExecutionWhereInput,
-    AgentNodeExecutionInclude,
-)
+from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
+from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from backend.util import json, mock
 
 
@@ -109,24 +106,6 @@ class ExecutionResult(BaseModel):
 
 
 # --------------------- Model functions --------------------- #
-
-EXECUTION_RESULT_INCLUDE: AgentNodeExecutionInclude = {
-    "Input": True,
-    "Output": True,
-    "AgentNode": True,
-    "AgentGraphExecution": True,
-}
-
-GRAPH_EXECUTION_INCLUDE: AgentGraphExecutionInclude = {
-    "AgentNodeExecutions": {
-        "include": {
-            "Input": True,
-            "Output": True,
-            "AgentNode": True,
-            "AgentGraphExecution": True,
-        }
-    }
-}
 
 
 async def create_graph_execution(
@@ -268,21 +247,9 @@ async def update_graph_execution_start_time(graph_exec_id: str):
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
-    error: Exception | None,
-    wall_time: float,
-    cpu_time: float,
-    node_count: int,
+    stats: dict[str, Any],
 ):
-    status = ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED
-    stats = (
-        {
-            "walltime": wall_time,
-            "cputime": cpu_time,
-            "nodecount": node_count,
-            "error": str(error) if error else None,
-        },
-    )
-
+    status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
     await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
