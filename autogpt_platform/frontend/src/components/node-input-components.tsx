@@ -352,9 +352,14 @@ const NodeKeyValueInput: FC<{
     const defaultEntries = new Map(
       Object.entries(entries ?? schema.default ?? {}),
     );
+    const prefix = `${selfKey}_#_`;
+    connections
+      .filter((c) => c.targetHandle.startsWith(prefix) && c.target === nodeId)
+      .map((c) => c.targetHandle.slice(prefix.length))
+      .forEach((k) => !defaultEntries.has(k) && defaultEntries.set(k, ""));
 
     return Array.from(defaultEntries, ([key, value]) => ({ key, value }));
-  }, [entries, schema.default]);
+  }, [entries, schema.default, connections, nodeId, selfKey]);
 
   const [keyValuePairs, setKeyValuePairs] = useState<
     { key: string; value: string | number | null }[]
@@ -497,6 +502,18 @@ const NodeArrayInput: FC<{
   displayName,
 }) => {
   entries ??= schema.default ?? [];
+
+  const prefix = `${selfKey}_$_`;
+  connections
+    .filter((c) => c.targetHandle.startsWith(prefix) && c.target === nodeId)
+    .map((c) => parseInt(c.targetHandle.slice(prefix.length)))
+    .filter((c) => !isNaN(c))
+    .forEach(
+      (c) =>
+        entries.length <= c &&
+        entries.push(...Array(c - entries.length + 1).fill("")),
+    );
+
   const isItemObject = "items" in schema && "properties" in schema.items!;
   const error =
     typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
