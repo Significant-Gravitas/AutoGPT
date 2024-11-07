@@ -487,7 +487,16 @@ export default function useAgentGraph(
               },
             );
           })
-          .catch(() => setSaveRunRequest({ request: "run", state: "error" }));
+          .catch((error) => {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            toast({
+              variant: "destructive",
+              title: "Error saving agent",
+              description: errorMessage,
+            });
+            setSaveRunRequest({ request: "run", state: "error" });
+          });
 
         processedUpdates.current = processedUpdates.current = [];
       }
@@ -510,6 +519,7 @@ export default function useAgentGraph(
     }
   }, [
     api,
+    toast,
     saveRunRequest,
     savedAgent,
     nodesSyncedWithSavedAgent,
@@ -590,8 +600,7 @@ export default function useAgentGraph(
     [availableNodes],
   );
 
-  const _saveAgent = (
-    () =>
+  const _saveAgent = useCallback(
     async (asTemplate: boolean = false) => {
       //FIXME frontend ids should be resolved better (e.g. returned from the server)
       // currently this relays on block_id and position
@@ -745,8 +754,20 @@ export default function useAgentGraph(
           },
         }));
       });
-    }
-  )();
+    },
+    [
+      api,
+      nodes,
+      edges,
+      pathname,
+      router,
+      searchParams,
+      savedAgent,
+      agentName,
+      agentDescription,
+      prepareNodeInputData,
+    ],
+  );
 
   const saveAgent = useCallback(
     async (asTemplate: boolean = false) => {
@@ -763,18 +784,7 @@ export default function useAgentGraph(
         });
       }
     },
-    [
-      api,
-      nodes,
-      edges,
-      pathname,
-      router,
-      searchParams,
-      savedAgent,
-      agentName,
-      agentDescription,
-      prepareNodeInputData,
-    ],
+    [_saveAgent, toast],
   );
 
   const requestSave = useCallback(
