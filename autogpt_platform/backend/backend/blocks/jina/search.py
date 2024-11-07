@@ -36,7 +36,7 @@ class SearchTheWebBlock(Block, GetRequest):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=("results", "search content"),
-            test_mock={"get_request": lambda url, json: "search content"},
+            test_mock={"get_request": lambda *args, **kwargs: "search content"},
         )
 
     def run(
