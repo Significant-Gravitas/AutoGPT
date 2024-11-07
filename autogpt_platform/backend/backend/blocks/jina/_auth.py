@@ -14,7 +14,7 @@ JinaCredentialsInput = CredentialsMetaInput[
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="jina",
-    api_key=SecretStr("mock-revid-api-key"),
+    api_key=SecretStr("mock-jina-api-key"),
     title="Mock Jina API key",
     expires_at=None,
 )
