@@ -121,8 +121,8 @@ class DeleteGraphResponse(TypedDict):
 async def get_graphs(
     user_id: Annotated[str, Depends(get_user_id)],
     with_runs: bool = False,
-) -> list[graph_db.GraphMeta]:
-    return await graph_db.get_graphs_meta(
+) -> list[graph_db.Graph]:
+    return await graph_db.get_graphs(
         include_executions=with_runs, filter_by="active", user_id=user_id
     )
 
@@ -291,22 +291,6 @@ async def stop_graph_run(
 
 
 @v1_router.get(
-    path="/graphs/{graph_id}/input_schema",
-    tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def get_graph_input_schema(
-    graph_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.InputSchemaItem]:
-    try:
-        graph = await graph_db.get_graph(graph_id, user_id=user_id)
-        return graph.get_input_schema() if graph else []
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
-
-@v1_router.get(
     path="/graphs/{graph_id}/executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
@@ -374,8 +358,8 @@ async def get_graph_run_status(
 )
 async def get_templates(
     user_id: Annotated[str, Depends(get_user_id)]
-) -> list[graph_db.GraphMeta]:
-    return await graph_db.get_graphs_meta(filter_by="template", user_id=user_id)
+) -> list[graph_db.Graph]:
+    return await graph_db.get_graphs(filter_by="template", user_id=user_id)
 
 
 @v1_router.get(
