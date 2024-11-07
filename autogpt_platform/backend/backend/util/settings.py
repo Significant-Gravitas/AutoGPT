@@ -69,6 +69,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The default hostname of the Pyro server.",
     )
+    pyro_client_comm_timeout: float = Field(
+        default=15,
+        description="The default timeout in seconds, for Pyro client connections.",
+    )
+    pyro_client_comm_retry: int = Field(
+        default=3,
+        description="The default number of retries for Pyro client connections.",
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
