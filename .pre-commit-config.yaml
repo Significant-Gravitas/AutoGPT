@@ -27,7 +27,7 @@ repos:
         name: Check & Install dependencies - AutoGPT Platform - Backend
         alias: poetry-install-platform-backend
         entry: poetry -C autogpt_platform/backend install
-        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        # include autogpt_libs source (since it's a path dependency)
         files: ^autogpt_platform/(backend|autogpt_libs)/poetry\.lock$
         types: [file]
         language: system
@@ -46,7 +46,7 @@ repos:
         name: Check & Install dependencies - Classic - AutoGPT
         alias: poetry-install-classic-autogpt
         entry: poetry -C classic/original_autogpt install
-        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        # include forge source (since it's a path dependency)
         files: ^classic/(original_autogpt|forge)/poetry\.lock$
         types: [file]
         language: system
