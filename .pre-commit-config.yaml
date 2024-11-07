@@ -20,6 +20,57 @@ repos:
         stages: [push]
 
   - repo: local
+    # For proper type checking, all dependencies need to be up-to-date.
+    # It's also a good idea to check that poetry.lock is consistent with pyproject.toml.
+    hooks:
+      - id: poetry-install
+        name: Check & Install dependencies - AutoGPT Platform - Backend
+        alias: poetry-install-platform-backend
+        entry: poetry -C autogpt_platform/backend install
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^autogpt_platform/(backend|autogpt_libs)/poetry\.lock$
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: poetry-install
+        name: Check & Install dependencies - AutoGPT Platform - Libs
+        alias: poetry-install-platform-libs
+        entry: poetry -C autogpt_platform/autogpt_libs install
+        files: ^autogpt_platform/autogpt_libs/poetry\.lock$
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: poetry-install
+        name: Check & Install dependencies - Classic - AutoGPT
+        alias: poetry-install-classic-autogpt
+        entry: poetry -C classic/original_autogpt install
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^classic/(original_autogpt|forge)/poetry\.lock$
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: poetry-install
+        name: Check & Install dependencies - Classic - Forge
+        alias: poetry-install-classic-forge
+        entry: poetry -C classic/forge install
+        files: ^classic/forge/poetry\.lock$
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: poetry-install
+        name: Check & Install dependencies - Classic - Benchmark
+        alias: poetry-install-classic-benchmark
+        entry: poetry -C classic/benchmark install
+        files: ^classic/benchmark/poetry\.lock$
+        types: [file]
+        language: system
+        pass_filenames: false
+
+  - repo: local
     # isort needs the context of which packages are installed to function, so we
     # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
     hooks:
