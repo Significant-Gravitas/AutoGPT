@@ -24,6 +24,7 @@ import {
   IconBuilder,
 } from "../ui/icons";
 import { AnimatePresence, motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
 
 interface MobileNavBarProps {
   userName?: string;
@@ -124,13 +125,17 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <div className="z-50 mt-4 inline-flex h-8 w-screen items-center justify-end rounded-lg pr-4 md:hidden">
+        <Button
+          aria-label="Open menu"
+          className="fixed right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 md:hidden"
+        >
           {isOpen ? (
-            <IconChevronUp className="ui-not-focus-visible:outline-none h-8 w-8 rounded-md border-2 border-gray-600 hover:bg-gray-200/50 hover:stroke-gray-600 active:stroke-gray-900" />
+            <IconChevronUp className="h-8 w-8 stroke-black" />
           ) : (
-            <IconMenu className="ui-not-focus-visible:outline-none h-8 w-8 rounded-md border-2 border-gray-600 hover:bg-gray-200/50 hover:stroke-gray-600 active:stroke-gray-900" />
+            <IconMenu className="h-8 w-8 stroke-black" />
           )}
-        </div>
+          <span className="sr-only">Open menu</span>
+        </Button>
       </PopoverTrigger>
       <AnimatePresence>
         <PopoverPortal>

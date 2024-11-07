@@ -4,6 +4,8 @@ import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
 import { IconType, IconLogIn } from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
+import CreditsCard from "./CreditsCard";
+
 interface NavLink {
   name: string;
   href: string;
@@ -16,6 +18,8 @@ interface NavbarProps {
   activeLink: string;
   avatarSrc?: string;
   userEmail?: string;
+  credits?: number;
+  onRefreshCredits?: () => void;
   menuItemGroups: {
     groupName?: string;
     items: {
@@ -66,6 +70,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeLink,
   avatarSrc,
   userEmail,
+  credits = 0,
+  onRefreshCredits,
   menuItemGroups,
 }) => {
   return (
@@ -89,12 +95,15 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
         {/* Profile section */}
         {isLoggedIn ? (
-          <ProfilePopoutMenu
-            menuItemGroups={menuItemGroups}
-            userName={userName}
-            userEmail={userEmail}
-            avatarSrc={avatarSrc}
-          />
+          <div className="flex items-center gap-4">
+            <CreditsCard credits={credits} onRefresh={onRefreshCredits} />
+            <ProfilePopoutMenu
+              menuItemGroups={menuItemGroups}
+              userName={userName}
+              userEmail={userEmail}
+              avatarSrc={avatarSrc}
+            />
+          </div>
         ) : (
           <Link href="/login">
             <Button
@@ -108,7 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </Link>
         )}
       </nav>
-      {/* Mobile Navbar */}
+      {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn ? (
           <MobileNavBar
@@ -134,11 +143,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             ]}
             userEmail={userEmail}
             avatarSrc={avatarSrc}
+            className="z-50 fixed right-4 top-4"
           />
         ) : (
           <Link
             href="/login"
-            className="z-50 mt-4 inline-flex h-8 w-screen items-center justify-end rounded-lg pr-4 md:hidden"
+            className="fixed right-4 top-4 z-50 mt-4 inline-flex h-8 items-center justify-end rounded-lg pr-4 md:hidden"
           >
             <Button
               variant="default"
