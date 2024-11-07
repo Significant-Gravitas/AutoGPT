@@ -51,7 +51,7 @@ class SearchTheWebBlock(Block, GetRequest):
 
         # Prepend the Jina Search URL to the encoded query
         jina_search_url = f"https://s.jina.ai/{encoded_query}"
-        results = self.get_request(jina_search_url, headers=headers, json=True)
+        results = self.get_request(jina_search_url, headers=headers, json=False)
 
         # Output the search results
         yield "results", results
