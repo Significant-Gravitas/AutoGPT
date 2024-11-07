@@ -1,6 +1,9 @@
+from re import _FlagsType
 import fastapi
 import fastapi.responses
 import pydantic
+
+import backend.server.v2.store.model
 
 router = fastapi.APIRouter()
 
@@ -12,7 +15,7 @@ router = fastapi.APIRouter()
 @router.get("agents", tags=["store"])
 def get_agents(
     featured: bool, top: bool, categories: str, page: int = 1, page_size: int = 20
-):
+) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
     This is needed for:
     - Home Page Featured Agents
@@ -36,6 +39,7 @@ def get_agents(
     """
 
     class StoreAgent(pydantic.BaseModel):
+        slug: str
         agentName: str
         agentImage: str
         creator: str
@@ -70,7 +74,9 @@ def get_agents(
 
 
 @router.get("agents/{username}/{agent_name}")
-def get_agent(username: str, agent_name: int):
+def get_agent(
+    username: str, agent_name: int
+) -> backend.server.v2.store.model.StoreAgentDetails:
     """
     This is only used on the AgentDetails Page
 
@@ -78,6 +84,7 @@ def get_agent(username: str, agent_name: int):
     """
 
     class StoreAgentDetails(pydantic.BaseModel):
+        slug: str
         agentName: str
         agentVideo: str
         agentImage: list[str]
@@ -99,11 +106,46 @@ def get_agent(username: str, agent_name: int):
 
 
 @router.get("creators", tags=["store"])
-def get_creators(page: int = 1, page_size: int = 20):
-    """Get a list of creators"""
+def get_creators(
+    featured: bool, search: str, sortedBy: str, page: int = 1, page_size: int = 20
+) -> backend.server.v2.store.model.CreatorsResponse:
+    """
+    This is needed for:
+    - Home Page Featured Creators
+    - Search Results Page
+
+    ---
+
+    To support this functionality we need:
+    - featured: bool - to limit the list to just featured agents
+    - search: str - vector search based on the creators profile description.
+    - sortedBy: [agentRating, agentRuns] -
+    """
+
+    class Creator(pydantic.BaseModel):
+        name: str
+        username: str
+        description: str
+        avatarUrl: str
+        numAgents: int
+
     pass
 
 
 @router.get("creator/{username}", tags=["store"])
-def get_ceator(username: string):
-    """Get the details of a creator"""
+def get_ceator(username: str) -> backend.server.v2.store.model.CreatorDetails:
+    """
+    Get the details of a creator
+    - Creator Details Page
+
+    """
+
+    class CreatorDetails(pydantic.BaseModel):
+        name: str
+        username: str
+        description: str
+        links: list[str]
+        avatarUrl: str
+        agentRating: float
+        agentRuns: int
+        topCategories: list[str]
