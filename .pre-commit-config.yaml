@@ -141,7 +141,6 @@ repos:
     hooks:
       - id: black
         name: Lint (Black)
-        language_version: python3.10
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.0.0
