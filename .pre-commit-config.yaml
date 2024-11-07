@@ -70,6 +70,19 @@ repos:
         language: system
         pass_filenames: false
 
+  - repo: local
+    # For proper type checking, Prisma client must be up-to-date.
+    hooks:
+      - id: prisma-generate
+        name: Prisma Generate - AutoGPT Platform - Backend
+        alias: prisma-generate-platform-backend
+        entry: bash -c 'cd autogpt_platform/backend && poetry run prisma generate'
+        # include everything that triggers poetry install + the prisma schema
+        files: ^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema.prisma)$
+        types: [file]
+        language: system
+        pass_filenames: false
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.2
     hooks:
