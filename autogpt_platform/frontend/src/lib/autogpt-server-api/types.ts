@@ -25,6 +25,7 @@ export type Block = {
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
   uiType: BlockUIType;
+  uiKey?: string;
   costs: BlockCost[];
   hardcodedValues: { [key: string]: any } | null;
 };

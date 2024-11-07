@@ -58,16 +58,18 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
       (flow) =>
         ({
           id: "e189baac-8c20-45a1-94a7-55177ea42565", // TODO: fetch this programmatically.
-          name: `${flow.name} - ID#${flow.id.split("-")[0]} Ver.${flow.version}`,
-          description: `${flow.description}`,
+          name: flow.name,
+          description:
+            `Ver.${flow.version}` +
+            (flow.description ? ` | ${flow.description}` : ""),
           categories: [{ category: "AGENT", description: "" }],
           inputSchema: flow.input_schema,
           outputSchema: flow.output_schema,
           staticOutput: false,
           uiType: BlockUIType.AGENT,
+          uiKey: flow.id,
           costs: [],
           hardcodedValues: {
-            user_id: "",
             graph_id: flow.id,
             graph_version: flow.version,
             input_schema: flow.input_schema,
@@ -183,7 +185,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
             >
               {getFilteredBlockList().map((block) => (
                 <Card
-                  key={`${block.id}-${block.name}`}
+                  key={block.uiKey || block.id}
                   className="m-2 my-4 flex h-20 cursor-pointer shadow-none hover:shadow-lg"
                   data-id={`block-card-${block.id}`}
                   onClick={() =>

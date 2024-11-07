@@ -3,6 +3,7 @@ import { CustomNode } from "@/components/CustomNode";
 import AutoGPTServerAPI, {
   Block,
   BlockIOSubSchema,
+  BlockUIType,
   Graph,
   Link,
   NodeExecutionResult,
@@ -144,6 +145,12 @@ export default function useAgentGraph(
           const block = availableNodes.find(
             (block) => block.id === node.block_id,
           )!;
+          const flow =
+            block.uiType == BlockUIType.AGENT
+              ? availableFlows.find(
+                  (flow) => flow.id === node.input_default.graph_id,
+                )
+              : null;
           const newNode: CustomNode = {
             id: node.id,
             type: "custom",
@@ -153,7 +160,7 @@ export default function useAgentGraph(
             },
             data: {
               block_id: block.id,
-              blockType: block.name,
+              blockType: flow?.name || block.name,
               blockCosts: block.costs,
               categories: block.categories,
               description: block.description,
@@ -207,7 +214,7 @@ export default function useAgentGraph(
         return newNodes;
       });
     },
-    [availableNodes, formatEdgeID, getOutputType],
+    [availableNodes, availableFlows, formatEdgeID, getOutputType],
   );
 
   const getFrontendId = useCallback(
@@ -660,8 +667,8 @@ export default function useAgentGraph(
 
       const payload = {
         id: savedAgent?.id!,
-        name: agentName || "Agent Name",
-        description: agentDescription || "Agent Description",
+        name: agentName || `New Agent ${new Date().toISOString()}`,
+        description: agentDescription || "",
         nodes: formattedNodes,
         links: links,
       };
