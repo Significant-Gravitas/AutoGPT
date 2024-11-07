@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -203,7 +204,11 @@ class Graph(GraphMeta):
         def sanitize(name):
             return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
 
-        # Nodes: required fields are filled or connected, except for InputBlock.
+        input_links = defaultdict(list)
+        for link in self.links:
+            input_links[link.sink_id].append(link)
+
+        # Nodes: required fields are filled or connected
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
@@ -211,7 +216,7 @@ class Graph(GraphMeta):
 
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
-                + [sanitize(link.sink_name) for link in node.input_links]
+                + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
             for name in block.input_schema.get_required_fields():
                 if name not in provided_inputs and (
