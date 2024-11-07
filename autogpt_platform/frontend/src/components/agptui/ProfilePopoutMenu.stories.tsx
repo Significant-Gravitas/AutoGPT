@@ -15,6 +15,7 @@ const meta = {
     userEmail: { control: "text" },
     avatarSrc: { control: "text" },
     menuItemGroups: { control: "object" },
+    hideNavBarUsername: { control: "boolean" },
   },
 } satisfies Meta<typeof ProfilePopoutMenu>;
 
@@ -61,6 +62,7 @@ export const Default: Story = {
     userEmail: "john.doe@example.com",
     avatarSrc: "https://avatars.githubusercontent.com/u/123456789?v=4",
     menuItemGroups: defaultMenuItemGroups,
+    hideNavBarUsername: false,
   },
 };
 
@@ -69,6 +71,7 @@ export const NoAvatar: Story = {
     userName: "Jane Smith",
     userEmail: "jane.smith@example.com",
     menuItemGroups: defaultMenuItemGroups,
+    hideNavBarUsername: false,
   },
 };
 
@@ -78,12 +81,14 @@ export const LongUserName: Story = {
     userEmail: "alexander@example.com",
     avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
     menuItemGroups: defaultMenuItemGroups,
+    hideNavBarUsername: false,
   },
 };
 
 export const WithInteraction: Story = {
   args: {
     ...Default.args,
+    hideNavBarUsername: false,
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
