@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
-import { useSupabase } from "@/components/SupabaseProvider";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 
 const useUser = () => {
   const { supabase, isLoading: isSupabaseLoading } = useSupabase();

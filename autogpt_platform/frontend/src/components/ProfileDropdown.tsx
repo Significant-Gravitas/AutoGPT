@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./ui/button";
-import { useSupabase } from "./SupabaseProvider";
+import { useSupabase } from "./providers/SupabaseProvider";
 import { useRouter } from "next/navigation";
 import useUser from "@/hooks/useUser";
 

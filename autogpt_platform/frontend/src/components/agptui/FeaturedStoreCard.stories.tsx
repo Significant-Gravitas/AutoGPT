@@ -16,6 +16,7 @@ const meta = {
     agentName: { control: "text" },
     subHeading: { control: "text" },
     agentImage: { control: "text" },
+    creatorImage: { control: "text" },
     creatorName: { control: "text" },
     description: { control: "text" },
     runs: { control: "number" },
@@ -29,13 +30,16 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    agentName: "SEO Optimizer Pro",
-    subHeading: "Optimize your website's SEO",
+    agentName: "Personalized Morning Coffee Newsletter example of three lines",
+    subHeading:
+      "Transform ideas into breathtaking images with this AI-powered Image Generator.",
+    description:
+      "Elevate your web content with this powerful AI Webpage Copy Improver. Designed for marketers, SEO specialists, and web developers, this tool analyses and enhances website copy for maximum impact. Using advanced language models, it optimizes text for better clarity, SEO performance, and increased conversion rates. The AI examines your existing content, identifies areas for improvement, and generates refined copy that maintains your brand voice while boosting engagement. From homepage headlines to product descriptions, transform your web presence with AI-driven insights. Improve readability, incorporate targeted keywords, and craft compelling calls-to-action - all with the click of a button. Take your digital marketing to the next level with the AI Webpage Copy Improver.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "AI Solutions Inc.",
-    description:
-      "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
     runs: 50000,
     rating: 4.7,
     onClick: () => console.log("Card clicked"),
@@ -46,10 +50,13 @@ export const LowRating: Story = {
   args: {
     agentName: "Data Analyzer Lite",
     subHeading: "Basic data analysis tool",
+    description:
+      "A lightweight data analysis tool for basic data processing needs.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "DataTech",
-    description: "A basic tool for analyzing small to medium-sized datasets.",
     runs: 10000,
     rating: 2.8,
     onClick: () => console.log("Card clicked"),
@@ -60,11 +67,13 @@ export const HighRuns: Story = {
   args: {
     agentName: "CodeAssist AI",
     subHeading: "Your AI coding companion",
+    description:
+      "An intelligent coding assistant that helps developers write better code faster.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "DevTools Co.",
-    description:
-      "Get instant coding help and suggestions for multiple programming languages.",
     runs: 1000000,
     rating: 4.9,
     onClick: () => console.log("Card clicked"),
@@ -75,11 +84,13 @@ export const LongDescription: Story = {
   args: {
     agentName: "MultiTasker",
     subHeading: "All-in-one productivity suite",
+    description:
+      "A comprehensive productivity suite that combines task management, note-taking, and project planning into one seamless interface. Features include smart task prioritization, automated scheduling, and AI-powered insights to help you work more efficiently.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "Productivity Plus",
-    description:
-      "An all-in-one productivity suite that helps you manage tasks, schedule meetings, track time, and collaborate with team members. Powered by advanced AI to optimize your workflow and boost efficiency.",
     runs: 75000,
     rating: 4.5,
     onClick: () => console.log("Card clicked"),
@@ -90,10 +101,12 @@ export const ShortDescription: Story = {
   args: {
     agentName: "QuickTask",
     subHeading: "Fast task automation",
+    description: "Simple and efficient task automation tool.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "EfficientWorks",
-    description: "Streamline your workflow.",
     runs: 50000,
     rating: 4.2,
     onClick: () => console.log("Card clicked"),
@@ -104,11 +117,13 @@ export const TwoLineName: Story = {
   args: {
     agentName: "Agent name goes here example of agent with two lines of text",
     subHeading: "Multi-line agent example",
+    description:
+      "An example agent showcasing how the card handles multi-line agent names.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "InnovativeTech Solutions",
-    description:
-      "Boost your productivity with our cutting-edge AI assistant. Manages tasks, schedules, and more.",
     runs: 100000,
     rating: 4.8,
     onClick: () => console.log("Card clicked"),
@@ -119,11 +134,13 @@ export const TwoLineNameLongDescription: Story = {
   args: {
     agentName: "Advanced Natural Language Processing and Machine Learning",
     subHeading: "State-of-the-art NLP & ML",
+    description:
+      "Cutting-edge natural language processing and machine learning capabilities combined in one powerful tool. Perfect for researchers and developers working on advanced AI applications.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "AI Research Labs",
-    description:
-      "Our cutting-edge AI assistant combines state-of-the-art natural language processing and machine learning algorithms to provide unparalleled support in various domains. From text analysis and sentiment detection to predictive modeling and data visualization, this powerful tool empowers researchers, data scientists, and businesses to unlock valuable insights from complex datasets and textual information. With continuous learning capabilities and adaptable interfaces, it's the perfect companion for pushing the boundaries of AI-driven discovery and innovation.",
     runs: 150000,
     rating: 4.9,
     onClick: () => console.log("Card clicked"),
@@ -134,11 +151,13 @@ export const WithInteraction: Story = {
   args: {
     agentName: "AI Writing Assistant",
     subHeading: "Enhance your writing",
+    description:
+      "An AI-powered writing assistant that helps improve your writing style and clarity.",
     agentImage:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     creatorName: "WordCraft AI",
-    description:
-      "Enhance your writing with AI-powered suggestions, grammar checks, and style improvements.",
     runs: 200000,
     rating: 4.6,
     onClick: () => console.log("Card clicked"),

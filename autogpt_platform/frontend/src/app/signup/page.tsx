@@ -18,7 +18,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PasswordInput } from "@/components/PasswordInput";
 import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
 import { useState } from "react";
-import { useSupabase } from "@/components/SupabaseProvider";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
