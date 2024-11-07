@@ -1,4 +1,3 @@
-from re import _FlagsType
 import fastapi
 import fastapi.responses
 import pydantic
