@@ -1,4 +1,3 @@
-import requests
 from groq._utils._utils import quote
 
 from backend.blocks.jina._auth import (
@@ -52,10 +51,7 @@ class SearchTheWebBlock(Block, GetRequest):
 
         # Prepend the Jina Search URL to the encoded query
         jina_search_url = f"https://s.jina.ai/{encoded_query}"
-
-        response = requests.get(jina_search_url, headers=headers)
-
-        response.raise_for_status()
+        results = self.get_request(jina_search_url, headers=headers, json=True)
 
         # Output the search results
-        yield "results", response.text
+        yield "results", results

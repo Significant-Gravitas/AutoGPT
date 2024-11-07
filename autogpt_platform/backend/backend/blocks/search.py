@@ -1,20 +1,12 @@
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import quote
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
+from backend.blocks.helpers.http import GetRequest
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
-
-
-class GetRequest:
-    @classmethod
-    def get_request(cls, url: str, json=False) -> Any:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json() if json else response.text
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
