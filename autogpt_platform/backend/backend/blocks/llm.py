@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 #     "ollama": BlockSecret(value=""),
 # }
 
-AICredentials = CredentialsMetaInput[Literal["llm"], Literal["api_key"]]
+AICredentials = CredentialsMetaInput[list[str], Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
-    provider="llm",
+    provider="openai",
     api_key=SecretStr("mock-openai-api-key"),
     title="Mock OpenAI API key",
     expires_at=None,
@@ -50,7 +50,7 @@ TEST_CREDENTIALS_INPUT = {
 def AICredentialsField() -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
-        provider="llm",
+        provider=["anthropic", "groq", "openai", "ollama"],
         supported_credential_types={"api_key"},
         discriminator="model",
         discriminator_mapping={

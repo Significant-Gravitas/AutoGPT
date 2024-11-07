@@ -38,22 +38,21 @@ export default function useCredentials(): CredentialsData | null {
   const credentialsSchema = data.inputSchema.properties
     .credentials as BlockIOCredentialsSubSchema;
 
+  const discriminatorValue: CredentialsProviderName | null =
+    (credentialsSchema.discriminator &&
+      credentialsSchema.discriminator_mapping![
+        getValue(credentialsSchema.discriminator, data.hardcodedValues)
+      ]) ||
+    null;
+
+  const providerName =
+    discriminatorValue || credentialsSchema.credentials_provider;
+  const provider = allProviders ? allProviders[providerName] : null;
+
   // If block input schema doesn't have credentials, return null
   if (!credentialsSchema) {
     return null;
   }
-
-  const discriminatorValue: CredentialsProviderName | null =
-    credentialsSchema.discriminator
-      ? credentialsSchema.discriminator_mapping![
-          getValue(credentialsSchema.discriminator, data.hardcodedValues)
-        ]
-      : null;
-
-  const providerName =
-    discriminatorValue || credentialsSchema.credentials_provider;
-
-  const provider = allProviders ? allProviders[providerName] : null;
 
   const supportsApiKey =
     credentialsSchema.credentials_types.includes("api_key");

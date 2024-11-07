@@ -105,7 +105,6 @@ export const PROVIDER_NAMES = {
   GROQ: "groq",
   IDEOGRAM: "ideogram",
   JINA: "jina",
-  LLM: "llm",
   MEDIUM: "medium",
   NOTION: "notion",
   OLLAMA: "ollama",
@@ -264,7 +263,7 @@ export type CredentialsMetaInput = {
   id: string;
   type: CredentialsType;
   title?: string;
-  provider: string;
+  provider: string | string[];
 };
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */

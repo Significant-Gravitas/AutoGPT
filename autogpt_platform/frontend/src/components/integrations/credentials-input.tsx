@@ -56,7 +56,6 @@ export const providerIcons: Record<
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
-  llm: fallbackIcon,
   medium: FaMedium,
   ollama: fallbackIcon,
   openai: fallbackIcon,
@@ -221,7 +220,7 @@ export const CredentialsInput: FC<{
     </>
   );
 
-  // Deselect credentials if they do not exist (e.g. llm provider was changed)
+  // Deselect credentials if they do not exist (e.g. provider was changed)
   if (
     selectedCredentials &&
     !savedApiKeys
