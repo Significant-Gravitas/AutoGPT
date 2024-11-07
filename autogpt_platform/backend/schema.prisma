@@ -27,15 +27,58 @@ model User {
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
-  AgentPreset                  AgentPreset[]
-  UserAgent                    UserAgent[]
-  Profile                      Profile[]
-  StoreListing                 StoreListing[]
-  StoreListingReview           StoreListingReview[]
-  StoreListingSubmission       StoreListingSubmission[]
+
+  AgentPreset AgentPreset[]
+  UserAgent   UserAgent[]
+
+  UserGroupMemberships   UserGroupMembership[]
+  Profile                Profile[]
+  StoreListing           StoreListing[]
+  StoreListingReview     StoreListingReview[]
+  StoreListingSubmission StoreListingSubmission[]
 
   @@index([id])
   @@index([email])
+}
+
+model UserGroup {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  name         String
+  description  String
+  groupIconUrl String?
+
+  UserGroupMemberships UserGroupMembership[]
+
+  Agents       AgentGraph[]
+  Profile      Profile[]
+  StoreListing StoreListing[]
+
+  @@index([name])
+}
+
+enum UserGroupRole {
+  MEMBER
+  OWNER
+}
+
+model UserGroupMembership {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userGroupId String
+  UserGroup   UserGroup     @relation(fields: [userGroupId], references: [id], onDelete: Cascade)
+  Role        UserGroupRole @default(MEMBER)
+
+  @@unique([userId, userGroupId])
+  @@index([userId])
+  @@index([userGroupId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -52,7 +95,14 @@ model AgentGraph {
 
   // Link to User model
   userId String
+  // FIX: Do not cascade delete the agent when the user is deleted
+  // This allows us to delete user data with deleting the agent which maybe in use by other users
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  groupId String?
+  // Do not cascade delete the agent when the group is deleted
+  // This allows us to delete user group data with deleting the agent which maybe in use by other users
+  Group   UserGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
@@ -326,6 +376,11 @@ model AnalyticsDetails {
   @@index([type])
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   METRICS TRACKING TABLES    ////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model AnalyticsMetrics {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -349,6 +404,11 @@ enum UserBlockCreditType {
   USAGE
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model UserBlockCredit {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -384,6 +444,10 @@ model Profile {
   userId String?
   User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // The group this profile belongs to, if any.
+  groupId String?
+  Group   UserGroup? @relation(fields: [groupId], references: [id])
+
   username    String @unique
   description String
 
@@ -410,6 +474,9 @@ model StoreListing {
 
   owningUserId String
   OwningUser   User   @relation(fields: [owningUserId], references: [id])
+
+  owningGroupId String?
+  OwningGroup   UserGroup? @relation(fields: [owningGroupId], references: [id])
 
   StoreListingVersions   StoreListingVersion[]
   StoreListingSubmission StoreListingSubmission[]
