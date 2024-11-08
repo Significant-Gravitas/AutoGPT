@@ -1,12 +1,13 @@
 from enum import Enum
 from typing import Any, Dict, Literal, Optional
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
+from requests.exceptions import RequestException
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -242,9 +243,8 @@ class IdeogramModelBlock(Block):
 
         try:
             response = requests.post(url, json=data, headers=headers)
-            response.raise_for_status()
             return response.json()["data"][0]["url"]
-        except requests.exceptions.RequestException as e:
+        except RequestException as e:
             raise Exception(f"Failed to fetch image: {str(e)}")
 
     def upscale_image(self, api_key: SecretStr, image_url: str):
@@ -256,7 +256,6 @@ class IdeogramModelBlock(Block):
         try:
             # Step 1: Download the image from the provided URL
             image_response = requests.get(image_url)
-            image_response.raise_for_status()
 
             # Step 2: Send the downloaded image to the upscale API
             files = {
@@ -272,8 +271,7 @@ class IdeogramModelBlock(Block):
                 files=files,
             )
 
-            response.raise_for_status()
             return response.json()["data"][0]["url"]
 
-        except requests.exceptions.RequestException as e:
+        except RequestException as e:
             raise Exception(f"Failed to upscale image: {str(e)}")
