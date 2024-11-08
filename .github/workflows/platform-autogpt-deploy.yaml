@@ -3,10 +3,8 @@ name: AutoGPT Platform - Deploy Dev Environment
 on:
   push:
     branches: [ aarushikansal/deploy-from-infra ]
-#    paths:
-#      - 'autogpt_platform/backend/**'
-#      - 'autogpt_platform/frontend/**'
-#      - 'autogpt_platform/market/**'
+    paths:
+      - 'autogpt_platform/**'
 
 permissions:
   contents: 'read'
