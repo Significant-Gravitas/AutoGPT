@@ -30,6 +30,7 @@ from typing import (
 import Pyro5.api
 from pydantic import BaseModel
 from Pyro5 import api as pyro
+from Pyro5 import config as pyro_config
 
 from backend.data import db, redis
 from backend.util.process import AppProcess
@@ -40,7 +41,10 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 C = TypeVar("C", bound=Callable)
 
-pyro_host = Config().pyro_host
+config = Config()
+pyro_host = config.pyro_host
+pyro_config.MAX_RETRIES = config.pyro_client_comm_retry  # type: ignore
+pyro_config.COMMTIMEOUT = config.pyro_client_comm_timeout  # type: ignore
 
 
 def expose(func: C) -> C:
@@ -166,8 +170,14 @@ class AppService(AppProcess, ABC):
 
     @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
-        host = Config().pyro_host
-        daemon = Pyro5.api.Daemon(host=host, port=self.get_port())
+        conf = Config()
+        maximum_connection_thread_count = max(
+            Pyro5.config.THREADPOOL_SIZE,
+            conf.num_node_workers * conf.num_graph_workers,
+        )
+
+        Pyro5.config.THREADPOOL_SIZE = maximum_connection_thread_count  # type: ignore
+        daemon = Pyro5.api.Daemon(host=conf.pyro_host, port=self.get_port())
         self.uri = daemon.register(self, objectId=self.service_name)
         logger.info(f"[{self.service_name}] Connected to Pyro; URI = {self.uri}")
         daemon.requestLoop()
@@ -182,10 +192,21 @@ class AppService(AppProcess, ABC):
 AS = TypeVar("AS", bound=AppService)
 
 
+class PyroClient:
+    proxy: Pyro5.api.Proxy
+
+
+def close_service_client(client: AppService) -> None:
+    if isinstance(client, PyroClient):
+        client.proxy._pyroRelease()
+    else:
+        raise RuntimeError(f"Client {client.__class__} is not a Pyro client.")
+
+
 def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
-    class DynamicClient:
+    class DynamicClient(PyroClient):
         @conn_retry("Pyro", f"Connecting to [{service_name}]")
         def __init__(self):
             host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")

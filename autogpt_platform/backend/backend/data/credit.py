@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.ideogram import IdeogramModelBlock
+from backend.blocks.jina.search import SearchTheWebBlock
 from backend.blocks.llm import (
     MODEL_METADATA,
     AIConversationBlock,
@@ -29,7 +30,7 @@ from backend.blocks.llm import (
     LlmModel,
 )
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
-from backend.blocks.search import ExtractWebsiteContentBlock, SearchTheWebBlock
+from backend.blocks.search import ExtractWebsiteContentBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.data.block import Block, BlockInput, get_block
 from backend.util.settings import Config
