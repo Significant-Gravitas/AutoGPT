@@ -1,8 +1,16 @@
+import logging
+import typing
+
+import autogpt_libs.auth.depends
+import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
-import pydantic
 
+import backend.server.v2.store.db
+import backend.server.v2.store.media
 import backend.server.v2.store.model
+
+logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
 
@@ -11,92 +19,85 @@ router = fastapi.APIRouter()
 ##############################################
 
 
-@router.get("agents", tags=["store"])
-def get_agents(
-    featured: bool, top: bool, categories: str, page: int = 1, page_size: int = 20
+@router.get("/agents", tags=["store", "public"])
+async def get_agents(
+    featured: bool = False,
+    creator: str | None = None,
+    sorted_by: str | None = None,
+    search_query: str | None = None,
+    category: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
 ) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
-    This is needed for:
+    Get a paginated list of agents from the store with optional filtering and sorting.
+
+    Args:
+        featured (bool, optional): Filter to only show featured agents. Defaults to False.
+        creator (str | None, optional): Filter agents by creator username. Defaults to None.
+        sorted_by (str | None, optional): Sort agents by "runs" or "rating". Defaults to None.
+        search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.
+        category (str | None, optional): Filter agents by category. Defaults to None.
+        page (int, optional): Page number for pagination. Defaults to 1.
+        page_size (int, optional): Number of agents per page. Defaults to 20.
+
+    Returns:
+        StoreAgentsResponse: Paginated list of agents matching the filters
+
+    Raises:
+        HTTPException: If page or page_size are less than 1
+
+    Used for:
     - Home Page Featured Agents
     - Home Page Top Agents
     - Search Results
-    - Agent Details - Other Agents By
+    - Agent Details - Other Agents By Creator
     - Agent Details - Similar Agents
-    - Creator Details - Agent By x
-
-    ---
-    To support all these different usecase we need a bunch of options:
-    - featured: bool - Filteres the list to featured only
-    - createdBy: username - Returns all agents by that user or group
-    - sortedBy: [runs, stars] - For the Top agents
-    - searchTerm: string - embedding similarity search based on Name, subheading and description
-    - category: string - Filter by category
-
-    In addition we need:
-    - page: int - for pagination
-    - page_size: int - for pagination
+    - Creator Details - Agents By Creator
     """
+    if page < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page must be greater than 0"
+        )
 
-    class StoreAgent(pydantic.BaseModel):
-        slug: str
-        agentName: str
-        agentImage: str
-        creator: str
-        creatorAvatar: str
-        subHeading: str
-        description: str
-        runs: int
-        stars: float
+    if page_size < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page size must be greater than 0"
+        )
 
-    return fastapi.responses.JSONResponse(
-        content=[
-            {
-                "agentName": "Super SEO Optimizer",
-                "agentImage": "https://ddz4ak4pa3d19.cloudfront.net/cache/cc/11/cc1172271dcf723a34f488a3344e82b2.jpg",
-                "creatorName": "AI Labs",
-                "description": "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
-                "runs": 100000,
-                "rating": 4.9,
-                "featured": True,
-            },
-            {
-                "agentName": "Content Wizard",
-                "agentImage": "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-                "creatorName": "WriteRight Inc.",
-                "description": "Generate high-quality, engaging content for your blog, social media, or marketing campaigns.",
-                "runs": 75000,
-                "rating": 4.7,
-                "featured": True,
-            },
-        ]
-    )
+    try:
+        agents = await backend.server.v2.store.db.get_store_agents(
+            featured=featured,
+            creator=creator,
+            sorted_by=sorted_by,
+            search_query=search_query,
+            category=category,
+            page=page,
+            page_size=page_size,
+        )
+        return agents
+    except Exception:
+        logger.exception("Exception occured whilst getting store agents")
+        raise
 
 
-@router.get("agents/{username}/{agent_name}")
-def get_agent(
-    username: str, agent_name: int
+@router.get("/agents/{username}/{agent_name}", tags=["store", "public"])
+async def get_agent(
+    username: str, agent_name: str
 ) -> backend.server.v2.store.model.StoreAgentDetails:
     """
     This is only used on the AgentDetails Page
 
     It returns the store listing agents details.
     """
-
-    class StoreAgentDetails(pydantic.BaseModel):
-        slug: str
-        agentName: str
-        agentVideo: str
-        agentImage: list[str]
-        creator: str
-        creatorAvatar: str
-        subHeading: str
-        description: str
-        categoires: list[str]
-        runs: int
-        stars: float
-        verions: list[str]
-
-    pass
+    try:
+        agent = await backend.server.v2.store.db.get_store_agent_details(
+            username=username, agent_name=agent_name
+        )
+        return agent
+    except Exception:
+        logger.exception("Exception occurred whilst getting store agent details")
+        raise
 
 
 ##############################################
@@ -104,9 +105,13 @@ def get_agent(
 ##############################################
 
 
-@router.get("creators", tags=["store"])
-def get_creators(
-    featured: bool, search: str, sortedBy: str, page: int = 1, page_size: int = 20
+@router.get("/creators", tags=["store", "public"])
+async def get_creators(
+    featured: bool = False,
+    search_query: str | None = None,
+    sorted_by: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
 ) -> backend.server.v2.store.model.CreatorsResponse:
     """
     This is needed for:
@@ -117,34 +122,207 @@ def get_creators(
 
     To support this functionality we need:
     - featured: bool - to limit the list to just featured agents
-    - search: str - vector search based on the creators profile description.
-    - sortedBy: [agentRating, agentRuns] -
+    - search_query: str - vector search based on the creators profile description.
+    - sorted_by: [agent_rating, agent_runs] -
     """
+    if page < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page must be greater than 0"
+        )
 
-    class Creator(pydantic.BaseModel):
-        name: str
-        username: str
-        description: str
-        avatarUrl: str
-        numAgents: int
+    if page_size < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page size must be greater than 0"
+        )
 
-    pass
+    try:
+        creators = await backend.server.v2.store.db.get_store_creators(
+            featured=featured,
+            search_query=search_query,
+            sorted_by=sorted_by,
+            page=page,
+            page_size=page_size,
+        )
+        return creators
+    except Exception:
+        logger.exception("Exception occurred whilst getting store creators")
+        raise
 
 
-@router.get("creator/{username}", tags=["store"])
-def get_ceator(username: str) -> backend.server.v2.store.model.CreatorDetails:
+@router.get("/creator/{username}", tags=["store", "public"])
+async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDetails:
     """
     Get the details of a creator
     - Creator Details Page
-
     """
+    try:
+        creator = await backend.server.v2.store.db.get_store_creator_details(
+            username=username
+        )
+        return creator
+    except Exception:
+        logger.exception("Exception occurred whilst getting creator details")
+        raise
 
-    class CreatorDetails(pydantic.BaseModel):
-        name: str
-        username: str
-        description: str
-        links: list[str]
-        avatarUrl: str
-        agentRating: float
-        agentRuns: int
-        topCategories: list[str]
+
+############################################
+############# Store Submissions ###############
+############################################
+
+
+@router.get(
+    "/submissions",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def get_submissions(
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+    page: int = 1,
+    page_size: int = 20,
+) -> backend.server.v2.store.model.StoreSubmissionsResponse:
+    """
+    Get a paginated list of store submissions for the authenticated user.
+
+    Args:
+        user_id (str): ID of the authenticated user
+        page (int, optional): Page number for pagination. Defaults to 1.
+        page_size (int, optional): Number of submissions per page. Defaults to 20.
+
+    Returns:
+        StoreListingsResponse: Paginated list of store submissions
+
+    Raises:
+        HTTPException: If page or page_size are less than 1
+    """
+    if page < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page must be greater than 0"
+        )
+
+    if page_size < 1:
+        raise fastapi.HTTPException(
+            status_code=422, detail="Page size must be greater than 0"
+        )
+    try:
+        listings = await backend.server.v2.store.db.get_store_submissions(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+        )
+        return listings
+    except Exception:
+        logger.exception("Exception occurred whilst getting store submissions")
+        raise
+
+
+@router.post(
+    "/submissions",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def create_submission(
+    submission_request: backend.server.v2.store.model.StoreSubmissionRequest,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> backend.server.v2.store.model.StoreSubmission:
+    """
+    Create a new store listing submission.
+
+    Args:
+        submission_request (StoreSubmissionRequest): The submission details
+        user_id (str): ID of the authenticated user submitting the listing
+
+    Returns:
+        StoreSubmission: The created store submission
+
+    Raises:
+        HTTPException: If there is an error creating the submission
+    """
+    try:
+        submission = await backend.server.v2.store.db.create_store_submission(
+            user_id=user_id,
+            agent_id=submission_request.agent_id,
+            agent_version=submission_request.agent_version,
+            slug=submission_request.slug,
+            name=submission_request.name,
+            video_url=submission_request.video_url,
+            image_urls=submission_request.image_urls,
+            description=submission_request.description,
+            sub_heading=submission_request.sub_heading,
+            categories=submission_request.categories,
+        )
+        return submission
+    except Exception:
+        logger.exception("Exception occurred whilst creating store submission")
+        raise
+
+
+@router.post(
+    "/submissions/media",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def upload_submission_media(
+    file: fastapi.UploadFile,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> str:
+    """
+    Upload media (images/videos) for a store listing submission.
+
+    Args:
+        file (UploadFile): The media file to upload
+        user_id (str): ID of the authenticated user uploading the media
+
+    Returns:
+        str: URL of the uploaded media file
+
+    Raises:
+        HTTPException: If there is an error uploading the media
+    """
+    try:
+        media_url = await backend.server.v2.store.media.upload_media(
+            user_id=user_id, file=file
+        )
+        return media_url
+    except Exception:
+        logger.exception("Exception occurred whilst uploading submission media")
+        raise
+
+
+@router.put(
+    "/profile",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def update_profile(
+    profile: backend.server.v2.store.model.CreatorDetails,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> backend.server.v2.store.model.CreatorDetails:
+    """
+    Update the store profile for the authenticated user.
+
+    Args:
+        profile (CreatorDetails): The updated profile details
+        user_id (str): ID of the authenticated user
+
+    Returns:
+        CreatorDetails: The updated profile
+
+    Raises:
+        HTTPException: If there is an error updating the profile
+    """
+    try:
+        updated_profile = await backend.server.v2.store.db.update_profile(
+            user_id=user_id, profile=profile
+        )
+        return updated_profile
+    except Exception:
+        logger.exception("Exception occurred whilst updating profile")
+        raise

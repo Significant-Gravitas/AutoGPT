@@ -8,6 +8,7 @@ generator client {
   provider             = "prisma-client-py"
   recursive_type_depth = 5
   interface            = "asyncio"
+  previewFeatures      = ["views"]
 }
 
 // User model to mirror Auth provider users
@@ -398,6 +399,8 @@ model Profile {
   userId String?
   User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  
+  name        String
   username    String @unique
   description String
 
@@ -406,6 +409,59 @@ model Profile {
   avatarUrl String?
 
   @@index([username])
+  @@index([userId])
+}
+
+view Creator {
+  username    String @unique
+  name        String
+  avatar_url  String
+  description String
+
+  top_categories String[]
+  links          String[]
+
+  num_agents   Int
+  agent_rating Float
+  agent_runs   Int
+}
+
+view StoreAgent {
+  listing_id String @id
+  
+  slug String
+  agent_name  String
+  agent_video String
+  agent_image String[]
+
+  featured         Boolean  @default(false)
+  creator_username String
+  creator_avatar   String
+  sub_heading      String
+  description      String
+  categories       String[]
+  runs             Int
+  rating            Float
+  versions         String[]
+
+  @@unique([creator_username, slug])
+  @@index([creator_username])
+  @@index([featured])
+  @@index([categories])
+}
+
+view StoreSubmission {
+  listing_id     String @id
+  user_id        String
+  name           String
+  description    String
+  image_urls     String[]
+  date_submitted DateTime
+  status         SubmissionStatus
+  runs           Int
+  rating         Float
+
+  @@index([user_id])
 }
 
 model StoreListing {
@@ -449,6 +505,7 @@ model StoreListingVersion {
   // TODO: Create a database view that shows only the latest version of each store listing.
   slug        String
   name        String
+  subHeading  String
   videoUrl    String?
   imageUrls   String[]
   description String

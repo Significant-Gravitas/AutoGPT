@@ -47,6 +47,7 @@ googlemaps = "^4.10.0"
 replicate = "^1.0.3"
 pinecone = "^5.3.1"
 cryptography = "^43.0.3"
+python-multipart = "^0.0.17"
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.29.0"
 httpx = "^0.27.0"
@@ -57,6 +58,7 @@ pyright = "^1.1.387"
 isort = "^5.13.2"
 black = "^24.10.0"
 aiohappyeyeballs = "^2.4.3"
+pytest-mock = "^3.14.0"
 
 [build-system]
 requires = ["poetry-core"]
