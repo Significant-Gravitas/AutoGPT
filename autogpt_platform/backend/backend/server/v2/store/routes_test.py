@@ -26,9 +26,9 @@ def override_get_user_id():
     return "test-user-id"
 
 
-app.dependency_overrides[
-    autogpt_libs.auth.middleware.auth_middleware
-] = override_auth_middleware
+app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
+    override_auth_middleware
+)
 app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
 
 
