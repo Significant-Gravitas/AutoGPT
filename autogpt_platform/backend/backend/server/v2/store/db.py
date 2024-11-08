@@ -1,11 +1,10 @@
 import logging
 
+import backend.server.v2.store.model
 import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
-
-import backend.server.v2.store.model
 
 logger = logging.getLogger(__name__)
 
