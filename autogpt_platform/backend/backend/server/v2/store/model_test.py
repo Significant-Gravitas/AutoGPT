@@ -1,8 +1,7 @@
 import datetime
 
-import prisma.enums
-
 import backend.server.v2.store.model
+import prisma.enums
 
 
 def test_pagination():
