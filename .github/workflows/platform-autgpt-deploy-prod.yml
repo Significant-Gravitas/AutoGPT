@@ -1,4 +1,4 @@
-name: AutoGPT Platform - Build, Push, and Deploy Prod Environment
+name: AutoGPT Platform - Deploy Prod Environment
 
 on:
   release:
