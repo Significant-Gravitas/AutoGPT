@@ -15,7 +15,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
         <div className="border-t border-neutral-300" />
         <div className="flex items-center px-4 py-2">
           <div className="flex items-center">
-            <div className="flex items-center">
+            <div className="flex items-center min-w-[120px]">
               <input 
                 type="checkbox" 
                 id="selectAllAgents"
@@ -30,7 +30,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
               </label>
             </div>
           </div>
-          <div className="grid grid-cols-[400px,150px,150px,100px,100px,50px] w-full items-center ml-4">
+          <div className="grid grid-cols-[400px,150px,150px,100px,100px,50px] w-full items-center ml-2">
             <div className="text-sm font-medium text-neutral-800">Agent info</div>
             <div className="text-sm font-medium text-neutral-800">Date submitted</div>
             <div className="text-sm font-medium text-neutral-800">Status</div>
