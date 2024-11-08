@@ -11,7 +11,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from backend.util.data import get_config_path, get_data_path, get_secrets_path
+from backend.util.data import get_data_path, get_secrets_path
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -69,6 +69,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The default hostname of the Pyro server.",
     )
+    pyro_client_comm_timeout: float = Field(
+        default=15,
+        description="The default timeout in seconds, for Pyro client connections.",
+    )
+    pyro_client_comm_retry: int = Field(
+        default=3,
+        description="The default number of retries for Pyro client connections.",
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
@@ -84,10 +92,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     # Add more configuration fields as needed
 
     model_config = SettingsConfigDict(
-        json_file=[
-            get_config_path() / "config.default.json",
-            get_config_path() / "config.json",
-        ],
         env_file=".env",
         extra="allow",
     )
@@ -153,6 +157,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Name of the event bus",
     )
 
+    trust_endpoints_for_requests: List[str] = Field(
+        default_factory=list,
+        description="A whitelist of trusted internal endpoints for the backend to make requests to.",
+    )
+
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
 
     @field_validator("backend_cors_allow_origins")
@@ -207,6 +216,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     supabase_service_role_key: str = Field(
         default="", description="Supabase service role key"
     )
+
+    encryption_key: str = Field(default="", description="Encryption key")
 
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
