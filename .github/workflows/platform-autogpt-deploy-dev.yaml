@@ -2,7 +2,7 @@ name: AutoGPT Platform - Deploy Dev Environment
 
 on:
   push:
-    branches: [ aarushikansal/deploy-from-infra ]
+    branches: [ dev ]
     paths:
       - 'autogpt_platform/**'
 
