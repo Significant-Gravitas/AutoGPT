@@ -11,5 +11,4 @@ class GetRequest:
         if headers is None:
             headers = {}
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
         return response.json() if json else response.text
