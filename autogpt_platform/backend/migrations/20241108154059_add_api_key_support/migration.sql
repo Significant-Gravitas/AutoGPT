@@ -22,9 +22,6 @@ CREATE TABLE "APIKey" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "APIKey_prefix_key" ON "APIKey"("prefix");
-
--- CreateIndex
 CREATE UNIQUE INDEX "APIKey_key_key" ON "APIKey"("key");
 
 -- CreateIndex

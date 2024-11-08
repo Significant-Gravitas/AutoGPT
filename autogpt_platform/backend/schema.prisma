@@ -289,7 +289,7 @@ enum APIKeyPermission {
 model APIKey {
   id          String             @id @default(uuid())
   name        String
-  prefix      String             @unique // First 8 chars for identification
+  prefix      String             // First 8 chars for identification
   key         String             @unique // Hashed key
   status      APIKeyStatus       @default(ACTIVE)
   permissions APIKeyPermission[]
