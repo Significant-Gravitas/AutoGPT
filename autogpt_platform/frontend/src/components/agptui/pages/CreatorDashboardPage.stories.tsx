@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorDashboardPage } from "./CreatorDashboardPage";
 import { IconType } from "../../ui/icons";
+import { StatusType } from "../Status";
 
 const meta: Meta<typeof CreatorDashboardPage> = {
   title: "AGPT UI/Agent Store/Creator Dashboard Page",
@@ -80,7 +81,7 @@ const sampleAgents = [
     imageSrc:
       "https://ddz4ak4pa3d19.cloudfront.net/cache/11/47/114784105a9b180e08e117cbf2612e5b.jpg",
     dateSubmitted: "2023-05-15",
-    status: "Active",
+    status: "approved" as StatusType,
     runs: 1500,
     rating: 4.8,
     onEdit: () => console.log("Edit Super Coder"),
@@ -91,10 +92,21 @@ const sampleAgents = [
     imageSrc:
       "https://ddz4ak4pa3d19.cloudfront.net/cache/40/f7/40f7bc97c952f8df0f9c88d29defe8d4.jpg",
     dateSubmitted: "2023-05-10",
-    status: "Active",
+    status: "awaiting_review" as StatusType,
     runs: 1200,
     rating: 4.5,
     onEdit: () => console.log("Edit Data Analyzer"),
+  },
+  {
+    agentName: "UI Designer",
+    description: "Creates beautiful and intuitive user interfaces",
+    imageSrc:
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/14/9e/149ebb9014aa8c0097e72ed89845af0e.jpg",
+    dateSubmitted: "2023-05-05",
+    status: "draft" as StatusType,
+    runs: 800,
+    rating: 4.2,
+    onEdit: () => console.log("Edit UI Designer"),
   },
 ];
 
@@ -126,6 +138,9 @@ export const ManyAgents: Story = {
       .map((agent, index) => ({
         ...agent,
         agentName: `Agent ${index + 1}`,
+        status: ["approved", "awaiting_review", "draft", "rejected"][index % 4] as StatusType,
+        rating: Math.round((4 + Math.random()) * 10) / 10,
+        runs: Math.floor(Math.random() * 2000) + 500,
         onEdit: () => console.log(`Edit Agent ${index + 1}`),
       })),
   },

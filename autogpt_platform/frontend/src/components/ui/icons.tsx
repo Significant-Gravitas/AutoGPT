@@ -1506,6 +1506,42 @@ export const IconSliders = createIcon((props) => (
   </svg>
 ));
 
+
+/**
+ * More (vertical dots) icon component.
+ *
+ * @component IconMore
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The more options icon.
+ *
+ * @example
+ * // Default usage
+ * <IconMore />
+ *
+ * @example
+ * // With custom color and size
+ * <IconMore className="text-neutral-800" size="lg" />
+ */
+export const IconMore = createIcon((props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-label="More Icon"
+    {...props}
+  >
+    <path d="M10 10.8333C10.4603 10.8333 10.8334 10.4602 10.8334 9.99999C10.8334 9.53975 10.4603 9.16666 10 9.16666C9.53978 9.16666 9.16669 9.53975 9.16669 9.99999C9.16669 10.4602 9.53978 10.8333 10 10.8333Z" />
+    <path d="M10 4.99999C10.4603 4.99999 10.8334 4.6269 10.8334 4.16666C10.8334 3.70642 10.4603 3.33333 10 3.33333C9.53978 3.33333 9.16669 3.70642 9.16669 4.16666C9.16669 4.6269 9.53978 4.99999 10 4.99999Z" />
+    <path d="M10 16.6667C10.4603 16.6667 10.8334 16.2936 10.8334 15.8333C10.8334 15.3731 10.4603 15 10 15C9.53978 15 9.16669 15.3731 9.16669 15.8333C9.16669 16.2936 9.53978 16.6667 10 16.6667Z" />
+  </svg>
+));
+
 export const IconBuilder = createIcon((props) => <IconToyBrick {...props} />);
 
 export enum IconType {

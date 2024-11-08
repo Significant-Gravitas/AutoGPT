@@ -1,17 +1,19 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "./Button";
-import { IconStarFilled, IconEdit } from "@/components/ui/icons";
+import { IconStarFilled, IconEdit, IconMore } from "@/components/ui/icons";
+import { Status, StatusType } from "./Status";
 
 export interface AgentTableRowProps {
   agentName: string;
   description: string;
   imageSrc: string;
   dateSubmitted: string;
-  status: string;
+  status: StatusType;
   runs?: number;
   rating?: number;
   onEdit: () => void;
+  id: string;
 }
 
 export const AgentTableRow: React.FC<AgentTableRowProps> = ({
@@ -23,57 +25,91 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   runs,
   rating,
   onEdit,
+  id,
 }) => {
+  // Create a unique ID for the checkbox
+  const checkboxId = `agent-${id}-checkbox`;
+
   return (
-    <tr className="border-b border-[#d9d9d9] py-4">
-      <td className="flex items-center">
-        <div className="relative my-4 mr-4 h-20 w-20 overflow-hidden rounded-xl sm:h-20 sm:w-[125px]">
-          <Image
-            src={imageSrc}
-            alt={agentName}
-            layout="fill"
-            objectFit="cover"
+    <div className="hidden md:flex items-center px-4 py-4 border-b border-neutral-300 hover:bg-neutral-50">
+      <div className="flex items-center">
+        <div className="flex items-center">
+          <input 
+            type="checkbox" 
+            id={checkboxId}
+            aria-label={`Select ${agentName}`}
+            className="w-5 h-5 rounded border-2 border-neutral-400 mr-4" 
           />
+          {/* Single label instead of multiple */}
+          <label 
+            htmlFor={checkboxId}
+            className="sr-only"
+          >
+            Select {agentName}
+          </label>
         </div>
-        <div className="max-w-[293px]">
-          <h3 className="mb-2 font-neue text-lg font-medium tracking-tight text-[#272727]">
-            {agentName}
-          </h3>
-          <p className="font-neue text-sm leading-tight tracking-tight text-[#282828]">
-            {description}
-          </p>
-        </div>
-      </td>
-      <td className="font-neue text-base leading-[21px] tracking-tight text-[#282828]">
-        {dateSubmitted}
-      </td>
-      <td className="font-neue text-base leading-[21px] tracking-tight text-[#282828]">
-        {status}
-      </td>
-      <td className="font-neue text-base leading-[21px] tracking-tight text-[#282828]">
-        {runs !== undefined ? runs.toLocaleString() : ""}
-      </td>
-      <td>
-        {rating !== undefined && (
-          <div className="flex items-center">
-            <span className="mr-2 font-neue text-base font-medium tracking-tight text-[#272727]">
-              {rating.toFixed(1)}
-            </span>
-            <IconStarFilled />
+      </div>
+      
+      <div className="grid grid-cols-[400px,150px,150px,100px,100px,50px] w-full items-center">
+        {/* Agent info column */}
+        <div className="flex items-center gap-4">
+          <div className="relative w-[125px] h-[70px] overflow-hidden rounded-[10px] bg-[#d9d9d9]">
+            <Image
+              src={imageSrc}
+              alt={agentName}
+              layout="fill"
+              objectFit="cover"
+            />
           </div>
-        )}
-      </td>
-      <td>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-1"
-          onClick={onEdit}
-        >
-          <IconEdit />
-          <span className="font-neue text-sm">Edit</span>
-        </Button>
-      </td>
-    </tr>
+          <div className="flex flex-col">
+            <h3 className="text-[15px] font-medium text-neutral-800">
+              {agentName}
+            </h3>
+            <p className="text-sm text-neutral-600 line-clamp-2">
+              {description}
+            </p>
+          </div>
+        </div>
+
+        {/* Date column */}
+        <div className="text-sm text-neutral-600">
+          {dateSubmitted}
+        </div>
+
+        {/* Status column */}
+        <div>
+          <Status status={status} />
+        </div>
+
+        {/* Runs column */}
+        <div className="text-right text-sm text-neutral-600">
+          {runs?.toLocaleString() ?? '—'}
+        </div>
+
+        {/* Reviews column */}
+        <div className="text-right">
+          {rating ? (
+            <div className="flex items-center justify-end gap-1">
+              <span className="text-sm font-medium text-neutral-800">
+                {rating.toFixed(1)}
+              </span>
+              <IconStarFilled className="h-4 w-4 text-neutral-800" />
+            </div>
+          ) : (
+            <span className="text-sm text-neutral-600">—</span>
+          )}
+        </div>
+
+        {/* Actions - Three dots menu */}
+        <div className="flex justify-end">
+          <button
+            onClick={onEdit}
+            className="p-1 hover:bg-neutral-100 rounded-full"
+          >
+            <IconMore className="h-5 w-5 text-neutral-800" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };

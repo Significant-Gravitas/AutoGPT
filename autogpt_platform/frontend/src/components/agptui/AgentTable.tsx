@@ -9,62 +9,56 @@ export interface AgentTableProps {
 
 export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
   return (
-    <div className="mx-auto w-full max-w-[1095px]">
-      {/* Table for medium and larger screens */}
-      <div className="hidden md:block">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-[#d9d9d9]">
-              <th className="font-['PP Neue Montreal TT'] py-4 text-left text-base leading-[21px] tracking-tight text-[#282828]">
-                Agent
-              </th>
-              <th className="font-['PP Neue Montreal TT'] py-4 text-left text-base leading-[21px] tracking-tight text-[#282828]">
-                Date submitted
-              </th>
-              <th className="font-['PP Neue Montreal TT'] py-4 text-left text-base leading-[21px] tracking-tight text-[#282828]">
-                Status
-              </th>
-              <th className="font-['PP Neue Montreal TT'] py-4 text-left text-base leading-[21px] tracking-tight text-[#282828]">
-                Runs
-              </th>
-              <th className="font-['PP Neue Montreal TT'] py-4 text-left text-base leading-[21px] tracking-tight text-[#282828]">
-                Reviews
-              </th>
-              <th className="font-['PP Neue Montreal TT'] py-4 text-left text-base leading-[21px] tracking-tight text-[#282828]">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {agents.length > 0 ? (
-              agents.map((agent, index) => (
-                <AgentTableRow key={index} {...agent} />
-              ))
-            ) : (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="font-['PP Neue Montreal TT'] py-4 text-center text-base text-[#282828]"
-                >
-                  No agents available. Create your first agent to get started!
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {/* Cards for small screens */}
-      <div className="block md:hidden">
-        {agents.length > 0 ? (
-          agents.map((agent, index) => (
-            <AgentTableCard key={index} {...agent} />
-          ))
-        ) : (
-          <div className="font-['PP Neue Montreal TT'] py-4 text-center text-base text-[#707070]">
-            No agents available. Create your first agent to get started!
+    <div className="w-full">
+      {/* Table header - Hide on mobile */}
+      <div className="hidden md:flex flex-col">
+        <div className="border-t border-neutral-300" />
+        <div className="flex items-center px-4 py-2">
+          <div className="flex items-center">
+            <div className="flex items-center">
+              <input 
+                type="checkbox" 
+                id="selectAllAgents"
+                aria-label="Select all agents"
+                className="w-5 h-5 rounded border-2 border-neutral-400 mr-4" 
+              />
+              <label 
+                htmlFor="selectAllAgents" 
+                className="text-sm font-medium text-neutral-800"
+              >
+                Select all
+              </label>
+            </div>
           </div>
-        )}
+          <div className="grid grid-cols-[400px,150px,150px,100px,100px,50px] w-full items-center ml-4">
+            <div className="text-sm font-medium text-neutral-800">Agent info</div>
+            <div className="text-sm font-medium text-neutral-800">Date submitted</div>
+            <div className="text-sm font-medium text-neutral-800">Status</div>
+            <div className="text-sm font-medium text-neutral-800 text-right">Runs</div>
+            <div className="text-sm font-medium text-neutral-800 text-right">Reviews</div>
+            <div></div>
+          </div>
+        </div>
+        <div className="border-b border-neutral-300" />
       </div>
+
+      {/* Table body */}
+      {agents.length > 0 ? (
+        <div className="flex flex-col">
+          {agents.map((agent, index) => (
+            <div key={index} className="md:block">
+              <AgentTableRow {...agent} />
+              <div className="block md:hidden">
+                <AgentTableCard {...agent} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="py-4 text-center font-['Geist'] text-base text-neutral-600">
+          No agents available. Create your first agent to get started!
+        </div>
+      )}
     </div>
   );
 };
