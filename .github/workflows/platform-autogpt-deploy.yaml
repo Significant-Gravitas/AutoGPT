@@ -1,4 +1,4 @@
-name: AutoGPT Platform - Build, Push, and Deploy Dev Environment
+name: AutoGPT Platform - Deploy Dev Environment
 
 on:
   push:
@@ -61,5 +61,5 @@ jobs:
         with:
           token: ${{ secrets.DEPLOY_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
-          event-type: build_deploy
+          event-type: build_deploy_dev
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "repository": "${{ github.repository }}"}'
