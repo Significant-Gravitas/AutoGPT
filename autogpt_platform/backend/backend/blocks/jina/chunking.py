@@ -1,5 +1,3 @@
-import requests
-
 from backend.blocks.jina._auth import (
     JinaCredentials,
     JinaCredentialsField,
@@ -7,6 +5,7 @@ from backend.blocks.jina._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.request import requests
 
 
 class JinaChunkingBlock(Block):
@@ -57,7 +56,6 @@ class JinaChunkingBlock(Block):
             }
 
             response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
             result = response.json()
 
             all_chunks.extend(result.get("chunks", []))
