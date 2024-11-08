@@ -431,7 +431,7 @@ view StoreAgent {
   
   slug String
   agent_name  String
-  agent_video String
+  agent_video String?
   agent_image String[]
 
   featured         Boolean  @default(false)

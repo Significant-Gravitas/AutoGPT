@@ -104,7 +104,7 @@ async def get_store_agent_details(
         return backend.server.v2.store.model.StoreAgentDetails(
             slug=agent.slug,
             agent_name=agent.agent_name,
-            agent_video=agent.agent_video,
+            agent_video=agent.agent_video or "",
             agent_image=agent.agent_image,
             creator=agent.creator_username,
             creator_avatar=agent.creator_avatar,
