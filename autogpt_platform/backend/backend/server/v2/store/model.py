@@ -1,4 +1,7 @@
+import datetime
 from typing import List
+
+import prisma.enums
 import pydantic
 
 
@@ -19,14 +22,14 @@ class Pagination(pydantic.BaseModel):
 
 class StoreAgent(pydantic.BaseModel):
     slug: str
-    agentName: str
-    agentImage: str
+    agent_name: str
+    agent_image: str
     creator: str
-    creatorAvatar: str
-    subHeading: str
+    creator_avatar: str
+    sub_heading: str
     description: str
     runs: int
-    stars: float
+    rating: float
 
 
 class StoreAgentsResponse(pydantic.BaseModel):
@@ -36,25 +39,25 @@ class StoreAgentsResponse(pydantic.BaseModel):
 
 class StoreAgentDetails(pydantic.BaseModel):
     slug: str
-    agentName: str
-    agentVideo: str
-    agentImage: list[str]
+    agent_name: str
+    agent_video: str
+    agent_image: list[str]
     creator: str
-    creatorAvatar: str
-    subHeading: str
+    creator_avatar: str
+    sub_heading: str
     description: str
-    categoires: list[str]
+    categories: list[str]
     runs: int
-    stars: float
-    verions: list[str]
+    rating: float
+    versions: list[str]
 
 
 class Creator(pydantic.BaseModel):
     name: str
     username: str
     description: str
-    avatarUrl: str
-    numAgents: int
+    avatar_url: str
+    num_agents: int
 
 
 class CreatorsResponse(pydantic.BaseModel):
@@ -67,7 +70,34 @@ class CreatorDetails(pydantic.BaseModel):
     username: str
     description: str
     links: list[str]
-    avatarUrl: str
-    agentRating: float
-    agentRuns: int
-    topCategories: list[str]
+    avatar_url: str
+    agent_rating: float
+    agent_runs: int
+    top_categories: list[str]
+
+
+class StoreSubmission(pydantic.BaseModel):
+    name: str
+    description: str
+    image_urls: list[str]
+    date_submitted: datetime.datetime
+    status: prisma.enums.SubmissionStatus
+    runs: int
+    rating: float
+
+
+class StoreSubmissionsResponse(pydantic.BaseModel):
+    submissions: list[StoreSubmission]
+    pagination: Pagination
+
+
+class StoreSubmissionRequest(pydantic.BaseModel):
+    agent_id: str
+    agent_version: int
+    slug: str
+    name: str
+    sub_heading: str
+    video_url: str | None = None
+    image_urls: list[str] = []
+    description: str = ""
+    categories: list[str] = []
