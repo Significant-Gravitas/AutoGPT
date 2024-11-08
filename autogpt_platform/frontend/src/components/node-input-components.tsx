@@ -766,7 +766,7 @@ const NodeBooleanInput: FC<{
     <div className={className}>
       <div className="nodrag flex items-center">
         <Switch
-          checked={value}
+          defaultChecked={value}
           onCheckedChange={(v) => handleInputChange(selfKey, v)}
         />
         <span className="ml-3">{displayName}</span>
