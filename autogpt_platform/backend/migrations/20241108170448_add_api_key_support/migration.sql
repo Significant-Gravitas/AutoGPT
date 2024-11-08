@@ -9,6 +9,7 @@ CREATE TABLE "APIKey" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "prefix" TEXT NOT NULL,
+    "postfix" TEXT NOT NULL,
     "key" TEXT NOT NULL,
     "status" "APIKeyStatus" NOT NULL DEFAULT 'ACTIVE',
     "permissions" "APIKeyPermission"[],

@@ -290,6 +290,7 @@ model APIKey {
   id          String             @id @default(uuid())
   name        String
   prefix      String             // First 8 chars for identification
+  postfix     String
   key         String             @unique // Hashed key
   status      APIKeyStatus       @default(ACTIVE)
   permissions APIKeyPermission[]
