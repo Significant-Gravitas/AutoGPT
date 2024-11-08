@@ -2,6 +2,9 @@
 CREATE TYPE "SubmissionStatus" AS ENUM ('DAFT', 'PENDING', 'APPROVED', 'REJECTED');
 
 -- AlterTable
+ALTER TABLE "AgentGraph" ADD COLUMN     "agentGraphParentId" TEXT;
+
+-- AlterTable
 ALTER TABLE "AgentGraphExecution" ADD COLUMN     "agentPresetId" TEXT;
 
 -- AlterTable
@@ -54,6 +57,7 @@ CREATE TABLE "Profile" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT,
+    "name" TEXT NOT NULL,
     "username" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "links" TEXT[],
@@ -86,6 +90,7 @@ CREATE TABLE "StoreListingVersion" (
     "agentVersion" INTEGER NOT NULL,
     "slug" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "subHeading" TEXT NOT NULL,
     "videoUrl" TEXT,
     "imageUrls" TEXT[],
     "description" TEXT NOT NULL,
@@ -139,6 +144,9 @@ CREATE UNIQUE INDEX "Profile_username_key" ON "Profile"("username");
 CREATE INDEX "Profile_username_idx" ON "Profile"("username");
 
 -- CreateIndex
+CREATE INDEX "Profile_userId_idx" ON "Profile"("userId");
+
+-- CreateIndex
 CREATE INDEX "StoreListing_isApproved_idx" ON "StoreListing"("isApproved");
 
 -- CreateIndex
@@ -158,6 +166,9 @@ CREATE INDEX "StoreListingSubmission_storeListingId_idx" ON "StoreListingSubmiss
 
 -- CreateIndex
 CREATE INDEX "StoreListingSubmission_Status_idx" ON "StoreListingSubmission"("Status");
+
+-- AddForeignKey
+ALTER TABLE "AgentGraph" ADD CONSTRAINT "AgentGraph_agentGraphParentId_version_fkey" FOREIGN KEY ("agentGraphParentId", "version") REFERENCES "AgentGraph"("id", "version") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
