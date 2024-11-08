@@ -1,11 +1,12 @@
-import pytest
 from datetime import datetime
 
-import backend.server.v2.store.db as db
 import prisma.errors
 import prisma.models
-from backend.server.v2.store.model import CreatorDetails
+import pytest
 from prisma import Prisma, register
+
+import backend.server.v2.store.db as db
+from backend.server.v2.store.model import CreatorDetails
 
 
 @pytest.fixture(autouse=True)
