@@ -1522,26 +1522,31 @@ export function getIconForSocial(
   url: string,
   props: IconProps,
 ): React.ReactNode {
-  const url_host = new URL(url).host;
-  const lowerCaseUrl = url_host.toLowerCase();
+  const lowerCaseUrl = url.toLowerCase();
+  let host;
+  try {
+    host = new URL(url).host;
+  } catch (e) {
+    return <IconGlobe {...props} />;
+  }
 
-  if (lowerCaseUrl.includes("www.facebook.com")) {
+  if (host === "facebook.com" || host.endsWith(".facebook.com")) {
     return <IconFacebook {...props} />;
-  } else if (lowerCaseUrl.includes("www.twitter.com")) {
+  } else if (host === "twitter.com" || host.endsWith(".twitter.com")) {
     return <IconX {...props} />;
-  } else if (lowerCaseUrl.includes("www.x.com")) {
+  } else if (host === "x.com" || host.endsWith(".x.com")) {
     return <IconX {...props} />;
-  } else if (lowerCaseUrl.includes("www.instagram.com")) {
+  } else if (host === "instagram.com" || host.endsWith(".instagram.com")) {
     return <IconInstagram {...props} />;
-  } else if (lowerCaseUrl.includes("www.linkedin.com")) {
+  } else if (host === "linkedin.com" || host.endsWith(".linkedin.com")) {
     return <IconLinkedin {...props} />;
-  } else if (lowerCaseUrl.includes("www.github.com")) {
+  } else if (host === "github.com" || host.endsWith(".github.com")) {
     return <IconGithub {...props} />;
-  } else if (lowerCaseUrl.includes("www.youtube.com")) {
+  } else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
     return <IconYoutube {...props} />;
-  } else if (lowerCaseUrl.includes("www.tiktok.com")) {
+  } else if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
     return <IconTiktok {...props} />;
-  } else if (lowerCaseUrl.includes("www.medium.com")) {
+  } else if (host === "medium.com" || host.endsWith(".medium.com")) {
     return <IconMedium {...props} />;
   } else {
     return <IconGlobe {...props} />;
