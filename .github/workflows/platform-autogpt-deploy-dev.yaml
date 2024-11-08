@@ -1,8 +1,10 @@
-name: AutoGPT Platform - Deploy Prod Environment
+name: AutoGPT Platform - Deploy Dev Environment
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [ dev ]
+    paths:
+      - 'autogpt_platform/**'
 
 permissions:
   contents: 'read'
@@ -10,7 +12,7 @@ permissions:
 
 jobs:
   migrate:
-    environment: production
+    environment: develop
     name: Run migrations for AutoGPT Platform
     runs-on: ubuntu-latest
 
@@ -41,7 +43,7 @@ jobs:
           python -m prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.MARKET_DATABASE_URL }}
-          
+
   trigger:
     needs: migrate
     runs-on: ubuntu-latest
@@ -51,5 +53,5 @@ jobs:
         with:
           token: ${{ secrets.DEPLOY_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
-          event-type: build_deploy_prod
+          event-type: build_deploy_dev
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "repository": "${{ github.repository }}"}'

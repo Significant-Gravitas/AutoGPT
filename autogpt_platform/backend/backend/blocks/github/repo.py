@@ -1,11 +1,11 @@
 import base64
 
-import requests
 from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+from ._api import get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -68,17 +68,11 @@ class GithubListTagsBlock(Block):
     def list_tags(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.TagItem]:
-        repo_path = repo_url.replace("https://github.com/", "")
-        api_url = f"https://api.github.com/repos/{repo_path}/tags"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        tags_url = repo_url + "/tags"
+        response = api.get(tags_url)
         data = response.json()
+        repo_path = repo_url.replace("https://github.com/", "")
         tags: list[GithubListTagsBlock.Output.TagItem] = [
             {
                 "name": tag["name"],
@@ -86,7 +80,6 @@ class GithubListTagsBlock(Block):
             }
             for tag in data
         ]
-
         return tags
 
     def run(
@@ -157,20 +150,18 @@ class GithubListBranchesBlock(Block):
     def list_branches(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.BranchItem]:
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/branches"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        branches_url = repo_url + "/branches"
+        response = api.get(branches_url)
         data = response.json()
+        repo_path = repo_url.replace("https://github.com/", "")
         branches: list[GithubListBranchesBlock.Output.BranchItem] = [
-            {"name": branch["name"], "url": branch["commit"]["url"]} for branch in data
+            {
+                "name": branch["name"],
+                "url": f"https://github.com/{repo_path}/tree/{branch['name']}",
+            }
+            for branch in data
         ]
-
         return branches
 
     def run(
@@ -246,6 +237,8 @@ class GithubListDiscussionsBlock(Block):
     def list_discussions(
         credentials: GithubCredentials, repo_url: str, num_discussions: int
     ) -> list[Output.DiscussionItem]:
+        api = get_api(credentials)
+        # GitHub GraphQL API endpoint is different; we'll use api.post with custom URL
         repo_path = repo_url.replace("https://github.com/", "")
         owner, repo = repo_path.split("/")
         query = """
@@ -261,24 +254,15 @@ class GithubListDiscussionsBlock(Block):
         }
         """
         variables = {"owner": owner, "repo": repo, "num": num_discussions}
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.post(
+        response = api.post(
             "https://api.github.com/graphql",
             json={"query": query, "variables": variables},
-            headers=headers,
         )
-        response.raise_for_status()
-
         data = response.json()
         discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = [
             {"title": discussion["title"], "url": discussion["url"]}
             for discussion in data["data"]["repository"]["discussions"]["nodes"]
         ]
-
         return discussions
 
     def run(
@@ -348,21 +332,13 @@ class GithubListReleasesBlock(Block):
     def list_releases(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.ReleaseItem]:
-        repo_path = repo_url.replace("https://github.com/", "")
-        api_url = f"https://api.github.com/repos/{repo_path}/releases"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        releases_url = repo_url + "/releases"
+        response = api.get(releases_url)
         data = response.json()
         releases: list[GithubListReleasesBlock.Output.ReleaseItem] = [
             {"name": release["name"], "url": release["html_url"]} for release in data
         ]
-
         return releases
 
     def run(
@@ -432,16 +408,9 @@ class GithubReadFileBlock(Block):
     def read_file(
         credentials: GithubCredentials, repo_url: str, file_path: str, branch: str
     ) -> tuple[str, int]:
-        repo_path = repo_url.replace("https://github.com/", "")
-        api_url = f"https://api.github.com/repos/{repo_path}/contents/{file_path}?ref={branch}"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        content_url = repo_url + f"/contents/{file_path}?ref={branch}"
+        response = api.get(content_url)
         content = response.json()
 
         if isinstance(content, list):
@@ -549,46 +518,33 @@ class GithubReadFolderBlock(Block):
     def read_folder(
         credentials: GithubCredentials, repo_url: str, folder_path: str, branch: str
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
-        repo_path = repo_url.replace("https://github.com/", "")
-        api_url = f"https://api.github.com/repos/{repo_path}/contents/{folder_path}?ref={branch}"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        contents_url = repo_url + f"/contents/{folder_path}?ref={branch}"
+        response = api.get(contents_url)
         content = response.json()
 
-        if isinstance(content, list):
-            # Multiple entries of different types exist at this path
-            if not (dir := next((d for d in content if d["type"] == "dir"), None)):
-                raise TypeError("Not a folder")
-            content = dir
-
-        if content["type"] != "dir":
+        if not isinstance(content, list):
             raise TypeError("Not a folder")
 
-        return (
-            [
-                GithubReadFolderBlock.Output.FileEntry(
-                    name=entry["name"],
-                    path=entry["path"],
-                    size=entry["size"],
-                )
-                for entry in content["entries"]
-                if entry["type"] == "file"
-            ],
-            [
-                GithubReadFolderBlock.Output.DirEntry(
-                    name=entry["name"],
-                    path=entry["path"],
-                )
-                for entry in content["entries"]
-                if entry["type"] == "dir"
-            ],
-        )
+        files = [
+            GithubReadFolderBlock.Output.FileEntry(
+                name=entry["name"],
+                path=entry["path"],
+                size=entry["size"],
+            )
+            for entry in content
+            if entry["type"] == "file"
+        ]
+        dirs = [
+            GithubReadFolderBlock.Output.DirEntry(
+                name=entry["name"],
+                path=entry["path"],
+            )
+            for entry in content
+            if entry["type"] == "dir"
+        ]
+
+        return files, dirs
 
     def run(
         self,
@@ -656,26 +612,16 @@ class GithubMakeBranchBlock(Block):
         new_branch: str,
         source_branch: str,
     ) -> str:
-        repo_path = repo_url.replace("https://github.com/", "")
-        ref_api_url = (
-            f"https://api.github.com/repos/{repo_path}/git/refs/heads/{source_branch}"
-        )
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(ref_api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        # Get the SHA of the source branch
+        ref_url = repo_url + f"/git/refs/heads/{source_branch}"
+        response = api.get(ref_url)
         sha = response.json()["object"]["sha"]
 
-        create_branch_api_url = f"https://api.github.com/repos/{repo_path}/git/refs"
+        # Create the new branch
+        create_ref_url = repo_url + "/git/refs"
         data = {"ref": f"refs/heads/{new_branch}", "sha": sha}
-
-        response = requests.post(create_branch_api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        response = api.post(create_ref_url, json=data)
         return "Branch created successfully"
 
     def run(
@@ -735,16 +681,9 @@ class GithubDeleteBranchBlock(Block):
     def delete_branch(
         credentials: GithubCredentials, repo_url: str, branch: str
     ) -> str:
-        repo_path = repo_url.replace("https://github.com/", "")
-        api_url = f"https://api.github.com/repos/{repo_path}/git/refs/heads/{branch}"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.delete(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        ref_url = repo_url + f"/git/refs/heads/{branch}"
+        api.delete(ref_url)
         return "Branch deleted successfully"
 
     def run(
