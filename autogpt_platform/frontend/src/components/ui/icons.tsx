@@ -1522,25 +1522,26 @@ export function getIconForSocial(
   url: string,
   props: IconProps,
 ): React.ReactNode {
-  const lowerCaseUrl = url.toLowerCase();
+  const url_host = new URL(url).host;
+  const lowerCaseUrl = url_host.toLowerCase();
 
-  if (lowerCaseUrl.includes("facebook.com")) {
+  if (lowerCaseUrl.includes("www.facebook.com")) {
     return <IconFacebook {...props} />;
-  } else if (lowerCaseUrl.includes("twitter.com")) {
+  } else if (lowerCaseUrl.includes("www.twitter.com")) {
     return <IconX {...props} />;
-  } else if (lowerCaseUrl.includes("x.com")) {
+  } else if (lowerCaseUrl.includes("www.x.com")) {
     return <IconX {...props} />;
-  } else if (lowerCaseUrl.includes("instagram.com")) {
+  } else if (lowerCaseUrl.includes("www.instagram.com")) {
     return <IconInstagram {...props} />;
-  } else if (lowerCaseUrl.includes("linkedin.com")) {
+  } else if (lowerCaseUrl.includes("www.linkedin.com")) {
     return <IconLinkedin {...props} />;
-  } else if (lowerCaseUrl.includes("github.com")) {
+  } else if (lowerCaseUrl.includes("www.github.com")) {
     return <IconGithub {...props} />;
-  } else if (lowerCaseUrl.includes("youtube.com")) {
+  } else if (lowerCaseUrl.includes("www.youtube.com")) {
     return <IconYoutube {...props} />;
-  } else if (lowerCaseUrl.includes("tiktok.com")) {
+  } else if (lowerCaseUrl.includes("www.tiktok.com")) {
     return <IconTiktok {...props} />;
-  } else if (lowerCaseUrl.includes("medium.com")) {
+  } else if (lowerCaseUrl.includes("www.medium.com")) {
     return <IconMedium {...props} />;
   } else {
     return <IconGlobe {...props} />;
