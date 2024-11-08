@@ -11,7 +11,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from backend.util.data import get_config_path, get_data_path, get_secrets_path
+from backend.util.data import get_data_path, get_secrets_path
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -92,10 +92,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     # Add more configuration fields as needed
 
     model_config = SettingsConfigDict(
-        json_file=[
-            get_config_path() / "config.default.json",
-            get_config_path() / "config.json",
-        ],
         env_file=".env",
         extra="allow",
     )
