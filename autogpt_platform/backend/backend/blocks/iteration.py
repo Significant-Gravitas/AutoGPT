@@ -2,13 +2,28 @@ from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.json import json
 
 
 class StepThroughItemsBlock(Block):
     class Input(BlockSchema):
-        items: list | dict = SchemaField(
+        items: list = SchemaField(
+            advanced=False,
             description="The list or dictionary of items to iterate over",
             placeholder="[1, 2, 3, 4, 5] or {'key1': 'value1', 'key2': 'value2'}",
+            default=[],
+        )
+        items_object: dict = SchemaField(
+            advanced=False,
+            description="The list or dictionary of items to iterate over",
+            placeholder="[1, 2, 3, 4, 5] or {'key1': 'value1', 'key2': 'value2'}",
+            default={},
+        )
+        items_str: str = SchemaField(
+            advanced=False,
+            description="The list or dictionary of items to iterate over",
+            placeholder="[1, 2, 3, 4, 5] or {'key1': 'value1', 'key2': 'value2'}",
+            default="",
         )
 
     class Output(BlockSchema):
@@ -39,14 +54,20 @@ class StepThroughItemsBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        items = input_data.items
-        if isinstance(items, dict):
-            # If items is a dictionary, iterate over its values
-            for item in items.values():
-                yield "item", item
-                yield "key", item
-        else:
-            # If items is a list, iterate over the list
-            for index, item in enumerate(items):
-                yield "item", item
-                yield "key", index
+        for data in [input_data.items, input_data.items_object, input_data.items_str]:
+            if not data:
+                continue
+            if isinstance(data, str):
+                items = json.loads(data)
+            else:
+                items = data
+            if isinstance(items, dict):
+                # If items is a dictionary, iterate over its values
+                for item in items.values():
+                    yield "item", item
+                    yield "key", item
+            else:
+                # If items is a list, iterate over the list
+                for index, item in enumerate(items):
+                    yield "item", item
+                    yield "key", index

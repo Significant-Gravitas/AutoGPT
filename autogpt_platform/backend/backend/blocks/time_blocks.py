@@ -139,23 +139,26 @@ class GetCurrentDateAndTimeBlock(Block):
 
 class CountdownTimerBlock(Block):
     class Input(BlockSchema):
-        input_message: Any = SchemaField(
+        input_data: Any = SchemaField(
+            advanced=False,
             description="Message to output after the timer finishes",
             default="timer finished",
         )
         seconds: Union[int, str] = SchemaField(
-            description="Duration in seconds", default=0
+            advanced=False, description="Duration in seconds", default=0
         )
         minutes: Union[int, str] = SchemaField(
-            description="Duration in minutes", default=0
+            advanced=False, description="Duration in minutes", default=0
         )
-        hours: Union[int, str] = SchemaField(description="Duration in hours", default=0)
-        days: Union[int, str] = SchemaField(description="Duration in days", default=0)
+        hours: Union[int, str] = SchemaField(
+            advanced=False, description="Duration in hours", default=0
+        )
+        days: Union[int, str] = SchemaField(
+            advanced=False, description="Duration in days", default=0
+        )
 
     class Output(BlockSchema):
-        output_message: str = SchemaField(
-            description="Message after the timer finishes"
-        )
+        output_data: Any = SchemaField(description="Message after the timer finishes")
 
     def __init__(self):
         super().__init__(
@@ -166,11 +169,11 @@ class CountdownTimerBlock(Block):
             output_schema=CountdownTimerBlock.Output,
             test_input=[
                 {"seconds": 1},
-                {"input_message": "Custom message"},
+                {"input_data": "Custom message"},
             ],
             test_output=[
-                ("output_message", "timer finished"),
-                ("output_message", "Custom message"),
+                ("output_data", "timer finished"),
+                ("output_data", "Custom message"),
             ],
         )
 
@@ -183,4 +186,4 @@ class CountdownTimerBlock(Block):
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
         time.sleep(total_seconds)
-        yield "output_message", input_data.input_message
+        yield "output_data", input_data.input_data
