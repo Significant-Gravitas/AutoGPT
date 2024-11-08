@@ -50,7 +50,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
         </div>
       </div>
       
-      <div className="grid grid-cols-[400px,150px,150px,100px,100px,50px] w-full items-center">
+      <div className="grid grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] gap-4 w-full items-center">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
           <div className="relative w-[125px] h-[70px] overflow-hidden rounded-[10px] bg-[#d9d9d9]">
@@ -72,7 +72,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
         </div>
 
         {/* Date column */}
-        <div className="text-sm text-neutral-600">
+        <div className="text-sm text-neutral-600 pl-14">
           {dateSubmitted}
         </div>
 
@@ -82,7 +82,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
         </div>
 
         {/* Runs column */}
-        <div className="text-right text-sm text-neutral-600">
+        <div className="text-sm text-neutral-600 text-right">
           {runs?.toLocaleString() ?? '—'}
         </div>
 
