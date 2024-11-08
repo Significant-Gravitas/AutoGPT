@@ -1,12 +1,13 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, List, Optional
 
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException
 from typing_extensions import TypedDict
+from pydantic import BaseModel
 
 import backend.data.block
 import backend.server.integrations.router
@@ -16,6 +17,7 @@ from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
+from backend.data.api import APIKeyPermission, APIKeyWithoutHash, generate_api_key, get_api_key_by_id, list_user_api_keys, reactivate_api_key, revoke_api_key, suspend_api_key, update_api_key_permissions
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.server.utils import get_user_id
@@ -521,3 +523,123 @@ async def update_configuration(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+########################################################
+##################### API ##############################
+########################################################
+
+class CreateAPIKeyRequest(BaseModel):
+    name: str
+    permissions: List[APIKeyPermission]
+    description: Optional[str] = None
+
+class CreateAPIKeyResponse(BaseModel):
+    api_key: APIKeyWithoutHash
+    plain_text_key: str
+
+
+@v1_router.post(
+    "/api-keys",
+    response_model=CreateAPIKeyResponse,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def create_api_key(
+    request: CreateAPIKeyRequest,
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> CreateAPIKeyResponse:
+    """Create a new API key"""
+    api_key, plain_text = await generate_api_key(
+        name=request.name,
+        user_id=user_id,
+        permissions=request.permissions,
+        description=request.description
+    )
+
+    return CreateAPIKeyResponse(api_key=api_key, plain_text_key=plain_text)
+
+@v1_router.get(
+    "/api-keys",
+    response_model=List[APIKeyWithoutHash],
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_api_keys(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> List[APIKeyWithoutHash]:
+    """List all API keys for the user"""
+    return await list_user_api_keys(user_id)
+
+@v1_router.get(
+    "/api-keys/{key_id}",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_api_key(
+    key_id: str,
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> APIKeyWithoutHash:
+    """Get a specific API key"""
+    api_key = await get_api_key_by_id(key_id, user_id)
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return api_key
+
+@v1_router.delete(
+    "/api-keys/{key_id}",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def delete_api_key(
+    key_id: str,
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> APIKeyWithoutHash:
+    """Revoke an API key"""
+    return await revoke_api_key(key_id, user_id)
+
+@v1_router.post(
+    "/api-keys/{key_id}/suspend",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def suspend_key(
+    key_id: str,
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> APIKeyWithoutHash:
+    """Suspend an API key"""
+    return await suspend_api_key(key_id, user_id)
+
+@v1_router.post(
+    "/api-keys/{key_id}/reactivate",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def reactivate_key(
+    key_id: str,
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> APIKeyWithoutHash:
+    """Reactivate a suspended API key"""
+    return await reactivate_api_key(key_id, user_id)
+
+@v1_router.put(
+    "/api-keys/{key_id}/permissions",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+
+class UpdatePermissionsRequest(BaseModel):
+    permissions: List[APIKeyPermission]
+
+async def update_permissions(
+    key_id: str,
+    request: UpdatePermissionsRequest,
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> APIKeyWithoutHash:
+    """Update API key permissions"""
+    return await update_api_key_permissions(key_id, user_id, request.permissions)
