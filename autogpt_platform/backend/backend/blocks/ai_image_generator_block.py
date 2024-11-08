@@ -110,7 +110,7 @@ class AIImageGeneratorBlock(Block):
         model: ModelProvider = SchemaField(
             description="The AI model to use for image generation",
             default=ModelProvider.SD3_5,
-            title="Model Provider",
+            title="Model",
         )
         size: ImageSize = SchemaField(
             description=(
