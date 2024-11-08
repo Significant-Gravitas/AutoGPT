@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-import requests
+from backend.util.request import requests
 
 
 class GetRequest:
@@ -11,5 +11,4 @@ class GetRequest:
         if headers is None:
             headers = {}
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
         return response.json() if json else response.text
