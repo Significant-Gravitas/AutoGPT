@@ -8,12 +8,6 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
-env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GKE_CLUSTER: prod-gke-cluster
-  GKE_ZONE: us-central1-a
-  NAMESPACE: prod-agpt
-
 jobs:
   migrate:
     environment: production

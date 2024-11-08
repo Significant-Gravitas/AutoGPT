@@ -10,12 +10,6 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
-env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GKE_CLUSTER: dev-gke-cluster
-  GKE_ZONE: us-central1-a
-  NAMESPACE: dev-agpt
-
 jobs:
   migrate:
     environment: develop
