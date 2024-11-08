@@ -2,13 +2,12 @@ import datetime
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
+import backend.server.v2.store.model
+import backend.server.v2.store.routes
 import fastapi
 import fastapi.testclient
 import prisma.enums
 import pytest_mock
-
-import backend.server.v2.store.model
-import backend.server.v2.store.routes
 
 app = fastapi.FastAPI()
 app.include_router(backend.server.v2.store.routes.router)

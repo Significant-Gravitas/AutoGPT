@@ -3,12 +3,11 @@ import typing
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
-import fastapi
-import fastapi.responses
-
 import backend.server.v2.store.db
 import backend.server.v2.store.media
 import backend.server.v2.store.model
+import fastapi
+import fastapi.responses
 
 logger = logging.getLogger(__name__)
 
