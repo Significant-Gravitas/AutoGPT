@@ -170,7 +170,7 @@ export const NodeGenericInputField: FC<{
             );
           }}
         />
-      )
+      );
     }
 
     return (
@@ -632,7 +632,7 @@ const NodeArrayInput: FC<{
 
 const NodeMultiSelectInput: FC<{
   selfKey: string;
-  schema: BlockIOObjectSubSchema;  // TODO: Support BlockIOArraySubSchema
+  schema: BlockIOObjectSubSchema; // TODO: Support BlockIOArraySubSchema
   selection?: string[];
   error?: string;
   className?: string;
@@ -665,13 +665,9 @@ const NodeMultiSelectInput: FC<{
         <MultiSelectorContent>
           <MultiSelectorList>
             {options
-              .map(key => ({ ...schema.properties[key], key }))
+              .map((key) => ({ ...schema.properties[key], key }))
               .map(({ key, title, description }) => (
-                <MultiSelectorItem
-                  key={key}
-                  value={key}
-                  title={description}
-                >
+                <MultiSelectorItem key={key} value={key} title={description}>
                   {title ?? key}
                 </MultiSelectorItem>
               ))}
@@ -681,7 +677,7 @@ const NodeMultiSelectInput: FC<{
       {error && <span className="error-message">{error}</span>}
     </div>
   );
-}
+};
 
 const NodeStringInput: FC<{
   selfKey: string;

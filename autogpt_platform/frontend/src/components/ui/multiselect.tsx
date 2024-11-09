@@ -174,7 +174,7 @@ const MultiSelectorTrigger = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg text-sm bg-background py-2 px-3 pl-1",
+        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-sm",
         className,
       )}
       {...props}
