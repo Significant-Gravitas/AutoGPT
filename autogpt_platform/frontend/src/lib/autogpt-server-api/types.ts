@@ -313,31 +313,31 @@ export type AnalyticsDetails = {
   index: string;
 };
 
-
 // API Key Types
 
 export enum APIKeyPermission {
   EXECUTE_GRAPH = "EXECUTE_GRAPH",
   READ_GRAPH = "READ_GRAPH",
   EXECUTE_BLOCK = "EXECUTE_BLOCK",
-  READ_BLOCK = "READ_BLOCK"
+  READ_BLOCK = "READ_BLOCK",
 }
 
 export enum APIKeyStatus {
   ACTIVE = "ACTIVE",
   REVOKED = "REVOKED",
-  SUSPENDED = "SUSPENDED"
+  SUSPENDED = "SUSPENDED",
 }
 
 export interface APIKey {
   id: string;
   name: string;
   prefix: string;
+  postfix: string;
   status: APIKeyStatus;
   permissions: APIKeyPermission[];
-  createdAt: string;
-  lastUsedAt?: string;
-  revokedAt?: string;
+  created_at: string;
+  last_used_at?: string;
+  revoked_at?: string;
   description?: string;
 }
 

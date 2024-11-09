@@ -245,7 +245,7 @@ export default class BaseAutoGPTServerAPI {
   async createAPIKey(
     name: string,
     permissions: APIKeyPermission[],
-    description?: string
+    description?: string,
   ): Promise<CreateAPIKeyResponse> {
     return this._request("POST", "/api-keys", {
       name,
@@ -264,13 +264,12 @@ export default class BaseAutoGPTServerAPI {
 
   async updateAPIKeyPermissions(
     keyId: string,
-    permissions: APIKeyPermission[]
+    permissions: APIKeyPermission[],
   ): Promise<APIKey> {
     return this._request("PUT", `/api-keys/${keyId}/permissions`, {
       permissions,
     });
   }
-
 
   private async _request(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
@@ -284,6 +283,8 @@ export default class BaseAutoGPTServerAPI {
     const token =
       (await this.supabaseClient?.auth.getSession())?.data.session
         ?.access_token || "";
+
+    console.log("token", token);
 
     let url = this.baseUrl + path;
     if (method === "GET" && payload) {
