@@ -652,6 +652,7 @@ const NodeMultiSelectInput: FC<{
   return (
     <div className={cn("flex flex-col", className)}>
       <MultiSelector
+        className="nodrag"
         values={selection}
         onValuesChange={(v) => handleInputChange(selfKey, v)}
       >
