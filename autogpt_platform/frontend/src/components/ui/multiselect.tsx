@@ -237,10 +237,10 @@ MultiSelectorInput.displayName = "MultiSelectorInput";
 const MultiSelectorContent = forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ children }, ref) => {
+>(({ children, className }, ref) => {
   const { open } = useMultiSelect();
   return (
-    <div ref={ref} className="relative mt-2">
+    <div ref={ref} className={cn("relative mt-2", className)}>
       {open && children}
     </div>
   );

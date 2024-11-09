@@ -663,7 +663,7 @@ const NodeMultiSelectInput: FC<{
             }
           />
         </MultiSelectorTrigger>
-        <MultiSelectorContent>
+        <MultiSelectorContent className="nowheel">
           <MultiSelectorList>
             {options
               .map((key) => ({ ...schema.properties[key], key }))
