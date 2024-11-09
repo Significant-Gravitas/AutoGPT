@@ -83,7 +83,7 @@ Follow these steps to create and test a new block:
 
      In this case, we're mocking the `get_request` method to always return a dictionary with an 'extract' key, simulating a successful API response. This allows us to test the block's logic without making actual network requests, which could be slow, unreliable, or rate-limited.
 
-5. **Implement the `run` method with error handling:**, this should contain the main logic of the block:
+5. **Implement the `run` method with error handling.** This should contain the main logic of the block:
 
    ```python
    def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -292,7 +292,7 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 
 - GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
 
-```python title="blocks/github/github.py"
+```python title="integrations/oauth/github.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/github.py:GithubOAuthHandlerExample"
 ```
 
@@ -311,6 +311,114 @@ You can see that google has defined a `DEFAULT_SCOPES` variable, this is used to
 ```
 
 You can also see that `GOOGLE_OAUTH_IS_CONFIGURED` is used to disable the blocks that require OAuth if the oauth is not configured. This is in the `__init__` method of each block. This is because there is no api key fallback for google blocks so we need to make sure that the oauth is configured before we allow the user to use the blocks.
+
+### Webhook-triggered Blocks
+
+Webhook-triggered blocks allow your agent to respond to external events in real-time.
+These blocks are triggered by incoming webhooks from third-party services
+rather than being executed manually.
+
+Creating and running a webhook-triggered block involves three main components:
+- The block itself, which specifies:
+  - Inputs for the user to select a resource and events to subscribe to
+  - A `credentials` input with the scopes needed to manage webhooks
+  - Logic to turn the webhook payload into outputs for the webhook block
+- The `WebhookHandler` for the corresponding webhook service provider, which handles:
+  - (De)registering webhooks with the provider
+  - Parsing and validating incoming webhook payloads
+- The credentials system for the corresponding service provider, which may include an `OAuthHandler`
+
+There is more going on under the hood, e.g. to store and retrieve webhooks and their
+links to nodes, but to add a webhook-triggered block you shouldn't need to make changes
+to those parts of the system.
+
+#### Creating a Webhook-triggered Block
+
+To create a webhook-triggered block, follow these additional steps on top of the basic block creation process:
+
+1. **Define `webhook_config`** in your block's `__init__` method.
+
+    <details>
+    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+
+    ```python title="blocks/github/triggers.py"
+    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-webhook_config"
+    ```
+    </details>
+
+    <details>
+    <summary><code>BlockWebhookConfig</code> definition</summary>
+
+    ```python title="data/block.py"
+    --8<-- "autogpt_platform/backend/backend/data/block.py:BlockWebhookConfig"
+    ```
+    </details>
+
+2. **Include payload field** in your block's Input schema.
+
+    <details>
+    <summary>Example: <code>GitHubTriggerBase</code></summary>
+
+    ```python title="blocks/github/triggers.py"
+    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-payload-field"
+    ```
+    </details>
+
+3. **Define `credentials` input** in your block's Input schema.
+    - Its scopes must be sufficient to manage a user's webhooks through the provider's API
+    - See [Blocks with authentication](#blocks-with-authentication) for further details
+
+4. **Process webhook payload** and output relevant parts of it in your block's `run` method.
+
+    <details>
+    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+
+    ```python
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        yield "payload", input_data.payload
+        yield "sender", input_data.payload["sender"]
+        yield "event", input_data.payload["action"]
+        yield "number", input_data.payload["number"]
+        yield "pull_request", input_data.payload["pull_request"]
+    ```
+
+    Note that the `credentials` parameter can be omitted if the credentials
+    aren't used at block runtime, like in the example.
+    </details>
+
+#### Adding a Webhook Handler
+
+To add support for a new webhook provider, you'll need to create a WebhooksManager that implements the `BaseWebhooksManager` interface:
+
+```python title="integrations/webhooks/base.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager1"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager2"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager3"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager4"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager5"
+```
+
+#### Example: GitHub Webhook Integration
+
+<details>
+<summary>
+GitHub Webhook triggers: [`blocks/github/triggers.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/blocks/github/triggers.py)
+</summary>
+
+```python title="blocks/github/triggers.py"
+--8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:GithubTriggerExample"
+```
+</details>
+
+<details>
+<summary>
+GitHub Webhook handler: [`integrations/webhooks/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/webhooks/github.py)
+</summary>
+
+```python title="integrations/webhooks/github.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/github.py:GithubWebhookHandler"
+```
+</details>
 
 ## Key Points to Remember
 

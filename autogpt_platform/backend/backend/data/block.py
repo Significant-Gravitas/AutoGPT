@@ -185,12 +185,39 @@ class EmptySchema(BlockSchema):
     pass
 
 
+# --8<-- [start:BlockWebhookConfig]
 class BlockWebhookConfig(BaseModel):
     provider: ProviderName
+    """The service provider that the webhook connects to"""
+
     webhook_type: str
+    """
+    Identifier for the webhook type. E.g. GitHub has repo and organization level hooks.
+
+    Only for use in the corresponding `WebhookHandler`.
+    """
+
     resource_format: str
+    """
+    Template string for the resource that a block instance subscribes to.
+    Fields will be filled from the block's inputs (except `payload`).
+
+    Example: `f"{repo}/pull_requests"` (note: not how it's actually implemented)
+
+    Only for use in the corresponding `WebhookHandler`.
+    """
+
     event_filter_input: str
-    event_format: str
+    """Name of the block's event filter input."""
+
+    event_format: str = "{event}"
+    """
+    Template string for the event(s) that a block instance subscribes to.
+    Applied individually to each event selected in the event filter input.
+
+    Example: `"pull_request.{event}"` -> `"pull_request.opened"`
+    """
+    # --8<-- [end:BlockWebhookConfig]
 
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):

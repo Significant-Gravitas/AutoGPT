@@ -21,6 +21,7 @@ from ._auth import (
 logger = logging.getLogger(__name__)
 
 
+# --8<-- [start:GithubTriggerExample]
 class GitHubTriggerBase:
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -28,7 +29,9 @@ class GitHubTriggerBase:
             description="Repository to subscribe to",
             placeholder="{owner}/{repo}",
         )
+        # --8<-- [start:example-payload-field]
         payload: dict = SchemaField(hidden=True, default={})
+        # --8<-- [end:example-payload-field]
 
     class Output(BlockSchema):
         payload: dict = SchemaField(description="Full payload of the event")
@@ -96,6 +99,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.INPUT},
             input_schema=GithubPullRequestTriggerBlock.Input,
             output_schema=GithubPullRequestTriggerBlock.Output,
+            # --8<-- [start:example-webhook_config]
             webhook_config=BlockWebhookConfig(
                 provider=ProviderName.GITHUB,
                 webhook_type=GithubWebhookType.REPO,
@@ -103,6 +107,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
                 event_filter_input="events",
                 event_format="pull_request.{event}",
             ),
+            # --8<-- [end:example-webhook_config]
             test_input={
                 "repo": "owner/repo",
                 "events": {"opened": True, "synchronize": True},
@@ -134,3 +139,6 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         yield "event", input_data.payload["action"]
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]
+
+
+# --8<-- [end:GithubTriggerExample]

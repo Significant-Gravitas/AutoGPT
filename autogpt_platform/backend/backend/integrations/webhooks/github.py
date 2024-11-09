@@ -15,6 +15,7 @@ from .base import BaseWebhooksManager
 logger = logging.getLogger(__name__)
 
 
+# --8<-- [start:GithubWebhookHandler]
 class GithubWebhookType(StrEnum):
     REPO = "repo"
 
@@ -155,6 +156,9 @@ class GithubWebhooksManager(BaseWebhooksManager):
             raise ValueError(f"Failed to delete GitHub webhook: {error_msg}")
 
         # If we reach here, the webhook was successfully deleted or didn't exist
+
+
+# --8<-- [end:GithubWebhookHandler]
 
 
 def extract_github_error_msg(response: requests.Response) -> str:
