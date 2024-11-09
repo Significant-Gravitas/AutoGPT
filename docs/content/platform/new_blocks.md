@@ -402,7 +402,7 @@ To add support for a new webhook provider, you'll need to create a WebhooksManag
 
 <details>
 <summary>
-GitHub Webhook triggers: [`blocks/github/triggers.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/blocks/github/triggers.py)
+GitHub Webhook triggers: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/blocks/github/triggers.py"><code>blocks/github/triggers.py</code></a>
 </summary>
 
 ```python title="blocks/github/triggers.py"
@@ -412,7 +412,7 @@ GitHub Webhook triggers: [`blocks/github/triggers.py`](https://github.com/Signif
 
 <details>
 <summary>
-GitHub Webhook handler: [`integrations/webhooks/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/webhooks/github.py)
+GitHub Webhook handler: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/webhooks/github.py"><code>integrations/webhooks/github.py</code></a>
 </summary>
 
 ```python title="integrations/webhooks/github.py"
