@@ -16,6 +16,9 @@ import {
   NodeExecutionResult,
   OAuth2Credentials,
   User,
+  APIKeyPermission,
+  CreateAPIKeyResponse,
+  APIKey,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -237,6 +240,37 @@ export default class BaseAutoGPTServerAPI {
   private async _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
   }
+
+  // API KeY related requests
+  async createAPIKey(
+    name: string,
+    permissions: APIKeyPermission[],
+    description?: string
+  ): Promise<CreateAPIKeyResponse> {
+    return this._request("POST", "/api-keys", {
+      name,
+      permissions,
+      description,
+    });
+  }
+
+  async listAPIKeys(): Promise<APIKey[]> {
+    return this._get("/api-keys");
+  }
+
+  async revokeAPIKey(keyId: string): Promise<APIKey> {
+    return this._request("DELETE", `/api-keys/${keyId}`);
+  }
+
+  async updateAPIKeyPermissions(
+    keyId: string,
+    permissions: APIKeyPermission[]
+  ): Promise<APIKey> {
+    return this._request("PUT", `/api-keys/${keyId}/permissions`, {
+      permissions,
+    });
+  }
+
 
   private async _request(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
