@@ -38,7 +38,6 @@ export default function useAgentGraph(
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
-  const { toast } = useToast();
   /**
    * User `request` to save or save&run the agent, or to stop the active run.
    * `state` is used to track the request status:
