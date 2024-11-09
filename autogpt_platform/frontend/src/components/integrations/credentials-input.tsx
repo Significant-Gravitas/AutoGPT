@@ -7,9 +7,12 @@ import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
-import { FaGithub, FaGoogle } from "react-icons/fa";
+import { FaDiscord, FaGithub, FaGoogle, FaMedium, FaKey } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
-import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import {
+  CredentialsMetaInput,
+  CredentialsProviderName,
+} from "@/lib/autogpt-server-api/types";
 import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {
   Dialog,
@@ -36,11 +39,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const fallbackIcon = FaKey;
+
 // --8<-- [start:ProviderIconsEmbed]
-export const providerIcons: Record<string, React.FC<{ className?: string }>> = {
+export const providerIcons: Record<
+  CredentialsProviderName,
+  React.FC<{ className?: string }>
+> = {
   github: FaGithub,
   google: FaGoogle,
   notion: NotionLogoIcon,
+  discord: FaDiscord,
+  d_id: fallbackIcon,
+  google_maps: FaGoogle,
+  jina: fallbackIcon,
+  ideogram: fallbackIcon,
+  llm: fallbackIcon,
+  medium: FaMedium,
+  openai: fallbackIcon,
+  openweathermap: fallbackIcon,
+  pinecone: fallbackIcon,
+  replicate: fallbackIcon,
+  revid: fallbackIcon,
+  unreal_speech: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

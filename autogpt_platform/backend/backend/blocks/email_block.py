@@ -2,17 +2,17 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
 
 
 class EmailCredentials(BaseModel):
-    smtp_server: str = Field(
+    smtp_server: str = SchemaField(
         default="smtp.gmail.com", description="SMTP server address"
     )
-    smtp_port: int = Field(default=25, description="SMTP port number")
+    smtp_port: int = SchemaField(default=25, description="SMTP port number")
     smtp_username: BlockSecret = SecretField(key="smtp_username")
     smtp_password: BlockSecret = SecretField(key="smtp_password")
 
@@ -30,7 +30,7 @@ class SendEmailBlock(Block):
         body: str = SchemaField(
             description="Body of the email", placeholder="Enter the email body"
         )
-        creds: EmailCredentials = Field(
+        creds: EmailCredentials = SchemaField(
             description="SMTP credentials",
             default=EmailCredentials(),
         )
@@ -43,6 +43,7 @@ class SendEmailBlock(Block):
 
     def __init__(self):
         super().__init__(
+            disabled=True,
             id="4335878a-394e-4e67-adf2-919877ff49ae",
             description="This block sends an email using the provided SMTP credentials.",
             categories={BlockCategory.OUTPUT},

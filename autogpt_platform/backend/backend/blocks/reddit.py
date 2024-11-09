@@ -2,10 +2,10 @@ from datetime import datetime, timezone
 from typing import Iterator
 
 import praw
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SecretField
+from backend.data.model import BlockSecret, SchemaField, SecretField
 from backend.util.mock import MockObject
 
 
@@ -48,28 +48,29 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 class GetRedditPostsBlock(Block):
     class Input(BlockSchema):
-        subreddit: str = Field(description="Subreddit name")
-        creds: RedditCredentials = Field(
+        subreddit: str = SchemaField(description="Subreddit name")
+        creds: RedditCredentials = SchemaField(
             description="Reddit credentials",
             default=RedditCredentials(),
         )
-        last_minutes: int | None = Field(
+        last_minutes: int | None = SchemaField(
             description="Post time to stop minutes ago while fetching posts",
             default=None,
         )
-        last_post: str | None = Field(
+        last_post: str | None = SchemaField(
             description="Post ID to stop when reached while fetching posts",
             default=None,
         )
-        post_limit: int | None = Field(
+        post_limit: int | None = SchemaField(
             description="Number of posts to fetch", default=10
         )
 
     class Output(BlockSchema):
-        post: RedditPost = Field(description="Reddit post")
+        post: RedditPost = SchemaField(description="Reddit post")
 
     def __init__(self):
         super().__init__(
+            disabled=True,
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             description="This block fetches Reddit posts from a defined subreddit name.",
             categories={BlockCategory.SOCIAL},
@@ -114,7 +115,7 @@ class GetRedditPostsBlock(Block):
     def get_posts(input_data: Input) -> Iterator[praw.reddit.Submission]:
         client = get_praw(input_data.creds)
         subreddit = client.subreddit(input_data.subreddit)
-        return subreddit.new(limit=input_data.post_limit)
+        return subreddit.new(limit=input_data.post_limit or 10)
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         current_time = datetime.now(tz=timezone.utc)
@@ -140,13 +141,13 @@ class GetRedditPostsBlock(Block):
 
 class PostRedditCommentBlock(Block):
     class Input(BlockSchema):
-        creds: RedditCredentials = Field(
+        creds: RedditCredentials = SchemaField(
             description="Reddit credentials", default=RedditCredentials()
         )
-        data: RedditComment = Field(description="Reddit comment")
+        data: RedditComment = SchemaField(description="Reddit comment")
 
     class Output(BlockSchema):
-        comment_id: str
+        comment_id: str = SchemaField(description="Posted comment ID")
 
     def __init__(self):
         super().__init__(
@@ -164,8 +165,10 @@ class PostRedditCommentBlock(Block):
     def reply_post(creds: RedditCredentials, comment: RedditComment) -> str:
         client = get_praw(creds)
         submission = client.submission(id=comment.post_id)
-        comment = submission.reply(comment.comment)
-        return comment.id  # type: ignore
+        new_comment = submission.reply(comment.comment)
+        if not new_comment:
+            raise ValueError("Failed to post comment.")
+        return new_comment.id
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "comment_id", self.reply_post(input_data.creds, input_data.data)

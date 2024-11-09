@@ -16,6 +16,8 @@ from redis.lock import Lock as RedisLock
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
 
+from autogpt_libs.utils.cache import thread_cached
+
 from backend.data import redis
 from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.execution import (
@@ -31,11 +33,15 @@ from backend.data.graph import Graph, Link, Node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
-from backend.util.cache import thread_cached_property
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import (
+    AppService,
+    close_service_client,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Settings
 from backend.util.type import convert
 
@@ -104,6 +110,7 @@ def execute_node(
 
     Args:
         db_client: The client to send execution updates to the server.
+        creds_manager: The manager to acquire and release credentials.
         data: The execution data for executing the current node.
         execution_stats: The execution statistics to be updated.
 
@@ -153,18 +160,19 @@ def execute_node(
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
-    credentials = creds_lock = None
+    creds_lock = None
     if CREDENTIALS_FIELD_NAME in input_data:
         credentials_meta = CredentialsMetaInput(**input_data[CREDENTIALS_FIELD_NAME])
         credentials, creds_lock = creds_manager.acquire(user_id, credentials_meta.id)
         extra_exec_kwargs["credentials"] = credentials
 
     output_size = 0
-    try:
-        credit = db_client.get_or_refill_credit(user_id)
-        if credit < 0:
-            raise ValueError(f"Insufficient credit: {credit}")
+    end_status = ExecutionStatus.COMPLETED
+    credit = db_client.get_or_refill_credit(user_id)
+    if credit < 0:
+        raise ValueError(f"Insufficient credit: {credit}")
 
+    try:
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
@@ -183,32 +191,46 @@ def execute_node(
             ):
                 yield execution
 
-        # Release lock on credentials ASAP
-        if creds_lock:
-            creds_lock.release()
-
-        r = update_execution(ExecutionStatus.COMPLETED)
-        s = input_size + output_size
-        t = (
-            (r.end_time - r.start_time).total_seconds()
-            if r.end_time and r.start_time
-            else 0
-        )
-        db_client.spend_credits(user_id, credit, node_block.id, input_data, s, t)
-
     except Exception as e:
+        end_status = ExecutionStatus.FAILED
         error_msg = str(e)
         log_metadata.exception(f"Node execution failed with error {error_msg}")
         db_client.upsert_execution_output(node_exec_id, "error", error_msg)
-        update_execution(ExecutionStatus.FAILED)
+
+        for execution in _enqueue_next_nodes(
+            db_client=db_client,
+            node=node,
+            output=("error", error_msg),
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            log_metadata=log_metadata,
+        ):
+            yield execution
 
         raise e
-
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock:
-            creds_lock.release()
+            try:
+                creds_lock.release()
+            except Exception as e:
+                log_metadata.error(f"Failed to release credentials lock: {e}")
+
+        # Update execution status and spend credits
+        res = update_execution(end_status)
+        if end_status == ExecutionStatus.COMPLETED:
+            s = input_size + output_size
+            t = (
+                (res.end_time - res.start_time).total_seconds()
+                if res.end_time and res.start_time
+                else 0
+            )
+            db_client.spend_credits(user_id, credit, node_block.id, input_data, s, t)
+
+        # Update execution stats
         if execution_stats is not None:
+            execution_stats.update(node_block.execution_stats)
             execution_stats["input_size"] = input_size
             execution_stats["output_size"] = output_size
 
@@ -435,6 +457,8 @@ class Executor:
         cls.creds_manager.release_all_locks()
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
         redis.disconnect()
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB manager...")
+        close_service_client(cls.db_client)
         logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
 
     @classmethod
@@ -456,7 +480,7 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecution],
         node_exec: NodeExecution,
-    ):
+    ) -> dict[str, Any]:
         log_metadata = LogMetadata(
             user_id=node_exec.user_id,
             graph_eid=node_exec.graph_exec_id,
@@ -476,6 +500,7 @@ class Executor:
         cls.db_client.update_node_execution_stats(
             node_exec.node_exec_id, execution_stats
         )
+        return execution_stats
 
     @classmethod
     @time_measured
@@ -519,6 +544,8 @@ class Executor:
         prefix = f"[on_graph_executor_stop {cls.pid}]"
         logger.info(f"{prefix} ⏳ Terminating node executor pool...")
         cls.executor.terminate()
+        logger.info(f"{prefix} ⏳ Disconnecting DB manager...")
+        close_service_client(cls.db_client)
         logger.info(f"{prefix} ✅ Finished cleanup")
 
     @classmethod
@@ -539,16 +566,15 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        timing_info, (node_count, error) = cls._on_graph_execution(
+        timing_info, (exec_stats, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
-
+        exec_stats["walltime"] = timing_info.wall_time
+        exec_stats["cputime"] = timing_info.cpu_time
+        exec_stats["error"] = str(error) if error else None
         cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
-            error=error,
-            wall_time=timing_info.wall_time,
-            cpu_time=timing_info.cpu_time,
-            node_count=node_count,
+            stats=exec_stats,
         )
 
     @classmethod
@@ -558,14 +584,18 @@ class Executor:
         graph_exec: GraphExecution,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[int, Exception | None]:
+    ) -> tuple[dict[str, Any], Exception | None]:
         """
         Returns:
-            The number of node executions completed.
+            The execution statistics of the graph execution.
             The error that occurred during the execution.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
-        n_node_executions = 0
+        exec_stats = {
+            "nodes_walltime": 0,
+            "nodes_cputime": 0,
+            "node_count": 0,
+        }
         error = None
         finished = False
 
@@ -591,17 +621,20 @@ class Executor:
             def make_exec_callback(exec_data: NodeExecution):
                 node_id = exec_data.node_id
 
-                def callback(_):
+                def callback(result: object):
                     running_executions.pop(node_id)
-                    nonlocal n_node_executions
-                    n_node_executions += 1
+                    nonlocal exec_stats
+                    if isinstance(result, dict):
+                        exec_stats["node_count"] += 1
+                        exec_stats["nodes_cputime"] += result.get("cputime", 0)
+                        exec_stats["nodes_walltime"] += result.get("walltime", 0)
 
                 return callback
 
             while not queue.empty():
                 if cancel.is_set():
                     error = RuntimeError("Execution is cancelled")
-                    return n_node_executions, error
+                    return exec_stats, error
 
                 exec_data = queue.get()
 
@@ -632,7 +665,7 @@ class Executor:
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
                             error = RuntimeError("Execution is cancelled")
-                            return n_node_executions, error
+                            return exec_stats, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -651,18 +684,22 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return n_node_executions, error
+            return exec_stats, error
 
 
 class ExecutionManager(AppService):
 
     def __init__(self):
-        super().__init__(port=settings.config.execution_manager_port)
+        super().__init__()
         self.use_redis = True
         self.use_supabase = True
         self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecution]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+
+    @classmethod
+    def get_port(cls) -> int:
+        return settings.config.execution_manager_port
 
     def run_service(self):
         from autogpt_libs.supabase_integration_credentials_store import (
@@ -670,7 +707,7 @@ class ExecutionManager(AppService):
         )
 
         self.credentials_store = SupabaseIntegrationCredentialsStore(
-            self.supabase, redis.get_redis()
+            redis=redis.get_redis()
         )
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
@@ -701,7 +738,7 @@ class ExecutionManager(AppService):
 
         super().cleanup()
 
-    @thread_cached_property
+    @property
     def db_client(self) -> "DatabaseManager":
         return get_db_client()
 
@@ -857,10 +894,11 @@ class ExecutionManager(AppService):
 # ------- UTILITIES ------- #
 
 
+@thread_cached
 def get_db_client() -> "DatabaseManager":
     from backend.executor import DatabaseManager
 
-    return get_service_client(DatabaseManager, settings.config.database_api_port)
+    return get_service_client(DatabaseManager)
 
 
 @contextmanager

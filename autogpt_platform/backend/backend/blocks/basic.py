@@ -2,7 +2,6 @@ import re
 from typing import Any, List
 
 from jinja2 import BaseLoader, Environment
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
@@ -19,18 +18,18 @@ class StoreValueBlock(Block):
     """
 
     class Input(BlockSchema):
-        input: Any = Field(
+        input: Any = SchemaField(
             description="Trigger the block to produce the output. "
             "The value is only used when `data` is None."
         )
-        data: Any = Field(
+        data: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
             default=None,
         )
 
     class Output(BlockSchema):
-        output: Any
+        output: Any = SchemaField(description="The stored data retained in the block.")
 
     def __init__(self):
         super().__init__(
@@ -56,10 +55,10 @@ class StoreValueBlock(Block):
 
 class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
-        text: str
+        text: str = SchemaField(description="The text to print to the console.")
 
     class Output(BlockSchema):
-        status: str
+        status: str = SchemaField(description="The status of the print operation.")
 
     def __init__(self):
         super().__init__(
@@ -79,12 +78,14 @@ class PrintToConsoleBlock(Block):
 
 class FindInDictionaryBlock(Block):
     class Input(BlockSchema):
-        input: Any = Field(description="Dictionary to lookup from")
-        key: str | int = Field(description="Key to lookup in the dictionary")
+        input: Any = SchemaField(description="Dictionary to lookup from")
+        key: str | int = SchemaField(description="Key to lookup in the dictionary")
 
     class Output(BlockSchema):
-        output: Any = Field(description="Value found for the given key")
-        missing: Any = Field(description="Value of the input that missing the key")
+        output: Any = SchemaField(description="Value found for the given key")
+        missing: Any = SchemaField(
+            description="Value of the input that missing the key"
+        )
 
     def __init__(self):
         super().__init__(
@@ -142,11 +143,17 @@ class AgentInputBlock(Block):
     """
 
     class Input(BlockSchema):
-        value: Any = SchemaField(description="The value to be passed as input.")
         name: str = SchemaField(description="The name of the input.")
-        description: str = SchemaField(
+        value: Any = SchemaField(
+            description="The value to be passed as input.",
+            default=None,
+        )
+        title: str | None = SchemaField(
+            description="The title of the input.", default=None, advanced=True
+        )
+        description: str | None = SchemaField(
             description="The description of the input.",
-            default="",
+            default=None,
             advanced=True,
         )
         placeholder_values: List[Any] = SchemaField(
@@ -156,6 +163,16 @@ class AgentInputBlock(Block):
         )
         limit_to_placeholder_values: bool = SchemaField(
             description="Whether to limit the selection to placeholder values.",
+            default=False,
+            advanced=True,
+        )
+        advanced: bool = SchemaField(
+            description="Whether to show the input in the advanced section, if the field is not required.",
+            default=False,
+            advanced=True,
+        )
+        secret: bool = SchemaField(
+            description="Whether the input should be treated as a secret.",
             default=False,
             advanced=True,
         )
@@ -191,6 +208,7 @@ class AgentInputBlock(Block):
             ],
             categories={BlockCategory.INPUT, BlockCategory.BASIC},
             block_type=BlockType.INPUT,
+            static_output=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -201,33 +219,40 @@ class AgentOutputBlock(Block):
     """
     Records the output of the graph for users to see.
 
-    Attributes:
-        recorded_value: The value to be recorded as output.
-        name: The name of the output.
-        description: The description of the output.
-        fmt_string: The format string to be used to format the recorded_value.
-
-    Outputs:
-        output: The formatted recorded_value if fmt_string is provided and the recorded_value
-                can be formatted, otherwise the raw recorded_value.
-
     Behavior:
-        If fmt_string is provided and the recorded_value is of a type that can be formatted,
-        the block attempts to format the recorded_value using the fmt_string.
-        If formatting fails or no fmt_string is provided, the raw recorded_value is output.
+        If `format` is provided and the `value` is of a type that can be formatted,
+        the block attempts to format the recorded_value using the `format`.
+        If formatting fails or no `format` is provided, the raw `value` is output.
     """
 
     class Input(BlockSchema):
-        value: Any = SchemaField(description="The value to be recorded as output.")
+        value: Any = SchemaField(
+            description="The value to be recorded as output.",
+            default=None,
+            advanced=False,
+        )
         name: str = SchemaField(description="The name of the output.")
-        description: str = SchemaField(
+        title: str | None = SchemaField(
+            description="The title of the input.", default=None, advanced=True
+        )
+        description: str | None = SchemaField(
             description="The description of the output.",
-            default="",
+            default=None,
             advanced=True,
         )
         format: str = SchemaField(
             description="The format string to be used to format the recorded_value.",
             default="",
+            advanced=True,
+        )
+        advanced: bool = SchemaField(
+            description="Whether to treat the output as advanced.",
+            default=False,
+            advanced=True,
+        )
+        secret: bool = SchemaField(
+            description="Whether the output should be treated as a secret.",
+            default=False,
             advanced=True,
         )
 
@@ -267,6 +292,7 @@ class AgentOutputBlock(Block):
             ],
             categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
             block_type=BlockType.OUTPUT,
+            static_output=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:

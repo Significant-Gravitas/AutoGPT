@@ -12,11 +12,13 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id        String   @id // This should match the Supabase user ID
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id // This should match the Supabase user ID
+  email        String   @unique
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  metadata     Json     @default("{}")
+  integrations String   @default("")
 
   // Relations
   AgentGraphs                  AgentGraph[]
@@ -49,11 +51,6 @@ model AgentGraph {
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
-
-  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
-  agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
 
   @@id(name: "graphVersionId", [id, version])
 }

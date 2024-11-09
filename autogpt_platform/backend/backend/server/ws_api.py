@@ -5,10 +5,10 @@ from contextlib import asynccontextmanager
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 
 from backend.data import redis
-from backend.data.queue import RedisEventQueue
+from backend.data.queue import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
@@ -28,17 +28,8 @@ async def lifespan(app: FastAPI):
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
-
-logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.config.backend_cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 def get_connection_manager():
@@ -51,13 +42,9 @@ def get_connection_manager():
 async def event_broadcaster(manager: ConnectionManager):
     try:
         redis.connect()
-        event_queue = RedisEventQueue()
-        while True:
-            event = event_queue.get()
-            if event:
-                await manager.send_execution_result(event)
-            else:
-                await asyncio.sleep(0.1)
+        event_queue = AsyncRedisExecutionEventBus()
+        async for event in event_queue.listen():
+            await manager.send_execution_result(event)
     except Exception as e:
         logger.exception(f"Event broadcaster error: {e}")
         raise
@@ -66,7 +53,7 @@ async def event_broadcaster(manager: ConnectionManager):
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if settings.config.enable_auth.lower() == "true":
+    if settings.config.enable_auth:
         token = websocket.query_params.get("token")
         if not token:
             await websocket.close(code=4001, reason="Missing authentication token")
@@ -180,8 +167,16 @@ async def websocket_router(
 
 class WebsocketServer(AppProcess):
     def run(self):
+        logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
+        server_app = CORSMiddleware(
+            app=app,
+            allow_origins=settings.config.backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         uvicorn.run(
-            app,
+            server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
         )

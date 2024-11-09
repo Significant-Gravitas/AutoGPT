@@ -5,7 +5,6 @@ from backend.executor import ExecutionScheduler
 from backend.server.model import CreateGraph
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.service import get_service_client
-from backend.util.settings import Config
 from backend.util.test import SpinTestServer
 
 
@@ -13,16 +12,13 @@ from backend.util.test import SpinTestServer
 async def test_agent_schedule(server: SpinTestServer):
     await db.connect()
     test_user = await create_test_user()
-    test_graph = await server.agent_server.create_graph(
+    test_graph = await server.agent_server.test_create_graph(
         create_graph=CreateGraph(graph=create_test_graph()),
         is_template=False,
         user_id=test_user.id,
     )
 
-    scheduler = get_service_client(
-        ExecutionScheduler, Config().execution_scheduler_port
-    )
-
+    scheduler = get_service_client(ExecutionScheduler)
     schedules = scheduler.get_execution_schedules(test_graph.id, test_user.id)
     assert len(schedules) == 0
 
