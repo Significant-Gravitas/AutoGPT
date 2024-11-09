@@ -22,7 +22,7 @@ from backend.data.user import (
     update_user_integrations,
     update_user_metadata,
 )
-from backend.util.service import AppService, expose
+from backend.util.service import AppService, expose, register_pydantic_serializers
 from backend.util.settings import Config
 
 P = ParamSpec("P")
@@ -54,6 +54,9 @@ class DatabaseManager(AppService):
             coroutine = f(*args, **kwargs)
             res = self.run_and_wait(coroutine)
             return res
+
+        # Register serializers for annotations on bare function
+        register_pydantic_serializers(f)
 
         return wrapper
 

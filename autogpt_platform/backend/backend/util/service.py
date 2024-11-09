@@ -11,6 +11,7 @@ from types import NoneType, UnionType
 from typing import (
     Annotated,
     Any,
+    Awaitable,
     Callable,
     Coroutine,
     Dict,
@@ -60,7 +61,13 @@ def expose(func: C) -> C:
             logger.exception(msg)
             raise
 
-    # Register custom serializers and deserializers for annotated Pydantic models
+    register_pydantic_serializers(func)
+
+    return pyro.expose(wrapper)  # type: ignore
+
+
+def register_pydantic_serializers(func: Callable):
+    """Register custom serializers and deserializers for annotated Pydantic models"""
     for name, annotation in func.__annotations__.items():
         try:
             pydantic_types = _pydantic_models_from_type_annotation(annotation)
@@ -76,8 +83,6 @@ def expose(func: C) -> C:
             pyro.register_dict_to_class(
                 model.__qualname__, _make_custom_deserializer(model)
             )
-
-    return pyro.expose(wrapper)  # type: ignore
 
 
 def _make_custom_serializer(model: Type[BaseModel]):
@@ -232,6 +237,10 @@ def _pydantic_models_from_type_annotation(annotation) -> Iterator[type[BaseModel
         key_type, value_type = args
         yield from _pydantic_models_from_type_annotation(key_type)
         yield from _pydantic_models_from_type_annotation(value_type)
+    elif origin in (Awaitable, Coroutine):
+        # For coroutines and awaitables, check the return type
+        return_type = args[-1]
+        yield from _pydantic_models_from_type_annotation(return_type)
     else:
         annotype = annotation if origin is None else origin
 
