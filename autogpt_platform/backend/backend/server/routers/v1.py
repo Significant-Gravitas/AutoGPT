@@ -252,9 +252,7 @@ async def update_graph(
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
     # Determine new version
-    existing_versions = await graph_db.get_graph_all_versions(
-        graph_id, user_id=user_id
-    )
+    existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
         raise HTTPException(404, detail=f"Graph #{graph_id} not found")
     latest_version_number = max(g.version for g in existing_versions)
@@ -263,9 +261,7 @@ async def update_graph(
     latest_version_graph = next(
         v for v in existing_versions if v.version == latest_version_number
     )
-    current_active_version = next(
-        (v for v in existing_versions if v.is_active), None
-    )
+    current_active_version = next((v for v in existing_versions if v.is_active), None)
     if latest_version_graph.is_template != graph.is_template:
         raise HTTPException(
             400, detail="Changing is_template on an existing graph is forbidden"
@@ -315,9 +311,7 @@ async def set_graph_active_version(
         graph_id, new_active_version, user_id=user_id
     )
     if not new_active_graph:
-        raise HTTPException(
-            404, f"Graph #{graph_id} v{new_active_version} not found"
-        )
+        raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
 
     current_active_graph = await graph_db.get_graph(graph_id, user_id=user_id)
 

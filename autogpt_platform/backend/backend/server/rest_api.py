@@ -60,6 +60,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
 
     return handler
 
+
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"])
