@@ -1,0 +1,67 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Frontend: Server Side",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/autogpt_platform/frontend",
+      "command": "yarn dev"
+    },
+    {
+      "name": "Frontend: Client Side",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:3000"
+    },
+    {
+      "name": "Frontend: Full Stack",
+      "type": "node-terminal",
+
+      "request": "launch",
+      "command": "yarn dev",
+      "cwd": "${workspaceFolder}/autogpt_platform/frontend",
+      "serverReadyAction": {
+        "pattern": "- Local:.+(https?://.+)",
+        "uriFormat": "%s",
+        "action": "debugWithEdge"
+      }
+    },
+    {
+      "name": "Backend",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "backend.app",
+      // "env": {
+      //   "ENV": "dev"
+      // },
+      "envFile": "${workspaceFolder}/backend/.env",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/autogpt_platform/backend"
+    },
+    {
+      "name": "Marketplace",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "autogpt_platform.market.main",
+      "env": {
+        "ENV": "dev"
+      },
+      "envFile": "${workspaceFolder}/market/.env",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/market"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Everything",
+      "configurations": ["Backend", "Frontend: Full Stack"],
+      // "preLaunchTask": "${defaultBuildTask}",
+      "stopAll": true,
+      "presentation": {
+        "hidden": false,
+        "order": 0
+      }
+    }
+  ]
+}

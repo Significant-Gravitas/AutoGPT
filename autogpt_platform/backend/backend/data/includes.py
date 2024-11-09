@@ -7,11 +7,8 @@ AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "AgentBlock": True,
 }
 
-__SUBGRAPH_INCLUDE = {"AgentNodes": {"include": AGENT_NODE_INCLUDE}}
-
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
-    **__SUBGRAPH_INCLUDE,
-    "AgentSubGraphs": {"include": __SUBGRAPH_INCLUDE},  # type: ignore
+    "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
 }
 
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {

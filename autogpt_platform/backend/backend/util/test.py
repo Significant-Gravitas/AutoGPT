@@ -1,9 +1,10 @@
 import logging
 import time
+from typing import Sequence
 
 from backend.data import db
 from backend.data.block import Block, initialize_blocks
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionResult, ExecutionStatus
 from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
@@ -57,7 +58,7 @@ async def wait_execution(
     graph_id: str,
     graph_exec_id: str,
     timeout: int = 20,
-) -> list:
+) -> Sequence[ExecutionResult]:
     async def is_execution_completed():
         status = await AgentServer().test_get_graph_run_status(
             graph_id, graph_exec_id, user_id

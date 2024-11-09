@@ -36,7 +36,12 @@ from backend.util import json
 from backend.util.decorator import error_logged, time_measured
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import (
+    AppService,
+    close_service_client,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Settings
 from backend.util.type import convert
 
@@ -451,6 +456,8 @@ class Executor:
         cls.creds_manager.release_all_locks()
         logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
         redis.disconnect()
+        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB manager...")
+        close_service_client(cls.db_client)
         logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
 
     @classmethod
@@ -472,7 +479,7 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecution],
         node_exec: NodeExecution,
-    ):
+    ) -> dict[str, Any]:
         log_metadata = LogMetadata(
             user_id=node_exec.user_id,
             graph_eid=node_exec.graph_exec_id,
@@ -492,6 +499,7 @@ class Executor:
         cls.db_client.update_node_execution_stats(
             node_exec.node_exec_id, execution_stats
         )
+        return execution_stats
 
     @classmethod
     @time_measured
@@ -535,6 +543,8 @@ class Executor:
         prefix = f"[on_graph_executor_stop {cls.pid}]"
         logger.info(f"{prefix} ⏳ Terminating node executor pool...")
         cls.executor.terminate()
+        logger.info(f"{prefix} ⏳ Disconnecting DB manager...")
+        close_service_client(cls.db_client)
         logger.info(f"{prefix} ✅ Finished cleanup")
 
     @classmethod
@@ -555,16 +565,15 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        timing_info, (node_count, error) = cls._on_graph_execution(
+        timing_info, (exec_stats, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
-
+        exec_stats["walltime"] = timing_info.wall_time
+        exec_stats["cputime"] = timing_info.cpu_time
+        exec_stats["error"] = str(error) if error else None
         cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
-            error=error,
-            wall_time=timing_info.wall_time,
-            cpu_time=timing_info.cpu_time,
-            node_count=node_count,
+            stats=exec_stats,
         )
 
     @classmethod
@@ -574,14 +583,18 @@ class Executor:
         graph_exec: GraphExecution,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[int, Exception | None]:
+    ) -> tuple[dict[str, Any], Exception | None]:
         """
         Returns:
-            The number of node executions completed.
+            The execution statistics of the graph execution.
             The error that occurred during the execution.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
-        n_node_executions = 0
+        exec_stats = {
+            "nodes_walltime": 0,
+            "nodes_cputime": 0,
+            "node_count": 0,
+        }
         error = None
         finished = False
 
@@ -607,17 +620,20 @@ class Executor:
             def make_exec_callback(exec_data: NodeExecution):
                 node_id = exec_data.node_id
 
-                def callback(_):
+                def callback(result: object):
                     running_executions.pop(node_id)
-                    nonlocal n_node_executions
-                    n_node_executions += 1
+                    nonlocal exec_stats
+                    if isinstance(result, dict):
+                        exec_stats["node_count"] += 1
+                        exec_stats["nodes_cputime"] += result.get("cputime", 0)
+                        exec_stats["nodes_walltime"] += result.get("walltime", 0)
 
                 return callback
 
             while not queue.empty():
                 if cancel.is_set():
                     error = RuntimeError("Execution is cancelled")
-                    return n_node_executions, error
+                    return exec_stats, error
 
                 exec_data = queue.get()
 
@@ -648,7 +664,7 @@ class Executor:
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
                             error = RuntimeError("Execution is cancelled")
-                            return n_node_executions, error
+                            return exec_stats, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -667,7 +683,7 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return n_node_executions, error
+            return exec_stats, error
 
 
 class ExecutionManager(AppService):
