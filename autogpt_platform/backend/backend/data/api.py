@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from prisma.models import APIKey as PrismaAPIKey
 from backend.data.db import BaseDbModel, transaction
-from backend.util.api_key import APIKeyManager
+from autogpt_libs.api_key.key_manager import APIKeyManager
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class APIKey(BaseDbModel):
     key: str
     status: APIKeyStatus = APIKeyStatus.ACTIVE
     permissions: List[APIKeyPermission]
+    postfix: str
     created_at: datetime
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
@@ -40,6 +41,7 @@ class APIKey(BaseDbModel):
             id=api_key.id,
             name=api_key.name,
             prefix=api_key.prefix,
+            postfix=api_key.postfix,
             key=api_key.key,
             status=APIKeyStatus(api_key.status),
             permissions=[APIKeyPermission(p) for p in api_key.permissions],
@@ -54,6 +56,7 @@ class APIKeyWithoutHash(BaseModel):
     id: str
     name: str
     prefix: str
+    postfix: str
     status: APIKeyStatus
     permissions: List[APIKeyPermission]
     created_at: datetime
@@ -68,6 +71,7 @@ class APIKeyWithoutHash(BaseModel):
             id=api_key.id,
             name=api_key.name,
             prefix=api_key.prefix,
+            postfix=api_key.postfix,
             status=APIKeyStatus(api_key.status),
             permissions=[APIKeyPermission(p) for p in api_key.permissions],
             created_at=api_key.createdAt,
@@ -92,6 +96,7 @@ async def generate_api_key(
     api_manager = APIKeyManager()
     plain_text_key = api_manager.generate_api_key()
     prefix = plain_text_key[:8]
+    postfix = plain_text_key[-8:]
     hashed_key = api_manager.hash_api_key(plain_text_key)
 
     api_key = await PrismaAPIKey.prisma().create(
@@ -99,6 +104,7 @@ async def generate_api_key(
             "id": str(uuid.uuid4()),
             "name": name,
             "prefix": prefix,
+            "postfix": postfix,
             "key": hashed_key,
             "permissions": [p.value for p in permissions],
             "description": description,
@@ -162,17 +168,6 @@ async def suspend_api_key(key_id: str, user_id: str) -> APIKeyWithoutHash:
             "userId": user_id
         },
         data={"status": APIKeyStatus.SUSPENDED.value}
-    )
-
-    return APIKeyWithoutHash.from_db(api_key)
-
-async def reactivate_api_key(key_id: str, user_id: str) -> APIKeyWithoutHash:
-    api_key = await PrismaAPIKey.prisma().update(
-        where={
-            "id": key_id,
-            "userId": user_id
-        },
-        data={"status": APIKeyStatus.ACTIVE.value}
     )
 
     return APIKeyWithoutHash.from_db(api_key)

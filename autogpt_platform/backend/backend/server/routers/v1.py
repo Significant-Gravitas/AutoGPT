@@ -17,7 +17,7 @@ from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
-from backend.data.api import APIKeyPermission, APIKeyWithoutHash, generate_api_key, get_api_key_by_id, list_user_api_keys, reactivate_api_key, revoke_api_key, suspend_api_key, update_api_key_permissions
+from backend.data.api import APIKeyPermission, APIKeyWithoutHash, generate_api_key, get_api_key_by_id, list_user_api_keys, revoke_api_key, suspend_api_key, update_api_key_permissions
 from backend.executor import ExecutionManager, ExecutionScheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.server.utils import get_user_id
@@ -612,19 +612,6 @@ async def suspend_key(
 ) -> APIKeyWithoutHash:
     """Suspend an API key"""
     return await suspend_api_key(key_id, user_id)
-
-@v1_router.post(
-    "/api-keys/{key_id}/reactivate",
-    response_model=APIKeyWithoutHash,
-    tags=["api-keys"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def reactivate_key(
-    key_id: str,
-    user_id: Annotated[str, Depends(get_user_id)]
-) -> APIKeyWithoutHash:
-    """Reactivate a suspended API key"""
-    return await reactivate_api_key(key_id, user_id)
 
 @v1_router.put(
     "/api-keys/{key_id}/permissions",
