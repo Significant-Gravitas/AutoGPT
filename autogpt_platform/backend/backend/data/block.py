@@ -194,7 +194,7 @@ class BlockWebhookConfig(BaseModel):
     """
     Identifier for the webhook type. E.g. GitHub has repo and organization level hooks.
 
-    Only for use in the corresponding `WebhookHandler`.
+    Only for use in the corresponding `WebhooksManager`.
     """
 
     resource_format: str
@@ -204,7 +204,7 @@ class BlockWebhookConfig(BaseModel):
 
     Example: `f"{repo}/pull_requests"` (note: not how it's actually implemented)
 
-    Only for use in the corresponding `WebhookHandler`.
+    Only for use in the corresponding `WebhooksManager`.
     """
 
     event_filter_input: str

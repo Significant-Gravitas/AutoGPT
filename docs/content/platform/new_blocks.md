@@ -319,11 +319,12 @@ These blocks are triggered by incoming webhooks from third-party services
 rather than being executed manually.
 
 Creating and running a webhook-triggered block involves three main components:
+
 - The block itself, which specifies:
   - Inputs for the user to select a resource and events to subscribe to
   - A `credentials` input with the scopes needed to manage webhooks
   - Logic to turn the webhook payload into outputs for the webhook block
-- The `WebhookHandler` for the corresponding webhook service provider, which handles:
+- The `WebhooksManager` for the corresponding webhook service provider, which handles:
   - (De)registering webhooks with the provider
   - Parsing and validating incoming webhook payloads
 - The credentials system for the corresponding service provider, which may include an `OAuthHandler`
@@ -386,15 +387,19 @@ To create a webhook-triggered block, follow these additional steps on top of the
     aren't used at block runtime, like in the example.
     </details>
 
-#### Adding a Webhook Handler
+#### Adding a Webhooks Manager
 
 To add support for a new webhook provider, you'll need to create a WebhooksManager that implements the `BaseWebhooksManager` interface:
 
 ```python title="integrations/webhooks/base.py"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager1"
+
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager2"
+
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager3"
+
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager4"
+
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager5"
 ```
 
@@ -412,11 +417,11 @@ GitHub Webhook triggers: <a href="https://github.com/Significant-Gravitas/AutoGP
 
 <details>
 <summary>
-GitHub Webhook handler: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/webhooks/github.py"><code>integrations/webhooks/github.py</code></a>
+GitHub Webhooks Manager: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/webhooks/github.py"><code>integrations/webhooks/github.py</code></a>
 </summary>
 
 ```python title="integrations/webhooks/github.py"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/github.py:GithubWebhookHandler"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/github.py:GithubWebhooksManager"
 ```
 </details>
 

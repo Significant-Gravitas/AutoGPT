@@ -15,7 +15,7 @@ from .base import BaseWebhooksManager
 logger = logging.getLogger(__name__)
 
 
-# --8<-- [start:GithubWebhookHandler]
+# --8<-- [start:GithubWebhooksManager]
 class GithubWebhookType(StrEnum):
     REPO = "repo"
 
@@ -158,7 +158,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         # If we reach here, the webhook was successfully deleted or didn't exist
 
 
-# --8<-- [end:GithubWebhookHandler]
+# --8<-- [end:GithubWebhooksManager]
 
 
 def extract_github_error_msg(response: requests.Response) -> str:
