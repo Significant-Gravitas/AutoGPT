@@ -1,44 +1,31 @@
+from typing import NamedTuple
 import secrets
-import string
-import hmac
+import hashlib
+
+class APIKeyContainer(NamedTuple):
+    """Container for API key parts."""
+    raw: str
+    prefix: str
+    postfix: str
+    hash: str
 
 class APIKeyManager:
-    def __init__(self, length=32):
-        self.length = length
-        self.characters = string.ascii_letters + string.digits + "-_"
+    PREFIX: str = "agpt_"
+    PREFIX_LENGTH: int = 8
+    POSTFIX_LENGTH: int = 8
 
-    def generate_api_key(self):
-        """
-        Generate a secure API key.
-        """
-        plain_api_key = ''.join(secrets.choice(self.characters) for _ in range(self.length))
-        print("plain_api_key : ", plain_api_key)
-        return plain_api_key
+    def generate_api_key(self) -> APIKeyContainer:
+        """Generate a new API key with all its parts."""
+        raw_key = f"{self.PREFIX}{secrets.token_urlsafe(32)}"
+        return APIKeyContainer(
+            raw=raw_key,
+            prefix=raw_key[:self.PREFIX_LENGTH],
+            postfix=raw_key[-self.POSTFIX_LENGTH:],
+            hash=hashlib.sha256(raw_key.encode()).hexdigest()
+        )
 
-    def hash_api_key(self, api_key: str):
-        """
-          Generate a secure API key using secrets.
-
-          Args:
-              api_key (str): The API key to hash
-
-          Returns:
-              str: URL-safe encoded API key
-        """
-        hash_key = secrets.token_urlsafe(32)
-        print("hash_key : ", hash_key)
-        return secrets.token_urlsafe(32)
-
-    def verify_api_key(self, plain_api_key: str, stored_api_key: str) -> bool:
-        """
-           Verify if API keys match using secure comparison.
-
-           Args:
-               plain_api_key (str): The API key to verify
-               stored_api_key (str): The stored API key to compare against
-
-           Returns:
-               bool: True if keys match, False otherwise
-           """
-        print("comapre : ", hmac.compare_digest(plain_api_key, stored_api_key))
-        return hmac.compare_digest(plain_api_key, stored_api_key)
+    def verify_api_key(self, provided_key: str, stored_hash: str) -> bool:
+        """Verify if a provided API key matches the stored hash."""
+        if not provided_key.startswith(self.PREFIX):
+            return False
+        return hashlib.sha256(provided_key.encode()).hexdigest() == stored_hash
