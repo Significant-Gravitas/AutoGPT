@@ -19,7 +19,14 @@ supabase = "^2.9.1"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.0"
+ruff = "^0.7.2"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+extend-select = ["I"]  # sort dependencies
