@@ -94,18 +94,15 @@ async def generate_api_key(
     Returns the API key object (without hash) and the plain text key.
     """
     api_manager = APIKeyManager()
-    plain_text_key = api_manager.generate_api_key()
-    prefix = plain_text_key[:8]
-    postfix = plain_text_key[-8:]
-    hashed_key = api_manager.hash_api_key(plain_text_key)
+    key = api_manager.generate_api_key()
 
     api_key = await PrismaAPIKey.prisma().create(
         data={
             "id": str(uuid.uuid4()),
             "name": name,
-            "prefix": prefix,
-            "postfix": postfix,
-            "key": hashed_key,
+            "prefix": key.prefix,
+            "postfix": key.postfix,
+            "key": key.hash,
             "permissions": [p.value for p in permissions],
             "description": description,
             "userId": user_id
@@ -113,14 +110,16 @@ async def generate_api_key(
     )
 
     api_key_without_hash = APIKeyWithoutHash.from_db(api_key)
-
-    return api_key_without_hash, plain_text_key
+    return api_key_without_hash, key.raw
 
 async def validate_api_key(plain_text_key: str) -> Optional[APIKey]:
     """
     Validate an API key and return the API key object if valid.
     """
-    prefix = plain_text_key[:8]
+    if not plain_text_key.startswith(APIKeyManager.PREFIX):
+        return None
+
+    prefix = plain_text_key[:APIKeyManager.PREFIX_LENGTH]
     api_manager = APIKeyManager()
 
     api_key = await PrismaAPIKey.prisma().find_first(
@@ -133,7 +132,7 @@ async def validate_api_key(plain_text_key: str) -> Optional[APIKey]:
     if not api_key:
         return None
 
-    is_valid = api_manager.verify_api_key(plain_text_key,api_key.key)
+    is_valid = api_manager.verify_api_key(plain_text_key, api_key.key)
     if not is_valid:
         return None
 
