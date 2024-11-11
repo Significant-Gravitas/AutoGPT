@@ -69,7 +69,7 @@ const AudioRenderer: React.FC<{ audioUrl: string }> = ({ audioUrl }) => (
     <audio controls className="w-full">
       <source
         src={audioUrl}
-        type={`audio/${audioUrl.split('.').pop()?.toLowerCase()}`}
+        type={`audio/${audioUrl.split(".").pop()?.toLowerCase()}`}
       />
       Your browser does not support the audio element.
     </audio>
