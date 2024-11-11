@@ -93,8 +93,6 @@ class ImageGenModel(str, Enum):
     SD3_5 = "Stable Diffusion 3.5 Medium"
 
 
-def run_client(client, model_name: str, input_params: dict):
-    return client.run(model_name, input=input_params)
 
 
 class AIImageGeneratorBlock(Block):
@@ -163,6 +161,9 @@ class AIImageGeneratorBlock(Block):
                 "run_client": lambda *args, **kwargs: "https://replicate.delivery/generated-image.webp"
             },
         )
+
+    def run_client(client, model_name: str, input_params: dict):
+        return client.run(model_name, input=input_params)
 
     def generate_image(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         try:
