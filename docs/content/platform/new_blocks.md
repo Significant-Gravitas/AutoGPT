@@ -365,7 +365,6 @@ To create a webhook-triggered block, follow these additional steps on top of the
     ```
     </details>
 
-    Notes:
     - The name of the input field (`events` in this case) must match `webhook_config.event_filter_input`.
     - The event filter itself must be a Pydantic model with only boolean fields.
 
