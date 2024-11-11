@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 #     "ollama": BlockSecret(value=""),
 # }
 
-AICredentials = CredentialsMetaInput[list[str], Literal["api_key"]]
+LLMProviderName = Literal["anthropic", "groq", "openai", "ollama"]
+AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="ed55ac19-356e-4243-a6cb-bc599e9b716f",

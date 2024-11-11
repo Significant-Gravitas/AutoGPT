@@ -137,7 +137,7 @@ def SchemaField(
     )
 
 
-CP = TypeVar("CP", bound=str | list[str])
+CP = TypeVar("CP", bound=str)
 CT = TypeVar("CT", bound=CredentialsType)
 
 
@@ -152,7 +152,7 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 
 
 def CredentialsField(
-    provider: CP,
+    provider: CP | list[CP],
     supported_credential_types: set[CT],
     required_scopes: set[str] = set(),
     *,
@@ -166,14 +166,11 @@ def CredentialsField(
     `CredentialsField` must and can only be used on fields named `credentials`.
     This is enforced by the `BlockSchema` base class.
     """
-    # Convert provider list to enum for schema
-    provider_list = [provider] if isinstance(provider, str) else provider
-
     json_extra = {
         k: v
         for k, v in {
             "credentials_provider": (
-                provider if isinstance(provider, str) else list(provider)
+                [provider] if isinstance(provider, str) else provider
             ),
             "credentials_scopes": list(required_scopes) or None,  # omit if empty
             "credentials_types": list(supported_credential_types),
@@ -182,13 +179,6 @@ def CredentialsField(
         }.items()
         if v is not None
     }
-
-    # Force provider to always be a string
-    # Otherwise input provider will fail jsonschema validation
-    # if multiple providers are provided
-    json_extra.update(
-        {"properties": {"provider": {"type": "string", "enum": provider_list}}}
-    )
 
     return Field(
         title=title,

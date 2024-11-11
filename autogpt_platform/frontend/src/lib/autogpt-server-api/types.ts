@@ -249,7 +249,6 @@ export type CredentialsMetaResponse = {
   title?: string;
   scopes?: Array<string>;
   username?: string;
-  hidden?: boolean;
 };
 
 /* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
@@ -263,7 +262,7 @@ export type CredentialsMetaInput = {
   id: string;
   type: CredentialsType;
   title?: string;
-  provider: string | string[];
+  provider: string;
 };
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
@@ -272,7 +271,6 @@ type BaseCredentials = {
   type: CredentialsType;
   title?: string;
   provider: string;
-  hidden?: boolean;
 };
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */

@@ -82,7 +82,7 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 export const CredentialsInput: FC<{
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
-  onSelectCredentials: (newValue: CredentialsMetaInput | undefined) => void;
+  onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
 }> = ({ className, selectedCredentials, onSelectCredentials }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const credentials = useCredentials();
@@ -255,30 +255,22 @@ export const CredentialsInput: FC<{
         )}
       </>
     );
-    // Only one saved credential
-  } else if (
-    savedApiKeys.length === 0 &&
-    savedOAuthCredentials.length === 1 &&
-    selectedCredentials === undefined
-  ) {
-    if (selectedCredentials === undefined) {
-      onSelectCredentials({
-        id: savedOAuthCredentials[0].id,
-        type: "oauth2",
-        provider,
-        title: savedOAuthCredentials[0].title,
-      });
-    }
-    return null;
-  } else if (savedApiKeys.length === 1 && savedOAuthCredentials.length === 0) {
-    if (selectedCredentials === undefined) {
-      onSelectCredentials({
-        id: savedApiKeys[0].id,
-        type: "api_key",
-        provider,
-        title: savedApiKeys[0].title,
-      });
-    }
+  }
+
+  const singleCredential =
+    savedApiKeys.length === 1 && savedOAuthCredentials.length === 0
+      ? savedApiKeys[0]
+      : savedOAuthCredentials.length === 1 && savedApiKeys.length === 0
+        ? savedOAuthCredentials[0]
+        : null;
+
+  if (singleCredential && !selectedCredentials) {
+    onSelectCredentials({
+      id: singleCredential.id,
+      type: singleCredential.type,
+      provider,
+      title: singleCredential.title,
+    });
     return null;
   }
 

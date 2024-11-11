@@ -4,7 +4,7 @@ import { useSupabase } from "@/components/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext } from "react";
+import { useCallback, useContext, useMemo } from "react";
 import { FaSpinner } from "react-icons/fa";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
@@ -60,6 +60,21 @@ export default function PrivatePage() {
     [providers, toast],
   );
 
+  //TODO: remove when the way system credentials are handled is updated
+  // This contains ids for built-in "Use Credits for X" credentials
+  const hiddenCredentials = useMemo(
+    () => [
+      "fdb7f412-f519-48d1-9b5f-d2f73d0e01fe", // Revid
+      "760f84fc-b270-42de-91f6-08efe1b512d0", // Ideogram
+      "6b9fc200-4726-4973-86c9-cd526f5ce5db", // Replicate
+      "53c25cb8-e3ee-465c-a4d1-e75a4c899c2a", // OpenAI
+      "24e5d942-d9e3-4798-8151-90143ee55629", // Anthropic
+      "4ec22295-8f97-4dd1-b42b-2c6957a02545", // Groq
+      "7f7b0654-c36b-4565-8fa7-9a52575dfae2", // D-ID
+    ],
+    [],
+  );
+
   if (isLoading || !providers) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -75,7 +90,7 @@ export default function PrivatePage() {
 
   const allCredentials = Object.values(providers).flatMap((provider) =>
     [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
-      .filter((cred) => !cred.hidden)
+      .filter((cred) => !hiddenCredentials.includes(cred.id))
       .map((credentials) => ({
         ...credentials,
         provider: provider.provider,
