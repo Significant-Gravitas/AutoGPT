@@ -27,6 +27,7 @@ model User {
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
+  APIKeys                      APIKey[]
 
   @@index([id])
   @@index([email])
@@ -276,4 +277,43 @@ model UserBlockCredit {
   metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+}
+
+enum APIKeyPermission {
+  EXECUTE_GRAPH // Can execute agent graphs
+  READ_GRAPH // Can get graph versions and details
+  EXECUTE_BLOCK // Can execute individual blocks
+  READ_BLOCK // Can get block information
+}
+
+model APIKey {
+  id          String             @id @default(uuid())
+  name        String
+  prefix      String             // First 8 chars for identification
+  postfix     String
+  key         String             @unique // Hashed key
+  status      APIKeyStatus       @default(ACTIVE)
+  permissions APIKeyPermission[]
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  description String?
+
+  // Relation to user
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([key])
+  @@index([prefix])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+enum APIKeyStatus {
+  ACTIVE
+  REVOKED
+  SUSPENDED
 }
