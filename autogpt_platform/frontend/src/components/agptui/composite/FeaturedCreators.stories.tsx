@@ -68,20 +68,20 @@ export const ManyCreators: Story = {
     featuredCreators: [
       ...defaultCreators,
       {
-        creatorName: "ML Master",
-        creatorImage:
+        name: "ML Master",
+        avatar_url:
           "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-        bio: "Specializing in machine learning algorithms",
-        agentsUploaded: 20,
-        avatarSrc: "https://example.com/avatar4.jpg",
+        description: "Specializing in machine learning algorithms",
+        num_agents: 20,
+        avatar_url: "https://example.com/avatar4.jpg",
       },
       {
-        creatorName: "NLP Ninja",
-        creatorImage:
+        name: "NLP Ninja",
+        avatar_url:
           "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-        bio: "Expert in natural language processing",
-        agentsUploaded: 18,
-        avatarSrc: "https://example.com/avatar5.jpg",
+        description: "Expert in natural language processing",
+        num_agents: 18,
+        avatar_url: "https://example.com/avatar5.jpg",
       },
     ],
     onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
