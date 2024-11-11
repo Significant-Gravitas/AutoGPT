@@ -321,12 +321,12 @@ rather than being executed manually.
 Creating and running a webhook-triggered block involves three main components:
 
 - The block itself, which specifies:
-  - Inputs for the user to select a resource and events to subscribe to
-  - A `credentials` input with the scopes needed to manage webhooks
-  - Logic to turn the webhook payload into outputs for the webhook block
+    - Inputs for the user to select a resource and events to subscribe to
+    - A `credentials` input with the scopes needed to manage webhooks
+    - Logic to turn the webhook payload into outputs for the webhook block
 - The `WebhooksManager` for the corresponding webhook service provider, which handles:
-  - (De)registering webhooks with the provider
-  - Parsing and validating incoming webhook payloads
+    - (De)registering webhooks with the provider
+    - Parsing and validating incoming webhook payloads
 - The credentials system for the corresponding service provider, which may include an `OAuthHandler`
 
 There is more going on under the hood, e.g. to store and retrieve webhooks and their
@@ -395,11 +395,8 @@ To add support for a new webhook provider, you'll need to create a WebhooksManag
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager1"
 
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager2"
-
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager3"
-
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager4"
-
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager5"
 ```
 
