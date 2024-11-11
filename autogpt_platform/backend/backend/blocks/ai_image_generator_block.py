@@ -21,7 +21,6 @@ class ImageSize(str, Enum):
     WIDE = "wide"  # For cinematic, desktop wallpapers
     TALL = "tall"  # For mobile wallpapers, stories
 
-
 # Mapping semantic sizes to model-specific formats
 SIZE_TO_SD_RATIO = {
     ImageSize.SQUARE: "1:1",
@@ -55,7 +54,6 @@ SIZE_TO_RECRAFT_DIMENSIONS = {
     ImageSize.TALL: "1024x1536",
 }
 
-
 class ImageStyle(str, Enum):
     """
     Complete set of supported styles
@@ -83,16 +81,15 @@ class ImageStyle(str, Enum):
     HAND_DRAWN_OUTLINE = "digital_illustration/hand_drawn_outline"
     ENGRAVING_COLOR = "digital_illustration/engraving_color"
 
-
 class ImageGenModel(str, Enum):
     """
     Available model providers
     """
 
     FLUX = "Flux 1.1 Pro"
+    FLUX_ULTRA = "Flux 1.1 Pro Ultra"  # Added new model here
     RECRAFT = "Recraft v3"
     SD3_5 = "Stable Diffusion 3.5 Medium"
-
 
 class AIImageGeneratorBlock(Block):
     class Input(BlockSchema):
@@ -195,7 +192,7 @@ class AIImageGeneratorBlock(Block):
         try:
             # Handle style-based prompt modification for models without native style support
             modified_prompt = input_data.prompt
-            if input_data.model != ImageGenModel.RECRAFT:
+            if input_data.model not in [ImageGenModel.RECRAFT]:
                 style_prefix = self._style_to_prompt_prefix(input_data.style)
                 modified_prompt = f"{style_prefix} {modified_prompt}".strip()
 
@@ -217,18 +214,34 @@ class AIImageGeneratorBlock(Block):
                 return output
 
             elif input_data.model == ImageGenModel.FLUX:
-                # Use Flux-specific dimensions that respect the 1440px limit
+                # Use Flux-specific dimensions with 'jpg' format to avoid ReplicateError
                 width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
                 input_params = {
                     "prompt": modified_prompt,
                     "width": width,
                     "height": height,
                     "aspect_ratio": SIZE_TO_FLUX_RATIO[input_data.size],
-                    "output_format": "webp",
+                    "output_format": "jpg",  # Set to jpg for Flux models
                     "output_quality": 90,
                 }
                 output = self._run_client(
                     credentials, "black-forest-labs/flux-1.1-pro", input_params
+                )
+                return output
+
+            elif input_data.model == ImageGenModel.FLUX_ULTRA:
+                # Use Flux Ultra with 'jpg' format to avoid ReplicateError
+                width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
+                input_params = {
+                    "prompt": modified_prompt,
+                    "width": width,
+                    "height": height,
+                    "aspect_ratio": SIZE_TO_FLUX_RATIO[input_data.size],
+                    "output_format": "jpg",  # Set to jpg for Flux Ultra model
+                    "output_quality": 90,
+                }
+                output = self._run_client(
+                    credentials, "black-forest-labs/flux-1.1-pro-ultra", input_params
                 )
                 return output
 
@@ -287,7 +300,6 @@ class AIImageGeneratorBlock(Block):
         except Exception as e:
             # Capture and return only the message of the exception, avoiding serialization of non-serializable objects
             yield "error", str(e)
-
 
 # Test credentials stay the same
 TEST_CREDENTIALS = APIKeyCredentials(
