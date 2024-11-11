@@ -93,6 +93,9 @@ class ModelProvider(str, Enum):
     SD3_5 = "Stable Diffusion 3.5 Medium"
 
 
+def run_client(client, model_name: str, input_params: dict):
+    return client.run(model_name, input=input_params)
+
 class AIImageGeneratorBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
@@ -157,15 +160,13 @@ class AIImageGeneratorBlock(Block):
                 ),
             ],
             test_mock={
-                "replicate.Client.run": lambda model, input: {
+                "ai_image_generator_block.run_client": lambda client, model_name, input_params: {
                     "image_url": "https://replicate.delivery/generated-image.webp"
                 }
             },
         )
 
-    def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
+    def generate_image(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         try:
             # Initialize Replicate client
             client = replicate.Client(api_token=credentials.api_key.get_secret_value())
@@ -178,16 +179,18 @@ class AIImageGeneratorBlock(Block):
 
             if input_data.model == ModelProvider.SD3_5:
                 # Use Stable Diffusion 3.5 with aspect ratio
-                output = client.run(
+                input_params = {
+                    "prompt": modified_prompt,
+                    "aspect_ratio": SIZE_TO_SD_RATIO[input_data.size],
+                    "output_format": "webp",
+                    "output_quality": 90,
+                    "steps": 40,
+                    "cfg_scale": 7.0,
+                }
+                output = run_client(
+                    client,
                     "stability-ai/stable-diffusion-3.5-medium",
-                    input={
-                        "prompt": modified_prompt,
-                        "aspect_ratio": SIZE_TO_SD_RATIO[input_data.size],
-                        "output_format": "webp",
-                        "output_quality": 90,
-                        "steps": 40,
-                        "cfg_scale": 7.0,
-                    },
+                    input_params
                 )
                 output_list = list(output) if hasattr(output, "__iter__") else [output]
                 yield "image_url", output_list[0]
@@ -196,27 +199,31 @@ class AIImageGeneratorBlock(Block):
                 # Use Flux-specific dimensions that respect the 1440px limit
                 width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
 
-                output = client.run(
+                input_params = {
+                    "prompt": modified_prompt,
+                    "width": width,
+                    "height": height,
+                    "aspect_ratio": SIZE_TO_FLUX_RATIO[input_data.size],
+                    "output_format": "webp",
+                    "output_quality": 90,
+                }
+                output = run_client(
+                    client,
                     "black-forest-labs/flux-1.1-pro",
-                    input={
-                        "prompt": modified_prompt,
-                        "width": width,
-                        "height": height,
-                        "aspect_ratio": SIZE_TO_FLUX_RATIO[input_data.size],
-                        "output_format": "webp",
-                        "output_quality": 90,
-                    },
+                    input_params
                 )
                 yield "image_url", output
 
             elif input_data.model == ModelProvider.RECRAFT:
-                output = client.run(
+                input_params = {
+                    "prompt": input_data.prompt,
+                    "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
+                    "style": input_data.style.value,
+                }
+                output = run_client(
+                    client,
                     "recraft-ai/recraft-v3",
-                    input={
-                        "prompt": input_data.prompt,
-                        "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
-                        "style": input_data.style.value,
-                    },
+                    input_params
                 )
                 yield "image_url", output
 
