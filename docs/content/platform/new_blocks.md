@@ -234,7 +234,7 @@ All our existing handlers and the base class can be found [here][OAuth2 handlers
 
 Every handler must implement the following parts of the [`BaseOAuthHandler`] interface:
 
-```python title="autogpt_platform/backend/backend/integrations/oauth/base.py"
+```python title="backend/integrations/oauth/base.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler1"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler2"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler3"
@@ -249,13 +249,13 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 
 - Adding the handler class to `HANDLERS_BY_NAME` under [`integrations/oauth/__init__.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/__init__.py)
 
-```python title="autogpt_platform/backend/backend/integrations/oauth/__init__.py"
+```python title="backend/integrations/oauth/__init__.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/__init__.py:HANDLERS_BY_NAMEExample"
 ```
 
 - Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` under [`util/settings.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/util/settings.py)
 
-```python title="autogpt_platform/backend/backend/util/settings.py"
+```python title="backend/util/settings.py"
 --8<-- "autogpt_platform/backend/backend/util/settings.py:OAuthServerCredentialsExample"
 ```
 
@@ -286,13 +286,13 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 
 - GitHub blocks with API key + OAuth2 support: [`blocks/github`](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/blocks/github/)
 
-```python title="blocks/github/issues.py"
+```python title="backend/blocks/github/issues.py"
 --8<-- "autogpt_platform/backend/backend/blocks/github/issues.py:GithubCommentBlockExample"
 ```
 
 - GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
 
-```python title="integrations/oauth/github.py"
+```python title="backend/integrations/oauth/github.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/github.py:GithubOAuthHandlerExample"
 ```
 
@@ -300,13 +300,13 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 
 - Google OAuth2 handler: [`integrations/oauth/google.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/google.py)
 
-```python title="integrations/oauth/google.py"
+```python title="backend/integrations/oauth/google.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/google.py:GoogleOAuthHandlerExample"
 ```
 
 You can see that google has defined a `DEFAULT_SCOPES` variable, this is used to set the scopes that are requested no matter what the user asks for.
 
-```python title="blocks/google/_auth.py"
+```python title="backend/blocks/google/_auth.py"
 --8<-- "autogpt_platform/backend/backend/blocks/google/_auth.py:GoogleOAuthIsConfigured"
 ```
 
@@ -342,7 +342,7 @@ To create a webhook-triggered block, follow these additional steps on top of the
     <details>
     <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
 
-    ```python title="blocks/github/triggers.py"
+    ```python title="backend/blocks/github/triggers.py"
     --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-webhook_config"
     ```
     </details>
@@ -350,7 +350,7 @@ To create a webhook-triggered block, follow these additional steps on top of the
     <details>
     <summary><code>BlockWebhookConfig</code> definition</summary>
 
-    ```python title="data/block.py"
+    ```python title="backend/data/block.py"
     --8<-- "autogpt_platform/backend/backend/data/block.py:BlockWebhookConfig"
     ```
     </details>
@@ -360,7 +360,7 @@ To create a webhook-triggered block, follow these additional steps on top of the
     <details>
     <summary>Example: <code>GitHubTriggerBase</code></summary>
 
-    ```python title="blocks/github/triggers.py"
+    ```python title="backend/blocks/github/triggers.py"
     --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-payload-field"
     ```
     </details>
@@ -391,7 +391,7 @@ To create a webhook-triggered block, follow these additional steps on top of the
 
 To add support for a new webhook provider, you'll need to create a WebhooksManager that implements the `BaseWebhooksManager` interface:
 
-```python title="integrations/webhooks/base.py"
+```python title="backend/integrations/webhooks/base.py"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager1"
 
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager2"
@@ -407,7 +407,7 @@ To add support for a new webhook provider, you'll need to create a WebhooksManag
 GitHub Webhook triggers: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/blocks/github/triggers.py"><code>blocks/github/triggers.py</code></a>
 </summary>
 
-```python title="blocks/github/triggers.py"
+```python title="backend/blocks/github/triggers.py"
 --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:GithubTriggerExample"
 ```
 </details>
@@ -417,7 +417,7 @@ GitHub Webhook triggers: <a href="https://github.com/Significant-Gravitas/AutoGP
 GitHub Webhooks Manager: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/webhooks/github.py"><code>integrations/webhooks/github.py</code></a>
 </summary>
 
-```python title="integrations/webhooks/github.py"
+```python title="backend/integrations/webhooks/github.py"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/github.py:GithubWebhooksManager"
 ```
 </details>
