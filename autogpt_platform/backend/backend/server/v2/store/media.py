@@ -2,9 +2,10 @@ import logging
 import os
 import uuid
 
-import backend.server.v2.store.exceptions
 import fastapi
 import supabase
+
+import backend.server.v2.store.exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,9 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
         supabase_key = os.environ["SUPABASE_KEY"]
     except KeyError as e:
         logger.error(f"Missing required environment variable: {str(e)}")
-        raise backend.server.v2.store.exceptions.StorageConfigError("Missing storage configuration") from e
+        raise backend.server.v2.store.exceptions.StorageConfigError(
+            "Missing storage configuration"
+        ) from e
 
     try:
         # Validate file type
@@ -42,12 +45,16 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
                 file_size += len(chunk)
                 if file_size > MAX_FILE_SIZE:
                     logger.warning(f"File size too large: {file_size} bytes")
-                    raise backend.server.v2.store.exceptions.FileSizeTooLargeError("File too large. Maximum size is 50MB")
+                    raise backend.server.v2.store.exceptions.FileSizeTooLargeError(
+                        "File too large. Maximum size is 50MB"
+                    )
         except backend.server.v2.store.exceptions.FileSizeTooLargeError:
             raise
         except Exception as e:
             logger.error(f"Error reading file chunks: {str(e)}")
-            raise backend.server.v2.store.exceptions.FileReadError("Failed to read uploaded file") from e
+            raise backend.server.v2.store.exceptions.FileReadError(
+                "Failed to read uploaded file"
+            ) from e
 
         # Reset file pointer
         await file.seek(0)
@@ -80,10 +87,14 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
 
         except Exception as e:
             logger.error(f"Supabase storage error: {str(e)}")
-            raise backend.server.v2.store.exceptions.StorageUploadError("Failed to upload file to storage") from e
+            raise backend.server.v2.store.exceptions.StorageUploadError(
+                "Failed to upload file to storage"
+            ) from e
 
     except backend.server.v2.store.exceptions.MediaUploadError:
         raise
     except Exception as e:
         logger.exception("Unexpected error in upload_media")
-        raise backend.server.v2.store.exceptions.MediaUploadError("Unexpected error during media upload") from e
+        raise backend.server.v2.store.exceptions.MediaUploadError(
+            "Unexpected error during media upload"
+        ) from e

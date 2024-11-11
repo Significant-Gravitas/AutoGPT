@@ -10,6 +10,8 @@ import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "@/components/ui/toaster";
 
+import { createServerClient } from "@/lib/supabase/server";
+
 // Import Fonts
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
@@ -21,15 +23,22 @@ export const metadata: Metadata = {
   description: "Your one stop shop to creating AI Agents",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = createServerClient();
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   return (
     <html lang="en">
       <body className={cn("antialiased transition-colors", inter.className)}>
         <Providers
+          initialSession={session}
           attribute="class"
           defaultTheme="light"
           // Feel free to remove this line if you want to use the system theme by default

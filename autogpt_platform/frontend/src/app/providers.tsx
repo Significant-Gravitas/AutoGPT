@@ -4,19 +4,21 @@ import * as React from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { ThemeProviderProps } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/components/providers/AuthContext";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
+import { Session } from "@supabase/supabase-js";
 
-export function Providers({ children, ...props }: ThemeProviderProps) {
+export function Providers({
+  children,
+  initialSession,
+  ...props
+}: ThemeProviderProps & { initialSession: Session | null }) {
   return (
     <NextThemesProvider {...props}>
-      <SupabaseProvider>
-        <AuthProvider>
-          <CredentialsProvider>
-            <TooltipProvider>{children}</TooltipProvider>
-          </CredentialsProvider>
-        </AuthProvider>
+      <SupabaseProvider initialSession={initialSession}>
+        <CredentialsProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </CredentialsProvider>
       </SupabaseProvider>
     </NextThemesProvider>
   );

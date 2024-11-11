@@ -1,18 +1,20 @@
 from datetime import datetime
 
-import backend.server.v2.store.db as db
 import prisma.errors
 import prisma.models
 import pytest
-from backend.server.v2.store.model import CreatorDetails
 from prisma import Prisma, register
+
+import backend.server.v2.store.db as db
+import backend.server.v2.store.exceptions
+from backend.server.v2.store.model import CreatorDetails
 
 
 @pytest.fixture(autouse=True)
 async def setup_prisma():
     try:
         register(Prisma())
-    except:
+    except backend.server.v2.store.exceptions.DatabaseError:
         pass
     yield
 
