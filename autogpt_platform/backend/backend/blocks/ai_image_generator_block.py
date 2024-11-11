@@ -188,7 +188,7 @@ class AIImageGeneratorBlock(Block):
                     client, "stability-ai/stable-diffusion-3.5-medium", input_params
                 )
                 output_list = list(output) if hasattr(output, "__iter__") else [output]
-                yield "image_url", output_list[0]
+                return output_list[0]
 
             elif input_data.model == ImageGenModel.FLUX:
                 # Use Flux-specific dimensions that respect the 1440px limit
@@ -205,7 +205,7 @@ class AIImageGeneratorBlock(Block):
                 output = self._run_client(
                     client, "black-forest-labs/flux-1.1-pro", input_params
                 )
-                yield "image_url", output
+                return output
 
             elif input_data.model == ImageGenModel.RECRAFT:
                 input_params = {
@@ -214,10 +214,10 @@ class AIImageGeneratorBlock(Block):
                     "style": input_data.style.value,
                 }
                 output = self._run_client(client, "recraft-ai/recraft-v3", input_params)
-                yield "image_url", output
+                return output
 
         except Exception as e:
-            yield "error", str(e)
+            raise e
 
     def _style_to_prompt_prefix(self, style: ImageStyle) -> str:
         """
@@ -251,7 +251,11 @@ class AIImageGeneratorBlock(Block):
         return f"{style_text} of" if style_text else ""
 
     def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
-        yield from self.generate_image(input_data, credentials)
+        try:
+            url = self.generate_image(input_data, credentials)
+            yield "image_url", url
+        except Exception as e:
+            yield "error", str(e)
 
 
 
