@@ -264,13 +264,15 @@ export const CredentialsInput: FC<{
         ? savedOAuthCredentials[0]
         : null;
 
-  if (singleCredential && !selectedCredentials) {
-    onSelectCredentials({
-      id: singleCredential.id,
-      type: singleCredential.type,
-      provider,
-      title: singleCredential.title,
-    });
+  if (singleCredential) {
+    if (!selectedCredentials) {
+      onSelectCredentials({
+        id: singleCredential.id,
+        type: singleCredential.type,
+        provider,
+        title: singleCredential.title,
+      });
+    }
     return null;
   }
 
