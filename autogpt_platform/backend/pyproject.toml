@@ -59,6 +59,7 @@ isort = "^5.13.2"
 black = "^24.10.0"
 aiohappyeyeballs = "^2.4.3"
 pytest-mock = "^3.14.0"
+faker = "^30.8.2"
 
 [build-system]
 requires = ["poetry-core"]
