@@ -6,7 +6,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCred
 from pydantic import SecretStr
 from replicate.helpers import FileOutput
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
@@ -161,7 +161,9 @@ class AIImageGeneratorBlock(Block):
             },
         )
 
-    def _run_client(self, credentials: APIKeyCredentials, model_name: str, input_params: dict):
+    def _run_client(
+        self, credentials: APIKeyCredentials, model_name: str, input_params: dict
+    ):
         try:
             # Initialize Replicate client
             client = replicate.Client(api_token=credentials.api_key.get_secret_value())
@@ -189,7 +191,6 @@ class AIImageGeneratorBlock(Block):
         except Exception as e:
             raise RuntimeError(f"Unexpected error during model execution: {e}")
 
-        
     def generate_image(self, input_data: Input, credentials: APIKeyCredentials):
         try:
             # Handle style-based prompt modification for models without native style support
@@ -209,7 +210,9 @@ class AIImageGeneratorBlock(Block):
                     "cfg_scale": 7.0,
                 }
                 output = self._run_client(
-                    credentials, "stability-ai/stable-diffusion-3.5-medium", input_params
+                    credentials,
+                    "stability-ai/stable-diffusion-3.5-medium",
+                    input_params,
                 )
                 return output
 
@@ -224,7 +227,9 @@ class AIImageGeneratorBlock(Block):
                     "output_format": "webp",
                     "output_quality": 90,
                 }
-                output = self._run_client(credentials, "black-forest-labs/flux-1.1-pro", input_params)
+                output = self._run_client(
+                    credentials, "black-forest-labs/flux-1.1-pro", input_params
+                )
                 return output
 
             elif input_data.model == ImageGenModel.RECRAFT:
@@ -233,12 +238,14 @@ class AIImageGeneratorBlock(Block):
                     "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
                     "style": input_data.style.value,
                 }
-                output = self._run_client(credentials, "recraft-ai/recraft-v3", input_params)
+                output = self._run_client(
+                    credentials, "recraft-ai/recraft-v3", input_params
+                )
                 return output
 
         except Exception as e:
             raise RuntimeError(f"Failed to generate image: {str(e)}")
-        
+
     def _style_to_prompt_prefix(self, style: ImageStyle) -> str:
         """
         Convert a style enum to a prompt prefix for models without native style support.
@@ -280,7 +287,6 @@ class AIImageGeneratorBlock(Block):
         except Exception as e:
             # Capture and return only the message of the exception, avoiding serialization of non-serializable objects
             yield "error", str(e)
-
 
 
 # Test credentials stay the same
