@@ -13,11 +13,12 @@ class ImageSize(str, Enum):
     """
     Semantic sizes that map reliably across all models
     """
-    SQUARE = "square"      # For profile pictures, icons, etc.
-    LANDSCAPE = "landscape" # For traditional photos, scenes
+
+    SQUARE = "square"  # For profile pictures, icons, etc.
+    LANDSCAPE = "landscape"  # For traditional photos, scenes
     PORTRAIT = "portrait"  # For vertical photos, portraits
-    WIDE = "wide"         # For cinematic, desktop wallpapers
-    TALL = "tall"         # For mobile wallpapers, stories
+    WIDE = "wide"  # For cinematic, desktop wallpapers
+    TALL = "tall"  # For mobile wallpapers, stories
 
 
 # Mapping semantic sizes to model-specific formats
@@ -41,8 +42,8 @@ SIZE_TO_FLUX_DIMENSIONS = {
     ImageSize.SQUARE: (1024, 1024),
     ImageSize.LANDSCAPE: (1365, 1024),
     ImageSize.PORTRAIT: (1024, 1365),
-    ImageSize.WIDE: (1440, 810),    # Adjusted to maintain 16:9 within 1440 limit
-    ImageSize.TALL: (810, 1440),    # Adjusted to maintain 9:16 within 1440 limit
+    ImageSize.WIDE: (1440, 810),  # Adjusted to maintain 16:9 within 1440 limit
+    ImageSize.TALL: (810, 1440),  # Adjusted to maintain 9:16 within 1440 limit
 }
 
 SIZE_TO_RECRAFT_DIMENSIONS = {
@@ -189,7 +190,7 @@ class AIImageGeneratorBlock(Block):
             elif input_data.model == ModelProvider.FLUX:
                 # Use Flux-specific dimensions that respect the 1440px limit
                 width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
-                
+
                 output = client.run(
                     "black-forest-labs/flux-1.1-pro",
                     input={
