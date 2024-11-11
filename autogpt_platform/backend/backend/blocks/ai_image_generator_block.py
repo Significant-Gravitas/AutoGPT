@@ -93,8 +93,6 @@ class ImageGenModel(str, Enum):
     SD3_5 = "Stable Diffusion 3.5 Medium"
 
 
-
-
 class AIImageGeneratorBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
@@ -158,14 +156,14 @@ class AIImageGeneratorBlock(Block):
                 ),
             ],
             test_mock={
-                "run_client": lambda *args, **kwargs: "https://replicate.delivery/generated-image.webp"
+                "_run_client": lambda *args, **kwargs: "https://replicate.delivery/generated-image.webp"
             },
         )
 
-    def run_client(client, model_name: str, input_params: dict):
+    def _run_client(self, client, model_name: str, input_params: dict):
         return client.run(model_name, input=input_params)
 
-    def generate_image(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
+    def generate_image(self, input_data: Input, credentials: APIKeyCredentials):
         try:
             # Initialize Replicate client
             client = replicate.Client(api_token=credentials.api_key.get_secret_value())
@@ -186,7 +184,7 @@ class AIImageGeneratorBlock(Block):
                     "steps": 40,
                     "cfg_scale": 7.0,
                 }
-                output = run_client(
+                output = self._run_client(
                     client, "stability-ai/stable-diffusion-3.5-medium", input_params
                 )
                 output_list = list(output) if hasattr(output, "__iter__") else [output]
@@ -204,7 +202,7 @@ class AIImageGeneratorBlock(Block):
                     "output_format": "webp",
                     "output_quality": 90,
                 }
-                output = run_client(
+                output = self._run_client(
                     client, "black-forest-labs/flux-1.1-pro", input_params
                 )
                 yield "image_url", output
@@ -215,7 +213,7 @@ class AIImageGeneratorBlock(Block):
                     "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
                     "style": input_data.style.value,
                 }
-                output = run_client(client, "recraft-ai/recraft-v3", input_params)
+                output = self._run_client(client, "recraft-ai/recraft-v3", input_params)
                 yield "image_url", output
 
         except Exception as e:
@@ -252,8 +250,9 @@ class AIImageGeneratorBlock(Block):
         style_text = style_map.get(style, "")
         return f"{style_text} of" if style_text else ""
 
-    def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs) -> BlockOutput:
-        return self.generate_image(input_data, credentials)
+    def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+        yield from self.generate_image(input_data, credentials)
+
 
 
 # Test credentials stay the same
