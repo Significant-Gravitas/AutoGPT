@@ -15,11 +15,11 @@ pydantic-settings = "^2.6.1"
 pyjwt = "^2.8.0"
 python = ">=3.10,<4.0"
 python-dotenv = "^1.0.1"
-supabase = "^2.9.1"
+supabase = "^2.10.0"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.0"
-ruff = "^0.7.2"
+ruff = "^0.7.3"
 
 [build-system]
 requires = ["poetry-core"]
