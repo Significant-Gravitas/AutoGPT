@@ -83,7 +83,7 @@ class ImageStyle(str, Enum):
     ENGRAVING_COLOR = "digital_illustration/engraving_color"
 
 
-class ModelProvider(str, Enum):
+class ImageGenModel(str, Enum):
     """
     Available model providers
     """
@@ -111,9 +111,9 @@ class AIImageGeneratorBlock(Block):
             placeholder="e.g., 'A red panda using a laptop in a snowy forest'",
             title="Prompt",
         )
-        model: ModelProvider = SchemaField(
+        model: ImageGenModel = SchemaField(
             description="The AI model to use for image generation",
-            default=ModelProvider.SD3_5,
+            default=ImageGenModel.SD3_5,
             title="Model",
         )
         size: ImageSize = SchemaField(
@@ -148,7 +148,7 @@ class AIImageGeneratorBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "prompt": "An octopus using a laptop in a snowy forest with 'AutoGPT' clearly visible on the screen",
-                "model": ModelProvider.RECRAFT,
+                "model": ImageGenModel.RECRAFT,
                 "size": ImageSize.SQUARE,
                 "style": ImageStyle.REALISTIC,
             },
@@ -175,11 +175,11 @@ class AIImageGeneratorBlock(Block):
 
             # Handle style-based prompt modification for models without native style support
             modified_prompt = input_data.prompt
-            if input_data.model != ModelProvider.RECRAFT:
+            if input_data.model != ImageGenModel.RECRAFT:
                 style_prefix = self._style_to_prompt_prefix(input_data.style)
                 modified_prompt = f"{style_prefix} {modified_prompt}".strip()
 
-            if input_data.model == ModelProvider.SD3_5:
+            if input_data.model == ImageGenModel.SD3_5:
                 # Use Stable Diffusion 3.5 with aspect ratio
                 input_params = {
                     "prompt": modified_prompt,
@@ -195,7 +195,7 @@ class AIImageGeneratorBlock(Block):
                 output_list = list(output) if hasattr(output, "__iter__") else [output]
                 yield "image_url", output_list[0]
 
-            elif input_data.model == ModelProvider.FLUX:
+            elif input_data.model == ImageGenModel.FLUX:
                 # Use Flux-specific dimensions that respect the 1440px limit
                 width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
 
@@ -212,7 +212,7 @@ class AIImageGeneratorBlock(Block):
                 )
                 yield "image_url", output
 
-            elif input_data.model == ModelProvider.RECRAFT:
+            elif input_data.model == ImageGenModel.RECRAFT:
                 input_params = {
                     "prompt": input_data.prompt,
                     "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
