@@ -22,6 +22,12 @@ const isValidImageUrl = (url: string): boolean => {
   return imageExtensions.test(cleanedUrl);
 };
 
+const isValidAudioUrl = (url: string): boolean => {
+  const audioExtensions = /\.(mp3|wav)$/i;
+  const cleanedUrl = url.split("?")[0];
+  return audioExtensions.test(cleanedUrl);
+};
+
 const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
   const videoId = getYouTubeVideoId(videoUrl);
   return (
@@ -58,6 +64,18 @@ const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => (
   </div>
 );
 
+const AudioRenderer: React.FC<{ audioUrl: string }> = ({ audioUrl }) => (
+  <div className="w-full p-2">
+    <audio controls className="w-full">
+      <source
+        src={audioUrl}
+        type={`audio/${audioUrl.split(".").pop()?.toLowerCase()}`}
+      />
+      Your browser does not support the audio element.
+    </audio>
+  </div>
+);
+
 const TextRenderer: React.FC<{ value: any; truncateLongData?: boolean }> = ({
   value,
   truncateLongData,
@@ -79,6 +97,8 @@ export const ContentRenderer: React.FC<{
       return <VideoRenderer videoUrl={value} />;
     } else if (isValidImageUrl(value)) {
       return <ImageRenderer imageUrl={value} />;
+    } else if (isValidAudioUrl(value)) {
+      return <AudioRenderer audioUrl={value} />;
     }
   }
   return <TextRenderer value={value} truncateLongData={truncateLongData} />;
