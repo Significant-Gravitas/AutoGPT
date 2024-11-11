@@ -33,26 +33,32 @@ class StorageUploadError(MediaUploadError):
 
     pass
 
+
 class StoreError(Exception):
     """Base exception for store-related errors"""
+
     pass
 
 
 class AgentNotFoundError(StoreError):
     """Raised when an agent is not found"""
+
     pass
 
 
 class CreatorNotFoundError(StoreError):
     """Raised when a creator is not found"""
+
     pass
 
 
 class ListingExistsError(StoreError):
     """Raised when trying to create a listing that already exists"""
+
     pass
 
 
 class DatabaseError(StoreError):
     """Raised when there is an error interacting with the database"""
+
     pass

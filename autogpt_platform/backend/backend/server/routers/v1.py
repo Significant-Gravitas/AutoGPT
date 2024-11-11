@@ -40,8 +40,7 @@ logger = logging.getLogger(__name__)
 _user_credit_model = get_user_credit_model()
 
 # Define the API routes
-v1_router = APIRouter(prefix="/api")
-
+v1_router = APIRouter()
 
 v1_router.dependencies.append(Depends(auth_middleware))
 

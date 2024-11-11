@@ -1,11 +1,12 @@
 import io
 import unittest.mock
 
-import backend.server.v2.store.exceptions
-import backend.server.v2.store.media
 import fastapi
 import pytest
 import starlette.datastructures
+
+import backend.server.v2.store.exceptions
+import backend.server.v2.store.media
 
 
 @pytest.fixture

@@ -271,7 +271,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
-        secrets_dir=get_secrets_path(),
         env_file=".env",
         env_file_encoding="utf-8",
         extra="allow",

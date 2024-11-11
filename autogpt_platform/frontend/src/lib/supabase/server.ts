@@ -31,6 +31,6 @@ export function createServerClient() {
       },
     );
   } catch (error) {
-    return null;
+    throw error;
   }
 }
