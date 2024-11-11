@@ -96,14 +96,14 @@ class ModelProvider(str, Enum):
 def run_client(client, model_name: str, input_params: dict):
     return client.run(model_name, input=input_params)
 
+
 class AIImageGeneratorBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
             CredentialsField(
                 provider="replicate",
                 supported_credential_types={"api_key"},
-                description="The Replicate integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
+                description="Enter your Replicate API key to access the image generation API. You can obtain an API key from https://replicate.com/account/api-tokens.",
             )
         )
         prompt: str = SchemaField(
@@ -166,7 +166,9 @@ class AIImageGeneratorBlock(Block):
             },
         )
 
-    def generate_image(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
+    def generate_image(
+        self, input_data: Input, credentials: APIKeyCredentials
+    ) -> BlockOutput:
         try:
             # Initialize Replicate client
             client = replicate.Client(api_token=credentials.api_key.get_secret_value())
@@ -188,9 +190,7 @@ class AIImageGeneratorBlock(Block):
                     "cfg_scale": 7.0,
                 }
                 output = run_client(
-                    client,
-                    "stability-ai/stable-diffusion-3.5-medium",
-                    input_params
+                    client, "stability-ai/stable-diffusion-3.5-medium", input_params
                 )
                 output_list = list(output) if hasattr(output, "__iter__") else [output]
                 yield "image_url", output_list[0]
@@ -208,9 +208,7 @@ class AIImageGeneratorBlock(Block):
                     "output_quality": 90,
                 }
                 output = run_client(
-                    client,
-                    "black-forest-labs/flux-1.1-pro",
-                    input_params
+                    client, "black-forest-labs/flux-1.1-pro", input_params
                 )
                 yield "image_url", output
 
@@ -220,11 +218,7 @@ class AIImageGeneratorBlock(Block):
                     "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
                     "style": input_data.style.value,
                 }
-                output = run_client(
-                    client,
-                    "recraft-ai/recraft-v3",
-                    input_params
-                )
+                output = run_client(client, "recraft-ai/recraft-v3", input_params)
                 yield "image_url", output
 
         except Exception as e:
