@@ -36,7 +36,7 @@ model User {
   StoreListing           StoreListing[]
   StoreListingReview     StoreListingReview[]
   StoreListingSubmission StoreListingSubmission[]
-  APIKeys                      APIKey[]
+  APIKeys                APIKey[]
 
   @@index([id])
   @@index([email])
@@ -64,10 +64,6 @@ model AgentGraph {
   AgentGraphExecution         AgentGraphExecution[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
-  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs      AgentGraph[]         @relation("AgentSubGraph")
-  agentGraphParentId  String?
-  AgentGraphParent    AgentGraph?          @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
   AgentPreset         AgentPreset[]
   UserAgent           UserAgent[]
   StoreListing        StoreListing[]
@@ -400,7 +396,6 @@ model Profile {
   userId String?
   User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  
   name        String
   username    String @unique
   description String
@@ -429,8 +424,8 @@ view Creator {
 
 view StoreAgent {
   listing_id String @id
-  
-  slug String
+
+  slug        String
   agent_name  String
   agent_video String?
   agent_image String[]
@@ -442,7 +437,7 @@ view StoreAgent {
   description      String
   categories       String[]
   runs             Int
-  rating            Float
+  rating           Float
   versions         String[]
 
   @@unique([creator_username, slug])
@@ -452,7 +447,7 @@ view StoreAgent {
 }
 
 view StoreSubmission {
-  listing_id     String @id
+  listing_id     String           @id
   user_id        String
   name           String
   description    String
@@ -584,7 +579,7 @@ enum APIKeyPermission {
 model APIKey {
   id          String             @id @default(uuid())
   name        String
-  prefix      String             // First 8 chars for identification
+  prefix      String // First 8 chars for identification
   postfix     String
   key         String             @unique // Hashed key
   status      APIKeyStatus       @default(ACTIVE)
