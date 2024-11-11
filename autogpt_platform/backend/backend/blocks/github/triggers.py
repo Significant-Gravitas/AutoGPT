@@ -48,6 +48,7 @@ class GitHubTriggerBase:
 
 
 class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
+    # --8<-- [start:example-event-filter]
     class Input(GitHubTriggerBase.Input):
         class EventsFilter(BaseModel):
             """
@@ -79,6 +80,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         events: EventsFilter = SchemaField(
             title="Events", description="The events to subscribe to"
         )
+        # --8<-- [end:example-event-filter]
 
     class Output(GitHubTriggerBase.Output):
         event: str = SchemaField(
