@@ -1079,17 +1079,17 @@ requests = ">=2.20.0,<3.0"
 
 [[package]]
 name = "gotrue"
-version = "2.9.0"
+version = "2.10.0"
 description = "Python Client Library for Supabase Auth"
 optional = false
-python-versions = "<4.0,>=3.8"
+python-versions = "<4.0,>=3.9"
 files = [
-    {file = "gotrue-2.9.0-py3-none-any.whl", hash = "sha256:9a6448479329771752cb93be65bc95f06f17d9262e814a95d03b218cf5dce87a"},
-    {file = "gotrue-2.9.0.tar.gz", hash = "sha256:c50e75bd01b82a388eed6a921a1c373a7157fd405df2221a8532193a39df4159"},
+    {file = "gotrue-2.10.0-py3-none-any.whl", hash = "sha256:768e58207488e5184ffbdc4351b7280d913daf97962f4e9f2cca05c80004b042"},
+    {file = "gotrue-2.10.0.tar.gz", hash = "sha256:4edf4c251da3535f2b044e23deba221e848ca1210c17d0c7a9b19f79a1e3f3c0"},
 ]
 
 [package.dependencies]
-httpx = {version = ">=0.24,<0.28", extras = ["http2"]}
+httpx = {version = ">=0.26,<0.28", extras = ["http2"]}
 pydantic = ">=1.10,<3"
 
 [[package]]
@@ -1796,13 +1796,13 @@ httpx = ">=0.27.0,<0.28.0"
 
 [[package]]
 name = "openai"
-version = "1.54.1"
+version = "1.54.3"
 description = "The official Python library for the openai API"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "openai-1.54.1-py3-none-any.whl", hash = "sha256:3cb49ccb6bfdc724ad01cc397d323ef8314fc7d45e19e9de2afdd6484a533324"},
-    {file = "openai-1.54.1.tar.gz", hash = "sha256:5b832bf82002ba8c4f6e5e25c1c0f5d468c22f043711544c716eaffdb30dd6f1"},
+    {file = "openai-1.54.3-py3-none-any.whl", hash = "sha256:f18dbaf09c50d70c4185b892a2a553f80681d1d866323a2da7f7be2f688615d5"},
+    {file = "openai-1.54.3.tar.gz", hash = "sha256:7511b74eeb894ac0b0253dc71f087a15d2e4d71d22d0088767205143d880cca6"},
 ]
 
 [package.dependencies]
@@ -1984,13 +1984,13 @@ poetry-plugin = ["poetry (>=1.0,<2.0)"]
 
 [[package]]
 name = "postgrest"
-version = "0.17.2"
+version = "0.18.0"
 description = "PostgREST client for Python. This library provides an ORM interface to PostgREST."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "postgrest-0.17.2-py3-none-any.whl", hash = "sha256:f7c4f448e5a5e2d4c1dcf192edae9d1007c4261e9a6fb5116783a0046846ece2"},
-    {file = "postgrest-0.17.2.tar.gz", hash = "sha256:445cd4e4a191e279492549df0c4e827d32f9d01d0852599bb8a6efb0f07fcf78"},
+    {file = "postgrest-0.18.0-py3-none-any.whl", hash = "sha256:200baad0d23fee986b3a0ffd3e07bfe0cdd40e09760f11e8e13a6c0c2376d5fa"},
+    {file = "postgrest-0.18.0.tar.gz", hash = "sha256:29c1a94801a17eb9ad590189993fe5a7a6d8c1bfc11a3c9d0ce7ba146454ebb3"},
 ]
 
 [package.dependencies]
@@ -2933,19 +2933,18 @@ full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7
 
 [[package]]
 name = "storage3"
-version = "0.8.2"
+version = "0.9.0"
 description = "Supabase Storage client for Python."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "storage3-0.8.2-py3-none-any.whl", hash = "sha256:f2e995b18c77a2a9265d1a33047d43e4d6abb11eb3ca5067959f68281c305de3"},
-    {file = "storage3-0.8.2.tar.gz", hash = "sha256:db05d3fe8fb73bd30c814c4c4749664f37a5dfc78b629e8c058ef558c2b89f5a"},
+    {file = "storage3-0.9.0-py3-none-any.whl", hash = "sha256:8b2fb91f0c61583a2f4eac74a8bae67e00d41ff38095c8a6cd3f2ce5e0ab76e7"},
+    {file = "storage3-0.9.0.tar.gz", hash = "sha256:e16697f60894c94e1d9df0d2e4af783c1b3f7dd08c9013d61978825c624188c4"},
 ]
 
 [package.dependencies]
 httpx = {version = ">=0.26,<0.28", extras = ["http2"]}
 python-dateutil = ">=2.8.2,<3.0.0"
-typing-extensions = ">=4.2.0,<5.0.0"
 
 [[package]]
 name = "strenum"
@@ -2965,32 +2964,32 @@ test = ["pylint", "pytest", "pytest-black", "pytest-cov", "pytest-pylint"]
 
 [[package]]
 name = "supabase"
-version = "2.9.1"
+version = "2.10.0"
 description = "Supabase client for Python."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "supabase-2.9.1-py3-none-any.whl", hash = "sha256:a96f857a465712cb551679c1df66ba772c834f861756ce4aa2aa4cb703f6aeb7"},
-    {file = "supabase-2.9.1.tar.gz", hash = "sha256:51fce39c9eb50573126dabb342541ec5e1f13e7476938768f4b0ccfdb8c522cd"},
+    {file = "supabase-2.10.0-py3-none-any.whl", hash = "sha256:183fb23c04528593f8f81c24ceb8178f3a56bff40fec7ed873b6c55ebc2e420a"},
+    {file = "supabase-2.10.0.tar.gz", hash = "sha256:9ac095f8947bf60780e67c0edcbab53e2db3f6f3f022329397b093500bf2607c"},
 ]
 
 [package.dependencies]
-gotrue = ">=2.9.0,<3.0.0"
+gotrue = ">=2.10.0,<3.0.0"
 httpx = ">=0.26,<0.28"
-postgrest = ">=0.17.0,<0.18.0"
+postgrest = ">=0.18,<0.19"
 realtime = ">=2.0.0,<3.0.0"
-storage3 = ">=0.8.0,<0.9.0"
-supafunc = ">=0.6.0,<0.7.0"
+storage3 = ">=0.9.0,<0.10.0"
+supafunc = ">=0.7.0,<0.8.0"
 
 [[package]]
 name = "supafunc"
-version = "0.6.2"
+version = "0.7.0"
 description = "Library for Supabase Functions"
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "supafunc-0.6.2-py3-none-any.whl", hash = "sha256:101b30616b0a1ce8cf938eca1df362fa4cf1deacb0271f53ebbd674190fb0da5"},
-    {file = "supafunc-0.6.2.tar.gz", hash = "sha256:c7dfa20db7182f7fe4ae436e94e05c06cd7ed98d697fed75d68c7b9792822adc"},
+    {file = "supafunc-0.7.0-py3-none-any.whl", hash = "sha256:4160260dc02bdd906be1e2ffd7cb3ae8b74ae437c892bb475352b6a99d9ff8eb"},
+    {file = "supafunc-0.7.0.tar.gz", hash = "sha256:5b1c415fba1395740b2b4eedd1d786384bd58b98f6333a11ba7889820a48b6a7"},
 ]
 
 [package.dependencies]
@@ -3677,4 +3676,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "b761f200e8ad7560321fca7bbefbe79377740952ace5dcbecf0371bb8aa16df1"
+content-hash = "e0e67fde376688bee3ef5e31712eb42a8a3f9a361dd21d0890db61492df6f4c3"
