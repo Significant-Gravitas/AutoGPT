@@ -166,9 +166,7 @@ class AIImageGeneratorBlock(Block):
             },
         )
 
-    def generate_image(
-        self, input_data: Input, credentials: APIKeyCredentials
-    ) -> BlockOutput:
+    def generate_image(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         try:
             # Initialize Replicate client
             client = replicate.Client(api_token=credentials.api_key.get_secret_value())
@@ -254,6 +252,9 @@ class AIImageGeneratorBlock(Block):
 
         style_text = style_map.get(style, "")
         return f"{style_text} of" if style_text else ""
+
+    def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs) -> BlockOutput:
+        return self.generate_image(input_data, credentials)
 
 
 # Test credentials stay the same
