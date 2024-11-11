@@ -1,11 +1,11 @@
 import io
 import unittest.mock
 
+import backend.server.v2.store.exceptions
+import backend.server.v2.store.media
 import fastapi
 import pytest
 import starlette.datastructures
-
-import backend.server.v2.store.media
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ async def test_upload_media_invalid_type(mock_env_vars, mock_supabase):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with pytest.raises(backend.server.v2.store.media.InvalidFileTypeError):
+    with pytest.raises(backend.server.v2.store.exceptions.InvalidFileTypeError):
         await backend.server.v2.store.media.upload_media("test-user", test_file)
 
     mock_bucket = mock_supabase.storage.from_.return_value
@@ -68,7 +68,7 @@ async def test_upload_media_missing_credentials():
         headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
     )
 
-    with pytest.raises(backend.server.v2.store.media.StorageConfigError):
+    with pytest.raises(backend.server.v2.store.exceptions.StorageConfigError):
         await backend.server.v2.store.media.upload_media("test-user", test_file)
 
 
