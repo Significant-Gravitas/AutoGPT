@@ -7,6 +7,10 @@ const nextConfig = {
       "images.unsplash.com",
       "ddz4ak4pa3d19.cloudfront.net",
       "upload.wikimedia.org",
+
+      "picsum.photos", // for placeholder images
+      "dummyimage.com", // for placeholder images
+      "placekitten.com", // for placeholder images
     ],
   },
   // async redirects() {

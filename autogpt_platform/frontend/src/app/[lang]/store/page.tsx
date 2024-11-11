@@ -1,123 +1,62 @@
 import * as React from "react";
 import { HeroSection } from "@/components/agptui/composite/HeroSection";
-import { FeaturedSection } from "@/components/agptui/composite/FeaturedSection";
-import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
+import {
+  FeaturedSection,
+  FeaturedAgent,
+} from "@/components/agptui/composite/FeaturedSection";
+import {
+  AgentsSection,
+  Agent,
+} from "@/components/agptui/composite/AgentsSection";
 import { BecomeACreator } from "@/components/agptui/BecomeACreator";
-import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
+import {
+  FeaturedCreators,
+  FeaturedCreator,
+} from "@/components/agptui/composite/FeaturedCreators";
 import { Separator } from "@/components/ui/separator";
-import { getFeaturedAgents } from "@/app/api/featuredAgents/getFeaturedAgents";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 
-interface PageProps {
-  featuredAgents: {
-    agentName: string;
-    agentImage: string;
-    creatorName: string;
-    description: string;
-    runs: number;
-    rating: number;
-  }[];
-  topAgents: {
-    agentName: string;
-    agentImage: string;
-    avatarSrc: string;
-    description: string;
-    runs: number;
-    rating: number;
-  }[];
-  featuredCreators: {
-    creatorName: string;
-    creatorImage: string;
-    bio: string;
-    agentsUploaded: number;
-    avatarSrc: string;
-  }[];
+// Remove client-side hook since we're doing server-side data fetching
+// import { useSupabase } from "@/components/providers/SupabaseProvider";
+
+async function getStoreData() {
+  const api = new AutoGPTServerAPI();
+  const [featuredAgents, topAgents, featuredCreators] = await Promise.all([
+    api.getStoreAgents({ featured: true }),
+    api.getStoreAgents({ sorted_by: "runs" }),
+    api.getStoreCreators({ featured: true }),
+  ]);
+
+  return {
+    featuredAgents,
+    topAgents,
+    featuredCreators,
+  };
 }
 
-export default async function Page() {
-  let featuredAgents = await getFeaturedAgents();
-
-  let topAgents = [
-    {
-      agentName: "Data Analyzer Pro",
-      agentImage:
-        "https://ddz4ak4pa3d19.cloudfront.net/cache/07/78/0778415062f8dff56a046a7eca44567c.jpg",
-      avatarSrc: "https://github.com/shadcn.png",
-      description:
-        "Powerful tool for analyzing large datasets and generating insights.",
-      runs: 50000,
-      rating: 5,
-    },
-    {
-      agentName: "Image Recognition Master",
-      agentImage:
-        "https://ddz4ak4pa3d19.cloudfront.net/cache/59/b9/59b9415d4044f48f9b9e318c4c5a7984.jpg",
-      avatarSrc: "https://example.com/avatar2.jpg",
-      description:
-        "Accurately identify and classify objects in images using state-of-the-art machine learning algorithms.",
-      runs: 60000,
-      rating: 4.6,
-    },
-  ];
-  let featuredCreators = [
-    {
-      creatorName: "AI Labs",
-      creatorImage:
-        "https://ddz4ak4pa3d19.cloudfront.net/cache/53/b2/53b2bc7d7900f0e1e60bf64ebf38032d.jpg",
-      bio: "Pioneering AI solutions for everyday problems",
-      agentsUploaded: 25,
-      avatarSrc: "https://github.com/shadcn.png",
-    },
-    {
-      creatorName: "WriteRight Inc.",
-      creatorImage:
-        "https://ddz4ak4pa3d19.cloudfront.net/cache/40/f7/40f7bc97c952f8df0f9c88d29defe8d4.jpg",
-      bio: "Empowering content creators with AI-driven tools",
-      agentsUploaded: 18,
-      avatarSrc: "https://example.com/writeright-avatar.jpg",
-    },
-  ];
-
-  const handleSearch = (query: string) => {
-    console.log("Search query:", query);
-    // Implement search functionality
-  };
-
-  const handleFilterChange = (selectedFilters: string[]) => {
-    console.log("Selected filters:", selectedFilters);
-    // Implement filter functionality
-  };
-
-  const handleCardClick = (agentName: string) => {
-    console.log("Clicked on agent:", agentName);
-    // Implement card click functionality
-  };
-
-  const handleBecomeCreator = () => {
-    console.log("Become a Creator clicked");
-    // Implement become a creator functionality
-  };
+export default async function Page({
+  params: { lang },
+}: {
+  params: { lang: string };
+}) {
+  // Get data server-side
+  const { featuredAgents, topAgents, featuredCreators } = await getStoreData();
 
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
       <main className="px-4">
-        <HeroSection
-          onSearch={handleSearch}
-          onFilterChange={handleFilterChange}
-        />
+        <HeroSection />
         <FeaturedSection
-          featuredAgents={featuredAgents}
-          onCardClick={handleCardClick}
+          featuredAgents={featuredAgents.agents as FeaturedAgent[]}
         />
         <Separator />
         <AgentsSection
           sectionTitle="Top Agents"
-          agents={topAgents}
-          onCardClick={handleCardClick}
+          agents={topAgents.agents as Agent[]}
         />
         <Separator />
         <FeaturedCreators
-          featuredCreators={featuredCreators}
-          onCardClick={handleCardClick}
+          featuredCreators={featuredCreators.creators as FeaturedCreator[]}
         />
         <Separator />
         <BecomeACreator
@@ -125,7 +64,6 @@ export default async function Page() {
           heading="We're always looking for more Creators!"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
-          onButtonClick={handleBecomeCreator}
         />
       </main>
     </div>

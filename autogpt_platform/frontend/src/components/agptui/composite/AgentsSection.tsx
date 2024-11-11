@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { StoreCard } from "@/components/agptui/StoreCard";
 import {
@@ -5,29 +7,36 @@ import {
   CarouselContent,
   CarouselItem,
 } from "@/components/ui/carousel";
-
-interface Agent {
-  agentName: string;
-  agentImage: string;
+import { useRouter } from "next/navigation";
+export interface Agent {
+  slug: string;
+  agent_name: string;
+  agent_image: string;
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
   description: string;
   runs: number;
   rating: number;
-  avatarSrc: string;
 }
 
 interface AgentsSectionProps {
   sectionTitle: string;
   agents: Agent[];
   hideAvatars?: boolean;
-  onCardClick: (agentName: string) => void;
 }
 
 export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
   agents: topAgents,
   hideAvatars = false,
-  onCardClick,
 }) => {
+  const router = useRouter();
+
+  const handleCardClick = (creator: string, slug: string) => {
+    router.push(`/store/${creator}/${slug}`);
+  };
+
   return (
     <div className="flex flex-col items-center justify-center py-4 lg:py-8">
       <div className="w-full">
@@ -44,14 +53,14 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
             {topAgents.map((agent, index) => (
               <CarouselItem key={index} className="min-w-64 max-w-68">
                 <StoreCard
-                  agentName={agent.agentName}
-                  agentImage={agent.agentImage}
+                  agentName={agent.agent_name}
+                  agentImage={agent.agent_image}
                   description={agent.description}
                   runs={agent.runs}
                   rating={agent.rating}
-                  avatarSrc={agent.avatarSrc}
+                  avatarSrc={agent.creator_avatar}
                   hideAvatar={hideAvatars}
-                  onClick={() => onCardClick(agent.agentName)}
+                  onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
               </CarouselItem>
             ))}
@@ -61,14 +70,14 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
           {topAgents.map((agent, index) => (
             <StoreCard
               key={index}
-              agentName={agent.agentName}
-              agentImage={agent.agentImage}
+              agentName={agent.agent_name}
+              agentImage={agent.agent_image}
               description={agent.description}
               runs={agent.runs}
               rating={agent.rating}
-              avatarSrc={agent.avatarSrc}
+              avatarSrc={agent.creator_avatar}
               hideAvatar={hideAvatars}
-              onClick={() => onCardClick(agent.agentName)}
+              onClick={() => handleCardClick(agent.creator, agent.slug)}
             />
           ))}
         </div>

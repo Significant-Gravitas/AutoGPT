@@ -131,7 +131,6 @@ export const AgentPage: React.FC<AgentPageProps> = ({
           heading="We're always looking for more Creators!"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
-          onButtonClick={handleBecomeCreator}
         />
       </main>
     </div>

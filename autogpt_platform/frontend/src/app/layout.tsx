@@ -31,14 +31,14 @@ export default async function RootLayout({
   const supabase = createServerClient();
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
   return (
     <html lang="en">
       <body className={cn("antialiased transition-colors", inter.className)}>
         <Providers
-          initialSession={session}
+          initialUser={user}
           attribute="class"
           defaultTheme="light"
           // Feel free to remove this line if you want to use the system theme by default

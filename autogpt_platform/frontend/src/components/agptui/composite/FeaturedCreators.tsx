@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { CreatorCard } from "@/components/agptui/CreatorCard";
 import {
@@ -5,24 +7,28 @@ import {
   CarouselContent,
   CarouselItem,
 } from "@/components/ui/carousel";
-
-interface FeaturedCreator {
-  creatorName: string;
-  creatorImage: string;
-  bio: string;
-  agentsUploaded: number;
-  avatarSrc: string;
+import { useRouter } from "next/navigation";
+export interface FeaturedCreator {
+  name: string;
+  username: string;
+  description: string;
+  avatar_url: string;
+  num_agents: number;
 }
 
 interface FeaturedCreatorsProps {
   featuredCreators: FeaturedCreator[];
-  onCardClick: (creatorName: string) => void;
 }
 
 export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
   featuredCreators,
-  onCardClick,
 }) => {
+  const router = useRouter();
+
+  const handleCardClick = (creator: string) => {
+    router.push(`/store/${creator}`);
+  };
+
   return (
     <div className="flex w-screen flex-col items-center justify-center gap-6 py-8 md:w-full lg:items-start">
       <div className="font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
@@ -42,12 +48,12 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
                 className="min-w-[13.125rem] max-w-[14.125rem] basis-4/5 sm:basis-3/5"
               >
                 <CreatorCard
-                  creatorName={creator.creatorName}
-                  creatorImage={creator.creatorImage}
-                  bio={creator.bio}
-                  agentsUploaded={creator.agentsUploaded}
-                  avatarSrc={creator.avatarSrc}
-                  onClick={() => onCardClick(creator.creatorName)}
+                  creatorName={creator.username}
+                  creatorImage={creator.avatar_url}
+                  bio={creator.description}
+                  agentsUploaded={creator.num_agents}
+                  avatarSrc={creator.avatar_url}
+                  onClick={() => handleCardClick(creator.username)}
                 />
               </CarouselItem>
             ))}
@@ -57,12 +63,12 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
           {featuredCreators.map((creator, index) => (
             <CreatorCard
               key={index}
-              creatorName={creator.creatorName}
-              creatorImage={creator.creatorImage}
-              bio={creator.bio}
-              agentsUploaded={creator.agentsUploaded}
-              avatarSrc={creator.avatarSrc}
-              onClick={() => onCardClick(creator.creatorName)}
+              creatorName={creator.username}
+              creatorImage={creator.avatar_url}
+              bio={creator.description}
+              agentsUploaded={creator.num_agents}
+              avatarSrc={creator.avatar_url}
+              onClick={() => handleCardClick(creator.username)}
             />
           ))}
         </div>

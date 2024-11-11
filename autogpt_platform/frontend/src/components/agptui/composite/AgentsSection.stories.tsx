@@ -99,64 +99,64 @@ export const MultiRowAgents: Story = {
     agents: [
       ...mockTopAgents,
       {
-        agentName: "Image Recognition AI",
-        agentImage:
+        agent_name: "Image Recognition AI",
+        agent_image:
           "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
         description:
           "Accurately identify and classify objects in images using state-of-the-art machine learning algorithms.",
         runs: 60000,
         rating: 4.6,
-        avatarSrc: "https://example.com/avatar4.jpg",
+        creator_avatar: "https://example.com/avatar4.jpg",
       },
       {
-        agentName: "Natural Language Processor",
-        agentImage:
+        agent_name: "Natural Language Processor",
+        agent_image:
           "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
         description:
           "Analyze and understand human language with advanced NLP techniques.",
         runs: 80000,
         rating: 4.8,
-        avatarSrc: "https://example.com/avatar5.jpg",
+        creator_avatar: "https://example.com/avatar5.jpg",
       },
       {
-        agentName: "Sentiment Analyzer",
-        agentImage:
+        agent_name: "Sentiment Analyzer",
+        agent_image:
           "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
         description:
           "Determine the emotional tone of text data for customer feedback analysis.",
         runs: 45000,
         rating: 4.3,
-        avatarSrc: "https://example.com/avatar6.jpg",
+        creator_avatar: "https://example.com/avatar6.jpg",
       },
       {
-        agentName: "Chatbot Builder",
-        agentImage:
+        agent_name: "Chatbot Builder",
+        agent_image:
           "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
         description:
           "Create intelligent chatbots for customer service and engagement.",
         runs: 55000,
         rating: 4.4,
-        avatarSrc: "https://example.com/avatar7.jpg",
+        creator_avatar: "https://example.com/avatar7.jpg",
       },
       {
-        agentName: "Predictive Analytics Tool",
-        agentImage:
+        agent_name: "Predictive Analytics Tool",
+        agent_image:
           "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
         description:
           "Forecast future trends and outcomes based on historical data.",
         runs: 40000,
         rating: 4.2,
-        avatarSrc: "https://example.com/avatar8.jpg",
+        creator_avatar: "https://example.com/avatar8.jpg",
       },
       {
-        agentName: "Text-to-Speech Converter",
-        agentImage:
+        agent_name: "Text-to-Speech Converter",
+        agent_image:
           "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
         description:
           "Convert written text into natural-sounding speech in multiple languages.",
         runs: 35000,
         rating: 4.1,
-        avatarSrc: "https://example.com/avatar9.jpg",
+        creator_avatar: "https://example.com/avatar9.jpg",
       },
     ],
     onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),

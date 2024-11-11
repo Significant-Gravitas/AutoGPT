@@ -6,16 +6,16 @@ import { ThemeProviderProps } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
-import { Session } from "@supabase/supabase-js";
+import { User } from "@supabase/supabase-js";
 
 export function Providers({
   children,
-  initialSession,
+  initialUser,
   ...props
-}: ThemeProviderProps & { initialSession: Session | null }) {
+}: ThemeProviderProps & { initialUser: User | null }) {
   return (
     <NextThemesProvider {...props}>
-      <SupabaseProvider initialSession={initialSession}>
+      <SupabaseProvider initialUser={initialUser}>
         <CredentialsProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </CredentialsProvider>
