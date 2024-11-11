@@ -160,14 +160,22 @@ class AIImageGeneratorBlock(Block):
             },
         )
 
-    def _run_client(self, client, model_name: str, input_params: dict):
-        return client.run(model_name, input=input_params)
-
-    def generate_image(self, input_data: Input, credentials: APIKeyCredentials):
+    def _run_client(self, credentials: APIKeyCredentials, model_name: str, input_params: dict):
         try:
             # Initialize Replicate client
             client = replicate.Client(api_token=credentials.api_key.get_secret_value())
+            output = client.run(model_name, input=input_params)
+            if isinstance(output, list) and output:
+                return output[0]
+            return output
+        except TypeError as e:
+            raise TypeError(f"Error during model execution: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error during model execution: {e}")
 
+        
+    def generate_image(self, input_data: Input, credentials: APIKeyCredentials):
+        try:
             # Handle style-based prompt modification for models without native style support
             modified_prompt = input_data.prompt
             if input_data.model != ImageGenModel.RECRAFT:
@@ -185,15 +193,13 @@ class AIImageGeneratorBlock(Block):
                     "cfg_scale": 7.0,
                 }
                 output = self._run_client(
-                    client, "stability-ai/stable-diffusion-3.5-medium", input_params
+                    credentials, "stability-ai/stable-diffusion-3.5-medium", input_params
                 )
-                output_list = list(output) if hasattr(output, "__iter__") else [output]
-                return output_list[0]
+                return output[0] if isinstance(output, list) else output
 
             elif input_data.model == ImageGenModel.FLUX:
                 # Use Flux-specific dimensions that respect the 1440px limit
                 width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
-
                 input_params = {
                     "prompt": modified_prompt,
                     "width": width,
@@ -202,10 +208,7 @@ class AIImageGeneratorBlock(Block):
                     "output_format": "webp",
                     "output_quality": 90,
                 }
-                output = self._run_client(
-                    client, "black-forest-labs/flux-1.1-pro", input_params
-                )
-                return output
+                return self._run_client(credentials, "black-forest-labs/flux-1.1-pro", input_params)
 
             elif input_data.model == ImageGenModel.RECRAFT:
                 input_params = {
@@ -213,12 +216,11 @@ class AIImageGeneratorBlock(Block):
                     "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
                     "style": input_data.style.value,
                 }
-                output = self._run_client(client, "recraft-ai/recraft-v3", input_params)
-                return output
+                return self._run_client(credentials, "recraft-ai/recraft-v3", input_params)
 
         except Exception as e:
-            raise e
-
+            raise RuntimeError(f"Failed to generate image: {str(e)}")
+        
     def _style_to_prompt_prefix(self, style: ImageStyle) -> str:
         """
         Convert a style enum to a prompt prefix for models without native style support.
@@ -253,8 +255,12 @@ class AIImageGeneratorBlock(Block):
     def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
         try:
             url = self.generate_image(input_data, credentials)
-            yield "image_url", url
+            if url:
+                yield "image_url", url
+            else:
+                yield "error", "Image generation returned an empty result."
         except Exception as e:
+            # Capture and return only the message of the exception, avoiding serialization of non-serializable objects
             yield "error", str(e)
 
 
