@@ -9,6 +9,7 @@ from autogpt_libs.supabase_integration_credentials_store.store import (
     did_credentials,
     groq_credentials,
     ideogram_credentials,
+    jina_credentials,
     openai_credentials,
     replicate_credentials,
     revid_credentials,
@@ -144,7 +145,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    SearchTheWebBlock: [BlockCost(cost_amount=1)],
+    SearchTheWebBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
+                }
+            },
+        )
+    ],
     ExtractWebsiteContentBlock: [
         BlockCost(cost_amount=1, cost_filter={"raw_content": False})
     ],
