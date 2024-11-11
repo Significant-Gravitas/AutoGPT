@@ -149,13 +149,18 @@ class AIImageGeneratorBlock(Block):
                 "size": ImageSize.SQUARE,
                 "style": ImageStyle.REALISTIC,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "image_url",
                     "https://replicate.delivery/generated-image.webp",
                 ),
             ],
-            test_credentials=TEST_CREDENTIALS,
+            test_mock={
+                "replicate.Client.run": {
+                    "output": "https://replicate.delivery/generated-image.webp",
+                }
+            },
         )
 
     def run(
