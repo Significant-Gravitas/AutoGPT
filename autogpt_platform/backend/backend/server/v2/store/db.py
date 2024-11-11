@@ -1,11 +1,11 @@
 import logging
 
+import backend.server.v2.store.exceptions
+import backend.server.v2.store.model
 import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
-
-import backend.server.v2.store.model
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ async def get_store_agents(
         )
     except Exception as e:
         logger.error(f"Error getting store agents: {str(e)}")
-        raise
+        raise backend.server.v2.store.exceptions.DatabaseError("Failed to fetch store agents") from e
 
 
 async def get_store_agent_details(
@@ -99,7 +99,7 @@ async def get_store_agent_details(
 
         if not agent:
             logger.warning(f"Agent not found: {username}/{agent_name}")
-            raise prisma.errors.RecordNotFoundError("Agent not found")
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(f"Agent {username}/{agent_name} not found")
 
         logger.debug(f"Found agent details for {username}/{agent_name}")
         return backend.server.v2.store.model.StoreAgentDetails(
@@ -116,9 +116,11 @@ async def get_store_agent_details(
             rating=agent.rating,
             versions=agent.versions,
         )
+    except backend.server.v2.store.exceptions.AgentNotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {str(e)}")
-        raise
+        raise backend.server.v2.store.exceptions.DatabaseError("Failed to fetch agent details") from e
 
 
 async def get_store_creators(
@@ -197,7 +199,7 @@ async def get_store_creators(
         )
     except Exception as e:
         logger.error(f"Error getting store creators: {str(e)}")
-        raise
+        raise backend.server.v2.store.exceptions.DatabaseError("Failed to fetch store creators") from e
 
 
 async def get_store_creator_details(
@@ -213,7 +215,7 @@ async def get_store_creator_details(
 
         if not creator:
             logger.warning(f"Creator not found: {username}")
-            raise prisma.errors.RecordNotFoundError(f"Creator {username} not found")
+            raise backend.server.v2.store.exceptions.CreatorNotFoundError(f"Creator {username} not found")
 
         logger.debug(f"Found creator details for {username}")
         return backend.server.v2.store.model.CreatorDetails(
@@ -226,9 +228,11 @@ async def get_store_creator_details(
             agent_runs=creator.agent_runs,
             top_categories=creator.top_categories,
         )
+    except backend.server.v2.store.exceptions.CreatorNotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting store creator details: {str(e)}")
-        raise
+        raise backend.server.v2.store.exceptions.DatabaseError("Failed to fetch creator details") from e
 
 
 async def get_store_submissions(
@@ -335,7 +339,7 @@ async def create_store_submission(
             logger.warning(
                 f"Agent not found for user {user_id}: {agent_id} v{agent_version}"
             )
-            raise prisma.errors.RecordNotFoundError("Agent not found for this user")
+            raise backend.server.v2.store.exceptions.AgentNotFoundError("Agent not found for this user")
 
         listing = await prisma.models.StoreListing.prisma().find_first(
             where=prisma.types.StoreListingWhereInput(
@@ -344,7 +348,7 @@ async def create_store_submission(
         )
         if listing is not None:
             logger.warning(f"Listing already exists for agent {agent_id}")
-            raise Exception("Listing already exists")
+            raise backend.server.v2.store.exceptions.ListingExistsError("Listing already exists for this agent")
 
         # Create the store listing
         listing = await prisma.models.StoreListing.prisma().create(
@@ -380,9 +384,11 @@ async def create_store_submission(
             rating=0.0,
         )
 
+    except (backend.server.v2.store.exceptions.AgentNotFoundError, backend.server.v2.store.exceptions.ListingExistsError):
+        raise
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating store submission: {str(e)}")
-        raise Exception("Failed to create store submission")
+        raise backend.server.v2.store.exceptions.DatabaseError("Failed to create store submission") from e
 
 
 async def update_profile(
@@ -449,7 +455,7 @@ async def update_profile(
             )
             if updated_profile is None:
                 logger.error(f"Failed to update profile for user {user_id}")
-                raise Exception("Failed to update profile")
+                raise backend.server.v2.store.exceptions.DatabaseError("Failed to update profile")
 
             return backend.server.v2.store.model.CreatorDetails(
                 name=updated_profile.name,
@@ -464,4 +470,4 @@ async def update_profile(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating profile: {str(e)}")
-        raise Exception("Failed to update profile")
+        raise backend.server.v2.store.exceptions.DatabaseError("Failed to update profile") from e
