@@ -626,10 +626,13 @@ export function CustomNode({
 
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
-            <div className="font-roboto px-3 text-lg font-semibold">
+            <div className="font-roboto flex items-center px-3 text-lg font-semibold">
               {beautifyString(
                 data.blockType?.replace(/Block$/, "") || data.title,
               )}
+              <div className="px-2 text-xs text-gray-500">
+                #{id.split("-")[0]}
+              </div>
             </div>
           </div>
           {blockCost && (
