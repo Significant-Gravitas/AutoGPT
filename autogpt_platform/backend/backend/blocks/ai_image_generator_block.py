@@ -4,6 +4,7 @@ from typing import Literal
 import replicate
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
+from replicate.helpers import FileOutput
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
@@ -164,10 +165,25 @@ class AIImageGeneratorBlock(Block):
         try:
             # Initialize Replicate client
             client = replicate.Client(api_token=credentials.api_key.get_secret_value())
-            output = client.run(model_name, input=input_params)
-            if isinstance(output, list) and output:
-                return output[0]
-            return output
+
+            # Run the model with input parameters
+            output = client.run(model_name, input=input_params, wait=False)
+
+            # Process output
+            if isinstance(output, list) and len(output) > 0:
+                if isinstance(output[0], FileOutput):
+                    result_url = output[0].url
+                else:
+                    result_url = output[0]
+            elif isinstance(output, FileOutput):
+                result_url = output.url
+            elif isinstance(output, str):
+                result_url = output
+            else:
+                result_url = None
+
+            return result_url
+
         except TypeError as e:
             raise TypeError(f"Error during model execution: {e}")
         except Exception as e:
@@ -195,7 +211,7 @@ class AIImageGeneratorBlock(Block):
                 output = self._run_client(
                     credentials, "stability-ai/stable-diffusion-3.5-medium", input_params
                 )
-                return output[0] if isinstance(output, list) else output
+                return output
 
             elif input_data.model == ImageGenModel.FLUX:
                 # Use Flux-specific dimensions that respect the 1440px limit
@@ -208,7 +224,8 @@ class AIImageGeneratorBlock(Block):
                     "output_format": "webp",
                     "output_quality": 90,
                 }
-                return self._run_client(credentials, "black-forest-labs/flux-1.1-pro", input_params)
+                output = self._run_client(credentials, "black-forest-labs/flux-1.1-pro", input_params)
+                return output
 
             elif input_data.model == ImageGenModel.RECRAFT:
                 input_params = {
@@ -216,7 +233,8 @@ class AIImageGeneratorBlock(Block):
                     "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
                     "style": input_data.style.value,
                 }
-                return self._run_client(credentials, "recraft-ai/recraft-v3", input_params)
+                output = self._run_client(credentials, "recraft-ai/recraft-v3", input_params)
+                return output
 
         except Exception as e:
             raise RuntimeError(f"Failed to generate image: {str(e)}")
