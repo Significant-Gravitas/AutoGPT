@@ -828,16 +828,37 @@ export default function useAgentGraph(
     cronExpression: string,
     inputs: InputItem[],
   ) => {
-    const agentData = {
-      cronExpression,
-      inputs: inputs,
-    };
-
-    console.log("agent_data : ", agentData);
-
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    setIsScheduling(false);
+    try {
+      const converted = inputs.reduce(
+        (acc, input) => ({
+          ...acc,
+          [input.id]: {
+            type: input.type,
+            inputSchema: input.inputSchema,
+            hardcodedValues: input.hardcodedValues,
+          },
+        }),
+        {},
+      );
+      if (flowID) {
+        await api.createSchedule(flowID, {
+          cron: cronExpression,
+          input_data: converted,
+        });
+        toast({
+          title: "Agent scheduling successful",
+        });
+      } else {
+        return;
+      }
+    } catch (error) {
+      console.log(error);
+      toast({
+        variant: "destructive",
+        title: "Error scheduling agent",
+        description: "Please retry",
+      });
+    }
   };
 
   return {

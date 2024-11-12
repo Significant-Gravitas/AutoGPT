@@ -312,3 +312,26 @@ export type AnalyticsDetails = {
   data: { [key: string]: any };
   index: string;
 };
+
+// Schedule types
+export type Schedule = {
+  id: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  agentGraphId: string;
+  agentGraphVersion: number;
+  schedule: string;
+  isEnabled: boolean;
+  inputData: { [key: string]: any };
+  lastUpdated: Date;
+  userId: string;
+};
+
+export type ScheduleCreatable = {
+  cron: string;
+  input_data: { [key: string]: any };
+};
+
+export type ScheduleUpdateable = {
+  is_enabled: boolean;
+};

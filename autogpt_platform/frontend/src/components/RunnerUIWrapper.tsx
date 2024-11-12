@@ -176,6 +176,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
               cronExpression,
               getBlockInputsAndOutputs().inputs,
             );
+            setIsScheduling(false);
             setIsRunnerInputOpen(false);
             setScheduledInput(false);
           }}
