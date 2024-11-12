@@ -9,7 +9,7 @@ interface CreatorDetailsProps {
   avgRating: number;
   agentCount: number;
   topCategories: string[];
-  otherLinks: Record<string, string>;
+  otherLinks: string[];
   avatarSrc: string;
 }
 
@@ -53,22 +53,20 @@ export const CreatorDetails: React.FC<CreatorDetailsProps> = React.memo(
                   Other links
                 </h2>
                 <div className="flex flex-wrap gap-4">
-                  {Object.entries(otherLinks)
-                    .slice(0, 5)
-                    .map(([key, url]) => (
-                      <a
-                        key={key}
-                        href={url}
-                        className="flex items-center gap-2"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {getIconForSocial(url, { className: "h-6 w-6" })}
-                        <span className="font-neue text-lg font-normal tracking-tight text-[#282828]">
-                          {key}
-                        </span>
-                      </a>
-                    ))}
+                  {otherLinks.map((url, index) => (
+                    <a
+                      key={index}
+                      href={url}
+                      className="flex items-center gap-2"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {getIconForSocial(url, { className: "h-6 w-6" })}
+                      <span className="font-neue text-lg font-normal tracking-tight text-[#282828]">
+                        {new URL(url).hostname.replace("www.", "")}
+                      </span>
+                    </a>
+                  ))}
                 </div>
               </div>
             )}

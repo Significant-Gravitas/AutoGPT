@@ -339,6 +339,7 @@ export type StoreAgentsResponse = {
 
 export type StoreAgentDetails = {
   slug: string;
+  updated_at: string;
   agent_name: string;
   agent_video: string;
   agent_image: string[];

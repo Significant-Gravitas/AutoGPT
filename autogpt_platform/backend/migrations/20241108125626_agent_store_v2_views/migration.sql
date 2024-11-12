@@ -19,6 +19,7 @@ AgentRuns AS (
 )
 SELECT
     sl.id AS listing_id,
+    slv."updatedAt" AS updated_at,
     slv.slug,
     a.name AS agent_name,
     slv."videoUrl" AS agent_video,

@@ -43,16 +43,37 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
         <div className="mb-6 font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
           {sectionTitle}
         </div>
-        <Carousel
-          className="md:hidden"
-          opts={{
-            loop: true,
-          }}
-        >
-          <CarouselContent>
-            {topAgents.map((agent, index) => (
-              <CarouselItem key={index} className="min-w-64 max-w-68">
+        {!topAgents || topAgents.length === 0 ? (
+          <div className="text-center text-gray-500">No agents found</div>
+        ) : (
+          <>
+            <Carousel
+              className="md:hidden"
+              opts={{
+                loop: true,
+              }}
+            >
+              <CarouselContent>
+                {topAgents.map((agent, index) => (
+                  <CarouselItem key={index} className="min-w-64 max-w-68">
+                    <StoreCard
+                      agentName={agent.agent_name}
+                      agentImage={agent.agent_image}
+                      description={agent.description}
+                      runs={agent.runs}
+                      rating={agent.rating}
+                      avatarSrc={agent.creator_avatar}
+                      hideAvatar={hideAvatars}
+                      onClick={() => handleCardClick(agent.creator, agent.slug)}
+                    />
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+            </Carousel>
+            <div className="hidden grid-cols-1 place-items-center gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
+              {topAgents.map((agent, index) => (
                 <StoreCard
+                  key={index}
                   agentName={agent.agent_name}
                   agentImage={agent.agent_image}
                   description={agent.description}
@@ -62,25 +83,10 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
                   hideAvatar={hideAvatars}
                   onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-        </Carousel>
-        <div className="hidden grid-cols-1 place-items-center gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
-          {topAgents.map((agent, index) => (
-            <StoreCard
-              key={index}
-              agentName={agent.agent_name}
-              agentImage={agent.agent_image}
-              description={agent.description}
-              runs={agent.runs}
-              rating={agent.rating}
-              avatarSrc={agent.creator_avatar}
-              hideAvatar={hideAvatars}
-              onClick={() => handleCardClick(agent.creator, agent.slug)}
-            />
-          ))}
-        </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
