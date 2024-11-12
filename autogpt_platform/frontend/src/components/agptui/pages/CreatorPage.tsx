@@ -1,9 +1,10 @@
 import * as React from "react";
 import { Navbar } from "@/components/agptui/Navbar";
-import { CreatorDetails } from "@/components/agptui/composite/CreatorDetails";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 import { IconType } from "@/components/ui/icons";
+import { CreatorInfoCard } from "@/components/agptui/CreatorInfoCard";
+import { CreatorLinks } from "@/components/agptui/CreatorLinks";
 
 interface CreatorPageProps {
   isLoggedIn: boolean;
@@ -74,21 +75,29 @@ export const CreatorPage: React.FC<CreatorPageProps> = ({
         activeLink={activeLink}
         menuItemGroups={menuItemGroups}
       />
-      <main className="w-full px-10 py-8">
+      <main className="w-full px-4 sm:px-6 md:px-10 py-4 sm:py-6 md:py-8">
         <BreadCrumbs items={breadcrumbs} />
-        <div className="mt-8">
-          <CreatorDetails
-            avatarSrc={creatorInfo.avatarSrc}
-            name={creatorInfo.name}
-            username={creatorInfo.username}
-            description={creatorInfo.description}
-            avgRating={creatorInfo.avgRating}
-            agentCount={creatorInfo.agentCount}
-            topCategories={creatorInfo.topCategories}
-            otherLinks={creatorInfo.otherLinks}
-          />
+        
+        <div className="mt-4 sm:mt-6 md:mt-8 flex flex-col md:flex-row items-start gap-4 sm:gap-6 md:gap-8">
+          <div className="w-full md:w-auto md:shrink-0">
+            <CreatorInfoCard
+              username={creatorInfo.name}
+              handle={creatorInfo.username}
+              avatarSrc={creatorInfo.avatarSrc}
+              categories={creatorInfo.topCategories}
+              averageRating={creatorInfo.avgRating}
+              totalRuns={creatorInfo.agentCount}
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
+            <div className="font-neue text-2xl sm:text-3xl md:text-[35px] font-normal leading-normal md:leading-[45px] text-neutral-900">
+              {creatorInfo.description}
+            </div>
+            <CreatorLinks links={creatorInfo.otherLinks} />
+          </div>
         </div>
-        <div className="mt-16">
+        <div className="mt-8 sm:mt-12 md:mt-16">
+          <hr className="w-full bg-neutral-700" />
           <AgentsSection
             agents={creatorAgents}
             hideAvatars={true}
