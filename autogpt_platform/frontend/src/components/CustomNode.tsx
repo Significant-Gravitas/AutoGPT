@@ -18,7 +18,13 @@ import {
   BlockUIType,
   BlockCost,
 } from "@/lib/autogpt-server-api/types";
-import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
+import {
+  beautifyString,
+  cn,
+  getValue,
+  parseKeys,
+  setNestedProperty,
+} from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { history } from "./history";
@@ -35,8 +41,6 @@ import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { DotsVerticalIcon, TrashIcon, CopyIcon } from "@radix-ui/react-icons";
-
-type ParsedKey = { key: string; index?: number };
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -178,7 +182,7 @@ export function CustomNode({
               className=""
               selfKey={noteKey}
               schema={noteSchema as BlockIOStringSubSchema}
-              value={getValue(noteKey)}
+              value={getValue(noteKey, data.hardcodedValues)}
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               error={data.errors?.[noteKey] ?? ""}
@@ -230,7 +234,7 @@ export function CustomNode({
                     nodeId={id}
                     propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
-                    currentValue={getValue(getInputPropKey(propKey))}
+                    currentValue={getValue(propKey, data.hardcodedValues)}
                     connections={data.connections}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
@@ -285,48 +289,6 @@ export function CustomNode({
     setErrors({ ...errors });
   };
 
-  // Helper function to parse keys with array indices
-  //TODO move to utils
-  const parseKeys = (key: string): ParsedKey[] => {
-    const splits = key.split(/_@_|_#_|_\$_|\./);
-    const keys: ParsedKey[] = [];
-    let currentKey: string | null = null;
-
-    splits.forEach((split) => {
-      const isInteger = /^\d+$/.test(split);
-      if (!isInteger) {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey });
-        }
-        currentKey = split;
-      } else {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey, index: parseInt(split, 10) });
-          currentKey = null;
-        } else {
-          throw new Error("Invalid key format: array index without a key");
-        }
-      }
-    });
-
-    if (currentKey !== null) {
-      keys.push({ key: currentKey });
-    }
-
-    return keys;
-  };
-
-  const getValue = (key: string) => {
-    const keys = parseKeys(key);
-    return keys.reduce((acc, k) => {
-      if (acc === undefined) return undefined;
-      if (k.index !== undefined) {
-        return Array.isArray(acc[k.key]) ? acc[k.key][k.index] : undefined;
-      }
-      return acc[k.key];
-    }, data.hardcodedValues as any);
-  };
-
   const isInputHandleConnected = (key: string) => {
     return (
       data.connections &&
@@ -356,7 +318,7 @@ export function CustomNode({
   const handleInputClick = (key: string) => {
     console.debug(`Opening modal for key: ${key}`);
     setActiveKey(key);
-    const value = getValue(key);
+    const value = getValue(key, data.hardcodedValues);
     setInputModalValue(
       typeof value === "object" ? JSON.stringify(value, null, 2) : value,
     );
