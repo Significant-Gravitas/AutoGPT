@@ -10,7 +10,7 @@ export const HeroSection: React.FC = () => {
 
   function onFilterChange(selectedFilters: string[]) {
     const encodedTerm = encodeURIComponent(selectedFilters.join(", "));
-    router.push(`/search?searchTerm=${encodedTerm}`);
+    router.push(`/store/search?searchTerm=${encodedTerm}`);
   }
 
   return (
