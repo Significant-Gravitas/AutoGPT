@@ -72,6 +72,9 @@ format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
 
+[tool.isort]
+profile = "black"
+
 [tool.pytest-watcher]
 now = false
 clear = true
