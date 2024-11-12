@@ -139,7 +139,7 @@ class GetCurrentDateAndTimeBlock(Block):
 
 class CountdownTimerBlock(Block):
     class Input(BlockSchema):
-        input_data: Any = SchemaField(
+        input_message: Any = SchemaField(
             advanced=False,
             description="Message to output after the timer finishes",
             default="timer finished",
@@ -158,7 +158,9 @@ class CountdownTimerBlock(Block):
         )
 
     class Output(BlockSchema):
-        output_data: Any = SchemaField(description="Message after the timer finishes")
+        output_message: Any = SchemaField(
+            description="Message after the timer finishes"
+        )
 
     def __init__(self):
         super().__init__(
@@ -169,11 +171,11 @@ class CountdownTimerBlock(Block):
             output_schema=CountdownTimerBlock.Output,
             test_input=[
                 {"seconds": 1},
-                {"input_data": "Custom message"},
+                {"input_message": "Custom message"},
             ],
             test_output=[
-                ("output_data", "timer finished"),
-                ("output_data", "Custom message"),
+                ("output_message", "timer finished"),
+                ("output_message", "Custom message"),
             ],
         )
 
@@ -186,4 +188,4 @@ class CountdownTimerBlock(Block):
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
         time.sleep(total_seconds)
-        yield "output_data", input_data.input_data
+        yield "output_message", input_data.input_message
