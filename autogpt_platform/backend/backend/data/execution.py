@@ -64,6 +64,7 @@ class ExecutionResult(BaseModel):
     graph_exec_id: str
     node_exec_id: str
     node_id: str
+    block_id: str
     status: ExecutionStatus
     input_data: BlockInput
     output_data: CompletedBlockOutput
@@ -71,6 +72,26 @@ class ExecutionResult(BaseModel):
     queue_time: datetime | None
     start_time: datetime | None
     end_time: datetime | None
+
+    @staticmethod
+    def from_graph(graph: AgentGraphExecution):
+        return ExecutionResult(
+            graph_id=graph.agentGraphId,
+            graph_version=graph.agentGraphVersion,
+            graph_exec_id=graph.id,
+            node_exec_id="",
+            node_id="",
+            block_id="",
+            status=graph.executionStatus,
+            # TODO: Populate input_data & output_data from AgentNodeExecutions
+            #       Input & Output comes AgentInputBlock & AgentOutputBlock.
+            input_data={},
+            output_data={},
+            add_time=graph.createdAt,
+            queue_time=graph.createdAt,
+            start_time=graph.startedAt,
+            end_time=graph.updatedAt,
+        )
 
     @staticmethod
     def from_db(execution: AgentNodeExecution):
@@ -93,9 +114,10 @@ class ExecutionResult(BaseModel):
             graph_id=graph_execution.agentGraphId if graph_execution else "",
             graph_version=graph_execution.agentGraphVersion if graph_execution else 0,
             graph_exec_id=execution.agentGraphExecutionId,
+            block_id=execution.AgentNode.agentBlockId if execution.AgentNode else "",
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
-            status=ExecutionStatus(execution.executionStatus),
+            status=execution.executionStatus,
             input_data=input_data,
             output_data=output_data,
             add_time=execution.addedTime,
@@ -248,15 +270,20 @@ async def update_graph_execution_start_time(graph_exec_id: str):
 async def update_graph_execution_stats(
     graph_exec_id: str,
     stats: dict[str, Any],
-):
+) -> ExecutionResult:
+
     status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
-    await AgentGraphExecution.prisma().update(
+    res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
             "executionStatus": status,
             "stats": json.dumps(stats),
         },
     )
+    if not res:
+        raise ValueError(f"Execution {graph_exec_id} not found.")
+
+    return ExecutionResult.from_graph(res)
 
 
 async def update_node_execution_stats(node_exec_id: str, stats: dict[str, Any]):
