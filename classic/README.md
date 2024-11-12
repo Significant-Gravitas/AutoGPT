@@ -54,7 +54,7 @@ This project segment is licensed under the MIT License - see the [LICENSE](LICEN
 
 ## Documentation
 
-Please refer to the [documentation] (https://docs.agpt.co) for more detailed information about the project's architecture and concepts.
+Please refer to the [documentation](https://docs.agpt.co) for more detailed information about the project's architecture and concepts.
 You can browse at the same point in time as this commit so the docs don't change.
 
 ## Historical Impact
