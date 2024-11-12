@@ -19,12 +19,11 @@ AgentRuns AS (
 )
 SELECT
     sl.id AS listing_id,
-    slv."updatedAt" AS updated_at,
+    slv."createdAt" AS updated_at,
     slv.slug,
     a.name AS agent_name,
     slv."videoUrl" AS agent_video,
     COALESCE(slv."imageUrls", ARRAY[]::TEXT[]) AS agent_image,
-    
     slv."isFeatured" AS featured,
     p.username AS creator_username,
     p."avatarUrl" AS creator_avatar,
@@ -42,7 +41,7 @@ LEFT JOIN ReviewStats rs ON sl.id = rs."storeListingId"
 LEFT JOIN AgentRuns ar ON a.id = ar."agentGraphId"
 WHERE sl."isDeleted" = FALSE
   AND sl."isApproved" = TRUE
-GROUP BY sl.id, slv.slug, a.name, slv."videoUrl", slv."imageUrls", slv."isFeatured", 
+GROUP BY sl.id, slv.slug, slv."createdAt", a.name, slv."videoUrl", slv."imageUrls", slv."isFeatured", 
          p.username, p."avatarUrl", slv."subHeading", slv.description, slv.categories,
          ar.run_count, rs.avg_rating;
 
