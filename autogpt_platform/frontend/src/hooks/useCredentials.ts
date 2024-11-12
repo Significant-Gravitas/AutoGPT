@@ -1,11 +1,15 @@
 import { useContext } from "react";
 import { CustomNodeData } from "@/components/CustomNode";
-import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import {
+  BlockIOCredentialsSubSchema,
+  CredentialsProviderName,
+} from "@/lib/autogpt-server-api";
 import { Node, useNodeId, useNodesData } from "@xyflow/react";
 import {
   CredentialsProviderData,
   CredentialsProvidersContext,
 } from "@/components/integrations/credentials-provider";
+import { getValue } from "@/lib/utils";
 
 export type CredentialsData =
   | {
@@ -34,14 +38,21 @@ export default function useCredentials(): CredentialsData | null {
   const credentialsSchema = data.inputSchema.properties
     .credentials as BlockIOCredentialsSubSchema;
 
+  const discriminatorValue: CredentialsProviderName | null =
+    (credentialsSchema.discriminator &&
+      credentialsSchema.discriminator_mapping![
+        getValue(credentialsSchema.discriminator, data.hardcodedValues)
+      ]) ||
+    null;
+
+  const providerName =
+    discriminatorValue || credentialsSchema.credentials_provider;
+  const provider = allProviders ? allProviders[providerName] : null;
+
   // If block input schema doesn't have credentials, return null
   if (!credentialsSchema) {
     return null;
   }
-
-  const provider = allProviders
-    ? allProviders[credentialsSchema?.credentials_provider]
-    : null;
 
   const supportsApiKey =
     credentialsSchema.credentials_types.includes("api_key");
@@ -68,6 +79,7 @@ export default function useCredentials(): CredentialsData | null {
 
   return {
     ...provider,
+    provider: providerName,
     schema: credentialsSchema,
     supportsApiKey,
     supportsOAuth2,
