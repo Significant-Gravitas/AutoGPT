@@ -8,6 +8,11 @@
 
 **Location:** `classic/original_autogpt/` in the GitHub repo
 
+**Maintance Notice:** Classic AutogGPT is not supported from a security perspective. 
+Dependencies will not be updated, nor will issues be fixed. If someone wishes to
+contribute to novel development, we will give best effort merging to the changes that
+pass the existing CI.
+
 AutoGPT was conceived when OpenAI published their GPT-4 model accompanied by a paper
 outlining the advanced reasoning and task-solving abilities of the model. The concept
 was (and still is) fairly simple: let an LLM decide what to do over and over, while
