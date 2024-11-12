@@ -27,11 +27,7 @@ import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
 import { BlockUIType, Link } from "@/lib/autogpt-server-api";
-import {
-  getTypeColor,
-  filterBlocksByType,
-  findNewlyAddedBlockCoordinates,
-} from "@/lib/utils";
+import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -48,7 +44,6 @@ import RunnerUIWrapper, {
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
-import { forceLoad } from "@sentry/nextjs";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
@@ -86,8 +81,6 @@ const FlowEditor: React.FC<{
     setViewport,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
-  const [copiedNodes, setCopiedNodes] = useState<CustomNode[]>([]);
-  const [copiedEdges, setCopiedEdges] = useState<CustomEdge[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
@@ -99,6 +92,7 @@ const FlowEditor: React.FC<{
     setAgentDescription,
     savedAgent,
     availableNodes,
+    availableFlows,
     getOutputType,
     requestSave,
     requestSaveAndRun,
@@ -417,7 +411,7 @@ const FlowEditor: React.FC<{
   const { x, y, zoom } = useViewport();
 
   const addNode = useCallback(
-    (blockId: string, nodeType: string) => {
+    (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
@@ -462,7 +456,7 @@ const FlowEditor: React.FC<{
           categories: nodeSchema.categories,
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: {},
+          hardcodedValues: hardcodedValues,
           connections: [],
           isOutputOpen: false,
           block_id: blockId,
@@ -618,6 +612,7 @@ const FlowEditor: React.FC<{
                 pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
                 blocks={availableNodes}
                 addBlock={addNode}
+                flows={availableFlows}
               />
             }
             botChildren={

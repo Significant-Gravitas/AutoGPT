@@ -25,7 +25,9 @@ export type Block = {
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
   uiType: BlockUIType;
+  uiKey?: string;
   costs: BlockCost[];
+  hardcodedValues: { [key: string]: any } | null;
 };
 
 export type BlockIORootSchema = {
@@ -191,6 +193,8 @@ export type GraphMeta = {
   is_template: boolean;
   name: string;
   description: string;
+  input_schema: BlockIOObjectSubSchema;
+  output_schema: BlockIOObjectSubSchema;
 };
 
 export type GraphMetaWithRuns = GraphMeta & {
@@ -205,12 +209,19 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  "version" | "is_active" | "is_template" | "links"
+  | "version"
+  | "is_active"
+  | "is_template"
+  | "links"
+  | "input_schema"
+  | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;
   is_template?: boolean;
   links: Array<LinkCreatable>;
+  input_schema?: BlockIOObjectSubSchema;
+  output_schema?: BlockIOObjectSubSchema;
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
@@ -301,6 +312,7 @@ export enum BlockUIType {
   OUTPUT = "Output",
   NOTE = "Note",
   WEBHOOK = "Webhook",
+  AGENT = "Agent",
 }
 
 export type AnalyticsMetrics = {
