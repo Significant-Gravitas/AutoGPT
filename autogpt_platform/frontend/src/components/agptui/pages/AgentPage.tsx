@@ -100,7 +100,6 @@ export const AgentPage: React.FC<AgentPageProps> = ({
         <div className="flex flex-col gap-5 lg:flex-row">
           <div>
             <AgentInfo
-              onRunAgent={handleRunAgent}
               name={agentInfo.name}
               creator={agentInfo.creator}
               description={agentInfo.description}

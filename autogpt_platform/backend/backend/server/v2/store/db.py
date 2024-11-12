@@ -120,6 +120,7 @@ async def get_store_agent_details(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            last_updated=agent.updated_at,
         )
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise

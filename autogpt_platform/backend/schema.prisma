@@ -423,7 +423,8 @@ view Creator {
 }
 
 view StoreAgent {
-  listing_id String @id
+  listing_id String   @id
+  updated_at DateTime
 
   slug        String
   agent_name  String

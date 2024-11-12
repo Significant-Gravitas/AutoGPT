@@ -1,9 +1,10 @@
+"use client";
+
 import * as React from "react";
 import { Button } from "./Button";
 import Link from "next/link";
 import { StarRatingIcons } from "@/components/ui/icons";
 interface AgentInfoProps {
-  onRunAgent: () => void;
   name: string;
   creator: string;
   description: string;
@@ -15,7 +16,6 @@ interface AgentInfoProps {
 }
 
 export const AgentInfo: React.FC<AgentInfoProps> = ({
-  onRunAgent,
   name,
   creator,
   description,
@@ -25,6 +25,11 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   lastUpdated,
   version,
 }) => {
+  const onRunAgent = () => {
+    // TODO: Implement run agent functionality
+    console.log("Running agent:", name);
+  };
+
   return (
     <div className="flow-root w-full lg:w-[27.5rem]">
       <div className="mb-2 font-neue text-3xl font-medium tracking-wide text-[#272727] md:mb-4 md:text-4xl lg:text-5xl">
@@ -39,7 +44,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           {creator}
         </Link>
       </div>
-      <Button onClick={onRunAgent} className="mb-8" variant="outline">
+      <Button onClick={onRunAgent} className="mb-8" variants="outline">
         Run agent
       </Button>
       <div className="font-['PP Neue Montreal TT'] mb-6 text-[1.1875rem] font-normal leading-relaxed tracking-tight text-[#282828]">

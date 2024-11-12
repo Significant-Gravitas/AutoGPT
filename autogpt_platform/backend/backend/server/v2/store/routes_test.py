@@ -348,6 +348,7 @@ def test_get_agent_details(mocker: pytest_mock.MockFixture):
         runs=100,
         rating=4.5,
         versions=["1.0.0", "1.1.0"],
+        last_updated=datetime.datetime.now(),
     )
     mock_db_call = mocker.patch("backend.server.v2.store.db.get_store_agent_details")
     mock_db_call.return_value = mocked_value

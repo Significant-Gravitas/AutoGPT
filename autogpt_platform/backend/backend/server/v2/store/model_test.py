@@ -70,6 +70,7 @@ def test_store_agent_details():
         runs=50,
         rating=4.5,
         versions=["1.0", "2.0"],
+        last_updated=datetime.datetime.now(),
     )
     assert details.slug == "test-agent"
     assert len(details.agent_image) == 2

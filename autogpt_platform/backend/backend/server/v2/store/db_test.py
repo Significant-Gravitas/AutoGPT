@@ -38,6 +38,7 @@ async def test_get_store_agents(mocker):
             runs=10,
             rating=4.5,
             versions=["1.0"],
+            updated_at=datetime.now(),
         )
     ]
 
@@ -77,6 +78,7 @@ async def test_get_store_agent_details(mocker):
         runs=10,
         rating=4.5,
         versions=["1.0"],
+        updated_at=datetime.now(),
     )
 
     # Mock prisma call

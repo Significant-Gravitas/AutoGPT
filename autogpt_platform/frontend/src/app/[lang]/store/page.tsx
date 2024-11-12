@@ -22,7 +22,7 @@ async function getStoreData() {
   const [featuredAgents, topAgents, featuredCreators] = await Promise.all([
     api.getStoreAgents({ featured: true }),
     api.getStoreAgents({ sorted_by: "runs" }),
-    api.getStoreCreators({ featured: true }),
+    api.getStoreCreators({ featured: true, sorted_by: "num_agents" }),
   ]);
 
   return {
@@ -38,13 +38,19 @@ export const metadata: Metadata = {
   description: "Find and use AI Agents created by our community",
   applicationName: "NextGen AutoGPT Store",
   authors: [{ name: "AutoGPT Team" }],
-  keywords: ["AI agents", "automation", "artificial intelligence", "AutoGPT", "marketplace"],
+  keywords: [
+    "AI agents",
+    "automation",
+    "artificial intelligence",
+    "AutoGPT",
+    "marketplace",
+  ],
   robots: {
     index: true,
     follow: true,
   },
   openGraph: {
-    title: "Agent Store - NextGen AutoGPT", 
+    title: "Agent Store - NextGen AutoGPT",
     description: "Find and use AI Agents created by our community",
     type: "website",
     siteName: "NextGen AutoGPT Store",
@@ -53,23 +59,22 @@ export const metadata: Metadata = {
         url: "/images/store-og.png",
         width: 1200,
         height: 630,
-        alt: "NextGen AutoGPT Store"
-      }
-    ]
+        alt: "NextGen AutoGPT Store",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Agent Store - NextGen AutoGPT",
     description: "Find and use AI Agents created by our community",
-    images: ["/images/store-twitter.png"]
+    images: ["/images/store-twitter.png"],
   },
   icons: {
     icon: "/favicon.ico",
     shortcut: "/favicon-16x16.png",
-    apple: "/apple-touch-icon.png"
-  }
+    apple: "/apple-touch-icon.png",
+  },
 };
-
 
 export default async function Page({
   params: { lang },

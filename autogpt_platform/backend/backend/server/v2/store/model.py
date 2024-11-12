@@ -50,6 +50,7 @@ class StoreAgentDetails(pydantic.BaseModel):
     runs: int
     rating: float
     versions: list[str]
+    last_updated: datetime.datetime
 
 
 class Creator(pydantic.BaseModel):
