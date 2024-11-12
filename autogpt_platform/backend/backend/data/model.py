@@ -152,10 +152,12 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 
 
 def CredentialsField(
-    provider: CP,
+    provider: CP | list[CP],
     supported_credential_types: set[CT],
     required_scopes: set[str] = set(),
     *,
+    discriminator: Optional[str] = None,
+    discriminator_mapping: Optional[dict[str, Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
@@ -167,9 +169,13 @@ def CredentialsField(
     json_extra = {
         k: v
         for k, v in {
-            "credentials_provider": provider,
+            "credentials_provider": (
+                [provider] if isinstance(provider, str) else provider
+            ),
             "credentials_scopes": list(required_scopes) or None,  # omit if empty
             "credentials_types": list(supported_credential_types),
+            "discriminator": discriminator,
+            "discriminator_mapping": discriminator_mapping,
         }.items()
         if v is not None
     }
