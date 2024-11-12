@@ -26,7 +26,7 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
   const router = useRouter();
 
   const handleCardClick = (creator: string) => {
-    router.push(`/store/${creator}`);
+    router.push(`/store/creator/${creator}`);
   };
 
   return (
