@@ -18,6 +18,7 @@ import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
+import { InputItem } from "@/components/RunnerUIWrapper";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -32,6 +33,7 @@ export default function useAgentGraph(
     useSearchParams(),
     usePathname(),
   ];
+  const [isScheduling, setIsScheduling] = useState(false);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
@@ -822,6 +824,21 @@ export default function useAgentGraph(
       state: "running",
     }));
   }, [saveRunRequest]);
+  const scheduleRunner = async (
+    cronExpression: string,
+    inputs: InputItem[],
+  ) => {
+    const agentData = {
+      cronExpression,
+      inputs: inputs,
+    };
+
+    console.log("agent_data : ", agentData);
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    setIsScheduling(false);
+  };
 
   return {
     agentName,
@@ -834,9 +851,12 @@ export default function useAgentGraph(
     requestSave,
     requestSaveAndRun,
     requestStopRun,
+    scheduleRunner,
     isSaving: saveRunRequest.state == "saving",
     isRunning: saveRunRequest.state == "running",
     isStopping: saveRunRequest.state == "stopping",
+    isScheduling,
+    setIsScheduling,
     nodes,
     setNodes,
     edges,

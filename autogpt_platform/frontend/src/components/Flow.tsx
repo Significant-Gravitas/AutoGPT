@@ -50,6 +50,7 @@ import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
 import { forceLoad } from "@sentry/nextjs";
 import { useCopyPaste } from "../hooks/useCopyPaste";
+import { CronScheduler } from "./cronScheduler";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -103,7 +104,10 @@ const FlowEditor: React.FC<{
     requestSave,
     requestSaveAndRun,
     requestStopRun,
+    scheduleRunner,
     isRunning,
+    isScheduling,
+    setIsScheduling,
     nodes,
     setNodes,
     edges,
@@ -124,6 +128,8 @@ const FlowEditor: React.FC<{
   const [pinSavePopover, setPinSavePopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
+
+  const [openCron, setOpenCron] = useState(false);
 
   const { toast } = useToast();
 
@@ -587,6 +593,10 @@ const FlowEditor: React.FC<{
     },
   ];
 
+  const afterCronCreation = (cronExpression: string) => {
+    runnerUIRef.current?.collectInputsForScheduling(cronExpression);
+  };
+
   return (
     <FlowContext.Provider
       value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
@@ -648,10 +658,26 @@ const FlowEditor: React.FC<{
                 requestStopRun();
               }
             }}
+            onClickScheduleButton={() => {
+              if (!savedAgent) {
+                toast({
+                  title: `Please save the agent using the button in the left sidebar before running it.`,
+                  duration: 2000,
+                });
+                return;
+              }
+              setOpenCron(true);
+            }}
+            isScheduling={isScheduling}
             isDisabled={!savedAgent}
             isRunning={isRunning}
             requestStopRun={requestStopRun}
             runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
+          />
+          <CronScheduler
+            afterCronCreation={afterCronCreation}
+            open={openCron}
+            setOpen={setOpenCron}
           />
         </ReactFlow>
       </div>
@@ -659,7 +685,10 @@ const FlowEditor: React.FC<{
         ref={runnerUIRef}
         nodes={nodes}
         setNodes={setNodes}
+        setIsScheduling={setIsScheduling}
+        isScheduling={isScheduling}
         isRunning={isRunning}
+        scheduleRunner={scheduleRunner}
         requestSaveAndRun={requestSaveAndRun}
       />
     </FlowContext.Provider>
