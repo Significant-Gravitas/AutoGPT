@@ -116,7 +116,6 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
   userName,
   userEmail,
   avatarSrc,
-  hideNavBarUsername = false,
   menuItemGroups,
 }) => {
   const popupId = React.useId();
@@ -126,16 +125,11 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="hidden cursor-pointer items-center space-x-5 md:flex"
+          className="flex cursor-pointer items-center space-x-3"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
         >
-          {!hideNavBarUsername && (
-            <span className="font-neue text-2xl font-medium leading-9 tracking-tight text-[#474747]">
-              {userName || "Unknown User"}
-            </span>
-          )}
           <Avatar className="h-10 w-10">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
             <AvatarFallback aria-hidden="true">
@@ -144,42 +138,76 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
           </Avatar>
         </button>
       </PopoverTrigger>
+      
       <PopoverContent
         id={popupId}
-        className="ml-2 inline-flex w-[280px] flex-col items-start justify-start gap-3.5 rounded-[10px] border border-black/10 bg-[#efefef] px-4 py-5 shadow"
+        className="w-[300px] h-[380px] p-6 bg-zinc-400/70 rounded-[26px] shadow backdrop-blur-2xl flex flex-col justify-start items-start gap-4"
       >
-        <div className="inline-flex items-end justify-start gap-4">
-          <Avatar className="h-14 w-14 border border-[#474747]">
+        {/* Header with avatar and user info */}
+        <div className="self-stretch inline-flex justify-start items-center gap-4">
+          <Avatar className="h-[60px] w-[60px]">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
             <AvatarFallback aria-hidden="true">
               {userName?.charAt(0) || "U"}
             </AvatarFallback>
           </Avatar>
-          <div className="relative h-14 w-[153px]">
-            <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747]">
+          <div className="w-[173px] h-[47px] relative">
+            <div className="left-0 top-0 absolute text-white text-base font-semibold font-['Geist'] leading-7">
               {userName}
             </div>
-            <div className="absolute left-0 top-6 font-['Inter'] text-base font-normal leading-7 text-[#474747]">
+            <div className="left-0 top-[23px] absolute text-white text-base font-normal font-['Geist'] leading-normal">
               {userEmail}
             </div>
           </div>
         </div>
-        <Separator />
-        {menuItemGroups.map((group, groupIndex) => (
-          <React.Fragment key={groupIndex}>
-            {group.items.map((item, itemIndex) => (
-              <PopoutMenuItem
-                key={itemIndex}
-                icon={item.icon}
-                text={item.text}
-                onClick={item.onClick}
-                href={item.href}
-              />
-            ))}
-            {groupIndex < menuItemGroups.length - 1 && <Separator />}
-          </React.Fragment>
-        ))}
+
+        {/* Menu items */}
+        <div className="w-full rounded-[23px] flex flex-col justify-start items-start gap-1.5">
+          {menuItemGroups.map((group, groupIndex) => (
+            <div
+              key={groupIndex}
+              className="w-full p-3.5 bg-white rounded-[18px] flex flex-col justify-start items-start gap-5"
+            >
+              {group.items.map((item, itemIndex) => (
+                <div
+                  key={itemIndex}
+                  className="w-full inline-flex justify-start items-center gap-2.5"
+                  onClick={item.onClick}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="w-6 h-6 relative">
+                    {getIcon(item.icon)}
+                  </div>
+                  <div className="text-neutral-800 text-base font-medium font-['Geist'] leading-normal">
+                    {item.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </PopoverContent>
     </Popover>
   );
 };
+
+// Helper function to get the icon component
+const getIcon = (icon: IconType) => {
+  const iconClass = "w-6 h-6";
+  switch (icon) {
+    case IconType.LayoutDashboard:
+      return <IconLayoutDashboard className={iconClass} />;
+    case IconType.UploadCloud:
+      return <IconUploadCloud className={iconClass} />;
+    case IconType.Edit:
+      return <IconEdit className={iconClass} />;
+    case IconType.Settings:
+      return <IconSettings className={iconClass} />;
+    case IconType.LogOut:
+      return <IconLogOut className={iconClass} />;
+    default:
+      return null;
+  }
+};
+
