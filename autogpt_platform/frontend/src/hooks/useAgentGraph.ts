@@ -415,10 +415,25 @@ export default function useAgentGraph(
     if (saveRunRequest.state === "error") {
       if (saveRunRequest.request === "save") {
         console.error("Error saving agent");
+        toast({
+          variant: "destructive",
+          title: `Error saving agent`,
+          duration: 2000,
+        });
       } else if (saveRunRequest.request === "run") {
+        toast({
+          variant: "destructive",
+          title: `Error saving&running agent`,
+          duration: 2000,
+        });
         console.error(`Error saving&running agent`);
       } else if (saveRunRequest.request === "stop") {
         console.error(`Error stopping agent`);
+        toast({
+          variant: "destructive",
+          title: `Error stopping agent`,
+          duration: 2000,
+        });
       }
       // Reset request
       setSaveRunRequest({
@@ -443,6 +458,11 @@ export default function useAgentGraph(
       } else if (saveRunRequest.request === "run") {
         if (!validateNodes()) {
           console.error("Validation failed; aborting run");
+          toast({
+            title: "Invalid credentials or inputs",
+            variant: "destructive",
+            duration: 2000,
+          });
           setSaveRunRequest({
             request: "none",
             state: "none",
