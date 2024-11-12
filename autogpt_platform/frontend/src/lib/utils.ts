@@ -211,6 +211,7 @@ export const categoryColorMap: Record<string, string> = {
   OUTPUT: "bg-red-300",
   LOGIC: "bg-teal-300",
   DEVELOPER_TOOLS: "bg-fuchsia-300",
+  AGENT: "bg-lime-300",
 };
 
 export function getPrimaryCategoryColor(categories: Category[]): string {
