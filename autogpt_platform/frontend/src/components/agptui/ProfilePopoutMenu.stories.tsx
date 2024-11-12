@@ -24,11 +24,7 @@ type Story = StoryObj<typeof meta>;
 
 const defaultMenuItemGroups = [
   {
-    items: [
-      { icon: IconType.Edit, text: "Edit profile", href: "/profile/edit" },
-    ],
-  },
-  {
+    // Creator actions group
     items: [
       {
         icon: IconType.LayoutDashboard,
@@ -43,9 +39,14 @@ const defaultMenuItemGroups = [
     ],
   },
   {
-    items: [{ icon: IconType.Settings, text: "Settings", href: "/settings" }],
+    // Profile management group
+    items: [
+      { icon: IconType.Edit, text: "Edit profile", href: "/profile/edit" },
+      { icon: IconType.Settings, text: "Settings", href: "/settings" },
+    ],
   },
   {
+    // Logout group
     items: [
       {
         icon: IconType.LogOut,
@@ -62,7 +63,6 @@ export const Default: Story = {
     userEmail: "john.doe@example.com",
     avatarSrc: "https://avatars.githubusercontent.com/u/123456789?v=4",
     menuItemGroups: defaultMenuItemGroups,
-    hideNavBarUsername: false,
   },
 };
 
@@ -71,7 +71,6 @@ export const NoAvatar: Story = {
     userName: "Jane Smith",
     userEmail: "jane.smith@example.com",
     menuItemGroups: defaultMenuItemGroups,
-    hideNavBarUsername: false,
   },
 };
 
@@ -81,14 +80,12 @@ export const LongUserName: Story = {
     userEmail: "alexander@example.com",
     avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
     menuItemGroups: defaultMenuItemGroups,
-    hideNavBarUsername: false,
   },
 };
 
 export const WithInteraction: Story = {
   args: {
     ...Default.args,
-    hideNavBarUsername: false,
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
