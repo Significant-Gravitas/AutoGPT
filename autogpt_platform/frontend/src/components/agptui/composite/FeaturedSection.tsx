@@ -33,7 +33,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   const router = useRouter();
 
   const handleCardClick = (creator: string, slug: string) => {
-    router.push(`/store/${creator}/${slug}`);
+    router.push(`/store/agent/${creator}/${slug}`);
   };
 
   const handlePrevSlide = useCallback(() => {
@@ -68,7 +68,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
             {featuredAgents.map((agent, index) => (
               <CarouselItem
                 key={index}
-                className="ml-0 min-w-64 max-w-68 basis-2/3 basis-auto"
+                className="ml-0 min-w-64 max-w-68 basis-auto"
               >
                 <FeaturedStoreCard
                   agentName={agent.agent_name}

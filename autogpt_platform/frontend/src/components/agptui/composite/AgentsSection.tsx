@@ -34,7 +34,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   const router = useRouter();
 
   const handleCardClick = (creator: string, slug: string) => {
-    router.push(`/store/${creator}/${slug}`);
+    router.push(`/store/agent/${creator}/${slug}`);
   };
 
   return (
