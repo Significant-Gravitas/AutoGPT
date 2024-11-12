@@ -97,6 +97,12 @@ export function CustomNode({
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
 
+  if (data.uiType === BlockUIType.AGENT) {
+    // Display the graph's schema instead AgentExecutorBlock's schema.
+    data.inputSchema = data.hardcodedValues?.input_schema || {};
+    data.outputSchema = data.hardcodedValues?.output_schema || {};
+  }
+
   if (!flowContext) {
     throw new Error("FlowContext consumer must be inside FlowEditor component");
   }
@@ -167,38 +173,6 @@ export function CustomNode({
     if (!schema?.properties) return null;
     let keys = Object.entries(schema.properties);
     switch (nodeType) {
-      case BlockUIType.INPUT:
-        // For INPUT blocks, dont include connection handles
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} data-id={`input-handle-${propKey}`}>
-                <span className="text-m green mb-0 text-gray-900">
-                  {propSchema.title || beautifyString(propKey)}
-                </span>
-                <div key={propKey}>
-                  {!isConnected && (
-                    <NodeGenericInputField
-                      nodeId={id}
-                      propKey={propKey}
-                      propSchema={propSchema}
-                      currentValue={getValue(propKey, data.hardcodedValues)}
-                      connections={data.connections}
-                      handleInputChange={handleInputChange}
-                      handleInputClick={handleInputClick}
-                      errors={data.errors ?? {}}
-                      displayName={propSchema.title || beautifyString(propKey)}
-                    />
-                  )}
-                </div>
-              </div>
-            )
-          );
-        });
-
       case BlockUIType.NOTE:
         // For NOTE blocks, don't render any input handles
         const [noteKey, noteSchema] = keys[0];
@@ -217,55 +191,25 @@ export function CustomNode({
           </div>
         );
 
-      case BlockUIType.OUTPUT:
-        // For OUTPUT blocks, only show the 'value' property
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} data-id={`output-handle-${propKey}`}>
-                {propKey !== "value" ? (
-                  <span className="text-m green mb-0 text-gray-900">
-                    {propSchema.title || beautifyString(propKey)}
-                  </span>
-                ) : (
-                  <NodeHandle
-                    keyName={propKey}
-                    isConnected={isConnected}
-                    isRequired={isRequired}
-                    schema={propSchema}
-                    side="left"
-                  />
-                )}
-                {!isConnected && (
-                  <NodeGenericInputField
-                    nodeId={id}
-                    propKey={propKey}
-                    propSchema={propSchema}
-                    currentValue={getValue(propKey, data.hardcodedValues)}
-                    connections={data.connections}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                    errors={data.errors ?? {}}
-                    displayName={propSchema.title || beautifyString(propKey)}
-                  />
-                )}
-              </div>
-            )
-          );
-        });
-
       default:
+        const getInputPropKey = (key: string) =>
+          nodeType == BlockUIType.AGENT ? `data.${key}` : key;
+
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
           const isConnected = isHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
+          const isConnectable =
+            // No input connection handles for credentials
+            propKey !== "credentials" &&
+            // No input connection handles on INPUT blocks
+            nodeType !== BlockUIType.INPUT &&
+            // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
+            !(nodeType == BlockUIType.OUTPUT && propKey == "name");
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
-                {!("credentials_provider" in propSchema) && (
+                {isConnectable ? (
                   <NodeHandle
                     keyName={propKey}
                     isConnected={isConnected}
@@ -273,11 +217,20 @@ export function CustomNode({
                     schema={propSchema}
                     side="left"
                   />
+                ) : (
+                  <span
+                    className="text-m green mb-0 text-gray-900"
+                    title={propSchema.description}
+                  >
+                    {propKey == "credentials"
+                      ? "Credentials"
+                      : propSchema.title || beautifyString(propKey)}
+                  </span>
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
                     nodeId={id}
-                    propKey={propKey}
+                    propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
                     currentValue={getValue(propKey, data.hardcodedValues)}
                     connections={data.connections}
@@ -317,8 +270,6 @@ export function CustomNode({
     } else {
       current[lastKey.key] = value;
     }
-
-    // console.log(`Updating hardcoded values for node ${id}:`, newValues);
 
     if (!isInitialSetup.current) {
       history.push({
