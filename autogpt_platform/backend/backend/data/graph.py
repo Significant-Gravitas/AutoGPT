@@ -197,7 +197,7 @@ class Graph(BaseDbModel):
 
 class GraphModel(Graph):
     user_id: str
-    nodes: list[NodeModel] = []
+    nodes: list[NodeModel] = []  # type: ignore
 
     @property
     def starting_nodes(self) -> list[Node]:

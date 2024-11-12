@@ -27,7 +27,7 @@ def get_executor_manager_client():
 
 @thread_cached
 def get_event_bus():
-    from backend.data.queue import RedisExecutionEventBus
+    from backend.data.execution import RedisExecutionEventBus
 
     return RedisExecutionEventBus()
 
