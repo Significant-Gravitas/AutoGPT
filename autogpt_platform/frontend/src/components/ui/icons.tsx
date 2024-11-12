@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -1543,6 +1541,7 @@ export enum IconType {
   Settings,
   LogOut,
 }
+
 export function getIconForSocial(
   url: string,
   props: IconProps,

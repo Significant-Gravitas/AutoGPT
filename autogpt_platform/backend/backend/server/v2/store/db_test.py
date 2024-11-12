@@ -6,6 +6,7 @@ import pytest
 from prisma import Prisma, register
 
 import backend.server.v2.store.db as db
+import backend.server.v2.store.exceptions
 from backend.server.v2.store.model import CreatorDetails
 
 
@@ -13,7 +14,7 @@ from backend.server.v2.store.model import CreatorDetails
 async def setup_prisma():
     try:
         register(Prisma())
-    except:
+    except backend.server.v2.store.exceptions.DatabaseError:
         pass
     yield
 
@@ -37,6 +38,7 @@ async def test_get_store_agents(mocker):
             runs=10,
             rating=4.5,
             versions=["1.0"],
+            updated_at=datetime.now(),
         )
     ]
 
@@ -76,6 +78,7 @@ async def test_get_store_agent_details(mocker):
         runs=10,
         rating=4.5,
         versions=["1.0"],
+        updated_at=datetime.now(),
     )
 
     # Mock prisma call

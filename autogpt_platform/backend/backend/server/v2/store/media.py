@@ -5,47 +5,13 @@ import uuid
 import fastapi
 import supabase
 
+import backend.server.v2.store.exceptions
+
 logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-
-
-class MediaUploadError(Exception):
-    """Base exception for media upload errors"""
-
-    pass
-
-
-class InvalidFileTypeError(MediaUploadError):
-    """Raised when file type is not supported"""
-
-    pass
-
-
-class FileSizeTooLargeError(MediaUploadError):
-    """Raised when file size exceeds maximum limit"""
-
-    pass
-
-
-class FileReadError(MediaUploadError):
-    """Raised when there's an error reading the file"""
-
-    pass
-
-
-class StorageConfigError(MediaUploadError):
-    """Raised when storage configuration is invalid"""
-
-    pass
-
-
-class StorageUploadError(MediaUploadError):
-    """Raised when upload to storage fails"""
-
-    pass
 
 
 async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
@@ -54,7 +20,9 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
         supabase_key = os.environ["SUPABASE_KEY"]
     except KeyError as e:
         logger.error(f"Missing required environment variable: {str(e)}")
-        raise StorageConfigError("Missing storage configuration") from e
+        raise backend.server.v2.store.exceptions.StorageConfigError(
+            "Missing storage configuration"
+        ) from e
 
     try:
         # Validate file type
@@ -64,7 +32,7 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
             and content_type not in ALLOWED_VIDEO_TYPES
         ):
             logger.warning(f"Invalid file type attempted: {content_type}")
-            raise InvalidFileTypeError(
+            raise backend.server.v2.store.exceptions.InvalidFileTypeError(
                 f"File type not supported. Must be jpeg, png, gif, webp, mp4 or webm. Content type: {content_type}"
             )
 
@@ -77,12 +45,16 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
                 file_size += len(chunk)
                 if file_size > MAX_FILE_SIZE:
                     logger.warning(f"File size too large: {file_size} bytes")
-                    raise FileSizeTooLargeError("File too large. Maximum size is 50MB")
-        except FileSizeTooLargeError:
+                    raise backend.server.v2.store.exceptions.FileSizeTooLargeError(
+                        "File too large. Maximum size is 50MB"
+                    )
+        except backend.server.v2.store.exceptions.FileSizeTooLargeError:
             raise
         except Exception as e:
             logger.error(f"Error reading file chunks: {str(e)}")
-            raise FileReadError("Failed to read uploaded file") from e
+            raise backend.server.v2.store.exceptions.FileReadError(
+                "Failed to read uploaded file"
+            ) from e
 
         # Reset file pointer
         await file.seek(0)
@@ -115,10 +87,14 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
 
         except Exception as e:
             logger.error(f"Supabase storage error: {str(e)}")
-            raise StorageUploadError("Failed to upload file to storage") from e
+            raise backend.server.v2.store.exceptions.StorageUploadError(
+                "Failed to upload file to storage"
+            ) from e
 
-    except MediaUploadError:
+    except backend.server.v2.store.exceptions.MediaUploadError:
         raise
     except Exception as e:
         logger.exception("Unexpected error in upload_media")
-        raise MediaUploadError("Unexpected error during media upload") from e
+        raise backend.server.v2.store.exceptions.MediaUploadError(
+            "Unexpected error during media upload"
+        ) from e

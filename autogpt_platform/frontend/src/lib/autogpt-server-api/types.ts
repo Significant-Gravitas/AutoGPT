@@ -312,3 +312,94 @@ export type AnalyticsDetails = {
   data: { [key: string]: any };
   index: string;
 };
+
+export type Pagination = {
+  total_items: number;
+  total_pages: number;
+  current_page: number;
+  page_size: number;
+};
+
+export type StoreAgent = {
+  slug: string;
+  agent_name: string;
+  agent_image: string;
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
+  description: string;
+  runs: number;
+  rating: number;
+};
+
+export type StoreAgentsResponse = {
+  agents: StoreAgent[];
+  pagination: Pagination;
+};
+
+export type StoreAgentDetails = {
+  slug: string;
+  updated_at: string;
+  agent_name: string;
+  agent_video: string;
+  agent_image: string[];
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
+  description: string;
+  categories: string[];
+  runs: number;
+  rating: number;
+  versions: string[];
+};
+
+export type Creator = {
+  name: string;
+  username: string;
+  description: string;
+  avatar_url: string;
+  num_agents: number;
+};
+
+export type CreatorsResponse = {
+  creators: Creator[];
+  pagination: Pagination;
+};
+
+export type CreatorDetails = {
+  name: string;
+  username: string;
+  description: string;
+  links: string[];
+  avatar_url: string;
+  agent_rating: number;
+  agent_runs: number;
+  top_categories: string[];
+};
+
+export type StoreSubmission = {
+  name: string;
+  description: string;
+  image_urls: string[];
+  date_submitted: string;
+  status: string;
+  runs: number;
+  rating: number;
+};
+
+export type StoreSubmissionsResponse = {
+  submissions: StoreSubmission[];
+  pagination: Pagination;
+};
+
+export type StoreSubmissionRequest = {
+  agent_id: string;
+  agent_version: number;
+  slug: string;
+  name: string;
+  sub_heading: string;
+  video_url?: string;
+  image_urls: string[];
+  description: string;
+  categories: string[];
+};
