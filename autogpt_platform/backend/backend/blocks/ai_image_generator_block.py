@@ -21,6 +21,7 @@ class ImageSize(str, Enum):
     WIDE = "wide"  # For cinematic, desktop wallpapers
     TALL = "tall"  # For mobile wallpapers, stories
 
+
 # Mapping semantic sizes to model-specific formats
 SIZE_TO_SD_RATIO = {
     ImageSize.SQUARE: "1:1",
@@ -54,6 +55,7 @@ SIZE_TO_RECRAFT_DIMENSIONS = {
     ImageSize.TALL: "1024x1536",
 }
 
+
 class ImageStyle(str, Enum):
     """
     Complete set of supported styles
@@ -81,6 +83,7 @@ class ImageStyle(str, Enum):
     HAND_DRAWN_OUTLINE = "digital_illustration/hand_drawn_outline"
     ENGRAVING_COLOR = "digital_illustration/engraving_color"
 
+
 class ImageGenModel(str, Enum):
     """
     Available model providers
@@ -90,6 +93,7 @@ class ImageGenModel(str, Enum):
     FLUX_ULTRA = "Flux 1.1 Pro Ultra"  # Added new model here
     RECRAFT = "Recraft v3"
     SD3_5 = "Stable Diffusion 3.5 Medium"
+
 
 class AIImageGeneratorBlock(Block):
     class Input(BlockSchema):
@@ -300,6 +304,7 @@ class AIImageGeneratorBlock(Block):
         except Exception as e:
             # Capture and return only the message of the exception, avoiding serialization of non-serializable objects
             yield "error", str(e)
+
 
 # Test credentials stay the same
 TEST_CREDENTIALS = APIKeyCredentials(
