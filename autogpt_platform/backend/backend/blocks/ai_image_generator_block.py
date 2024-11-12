@@ -90,7 +90,7 @@ class ImageGenModel(str, Enum):
     """
 
     FLUX = "Flux 1.1 Pro"
-    FLUX_ULTRA = "Flux 1.1 Pro Ultra"  # Added new model here
+    FLUX_ULTRA = "Flux 1.1 Pro Ultra"
     RECRAFT = "Recraft v3"
     SD3_5 = "Stable Diffusion 3.5 Medium"
 
@@ -234,14 +234,13 @@ class AIImageGeneratorBlock(Block):
                 return output
 
             elif input_data.model == ImageGenModel.FLUX_ULTRA:
-                # Use Flux Ultra with 'jpg' format to avoid ReplicateError
                 width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
                 input_params = {
                     "prompt": modified_prompt,
                     "width": width,
                     "height": height,
                     "aspect_ratio": SIZE_TO_FLUX_RATIO[input_data.size],
-                    "output_format": "jpg",  # Set to jpg for Flux Ultra model
+                    "output_format": "jpg",
                     "output_quality": 90,
                 }
                 output = self._run_client(
