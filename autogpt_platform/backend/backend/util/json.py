@@ -3,7 +3,7 @@ from typing import Any, Type, TypeVar, overload
 
 from fastapi.encoders import jsonable_encoder
 
-from .type import convert
+from .type import type_match
 
 
 def to_dict(data) -> dict:
@@ -27,4 +27,6 @@ def loads(data: str, *args, **kwargs) -> Any: ...
 
 def loads(data: str, *args, target_type: Type[T] | None = None, **kwargs) -> Any:
     parsed = json.loads(data, *args, **kwargs)
-    return convert(parsed, target_type) if target_type else parsed
+    if target_type:
+        return type_match(parsed, target_type)
+    return parsed

@@ -80,7 +80,11 @@ class GraphExecution(BaseDbModel):
         duration = (end_time - start_time).total_seconds()
         total_run_time = duration
 
-        stats = json.loads(execution.stats or "{}", target_type=dict[str, Any])
+        try:
+            stats = json.loads(execution.stats or "{}", target_type=dict[str, Any])
+        except ValueError:
+            stats = {}
+
         duration = stats.get("walltime", duration)
         total_run_time = stats.get("nodes_walltime", total_run_time)
 
