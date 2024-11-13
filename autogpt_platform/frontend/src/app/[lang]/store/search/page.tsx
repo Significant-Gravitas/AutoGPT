@@ -15,8 +15,9 @@ export default async function Page({
   const search_term = searchParams.searchTerm || "";
   const api = new AutoGPTServerAPIServerSide();
   const { agents } = await api.getStoreAgents({ search_query: search_term });
-  const { creators } = await api.getStoreCreators({ search_query: search_term });
-
+  const { creators } = await api.getStoreCreators({
+    search_query: search_term,
+  });
 
   const handleFilterChange = (selectedFilters: string[]) => {
     console.log(selectedFilters);
@@ -24,12 +25,12 @@ export default async function Page({
 
   return (
     <div>
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div className="flex flex-col">
-          <h2 className="text-base font-medium font-['Geist'] leading-normal">
+          <h2 className="font-['Geist'] text-base font-medium leading-normal">
             Results for:
           </h2>
-          <h1 className="text-2xl font-semibold font-['Poppins'] leading-loose">
+          <h1 className="font-['Poppins'] text-2xl font-semibold leading-loose">
             {search_term}
           </h1>
         </div>
