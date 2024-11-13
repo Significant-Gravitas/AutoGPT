@@ -53,7 +53,6 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   object ||= ("default" in schema ? schema.default : null) ?? {};
   return (
     <div className={cn(className, "w-full flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
 
@@ -519,7 +518,6 @@ const NodeArrayInput: FC<{
     typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
   return (
     <div className={cn(className, "flex flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
       {entries.map((entry: any, index: number) => {
         const entryKey = `${selfKey}_$_${index}`;
         const isConnected =
@@ -610,7 +608,15 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= schema.default || "";
+  if (!value) {
+    value = schema.default || "";
+    // Force update hardcodedData so discriminators can update
+    // e.g. credentials update when provider changes
+    // this won't happen if the value is only set here to schema.default
+    if (schema.default) {
+      handleInputChange(selfKey, value);
+    }
+  }
   return (
     <div className={className}>
       {schema.enum ? (
