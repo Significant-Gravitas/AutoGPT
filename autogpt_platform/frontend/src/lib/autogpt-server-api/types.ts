@@ -123,7 +123,7 @@ export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: CredentialsProviderName;
+  credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
