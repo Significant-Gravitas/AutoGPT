@@ -410,6 +410,31 @@ const FlowEditor: React.FC<{
 
   const { x, y, zoom } = useViewport();
 
+  // Set the initial view port to center the canvas.
+  useEffect(() => {
+    if (nodes.length <= 0 || x !== 0 || y !== 0) {
+      return;
+    }
+    const topLeft = { x: Infinity, y: Infinity };
+    const bottomRight = { x: -Infinity, y: -Infinity };
+    nodes.forEach((node) => {
+      const { x, y } = node.position;
+      topLeft.x = Math.min(topLeft.x, x);
+      topLeft.y = Math.min(topLeft.y, y);
+      bottomRight.x = Math.max(bottomRight.x, x + 100);
+      bottomRight.y = Math.max(bottomRight.y, y + 100);
+    });
+
+    const centerX = (topLeft.x + bottomRight.x) / 2;
+    const centerY = (topLeft.y + bottomRight.y) / 2;
+
+    setViewport({
+      x: -centerX + window.innerWidth / 2,
+      y: -centerY + window.innerHeight / 2,
+      zoom: 0.8,
+    });
+  }, [nodes, setViewport, x, y]);
+
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
