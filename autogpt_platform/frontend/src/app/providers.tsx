@@ -16,9 +16,9 @@ export function Providers({
   return (
     <NextThemesProvider {...props}>
       <SupabaseProvider initialUser={initialUser}>
-        <CredentialsProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </CredentialsProvider>
+        {/* <CredentialsProvider> */}
+        <TooltipProvider>{children}</TooltipProvider>
+        {/* </CredentialsProvider> */}
       </SupabaseProvider>
     </NextThemesProvider>
   );

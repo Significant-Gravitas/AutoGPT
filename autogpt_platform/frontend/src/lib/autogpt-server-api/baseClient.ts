@@ -336,7 +336,7 @@ export default class BaseAutoGPTServerAPI {
       (await this.supabaseClient?.auth.getSession())?.data.session
         ?.access_token || "no-token-found";
 
-    console.log("Token for request type: ", method, path, token);
+    console.log("Request: ", method, path);
 
     let url = this.baseUrl + path;
     if (method === "GET" && payload) {

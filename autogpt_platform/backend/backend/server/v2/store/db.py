@@ -131,40 +131,6 @@ async def get_store_agent_details(
         ) from e
 
 
-async def get_user_profile(
-    user_id: str,
-) -> backend.server.v2.store.model.ProfileDetails:
-    logger.debug(f"Getting user profile for {user_id}")
-
-    try:
-        profile = await prisma.models.Profile.prisma().find_unique(
-            where={"userId": user_id}  # type: ignore
-        )
-
-        if not profile:
-            logger.warning(f"Profile not found for user {user_id}")
-            raise backend.server.v2.store.exceptions.ProfileNotFoundError(
-                f"Profile not found for user {user_id}"
-            )
-
-        return backend.server.v2.store.model.ProfileDetails(
-            name=profile.name,
-            username=profile.username,
-            description=profile.description,
-            links=profile.links,
-            avatar_url=profile.avatarUrl,
-        )
-    except Exception as e:
-        logger.error(f"Error getting user profile: {str(e)}")
-        return backend.server.v2.store.model.ProfileDetails(
-            name="No Profile Data",
-            username="No Profile Data",
-            description="No Profile Data",
-            links=[],
-            avatar_url="",
-        )
-
-
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
@@ -448,7 +414,41 @@ async def create_store_submission(
         ) from e
 
 
-async def update_profile(
+async def get_user_profile(
+    user_id: str,
+) -> backend.server.v2.store.model.ProfileDetails:
+    logger.debug(f"Getting user profile for {user_id}")
+
+    try:
+        profile = await prisma.models.Profile.prisma().find_unique(
+            where={"userId": user_id}  # type: ignore
+        )
+
+        if not profile:
+            logger.warning(f"Profile not found for user {user_id}")
+            raise backend.server.v2.store.exceptions.ProfileNotFoundError(
+                f"Profile not found for user {user_id}"
+            )
+
+        return backend.server.v2.store.model.ProfileDetails(
+            name=profile.name,
+            username=profile.username,
+            description=profile.description,
+            links=profile.links,
+            avatar_url=profile.avatarUrl,
+        )
+    except Exception as e:
+        logger.error(f"Error getting user profile: {str(e)}")
+        return backend.server.v2.store.model.ProfileDetails(
+            name="No Profile Data",
+            username="No Profile Data",
+            description="No Profile Data",
+            links=[],
+            avatar_url="",
+        )
+
+
+async def update_or_create_profile(
     user_id: str, profile: backend.server.v2.store.model.CreatorDetails
 ) -> backend.server.v2.store.model.CreatorDetails:
     """
@@ -473,7 +473,7 @@ async def update_profile(
             where={"userId": user_id}
         )
 
-        # If no profile exists, continue with upsert
+        # If no profile exists, create a new one
         if not existing_profile:
             logger.debug(f"Creating new profile for user {user_id}")
             # Create new profile since one doesn't exist

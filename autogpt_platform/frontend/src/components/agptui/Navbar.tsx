@@ -31,7 +31,6 @@ interface NavbarProps {
 }
 
 async function getProfileData(user: User | null) {
-  console.log(user);
   const api = new AutoGPTServerAPIServerSide();
   const [profile, credits] = await Promise.all([
     api.getStoreProfile(),
@@ -53,8 +52,6 @@ export const Navbar = async ({
   let profile: ProfileDetails | null = null;
   let credits: { credits: number } = { credits: 0 };
   if (isLoggedIn) {
-    console.log("Fetching profile data");
-    console.log(user);
     const { profile: t_profile, credits: t_credits } =
       await getProfileData(user);
     profile = t_profile;

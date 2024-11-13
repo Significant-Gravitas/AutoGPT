@@ -41,12 +41,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
           <div className="h-full w-full rounded-2xl bg-zinc-200">
             <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
               <Link
-                href="/dashboard"
+                href="/store/dashboard"
                 className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
               >
                 <IconDashboardLayout className="h-6 w-6" />
                 <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
-                  Agent dashboard
+                  Creator dashboard
                 </div>
               </Link>
               <Link
@@ -59,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 </div>
               </Link>
               <Link
-                href="/profile"
+                href="/store/profile"
                 className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
               >
                 <IconProfile className="h-6 w-6" />
@@ -68,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 </div>
               </Link>
               <Link
-                href="/settings"
+                href="/store/settings"
                 className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
               >
                 <IconSliders className="h-6 w-6" />
@@ -85,7 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         <div className="h-full w-full rounded-2xl bg-zinc-200">
           <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
             <Link
-              href="/dashboard"
+              href="/store/dashboard"
               className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
             >
               <IconDashboardLayout className="h-6 w-6" />
@@ -103,7 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               </div>
             </Link>
             <Link
-              href="/profile"
+              href="/store/profile"
               className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
             >
               <IconProfile className="h-6 w-6" />
@@ -112,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               </div>
             </Link>
             <Link
-              href="/settings"
+              href="/store/settings"
               className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
             >
               <IconSliders className="h-6 w-6" />

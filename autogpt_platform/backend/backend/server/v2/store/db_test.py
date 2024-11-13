@@ -219,7 +219,7 @@ async def test_update_profile(mocker):
     )
 
     # Call function
-    result = await db.update_profile("user-id", profile)
+    result = await db.update_or_create_profile("user-id", profile)
 
     # Verify results
     assert result.username == "creator"
