@@ -76,6 +76,7 @@ async def create_webhook(webhook: Webhook) -> Webhook:
 
 
 async def get_webhook(webhook_id: str) -> Webhook:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     webhook = await IntegrationWebhook.prisma().find_unique_or_raise(
         where={"id": webhook_id},
         include=INTEGRATION_WEBHOOK_INCLUDE,
@@ -86,6 +87,7 @@ async def get_webhook(webhook_id: str) -> Webhook:
 async def find_webhook(
     credentials_id: str, webhook_type: str, resource: str, events: list[str]
 ) -> Webhook | None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     webhook = await IntegrationWebhook.prisma().find_first(
         where={
             "credentialsId": credentials_id,
@@ -99,6 +101,7 @@ async def find_webhook(
 
 
 async def update_webhook_config(webhook_id: str, updated_config: dict) -> Webhook:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     _updated_webhook = await IntegrationWebhook.prisma().update(
         where={"id": webhook_id},
         data={"config": Json(updated_config)},
@@ -110,6 +113,7 @@ async def update_webhook_config(webhook_id: str, updated_config: dict) -> Webhoo
 
 
 async def delete_webhook(webhook_id: str) -> None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     deleted = await IntegrationWebhook.prisma().delete(where={"id": webhook_id})
     if not deleted:
         raise ValueError(f"Webhook #{webhook_id} not found")

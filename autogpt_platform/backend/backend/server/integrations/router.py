@@ -221,6 +221,9 @@ def delete_credentials(
 # ------------------------- WEBHOOK STUFF -------------------------- #
 
 
+# ⚠️ Note
+# No user auth check because this endpoint is for webhook ingress and relies on
+# validation by the provider-specific `WebhooksManager`.
 @router.post("/{provider}/webhooks/{webhook_id}/ingress")
 async def webhook_ingress_generic(
     request: Request,
