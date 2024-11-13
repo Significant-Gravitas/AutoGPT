@@ -115,20 +115,17 @@ const Monitor = () => {
           );
         }}
       />
-      <div className={column2}>
-        <FlowRunsList
-          flows={flows}
-          runs={[
-            ...(selectedFlow
-              ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
-              : flowRuns),
-          ].sort((a, b) => Number(a.startTime) - Number(b.startTime))}
-          selectedRun={selectedRun}
-          onSelectRun={(r) =>
-            setSelectedRun(r.id == selectedRun?.id ? null : r)
-          }
-        />
-      </div>
+      <FlowRunsList
+        className={column2}
+        flows={flows}
+        runs={[
+          ...(selectedFlow
+            ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
+            : flowRuns),
+        ].sort((a, b) => Number(a.startTime) - Number(b.startTime))}
+        selectedRun={selectedRun}
+        onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
+      />
       {(selectedRun && (
         <FlowRunInfo
           flow={selectedFlow || flows.find((f) => f.id == selectedRun.graphID)!}

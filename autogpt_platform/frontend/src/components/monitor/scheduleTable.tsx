@@ -54,15 +54,20 @@ export const SchedulesTable = ({
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string>("");
 
-  const sortedSchedules = [...schedules].sort((a, b) => {
-    const aValue = a[sortColumn];
-    const bValue = b[sortColumn];
-    if (sortDirection === "asc") {
-      return String(aValue).localeCompare(String(bValue));
-    }
-    return String(bValue).localeCompare(String(aValue));
-  });
+  const filteredAndSortedSchedules = [...schedules]
+    .filter(
+      (schedule) => !selectedFilter || schedule.graph_id === selectedFilter,
+    )
+    .sort((a, b) => {
+      const aValue = a[sortColumn];
+      const bValue = b[sortColumn];
+      if (sortDirection === "asc") {
+        return String(aValue).localeCompare(String(bValue));
+      }
+      return String(bValue).localeCompare(String(aValue));
+    });
 
   const handleToggleSchedule = (scheduleId: string, enabled: boolean) => {
     onToggleSchedule(scheduleId, enabled);
@@ -131,7 +136,7 @@ export const SchedulesTable = ({
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold">Schedules</h3>
         <div className="flex gap-2">
-          <Select>
+          <Select onValueChange={setSelectedFilter}>
             <SelectTrigger className="h-8 w-[180px] rounded-md px-3 text-xs">
               <SelectValue placeholder="Filter by graph" />
             </SelectTrigger>
@@ -176,7 +181,7 @@ export const SchedulesTable = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedSchedules.length === 0 ? (
+            {filteredAndSortedSchedules.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={4}
@@ -186,7 +191,7 @@ export const SchedulesTable = ({
                 </TableCell>
               </TableRow>
             ) : (
-              sortedSchedules.map((schedule) => (
+              filteredAndSortedSchedules.map((schedule) => (
                 <TableRow key={schedule.id}>
                   <TableCell className="font-medium">
                     {agents.find((a) => a.id === schedule.graph_id)?.name ||
