@@ -25,10 +25,7 @@ export const Default: Story = {
       website: "https://example.com",
       linkedin: "https://linkedin.com/in/johndoe",
       github: "https://github.com/johndoe",
-      other: [
-        "https://twitter.com/johndoe",
-        "https://medium.com/@johndoe",
-      ],
+      other: ["https://twitter.com/johndoe", "https://medium.com/@johndoe"],
     },
   },
 };

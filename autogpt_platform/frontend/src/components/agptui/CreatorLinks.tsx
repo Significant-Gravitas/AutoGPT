@@ -33,9 +33,7 @@ export const CreatorLinks: React.FC<CreatorLinksProps> = ({ links }) => {
       </div>
       <div className="flex w-full flex-wrap gap-3">
         {links.map((link, index) => (
-          <React.Fragment key={index}>
-            {renderLinkButton(link)}
-          </React.Fragment>
+          <React.Fragment key={index}>{renderLinkButton(link)}</React.Fragment>
         ))}
       </div>
     </div>

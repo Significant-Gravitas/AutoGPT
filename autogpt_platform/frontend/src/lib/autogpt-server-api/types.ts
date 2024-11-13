@@ -403,3 +403,11 @@ export type StoreSubmissionRequest = {
   description: string;
   categories: string[];
 };
+
+export type ProfileDetails = {
+  name: string;
+  username: string;
+  description: string;
+  links: string[];
+  avatar_url: string;
+};

@@ -14,8 +14,31 @@ logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
 
+
 ##############################################
-############### Agent Endpoints #############
+############### Profile Endpoints ############
+##############################################
+
+
+@router.get("/profile", tags=["store", "private"])
+async def get_profile(
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ]
+) -> backend.server.v2.store.model.ProfileDetails:
+    """
+    Get the profile details for the authenticated user.
+    """
+    try:
+        profile = await backend.server.v2.store.db.get_user_profile(user_id)
+        return profile
+    except Exception:
+        logger.exception("Exception occurred whilst getting user profile")
+        raise
+
+
+##############################################
+############### Agent Endpoints ##############
 ##############################################
 
 

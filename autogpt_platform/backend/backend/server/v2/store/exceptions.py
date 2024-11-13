@@ -62,3 +62,9 @@ class DatabaseError(StoreError):
     """Raised when there is an error interacting with the database"""
 
     pass
+
+
+class ProfileNotFoundError(StoreError):
+    """Raised when a profile is not found"""
+
+    pass

@@ -102,3 +102,11 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     image_urls: list[str] = []
     description: str = ""
     categories: list[str] = []
+
+
+class ProfileDetails(pydantic.BaseModel):
+    name: str
+    username: str
+    description: str
+    links: list[str]
+    avatar_url: str | None = None
