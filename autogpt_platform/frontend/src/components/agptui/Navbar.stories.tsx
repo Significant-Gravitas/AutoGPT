@@ -1,7 +1,32 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Navbar } from "./Navbar";
+import Navbar from "./Navbar";
 import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
+import { ProfileDetails } from "@/lib/autogpt-server-api/types";
+import { jest } from "@jest/globals";
+
+// Mock the API responses
+const mockProfileData: ProfileDetails = {
+  name: "John Doe",
+  username: "johndoe",
+  description: "",
+  links: [],
+  avatar_url: "https://avatars.githubusercontent.com/u/123456789?v=4",
+};
+
+const mockCreditData = {
+  credits: 1500,
+};
+
+// Mock the API module
+jest.mock("@/lib/autogpt-server-api", () => {
+  return function () {
+    return {
+      getStoreProfile: () => Promise.resolve(mockProfileData),
+      getUserCredit: () => Promise.resolve(mockCreditData),
+    };
+  };
+});
 
 const meta = {
   title: "AGPT UI/Navbar",
@@ -12,12 +37,11 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     isLoggedIn: { control: "boolean" },
-    userName: { control: "text" },
+    avatarSrc: { control: "text" },
     links: { control: "object" },
     activeLink: { control: "text" },
-    avatarSrc: { control: "text" },
-    userEmail: { control: "text" },
     menuItemGroups: { control: "object" },
+    params: { control: { type: "object", defaultValue: { lang: "en" } } },
   },
 } satisfies Meta<typeof Navbar>;
 
@@ -66,15 +90,12 @@ const defaultLinks = [
 
 export const Default: Story = {
   args: {
+    params: { lang: "en" },
     isLoggedIn: true,
-    userName: "John Doe",
     links: defaultLinks,
     activeLink: "/marketplace",
-    avatarSrc: "https://avatars.githubusercontent.com/u/123456789?v=4",
-    userEmail: "john.doe@example.com",
+    avatarSrc: mockProfileData.avatar_url,
     menuItemGroups: defaultMenuItemGroups,
-    credits: 1500,
-    onRefreshCredits: () => console.log("Refreshing credits"),
   },
 };
 
@@ -88,8 +109,6 @@ export const WithActiveLink: Story = {
 export const LongUserName: Story = {
   args: {
     ...Default.args,
-    userName: "Alexander Bartholomew Christopherson III",
-    userEmail: "alexander@example.com",
     avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
   },
 };
@@ -120,30 +139,24 @@ export const NotLoggedIn: Story = {
   args: {
     ...Default.args,
     isLoggedIn: false,
-    userName: undefined,
-    userEmail: undefined,
     avatarSrc: undefined,
-    credits: undefined,
   },
 };
 
 export const WithCredits: Story = {
   args: {
     ...Default.args,
-    credits: 9999,
   },
 };
 
 export const WithLargeCredits: Story = {
   args: {
     ...Default.args,
-    credits: 1000000,
   },
 };
 
 export const WithZeroCredits: Story = {
   args: {
     ...Default.args,
-    credits: 0,
   },
 };

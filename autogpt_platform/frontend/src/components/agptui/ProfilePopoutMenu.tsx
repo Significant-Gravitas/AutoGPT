@@ -138,48 +138,46 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
           </Avatar>
         </button>
       </PopoverTrigger>
-      
+
       <PopoverContent
         id={popupId}
-        className="w-[300px] h-[380px] p-6 bg-zinc-400/70 rounded-[26px] shadow backdrop-blur-2xl flex flex-col justify-start items-start gap-4"
+        className="flex h-[380px] w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl"
       >
         {/* Header with avatar and user info */}
-        <div className="self-stretch inline-flex justify-start items-center gap-4">
+        <div className="inline-flex items-center justify-start gap-4 self-stretch">
           <Avatar className="h-[60px] w-[60px]">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
             <AvatarFallback aria-hidden="true">
               {userName?.charAt(0) || "U"}
             </AvatarFallback>
           </Avatar>
-          <div className="w-[173px] h-[47px] relative">
-            <div className="left-0 top-0 absolute text-white text-base font-semibold font-['Geist'] leading-7">
+          <div className="relative h-[47px] w-[173px]">
+            <div className="absolute left-0 top-0 font-['Geist'] text-base font-semibold leading-7 text-white">
               {userName}
             </div>
-            <div className="left-0 top-[23px] absolute text-white text-base font-normal font-['Geist'] leading-normal">
+            <div className="absolute left-0 top-[23px] font-['Geist'] text-base font-normal leading-normal text-white">
               {userEmail}
             </div>
           </div>
         </div>
 
         {/* Menu items */}
-        <div className="w-full rounded-[23px] flex flex-col justify-start items-start gap-1.5">
+        <div className="flex w-full flex-col items-start justify-start gap-1.5 rounded-[23px]">
           {menuItemGroups.map((group, groupIndex) => (
             <div
               key={groupIndex}
-              className="w-full p-3.5 bg-white rounded-[18px] flex flex-col justify-start items-start gap-5"
+              className="flex w-full flex-col items-start justify-start gap-5 rounded-[18px] bg-white p-3.5"
             >
               {group.items.map((item, itemIndex) => (
                 <div
                   key={itemIndex}
-                  className="w-full inline-flex justify-start items-center gap-2.5"
+                  className="inline-flex w-full items-center justify-start gap-2.5"
                   onClick={item.onClick}
                   role="button"
                   tabIndex={0}
                 >
-                  <div className="w-6 h-6 relative">
-                    {getIcon(item.icon)}
-                  </div>
-                  <div className="text-neutral-800 text-base font-medium font-['Geist'] leading-normal">
+                  <div className="relative h-6 w-6">{getIcon(item.icon)}</div>
+                  <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800">
                     {item.text}
                   </div>
                 </div>
@@ -210,4 +208,3 @@ const getIcon = (icon: IconType) => {
       return null;
   }
 };
-

@@ -2,14 +2,14 @@ import React from "react";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Providers } from "@/app/providers";
-import { NavBar } from "@/components/NavBar";
 import { cn } from "@/lib/utils";
+import { Navbar } from "@/components/agptui/Navbar";
 
 import "./globals.css";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "@/components/ui/toaster";
-
+import { IconType } from "@/components/ui/icons";
 import { createServerClient } from "@/lib/supabase/server";
 
 // Import Fonts
@@ -45,8 +45,68 @@ export default async function RootLayout({
           // enableSystem
           disableTransitionOnChange
         >
-          <div className="flex min-h-screen flex-col">
-            <NavBar />
+          <div className="flex min-h-screen flex-col items-center justify-center">
+            <Navbar
+              user={user}
+              isLoggedIn={!!user}
+              activeLink={"/store"}
+              links={[
+                {
+                  name: "Agent Store",
+                  href: "/store",
+                },
+                {
+                  name: "Library",
+                  href: "/library",
+                },
+                {
+                  name: "Build",
+                  href: "/build",
+                },
+              ]}
+              menuItemGroups={[
+                {
+                  items: [
+                    {
+                      icon: IconType.Edit,
+                      text: "Edit profile",
+                      href: "/profile/edit",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.LayoutDashboard,
+                      text: "Creator Dashboard",
+                      href: "/dashboard",
+                    },
+                    {
+                      icon: IconType.UploadCloud,
+                      text: "Publish an agent",
+                      href: "/publish",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.Settings,
+                      text: "Settings",
+                      href: "/settings",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.LogOut,
+                      text: "Log out",
+                    },
+                  ],
+                },
+              ]}
+            />
             <main className="flex-1 p-4">{children}</main>
             <TallyPopupSimple />
           </div>

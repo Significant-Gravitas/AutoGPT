@@ -5,6 +5,9 @@ import { IconType, IconLogIn } from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 import CreditsCard from "./CreditsCard";
+import { ProfileDetails } from "@/lib/autogpt-server-api/types";
+import { User } from "@supabase/supabase-js";
+import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
 
 interface NavLink {
   name: string;
@@ -12,14 +15,10 @@ interface NavLink {
 }
 
 interface NavbarProps {
+  user: User | null;
   isLoggedIn: boolean;
-  userName?: string;
   links: NavLink[];
   activeLink: string;
-  avatarSrc?: string;
-  userEmail?: string;
-  credits?: number;
-  onRefreshCredits?: () => void;
   menuItemGroups: {
     groupName?: string;
     items: {
@@ -31,49 +30,37 @@ interface NavbarProps {
   }[];
 }
 
-{
-  /* <div className="w-[1408px] h-20 pl-6 pr-3 py-3 bg-white/5 rounded-bl-2xl rounded-br-2xl border border-white/50 backdrop-blur-[26px] justify-between items-center inline-flex">
-    <div className="justify-start items-center gap-11 flex">
-        <div className="w-[88.87px] h-10 relative" />
-        <div className="justify-start items-center gap-6 flex">
-            <div className="px-5 py-4 bg-neutral-800 rounded-2xl justify-start items-center gap-3 flex">
-                <div className="w-6 h-6 relative" />
-                <div className="text-neutral-50 text-xl font-medium font-['Poppins'] leading-7">Marketplace</div>
-            </div>
-            <div className="px-5 justify-start items-center gap-3 flex">
-                <div className="w-6 h-6 relative" />
-                <div className="text-neutral-900 text-xl font-medium font-['Poppins'] leading-7">Monitor</div>
-            </div>
-            <div className="px-5 py-4 rounded-2xl justify-start items-center gap-3 flex">
-                <div className="w-6 h-6 relative" />
-                <div className="text-neutral-900 text-xl font-medium font-['Poppins'] leading-7">Build</div>
-            </div>
-        </div>
-    </div>
-    <div className="justify-start items-center gap-4 flex">
-        <div className="p-4 bg-neutral-200 rounded-2xl justify-start items-center gap-2.5 flex">
-            <div className="justify-start items-center gap-0.5 flex">
-                <div className="text-neutral-900 text-base font-semibold font-['Geist'] leading-7">1500</div>
-                <div className="text-neutral-900 text-base font-normal font-['Geist'] leading-7">credits</div>
-            </div>
-            <div className="w-6 h-6 relative" />
-        </div>
-        <img className="w-[60px] h-[60px] rounded-full" src="https://via.placeholder.com/60x60" />
-    </div>
-</div> */
-}
+async function getProfileData(user: User | null) {
+  console.log(user);
+  const api = new AutoGPTServerAPIServerSide();
+  const [profile, credits] = await Promise.all([
+    api.getStoreProfile(),
+    api.getUserCredit(),
+  ]);
 
-export const Navbar: React.FC<NavbarProps> = ({
+  return {
+    profile,
+    credits,
+  };
+}
+export const Navbar = async ({
+  user,
   isLoggedIn,
-  userName,
   links,
   activeLink,
-  avatarSrc,
-  userEmail,
-  credits = 0,
-  onRefreshCredits,
   menuItemGroups,
-}) => {
+}: NavbarProps) => {
+  let profile: ProfileDetails | null = null;
+  let credits: { credits: number } = { credits: 0 };
+  if (isLoggedIn) {
+    console.log("Fetching profile data");
+    console.log(user);
+    const { profile: t_profile, credits: t_credits } =
+      await getProfileData(user);
+    profile = t_profile;
+    credits = t_credits;
+  }
+
   return (
     <>
       <nav className="sticky top-0 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] md:inline-flex">
@@ -96,12 +83,12 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Profile section */}
         {isLoggedIn ? (
           <div className="flex items-center gap-4">
-            <CreditsCard credits={credits} onRefresh={onRefreshCredits} />
+            {profile && <CreditsCard credits={credits.credits} />}
             <ProfilePopoutMenu
               menuItemGroups={menuItemGroups}
-              userName={userName}
-              userEmail={userEmail}
-              avatarSrc={avatarSrc}
+              userName={profile?.username}
+              userEmail={profile?.name}
+              avatarSrc={profile?.avatar_url}
             />
           </div>
         ) : (
@@ -120,31 +107,32 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn ? (
-          <MobileNavBar
-            userName={userName}
-            activeLink={activeLink}
-            menuItemGroups={[
-              {
-                groupName: "Navigation",
-                items: links.map((link) => ({
-                  icon:
-                    link.name === "Marketplace"
-                      ? IconType.Marketplace
-                      : link.name === "Library"
-                        ? IconType.Library
-                        : link.name === "Build"
-                          ? IconType.Builder
-                          : IconType.LayoutDashboard,
-                  text: link.name,
-                  href: link.href,
-                })),
-              },
-              ...menuItemGroups,
-            ]}
-            userEmail={userEmail}
-            avatarSrc={avatarSrc}
-            className="fixed right-4 top-4 z-50"
-          />
+          <div className="fixed right-4 top-4 z-50">
+            <MobileNavBar
+              userName={profile?.username}
+              activeLink={activeLink}
+              menuItemGroups={[
+                {
+                  groupName: "Navigation",
+                  items: links.map((link) => ({
+                    icon:
+                      link.name === "Agent Store"
+                        ? IconType.Marketplace
+                        : link.name === "Library"
+                          ? IconType.Library
+                          : link.name === "Build"
+                            ? IconType.Builder
+                            : IconType.LayoutDashboard,
+                    text: link.name,
+                    href: link.href,
+                  })),
+                },
+                ...menuItemGroups,
+              ]}
+              userEmail={profile?.name}
+              avatarSrc={profile?.avatar_url}
+            />
+          </div>
         ) : (
           <Link
             href="/login"

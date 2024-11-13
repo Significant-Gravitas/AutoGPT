@@ -1,16 +1,27 @@
+"use client";
+
 import { IconRefresh } from "@/components/ui/icons";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import { useState } from "react";
 
 interface CreditsCardProps {
   credits: number;
-  onRefresh?: () => void;
 }
 
-const CreditsCard = ({ credits, onRefresh }: CreditsCardProps) => {
+const CreditsCard = ({ credits }: CreditsCardProps) => {
+  const [currentCredits, setCurrentCredits] = useState(credits);
+  const api = new AutoGPTServerAPI();
+
+  const onRefresh = async () => {
+    const { credits } = await api.getUserCredit();
+    setCurrentCredits(credits);
+  };
+
   return (
     <div className="inline-flex h-[60px] items-center gap-2.5 rounded-2xl bg-neutral-200 p-4">
       <div className="flex items-center gap-0.5">
         <span className="font-['Geist'] text-base font-semibold leading-7 text-neutral-900">
-          {credits.toLocaleString()}
+          {currentCredits.toLocaleString()}
         </span>
         <span className="font-['Geist'] text-base font-normal leading-7 text-neutral-900">
           credits
