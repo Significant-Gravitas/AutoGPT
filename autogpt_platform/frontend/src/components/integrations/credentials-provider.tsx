@@ -20,16 +20,18 @@ const CREDENTIALS_PROVIDER_NAMES = Object.values(
 
 // --8<-- [start:CredentialsProviderNames]
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
+  anthropic: "Anthropic",
   discord: "Discord",
   d_id: "D-ID",
   github: "GitHub",
   google: "Google",
   google_maps: "Google Maps",
+  groq: "Groq",
   ideogram: "Ideogram",
   jina: "Jina",
   medium: "Medium",
-  llm: "LLM",
   notion: "Notion",
+  ollama: "Ollama",
   openai: "OpenAI",
   openweathermap: "OpenWeatherMap",
   pinecone: "Pinecone",
