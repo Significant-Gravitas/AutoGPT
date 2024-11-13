@@ -225,14 +225,14 @@ export function CustomNode({
                     side="left"
                   />
                 ) : (
-                  <span
-                    className="text-m green mb-0 text-gray-900"
-                    title={propSchema.description}
-                  >
-                    {propKey == "credentials"
-                      ? "Credentials"
-                      : propSchema.title || beautifyString(propKey)}
-                  </span>
+                  propKey != "credentials" && (
+                    <span
+                      className="text-m green mb-0 text-gray-900"
+                      title={propSchema.description}
+                    >
+                      {propSchema.title || beautifyString(propKey)}
+                    </span>
+                  )
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
