@@ -317,13 +317,11 @@ export type AnalyticsDetails = {
 export type Schedule = {
   id: string;
   createdAt: Date;
-  updatedAt?: Date;
   agentGraphId: string;
   agentGraphVersion: number;
   schedule: string;
   isEnabled: boolean;
   inputData: { [key: string]: any };
-  lastUpdated: Date;
   userId: string;
 };
 

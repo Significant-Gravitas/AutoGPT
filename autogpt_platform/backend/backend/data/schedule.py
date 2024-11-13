@@ -37,7 +37,7 @@ class ExecutionSchedule(BaseDbModel):
 
 async def get_active_schedules(last_fetch_time: datetime) -> list[ExecutionSchedule]:
     query = AgentGraphExecutionSchedule.prisma().find_many(
-        where={"isEnabled": True, "lastUpdated": {"gt": last_fetch_time}},
+        where={"lastUpdated": {"gt": last_fetch_time}},
         order={"lastUpdated": "asc"},
     )
     return [ExecutionSchedule.from_db(schedule) for schedule in await query]
@@ -77,5 +77,5 @@ async def add_schedule(schedule: ExecutionSchedule) -> ExecutionSchedule:
 
 async def update_schedule(schedule_id: str, is_enabled: bool, user_id: str):
     await AgentGraphExecutionSchedule.prisma().update(
-        where={"id": schedule_id}, data={"isEnabled": is_enabled}
+        where={"id": schedule_id}, data={"isEnabled": is_enabled, "lastUpdated": datetime.now()}
     )
