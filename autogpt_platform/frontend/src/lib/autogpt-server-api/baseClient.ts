@@ -284,8 +284,6 @@ export default class BaseAutoGPTServerAPI {
       (await this.supabaseClient?.auth.getSession())?.data.session
         ?.access_token || "";
 
-    console.log("token", token);
-
     let url = this.baseUrl + path;
     if (method === "GET" && payload) {
       // For GET requests, use payload as query

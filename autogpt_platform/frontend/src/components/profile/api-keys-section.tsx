@@ -58,13 +58,12 @@ export function APIKeysSection() {
 
   useEffect(() => {
     loadAPIKeys();
-  }, []);
+  });
 
   const loadAPIKeys = async () => {
     setIsLoading(true);
     try {
       const keys = await api.listAPIKeys();
-      console.log(JSON.stringify(keys));
       setApiKeys(keys.filter((key) => key.status === "ACTIVE"));
     } finally {
       setIsLoading(false);
@@ -86,7 +85,7 @@ export function APIKeysSection() {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to create API key",
+        description: "Failed to create AutoGPT Platform API key",
         variant: "destructive",
       });
     }
@@ -96,7 +95,7 @@ export function APIKeysSection() {
     navigator.clipboard.writeText(newApiKey);
     toast({
       title: "Copied",
-      description: "API key copied to clipboard",
+      description: "AutoGPT Platform API key copied to clipboard",
     });
   };
 
@@ -105,13 +104,13 @@ export function APIKeysSection() {
       await api.revokeAPIKey(keyId);
       toast({
         title: "Success",
-        description: "API key revoked successfully",
+        description: "AutoGPT Platform API key revoked successfully",
       });
       loadAPIKeys();
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to revoke API key",
+        description: "Failed to revoke AutoGPT Platform API key",
         variant: "destructive",
       });
     }
@@ -120,22 +119,22 @@ export function APIKeysSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>API Keys</CardTitle>
+        <CardTitle>AutoGPT Platform API Keys</CardTitle>
         <CardDescription>
-          Manage your API keys for programmatic access
+          Manage your AutoGPT Platform API keys for programmatic access
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="mb-4 flex justify-end">
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button>Create API Key</Button>
+              <Button>Create Key</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Create New API Key</DialogTitle>
                 <DialogDescription>
-                  Create a new API key for accessing the API programmatically
+                  Create a new AutoGPT Platform API key
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -145,7 +144,7 @@ export function APIKeysSection() {
                     id="name"
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
-                    placeholder="My API Key"
+                    placeholder="My AutoGPT Platform API Key"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -197,10 +196,10 @@ export function APIKeysSection() {
           <Dialog open={isKeyDialogOpen} onOpenChange={setIsKeyDialogOpen}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>API Key Created</DialogTitle>
+                <DialogTitle>AutoGPT Platform API Key Created</DialogTitle>
                 <DialogDescription>
-                  Please copy your API key now. You won't be able to see it
-                  again!
+                  Please copy your AutoGPT API key now. You won&apos;t be able
+                  to see it again!
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-center space-x-2">
