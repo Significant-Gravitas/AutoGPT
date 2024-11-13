@@ -45,15 +45,20 @@ export default function useCredentials(): CredentialsData | null {
       ]) ||
     null;
 
-  if (
-    !discriminatorValue &&
-    credentialsSchema.credentials_provider.length > 1
-  ) {
-    throw new Error("Multi-provider credential input requires discriminator!");
+  let providerName: CredentialsProviderName;
+  if (credentialsSchema.credentials_provider.length > 1) {
+    if (!credentialsSchema.discriminator) {
+      throw new Error(
+        "Multi-provider credential input requires discriminator!",
+      );
+    }
+    if (!discriminatorValue) {
+      return null;
+    }
+    providerName = discriminatorValue;
+  } else {
+    providerName = credentialsSchema.credentials_provider[0];
   }
-
-  const providerName =
-    discriminatorValue || credentialsSchema.credentials_provider[0];
   const provider = allProviders ? allProviders[providerName] : null;
 
   // If block input schema doesn't have credentials, return null
