@@ -17,9 +17,9 @@ from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
-from backend.data.api import APIKeyPermission, APIKeyWithoutHash, generate_api_key, get_api_key_by_id, list_user_api_keys, revoke_api_key, suspend_api_key, update_api_key_permissions
+from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash, generate_api_key, get_api_key_by_id, list_user_api_keys, revoke_api_key, suspend_api_key, update_api_key_permissions
 from backend.executor import ExecutionManager, ExecutionScheduler
-from backend.server.model import CreateGraph, SetGraphActiveVersion
+from backend.server.model import CreateAPIKeyRequest, CreateAPIKeyResponse, CreateGraph, SetGraphActiveVersion, UpdatePermissionsRequest
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
@@ -526,18 +526,8 @@ async def update_configuration(
 
 
 ########################################################
-##################### API ##############################
+#####################  API KEY ##############################
 ########################################################
-
-class CreateAPIKeyRequest(BaseModel):
-    name: str
-    permissions: List[APIKeyPermission]
-    description: Optional[str] = None
-
-class CreateAPIKeyResponse(BaseModel):
-    api_key: APIKeyWithoutHash
-    plain_text_key: str
-
 
 @v1_router.post(
     "/api-keys",
@@ -619,13 +609,9 @@ async def suspend_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-
-class UpdatePermissionsRequest(BaseModel):
-    permissions: List[APIKeyPermission]
-
 async def update_permissions(
     key_id: str,
-    request: UpdatePermissionsRequest,
+    request: UpdatePermissionsRequest ,
     user_id: Annotated[str, Depends(get_user_id)]
 ) -> APIKeyWithoutHash:
     """Update API key permissions"""
