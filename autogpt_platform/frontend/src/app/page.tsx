@@ -26,7 +26,7 @@ const Monitor = () => {
     null,
   );
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
-  const [sortColumn, setSortColumn] = useState<keyof Schedule>("agentGraphId");
+  const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
@@ -39,24 +39,11 @@ const Monitor = () => {
         schedulesData.push({
           id,
           schedule,
-          isEnabled: true,
-          graphId: flow.id,
-          lastRun: new Date(
-            Date.now() - Math.random() * 86400000,
-          ).toISOString(),
-          nextRun: new Date(
-            Date.now() + Math.random() * 86400000,
-          ).toISOString(),
-          runCount: Math.floor(Math.random() * 100),
-          status:
-            Math.random() > 0.8
-              ? "error"
-              : Math.random() > 0.5
-                ? "active"
-                : "paused",
+          graph_id: flow.id,
         });
       });
     }
+
     setSchedules(schedulesData);
   }, [api, flows]);
 
@@ -167,7 +154,8 @@ const Monitor = () => {
         )}
       <div className="col-span-full md:col-span-3 lg:col-span-2 xl:col-span-6">
         <SchedulesTable
-          schedules={schedules}
+          schedules={schedules} // all schedules
+          agents={flows} // for filtering purpose
           onToggleSchedule={toggleSchedule}
           sortColumn={sortColumn}
           sortDirection={sortDirection}

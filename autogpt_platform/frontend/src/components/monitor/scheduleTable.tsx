@@ -10,18 +10,30 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  CalendarIcon,
-  ClockIcon,
-  PlayIcon,
-  StopCircleIcon,
-} from "lucide-react";
+import { ClockIcon, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { CronExpressionManager } from "@/lib/monitor/cronExpressionManager";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { GraphMeta } from "@/lib/autogpt-server-api";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface SchedulesTableProps {
   schedules: Schedule[];
+  agents: GraphMeta[];
   onToggleSchedule: (scheduleId: string, enabled: boolean) => void;
   sortColumn: keyof Schedule;
   sortDirection: "asc" | "desc";
@@ -30,12 +42,18 @@ interface SchedulesTableProps {
 
 export const SchedulesTable = ({
   schedules,
+  agents,
   onToggleSchedule,
   sortColumn,
   sortDirection,
   onSort,
 }: SchedulesTableProps) => {
   const { toast } = useToast();
+  const router = useRouter();
+  const cron_manager = new CronExpressionManager();
+  const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const sortedSchedules = [...schedules].sort((a, b) => {
     const aValue = a[sortColumn];
@@ -56,42 +74,102 @@ export const SchedulesTable = ({
     }
   };
 
+  const handleNewSchedule = () => {
+    setIsDialogOpen(true);
+  };
+
+  const handleAgentSelect = (agentId: string) => {
+    setSelectedAgent(agentId);
+  };
+
+  const handleSchedule = async () => {
+    setIsLoading(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      router.push(`/build?flowID=${selectedAgent}&open_scheduling=true`);
+    } catch (error) {
+      console.error("Navigation error:", error);
+    }
+  };
+
   return (
     <Card className="h-fit p-4">
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Select Agent for New Schedule</DialogTitle>
+          </DialogHeader>
+          <Select onValueChange={handleAgentSelect}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select an agent" />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map((agent, i) => (
+                <SelectItem key={agent.id + i} value={agent.id}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={handleSchedule}
+            disabled={isLoading || !selectedAgent}
+            className="mt-4"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              "Schedule"
+            )}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold">Schedules</h3>
-        <Button size="sm" variant="outline">
-          <ClockIcon className="mr-2 h-4 w-4" />
-          New Schedule
-        </Button>
+        <div className="flex gap-2">
+          <Select>
+            <SelectTrigger className="h-8 w-[180px] rounded-md px-3 text-xs">
+              <SelectValue placeholder="Filter by graph" />
+            </SelectTrigger>
+            <SelectContent className="text-xs">
+              {agents.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" onClick={handleNewSchedule}>
+            <ClockIcon className="mr-2 h-4 w-4" />
+            New Schedule
+          </Button>
+        </div>
       </div>
       <ScrollArea className="max-h-[400px]">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead
-                onClick={() => onSort("agentGraphId")}
+                onClick={() => onSort("graph_id")}
                 className="cursor-pointer"
               >
-                Graph ID
+                Graph Name
+              </TableHead>
+              <TableHead
+                onClick={() => onSort("id")}
+                className="cursor-pointer"
+              >
+                ID
               </TableHead>
               <TableHead
                 onClick={() => onSort("schedule")}
                 className="cursor-pointer"
               >
                 Schedule
-              </TableHead>
-              <TableHead
-                onClick={() => onSort("isEnabled")}
-                className="cursor-pointer"
-              >
-                Status
-              </TableHead>
-              <TableHead
-                onClick={() => onSort("createdAt")}
-                className="cursor-pointer"
-              >
-                Created
               </TableHead>
 
               <TableHead>Actions</TableHead>
@@ -101,7 +179,7 @@ export const SchedulesTable = ({
             {sortedSchedules.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={4}
                   className="py-8 text-center text-lg text-gray-400"
                 >
                   No schedules are available
@@ -111,25 +189,21 @@ export const SchedulesTable = ({
               sortedSchedules.map((schedule) => (
                 <TableRow key={schedule.id}>
                   <TableCell className="font-medium">
-                    {schedule.agentGraphId}
+                    {agents.find((a) => a.id === schedule.graph_id)?.name ||
+                      schedule.graph_id}
                   </TableCell>
-                  <TableCell>{schedule.schedule}</TableCell>
+                  <TableCell>{schedule.id}</TableCell>
                   <TableCell>
-                    <Badge
-                      variant={!schedule.isEnabled ? "destructive" : "default"}
-                    >
-                      {schedule.isEnabled ? "Enabled" : "Disabled"}
+                    <Badge variant="secondary">
+                      {cron_manager.generateDescription(schedule.schedule)}
                     </Badge>
                   </TableCell>
-                  <TableCell>{schedule.createdAt}</TableCell>
 
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button
                         variant={"destructive"}
-                        onClick={() =>
-                          handleToggleSchedule(schedule.id, !schedule.isEnabled)
-                        }
+                        onClick={() => handleToggleSchedule(schedule.id, false)}
                       >
                         Disable
                       </Button>

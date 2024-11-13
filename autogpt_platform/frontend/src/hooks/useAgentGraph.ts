@@ -824,42 +824,50 @@ export default function useAgentGraph(
       state: "running",
     }));
   }, [saveRunRequest]);
-  const scheduleRunner = async (
-    cronExpression: string,
-    inputs: InputItem[],
-  ) => {
-    try {
-      const converted = inputs.reduce(
-        (acc, input) => ({
-          ...acc,
-          [input.id]: {
-            type: input.type,
-            inputSchema: input.inputSchema,
-            hardcodedValues: input.hardcodedValues,
-          },
-        }),
-        {},
-      );
-      if (flowID) {
-        await api.createSchedule(flowID, {
-          cron: cronExpression,
-          input_data: converted,
-        });
+
+  // runs after saving cron expression and inputs (if exists)
+  const scheduleRunner = useCallback(
+    async (cronExpression: string, inputs: InputItem[]) => {
+      await saveAgent();
+      try {
+        const converted = inputs.reduce(
+          (acc, input) => ({
+            ...acc,
+            [input.id]: {
+              type: input.type,
+              inputSchema: input.inputSchema,
+              hardcodedValues: input.hardcodedValues,
+            },
+          }),
+          {},
+        );
+        if (flowID) {
+          await api.createSchedule(flowID, {
+            cron: cronExpression,
+            input_data: converted,
+          });
+          toast({
+            title: "Agent scheduling successful",
+          });
+
+          // if schduling is done from the monitor page, then redirect to monitor page after successful scheduling
+          if (searchParams.get("open_scheduling") === "true") {
+            router.push("/");
+          }
+        } else {
+          return;
+        }
+      } catch (error) {
+        console.log(error);
         toast({
-          title: "Agent scheduling successful",
+          variant: "destructive",
+          title: "Error scheduling agent",
+          description: "Please retry",
         });
-      } else {
-        return;
       }
-    } catch (error) {
-      console.log(error);
-      toast({
-        variant: "destructive",
-        title: "Error scheduling agent",
-        description: "Please retry",
-      });
-    }
-  };
+    },
+    [api, flowID, saveAgent, toast, router, searchParams],
+  );
 
   return {
     agentName,

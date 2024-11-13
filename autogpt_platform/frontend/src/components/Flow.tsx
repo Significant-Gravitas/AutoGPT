@@ -159,6 +159,12 @@ const FlowEditor: React.FC<{
   ]);
 
   useEffect(() => {
+    if (params.get("open_scheduling") === "true") {
+      setOpenCron(true);
+    }
+  }, [params]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
       const isUndo =
@@ -593,8 +599,22 @@ const FlowEditor: React.FC<{
     },
   ];
 
+  // This function is called after cron expression is created
+  // So you can collect inputs for scheduling
   const afterCronCreation = (cronExpression: string) => {
     runnerUIRef.current?.collectInputsForScheduling(cronExpression);
+  };
+
+  // This function Opens up form for creating cron expression
+  const handleScheduleButton = () => {
+    if (!savedAgent) {
+      toast({
+        title: `Please save the agent using the button in the left sidebar before running it.`,
+        duration: 2000,
+      });
+      return;
+    }
+    setOpenCron(true);
   };
 
   return (
@@ -658,16 +678,7 @@ const FlowEditor: React.FC<{
                 requestStopRun();
               }
             }}
-            onClickScheduleButton={() => {
-              if (!savedAgent) {
-                toast({
-                  title: `Please save the agent using the button in the left sidebar before running it.`,
-                  duration: 2000,
-                });
-                return;
-              }
-              setOpenCron(true);
-            }}
+            onClickScheduleButton={handleScheduleButton}
             isScheduling={isScheduling}
             isDisabled={!savedAgent}
             isRunning={isRunning}

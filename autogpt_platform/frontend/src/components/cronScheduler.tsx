@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "./ui/separator";
+import { CronExpressionManager } from "@/lib/monitor/cronExpressionManager";
 // import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 // import { Calendar } from "@/components/ui/calendar";
 // import {
@@ -78,49 +79,7 @@ export function CronScheduler({
     { label: "Dec", value: "December" },
   ];
 
-  const generateCronExpression = () => {
-    const [hours, minutes] = selectedTime.split(":").map(Number);
-    let expression = "";
-
-    switch (frequency) {
-      case "minute":
-        expression = "* * * * *";
-        break;
-      case "hour":
-        expression = `${selectedMinute} * * * *`;
-        break;
-      case "daily":
-        expression = `${minutes} ${hours} * * *`;
-        break;
-      case "weekly":
-        const days = selectedDays.join(",");
-        expression = `${minutes} ${hours} * * ${days}`;
-        break;
-      case "monthly":
-        const monthDays = selectedDays.sort((a, b) => a - b).join(",");
-        expression = `${minutes} ${hours} ${monthDays} * *`;
-        break;
-      case "yearly":
-        const monthList = selectedDays
-          .map((d) => d + 1)
-          .sort((a, b) => a - b)
-          .join(",");
-        expression = `${minutes} ${hours} 1 ${monthList} *`; // run on day 1 of month every year
-        break;
-      case "custom":
-        if (customInterval.unit === "minutes") {
-          expression = `*/${customInterval.value} * * * *`;
-        } else if (customInterval.unit === "hours") {
-          expression = `0 */${customInterval.value} * * *`;
-        } else {
-          expression = `${minutes} ${hours} */${customInterval.value} * *`;
-        }
-        break;
-      default:
-        expression = "";
-    }
-    return expression;
-  };
+  const cron_manager = new CronExpressionManager();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -448,7 +407,13 @@ export function CronScheduler({
             </Button>
             <Button
               onClick={() => {
-                const cronExpr = generateCronExpression();
+                const cronExpr = cron_manager.generateCronExpression(
+                  frequency,
+                  selectedTime,
+                  selectedDays,
+                  selectedMinute,
+                  customInterval,
+                );
                 setFrequency("minute");
                 setSelectedDays([]);
                 setSelectedTime("00:00");

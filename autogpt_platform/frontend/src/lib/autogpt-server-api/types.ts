@@ -315,14 +315,9 @@ export type AnalyticsDetails = {
 
 // Schedule types
 export type Schedule = {
-  id: string;
-  createdAt: Date;
-  agentGraphId: string;
-  agentGraphVersion: number;
-  schedule: string;
-  isEnabled: boolean;
-  inputData: { [key: string]: any };
-  userId: string;
+  id: string; // schedule id
+  schedule: string; //cron expression
+  graph_id: string; // graph id
 };
 
 export type ScheduleCreatable = {

@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "./ui/button";
-import { Clock, LogOut } from "lucide-react";
+import { Clock, LogOut, ChevronLeft } from "lucide-react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 import {
   Tooltip,
