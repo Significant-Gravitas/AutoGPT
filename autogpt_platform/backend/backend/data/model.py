@@ -166,6 +166,7 @@ def CredentialsField(
     `CredentialsField` must and can only be used on fields named `credentials`.
     This is enforced by the `BlockSchema` base class.
     """
+    # TODO: make this a Pydantic model so it can be mirrored directly in the frontend
     json_extra = {
         k: v
         for k, v in {
