@@ -45,7 +45,10 @@ export default function useCredentials(): CredentialsData | null {
       ]) ||
     null;
 
-  if (!discriminatorValue && credentialsSchema.credentials_provider.length > 1) {
+  if (
+    !discriminatorValue &&
+    credentialsSchema.credentials_provider.length > 1
+  ) {
     throw new Error("Multi-provider credential input requires discriminator!");
   }
 
