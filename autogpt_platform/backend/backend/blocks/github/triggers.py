@@ -1,4 +1,6 @@
+import json
 import logging
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -48,6 +50,10 @@ class GitHubTriggerBase:
 
 
 class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
+    EXAMPLE_PAYLOAD_FILE = (
+        Path(__file__).parent / "webhook_payloads" / "pull_request.synchronize.json"
+    )
+
     # --8<-- [start:example-event-filter]
     class Input(GitHubTriggerBase.Input):
         class EventsFilter(BaseModel):
@@ -95,6 +101,8 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         from backend.integrations.providers import ProviderName
         from backend.integrations.webhooks.github import GithubWebhookType
 
+        example_payload = json.loads(self.EXAMPLE_PAYLOAD_FILE.read_text())
+
         super().__init__(
             id="6c60ec01-8128-419e-988f-96a063ee2fea",
             description="This block triggers on pull request events and outputs the event type and payload.",
@@ -111,32 +119,22 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             ),
             # --8<-- [end:example-webhook_config]
             test_input={
-                "repo": "owner/repo",
+                "repo": "Significant-Gravitas/AutoGPT",
                 "events": {"opened": True, "synchronize": True},
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "payload": example_payload,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                # ("title", "Title of the pull request"),
-                # ("body", "This is the body of the pull request."),
-                # ("author", "username"),
-                # ("changes", "List of changes made in the pull request."),
+                ("payload", example_payload),
+                ("sender", example_payload["sender"]),
+                ("event", example_payload["action"]),
+                ("number", example_payload["number"]),
+                ("pull_request", example_payload["pull_request"]),
             ],
-            test_mock={
-                # "read_pr": lambda *args, **kwargs: (
-                #     "Title of the pull request",
-                #     "This is the body of the pull request.",
-                #     "username",
-                # ),
-                # "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
-            },
         )
 
-    def run(
-        self,
-        input_data: GitHubTriggerBase.Input,
-        **kwargs,
-    ) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
         yield from super().run(input_data, **kwargs)
         yield "event", input_data.payload["action"]
         yield "number", input_data.payload["number"]
