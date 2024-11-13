@@ -37,6 +37,40 @@ async def get_profile(
         raise
 
 
+@router.post(
+    "/profile",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def update_or_create_profile(
+    profile: backend.server.v2.store.model.CreatorDetails,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> backend.server.v2.store.model.CreatorDetails:
+    """
+    Update the store profile for the authenticated user.
+
+    Args:
+        profile (CreatorDetails): The updated profile details
+        user_id (str): ID of the authenticated user
+
+    Returns:
+        CreatorDetails: The updated profile
+
+    Raises:
+        HTTPException: If there is an error updating the profile
+    """
+    try:
+        updated_profile = await backend.server.v2.store.db.update_or_create_profile(
+            user_id=user_id, profile=profile
+        )
+        return updated_profile
+    except Exception:
+        logger.exception("Exception occurred whilst updating profile")
+        raise
+
+
 ##############################################
 ############### Agent Endpoints ##############
 ##############################################
@@ -314,38 +348,4 @@ async def upload_submission_media(
         return media_url
     except Exception:
         logger.exception("Exception occurred whilst uploading submission media")
-        raise
-
-
-@router.put(
-    "/profile",
-    tags=["store", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
-)
-async def update_profile(
-    profile: backend.server.v2.store.model.CreatorDetails,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
-) -> backend.server.v2.store.model.CreatorDetails:
-    """
-    Update the store profile for the authenticated user.
-
-    Args:
-        profile (CreatorDetails): The updated profile details
-        user_id (str): ID of the authenticated user
-
-    Returns:
-        CreatorDetails: The updated profile
-
-    Raises:
-        HTTPException: If there is an error updating the profile
-    """
-    try:
-        updated_profile = await backend.server.v2.store.db.update_profile(
-            user_id=user_id, profile=profile
-        )
-        return updated_profile
-    except Exception:
-        logger.exception("Exception occurred whilst updating profile")
         raise

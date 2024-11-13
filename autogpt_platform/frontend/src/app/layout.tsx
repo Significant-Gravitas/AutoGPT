@@ -70,7 +70,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.Edit,
                       text: "Edit profile",
-                      href: "/profile/edit",
+                      href: "/store/profile",
                     },
                   ],
                 },
@@ -79,12 +79,12 @@ export default async function RootLayout({
                     {
                       icon: IconType.LayoutDashboard,
                       text: "Creator Dashboard",
-                      href: "/dashboard",
+                      href: "/store/dashboard",
                     },
                     {
                       icon: IconType.UploadCloud,
                       text: "Publish an agent",
-                      href: "/publish",
+                      href: "/store/publish",
                     },
                   ],
                 },
@@ -93,7 +93,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.Settings,
                       text: "Settings",
-                      href: "/settings",
+                      href: "/store/settings",
                     },
                   ],
                 },

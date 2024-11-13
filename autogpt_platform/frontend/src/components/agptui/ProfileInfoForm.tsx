@@ -10,6 +10,8 @@ export interface ProfileInfoFormProps {
   profileImage?: string;
   links: { id: number; url: string }[];
   categories: { id: number; name: string }[];
+  onCategoryClick: (category: string) => void;
+  selectedCategories: string[];
 }
 
 export const AVAILABLE_CATEGORIES = [
@@ -24,27 +26,16 @@ export const AVAILABLE_CATEGORIES = [
   "Research",
 ] as const;
 
-export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
+export const ProfileInfoForm = ({
   displayName,
   handle,
   bio,
   profileImage,
   links,
   categories,
-}) => {
-  const [selectedCategories, setSelectedCategories] = React.useState<string[]>(
-    categories.map((cat) => cat.name),
-  );
-
-  const handleCategoryClick = (category: string) => {
-    console.log(`${category} category button was pressed`);
-    if (selectedCategories.includes(category)) {
-      setSelectedCategories(selectedCategories.filter((c) => c !== category));
-    } else if (selectedCategories.length < 5) {
-      setSelectedCategories([...selectedCategories, category]);
-    }
-  };
-
+  onCategoryClick,
+  selectedCategories,
+}: ProfileInfoFormProps) => {
   return (
     <main className="p-4 sm:p-8">
       <h1 className="mb-6 font-['Poppins'] text-[28px] font-medium text-neutral-900 sm:mb-8 sm:text-[35px]">
@@ -82,7 +73,7 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
               <div className="rounded-[55px] border border-slate-200 px-4 py-2.5">
                 <input
                   type="text"
-                  value={displayName}
+                  defaultValue={displayName}
                   placeholder="Enter your display name"
                   className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none"
                 />
@@ -104,7 +95,7 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
               <div className="rounded-[55px] border border-slate-200 px-4 py-2.5">
                 <input
                   type="text"
-                  value={handle}
+                  defaultValue={handle}
                   placeholder="@username"
                   className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none"
                 />
@@ -125,7 +116,7 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
               </label>
               <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4">
                 <textarea
-                  value={bio}
+                  defaultValue={bio}
                   placeholder="Tell us about yourself..."
                   className="h-full w-full resize-none border-none bg-transparent font-['Geist'] text-base font-normal text-[#666666] focus:outline-none"
                 />
@@ -167,7 +158,7 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
                     <input
                       type="text"
                       placeholder="https://"
-                      value={link?.url || ""}
+                      defaultValue={link?.url || ""}
                       className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none"
                     />
                   </div>
@@ -190,7 +181,7 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
 
       <hr className="my-8 border-neutral-300" />
 
-      <section>
+      {/* <section>
         <div className="relative min-h-[190px] w-full">
           <div className="absolute left-0 top-0 h-[68px] w-full">
             <div className="absolute left-0 top-[48px] w-full font-['Geist'] text-base font-medium leading-tight text-slate-950">
@@ -205,7 +196,7 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
               <Button
                 key={index}
                 variant="outline"
-                onClick={() => handleCategoryClick(category)}
+                onClick={() => onCategoryClick(category)}
                 className={`rounded-[34px] border border-neutral-600 px-5 py-3 transition-colors ${
                   selectedCategories.includes(category)
                     ? "bg-slate-900 text-white hover:bg-slate-800"
@@ -216,8 +207,8 @@ export const ProfileInfoForm: React.FC<ProfileInfoFormProps> = ({
               </Button>
             ))}
           </div>
-        </div>
-      </section>
+        </div> */}
+      {/* </section> */}
     </main>
   );
 };
