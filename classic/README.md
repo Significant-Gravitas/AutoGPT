@@ -1,6 +1,6 @@
-# AutoGPT
+# AutoGPT Classic
 
-AutoGPT is an experimental project that demonstrates autonomous GPT-4 operation. It was designed to make GPT-4 independently operate and chain together tasks to achieve more complex goals.
+AutoGPT Classic was an experimental project to demonstrate autonomous GPT-4 operation. It was designed to make GPT-4 independently operate and chain together tasks to achieve more complex goals.
 
 ## Project Status
 
@@ -10,7 +10,7 @@ For those interested in autonomous AI agents, we recommend exploring more active
 
 ## Overview
 
-AutoGPT was one of the first implementations of autonomous AI agents - AI systems that can independently:
+AutoGPT Classic was one of the first implementations of autonomous AI agents - AI systems that can independently:
 - Break down complex goals into smaller tasks
 - Execute those tasks using available tools and APIs
 - Learn from the results and adjust its approach
@@ -59,7 +59,7 @@ You can browse at the same point in time as this commit so the docs don't change
 
 ## Historical Impact
 
-AutoGPT played a significant role in advancing the field of autonomous AI agents:
+AutoGPT Classic played a significant role in advancing the field of autonomous AI agents:
 - Demonstrated practical implementation of AI autonomy
 - Inspired numerous derivative projects and research
 - Contributed to the development of AI agent architectures
