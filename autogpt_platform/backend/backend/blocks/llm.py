@@ -116,7 +116,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
-    DEEPSEEK_CHAT = "deepseek/deepseek-chat"    
+    DEEPSEEK_CHAT = "deepseek/deepseek-chat"
 
     @property
     def metadata(self) -> ModelMetadata:

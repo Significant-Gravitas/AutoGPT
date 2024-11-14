@@ -63,7 +63,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
     LlmModel.EVA_QWEN_2_5_32B: 1,
     LlmModel.DEEPSEEK_CHAT: 2,
-}   
+}
 
 for model in LlmModel:
     if model not in MODEL_COST:
