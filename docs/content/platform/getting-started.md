@@ -128,3 +128,21 @@ By default the application for different services run on the following ports:
 Frontend UI Server: 3000
 Backend Websocket Server: 8001
 Execution API Rest Server: 8006
+
+#### Additional Notes
+
+You may want to change your encryption key in the `.env` file in the `autogpt_platform/backend` directory.
+
+To generate a new encryption key, run the following command in python:
+
+```python
+from cryptography.fernet import Fernet;Fernet.generate_key().decode()
+```
+
+Or run the following command in the `autogpt_platform/backend` directory:
+
+```bash
+poetry run cli gen-encrypt-key
+```
+
+Then, replace the existing key in the `autogpt_platform/backend/.env` file with the new one.
