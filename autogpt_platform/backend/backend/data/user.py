@@ -1,16 +1,12 @@
 import logging
 from typing import Optional, cast
 
-from autogpt_libs.integration_credentials_store.types import (
-    UserIntegrations,
-    UserMetadata,
-    UserMetadataRaw,
-)
 from fastapi import HTTPException
 from prisma import Json
 from prisma.models import User
 
 from backend.data.db import prisma
+from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
 from backend.util.encryption import JSONCryptor
 
 logger = logging.getLogger(__name__)

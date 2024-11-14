@@ -703,9 +703,7 @@ class ExecutionManager(AppService):
         return settings.config.execution_manager_port
 
     def run_service(self):
-        from autogpt_libs.integration_credentials_store import (
-            IntegrationCredentialsStore,
-        )
+        from backend.data.credential_store import IntegrationCredentialsStore
 
         self.credentials_store = IntegrationCredentialsStore(redis=redis.get_redis())
         self.executor = ProcessPoolExecutor(

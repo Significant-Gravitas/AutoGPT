@@ -1,15 +1,15 @@
 import logging
 from typing import Annotated, Literal
 
-from autogpt_libs.integration_credentials_store.types import (
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
+from pydantic import BaseModel, Field, SecretStr
+
+from backend.data.model import (
     APIKeyCredentials,
     Credentials,
     CredentialsType,
     OAuth2Credentials,
 )
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, SecretStr
-
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings

@@ -11,15 +11,15 @@ if TYPE_CHECKING:
 from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
-from .types import (
+from backend.util.settings import Settings
+
+from .model import (
     APIKeyCredentials,
     Credentials,
     OAuth2Credentials,
     OAuthState,
     UserIntegrations,
 )
-
-from backend.util.settings import Settings
 
 settings = Settings()
 

@@ -15,13 +15,17 @@ from typing import (
 
 import jsonref
 import jsonschema
-from autogpt_libs.integration_credentials_store.types import Credentials
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
 from backend.util import json
 
-from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
+from .model import (
+    CREDENTIALS_FIELD_NAME,
+    ContributorDetails,
+    Credentials,
+    CredentialsMetaInput,
+)
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.

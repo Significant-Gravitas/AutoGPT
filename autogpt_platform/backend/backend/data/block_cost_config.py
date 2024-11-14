@@ -1,17 +1,5 @@
 from typing import Type
 
-from autogpt_libs.integration_credentials_store.store import (
-    anthropic_credentials,
-    did_credentials,
-    groq_credentials,
-    ideogram_credentials,
-    jina_credentials,
-    openai_credentials,
-    replicate_credentials,
-    revid_credentials,
-    unreal_credentials,
-)
-
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.ideogram import IdeogramModelBlock
@@ -32,6 +20,17 @@ from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.data.block import Block
 from backend.data.cost import BlockCost, BlockCostType
+from backend.data.credential_store import (
+    anthropic_credentials,
+    did_credentials,
+    groq_credentials,
+    ideogram_credentials,
+    jina_credentials,
+    openai_credentials,
+    replicate_credentials,
+    revid_credentials,
+    unreal_credentials,
+)
 
 # =============== Configure the cost for each LLM Model call =============== #
 
