@@ -110,6 +110,13 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     # OpenRouter models
     GEMINI_FLASH_1_5_8B = "google/gemini-flash-1.5"
+    GEMINI_FLASH_1_5_EXP = "google/gemini-flash-1.5-exp"
+    GROK_BETA = "x-ai/grok-beta"
+    MISTRAL_NEMO = "mistralai/mistral-nemo"
+    COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
+    COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
+    EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
+    DEEPSEEK_CHAT = "deepseek/deepseek-chat"    
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -145,6 +152,13 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
     LlmModel.GEMINI_FLASH_1_5_8B: ModelMetadata("open_router", 8192),
+    LlmModel.GEMINI_FLASH_1_5_EXP: ModelMetadata("open_router", 8192),
+    LlmModel.GROK_BETA: ModelMetadata("open_router", 8192),
+    LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 4000),
+    LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 4000),
+    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 4000),
+    LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 4000),
+    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 8192),
 }
 
 for model in LlmModel:
@@ -372,6 +386,13 @@ class AIStructuredResponseGeneratorBlock(Block):
                 messages=prompt,  # type: ignore
                 max_tokens=max_tokens,
             )
+
+            # If there's no response, raise an error
+            if not response.choices:
+                if response:
+                    raise ValueError(f"OpenRouter error: {response}")
+                else:
+                    raise ValueError("No response from OpenRouter.")
 
             return (
                 response.choices[0].message.content or "",
