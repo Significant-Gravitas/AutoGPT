@@ -452,14 +452,18 @@ async def create_schedule(
     }
 
 
+class ScheduleUpdateRequest(TypedDict):
+    is_enabled: bool
+
+
 @v1_router.put(
-    path="/graphs/schedules/{schedule_id}",
+    path="/schedules/{schedule_id}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
 async def update_schedule(
     schedule_id: str,
-    input_data: dict[Any, Any],
+    input_data: ScheduleUpdateRequest,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[Any, Any]:
     is_enabled = input_data.get("is_enabled", False)
@@ -470,14 +474,18 @@ async def update_schedule(
 
 
 @v1_router.get(
-    path="/graphs/{graph_id}/schedules",
-    tags=["graphs"],
+    path="/schedules",
+    tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
 async def get_execution_schedules(
-    graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
+    graph_id: str | None = None,
 ) -> list[scheduler.JobInfo]:
-    return execution_scheduler_client().get_execution_schedules(graph_id, user_id)
+    return execution_scheduler_client().get_execution_schedules(
+        user_id=user_id,
+        graph_id=graph_id,
+    )
 
 
 ########################################################

@@ -155,14 +155,16 @@ class ExecutionScheduler(AppService):
         return schedule_id
 
     @expose
-    def get_execution_schedules(self, graph_id: str, user_id: str) -> list[JobInfo]:
+    def get_execution_schedules(
+        self, graph_id: str | None = None, user_id: str | None = None
+    ) -> list[JobInfo]:
         schedules = []
         for job in self.scheduler.get_jobs():
             job_args = JobArgs(**job.kwargs)
             if (
-                job_args.graph_id == graph_id
-                and job_args.user_id == user_id
-                and job.next_run_time is not None
+                job.next_run_time is not None
+                and (graph_id is None or job_args.graph_id == graph_id)
+                and (user_id is None or job_args.user_id == user_id)
             ):
                 schedules.append(
                     JobInfo(
