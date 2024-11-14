@@ -2,9 +2,9 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime
 
-from autogpt_libs.supabase_integration_credentials_store import (
+from autogpt_libs.integration_credentials_store import (
     Credentials,
-    SupabaseIntegrationCredentialsStore,
+    IntegrationCredentialsStore,
 )
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
@@ -52,7 +52,7 @@ class IntegrationCredentialsManager:
     def __init__(self):
         redis_conn = redis.get_redis()
         self._locks = RedisKeyedMutex(redis_conn)
-        self.store = SupabaseIntegrationCredentialsStore(redis=redis_conn)
+        self.store = IntegrationCredentialsStore(redis=redis_conn)
 
     def create(self, user_id: str, credentials: Credentials) -> None:
         return self.store.add_creds(user_id, credentials)

@@ -703,13 +703,11 @@ class ExecutionManager(AppService):
         return settings.config.execution_manager_port
 
     def run_service(self):
-        from autogpt_libs.supabase_integration_credentials_store import (
-            SupabaseIntegrationCredentialsStore,
+        from autogpt_libs.integration_credentials_store import (
+            IntegrationCredentialsStore,
         )
 
-        self.credentials_store = SupabaseIntegrationCredentialsStore(
-            redis=redis.get_redis()
-        )
+        self.credentials_store = IntegrationCredentialsStore(redis=redis.get_redis())
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,

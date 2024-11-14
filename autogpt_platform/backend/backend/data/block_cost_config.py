@@ -1,6 +1,6 @@
 from typing import Type
 
-from autogpt_libs.supabase_integration_credentials_store.store import (
+from autogpt_libs.integration_credentials_store.store import (
     anthropic_credentials,
     did_credentials,
     groq_credentials,

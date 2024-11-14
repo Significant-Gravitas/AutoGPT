@@ -5,7 +5,7 @@ from json import JSONDecodeError
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from autogpt_libs.integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 if TYPE_CHECKING:

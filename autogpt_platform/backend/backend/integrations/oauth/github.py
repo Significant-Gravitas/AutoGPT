@@ -2,7 +2,7 @@ import time
 from typing import Optional
 from urllib.parse import urlencode
 
-from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+from autogpt_libs.integration_credentials_store import OAuth2Credentials
 
 from backend.util.request import requests
 

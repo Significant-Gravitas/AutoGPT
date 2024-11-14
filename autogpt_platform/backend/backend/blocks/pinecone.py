@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Literal
 
-from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
+from autogpt_libs.integration_credentials_store import APIKeyCredentials
 from pinecone import Pinecone, ServerlessSpec
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema

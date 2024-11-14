@@ -1,6 +1,6 @@
 from typing import Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import (
+from autogpt_libs.integration_credentials_store.types import (
     APIKeyCredentials,
     OAuth2Credentials,
 )

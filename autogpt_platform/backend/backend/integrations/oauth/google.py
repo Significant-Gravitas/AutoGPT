@@ -1,6 +1,6 @@
 import logging
 
-from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+from autogpt_libs.integration_credentials_store import OAuth2Credentials
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
 )

@@ -1,7 +1,7 @@
 from typing import Literal
 from urllib.parse import quote
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from autogpt_libs.integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.blocks.helpers.http import GetRequest

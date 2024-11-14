@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated, Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import (
+from autogpt_libs.integration_credentials_store.types import (
     APIKeyCredentials,
     Credentials,
     CredentialsType,

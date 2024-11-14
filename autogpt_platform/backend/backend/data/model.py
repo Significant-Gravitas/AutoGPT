@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, ClassVar, Generic, Optional, TypeVar
 
-from autogpt_libs.supabase_integration_credentials_store.types import CredentialsType
+from autogpt_libs.integration_credentials_store.types import CredentialsType
 from pydantic import BaseModel, Field, GetCoreSchemaHandler
 from pydantic_core import (
     CoreSchema,

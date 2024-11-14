@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, cast
 
-from autogpt_libs.supabase_integration_credentials_store.types import (
+from autogpt_libs.integration_credentials_store.types import (
     UserIntegrations,
     UserMetadata,
     UserMetadataRaw,
