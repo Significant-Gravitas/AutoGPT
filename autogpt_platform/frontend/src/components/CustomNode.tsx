@@ -22,6 +22,7 @@ import {
   beautifyString,
   cn,
   getValue,
+  hasNonNullNonObjectValue,
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
@@ -239,7 +240,10 @@ export function CustomNode({
                     nodeId={id}
                     propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
-                    currentValue={getValue(propKey, data.hardcodedValues)}
+                    currentValue={getValue(
+                      getInputPropKey(propKey),
+                      data.hardcodedValues,
+                    )}
                     connections={data.connections}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
@@ -384,9 +388,7 @@ export function CustomNode({
     });
   }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
-  const hasConfigErrors =
-    data.errors &&
-    Object.entries(data.errors).some(([_, value]) => value !== null);
+  const hasConfigErrors = data.errors && hasNonNullNonObjectValue(data.errors);
   const outputData = data.executionResults?.at(-1)?.data;
   const hasOutputError =
     typeof outputData === "object" &&
@@ -396,8 +398,8 @@ export function CustomNode({
   useEffect(() => {
     if (hasConfigErrors) {
       const filteredErrors = Object.fromEntries(
-        Object.entries(data.errors || {}).filter(
-          ([_, value]) => value !== null,
+        Object.entries(data.errors || {}).filter(([, value]) =>
+          hasNonNullNonObjectValue(value),
         ),
       );
       console.error(
