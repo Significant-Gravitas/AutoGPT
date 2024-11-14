@@ -332,9 +332,9 @@ export type AnalyticsDetails = {
 
 // Schedule types
 export type Schedule = {
-  id: string; // schedule id
+  id: string;
   schedule: string; //cron expression
-  graph_id: string; // graph id
+  graph_id: string;
 };
 
 export type ScheduleCreatable = {

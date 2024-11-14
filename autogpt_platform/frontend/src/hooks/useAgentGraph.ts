@@ -890,7 +890,7 @@ export default function useAgentGraph(
             title: "Agent scheduling successful",
           });
 
-          // if schduling is done from the monitor page, then redirect to monitor page after successful scheduling
+          // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
           if (searchParams.get("open_scheduling") === "true") {
             router.push("/");
           }
