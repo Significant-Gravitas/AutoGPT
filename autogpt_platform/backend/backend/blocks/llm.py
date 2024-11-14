@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 #     "ollama": BlockSecret(value=""),
 # }
 
-LLMProviderName = Literal["anthropic", "groq", "openai", "ollama"]
+LLMProviderName = Literal["anthropic", "groq", "openai", "ollama", "open_router"]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -51,7 +51,7 @@ TEST_CREDENTIALS_INPUT = {
 def AICredentialsField() -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
-        provider=["anthropic", "groq", "openai", "ollama"],
+        provider=["anthropic", "groq", "openai", "ollama", "open_router"],
         supported_credential_types={"api_key"},
         discriminator="model",
         discriminator_mapping={
@@ -108,6 +108,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # Ollama models
     OLLAMA_LLAMA3_8B = "llama3"
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
+    # OpenRouter models
+    GEMINI_FLASH_1_5_8B = "google/gemini-flash-1.5"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -142,6 +144,7 @@ MODEL_METADATA = {
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
+    LlmModel.GEMINI_FLASH_1_5_8B: ModelMetadata("open_router", 8192),
 }
 
 for model in LlmModel:
@@ -353,6 +356,27 @@ class AIStructuredResponseGeneratorBlock(Block):
                 response.get("response") or "",
                 response.get("prompt_eval_count") or 0,
                 response.get("eval_count") or 0,
+            )
+        elif provider == "open_router":
+            client = openai.OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=credentials.api_key.get_secret_value(),
+            )
+
+            response = client.chat.completions.create(
+                extra_headers={
+                    "HTTP-Referer": "https://agpt.co",
+                    "X-Title": "AutoGPT",
+                },
+                model=llm_model.value,
+                messages=prompt,
+                max_tokens=max_tokens,
+            )
+
+            return (
+                response.choices[0].message.content or "",
+                response.usage.prompt_tokens if response.usage else 0,
+                response.usage.completion_tokens if response.usage else 0,
             )
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
