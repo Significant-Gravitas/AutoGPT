@@ -3,6 +3,7 @@ import { CustomNode } from "@/components/CustomNode";
 import AutoGPTServerAPI, {
   Block,
   BlockIOSubSchema,
+  BlockUIType,
   Graph,
   Link,
   NodeExecutionResult,
@@ -18,6 +19,7 @@ import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
+import { GraphMeta } from "@/lib/autogpt-server-api";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -36,6 +38,7 @@ export default function useAgentGraph(
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
+  const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
   /**
@@ -93,11 +96,16 @@ export default function useAgentGraph(
     };
   }, [api]);
 
-  // Load available blocks
+  // Load available blocks & flows
   useEffect(() => {
     api
       .getBlocks()
       .then((blocks) => setAvailableNodes(blocks))
+      .catch();
+
+    api
+      .listGraphs()
+      .then((flows) => setAvailableFlows(flows))
       .catch();
   }, [api]);
 
@@ -118,7 +126,7 @@ export default function useAgentGraph(
       const outputSchema = node.data.outputSchema;
       if (!outputSchema) return "unknown";
 
-      const outputHandle = outputSchema.properties[handleId];
+      const outputHandle = outputSchema.properties[handleId] || {};
       if (!("type" in outputHandle)) return "unknown";
       return outputHandle.type;
     },
@@ -137,6 +145,12 @@ export default function useAgentGraph(
           const block = availableNodes.find(
             (block) => block.id === node.block_id,
           )!;
+          const flow =
+            block.uiType == BlockUIType.AGENT
+              ? availableFlows.find(
+                  (flow) => flow.id === node.input_default.graph_id,
+                )
+              : null;
           const newNode: CustomNode = {
             id: node.id,
             type: "custom",
@@ -146,7 +160,7 @@ export default function useAgentGraph(
             },
             data: {
               block_id: block.id,
-              blockType: block.name,
+              blockType: flow?.name || block.name,
               blockCosts: block.costs,
               categories: block.categories,
               description: block.description,
@@ -200,7 +214,7 @@ export default function useAgentGraph(
         return newNodes;
       });
     },
-    [availableNodes, formatEdgeID, getOutputType],
+    [availableNodes, availableFlows, formatEdgeID, getOutputType],
   );
 
   const getFrontendId = useCallback(
@@ -270,6 +284,7 @@ export default function useAgentGraph(
 
   const updateNodesWithExecutionData = useCallback(
     (executionData: NodeExecutionResult) => {
+      if (!executionData.node_id) return;
       if (passDataToBeads) {
         updateEdgeBeads(executionData);
       }
@@ -344,15 +359,19 @@ export default function useAgentGraph(
     });
   }, [updateQueue, nodesSyncedWithSavedAgent, updateNodesWithExecutionData]);
 
-  const validateNodes = useCallback((): boolean => {
-    let isValid = true;
+  const validateNodes = useCallback((): string | null => {
+    let errorMessage = null;
 
     nodes.forEach((node) => {
       const validate = ajv.compile(node.data.inputSchema);
       const errors = {} as { [key: string]: string };
 
       // Validate values against schema using AJV
-      const valid = validate(node.data.hardcodedValues);
+      const inputData =
+        node.data.uiType === BlockUIType.AGENT
+          ? node.data.hardcodedValues?.data || {}
+          : node.data.hardcodedValues || {};
+      const valid = validate(inputData);
       if (!valid) {
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
@@ -370,7 +389,7 @@ export default function useAgentGraph(
             return;
           }
           console.warn("Error", error);
-          isValid = false;
+          errorMessage = error.message || "Invalid input";
           if (path && error.message) {
             const key = path.slice(1);
             console.log("Error", key, error.message);
@@ -402,7 +421,7 @@ export default function useAgentGraph(
       });
     });
 
-    return isValid;
+    return errorMessage;
   }, [nodes]);
 
   // Handle user requests
@@ -415,10 +434,25 @@ export default function useAgentGraph(
     if (saveRunRequest.state === "error") {
       if (saveRunRequest.request === "save") {
         console.error("Error saving agent");
+        toast({
+          variant: "destructive",
+          title: `Error saving agent`,
+          duration: 2000,
+        });
       } else if (saveRunRequest.request === "run") {
+        toast({
+          variant: "destructive",
+          title: `Error saving&running agent`,
+          duration: 2000,
+        });
         console.error(`Error saving&running agent`);
       } else if (saveRunRequest.request === "stop") {
         console.error(`Error stopping agent`);
+        toast({
+          variant: "destructive",
+          title: `Error stopping agent`,
+          duration: 2000,
+        });
       }
       // Reset request
       setSaveRunRequest({
@@ -441,8 +475,14 @@ export default function useAgentGraph(
         });
         // If run was requested, run the agent
       } else if (saveRunRequest.request === "run") {
-        if (!validateNodes()) {
+        const validationError = validateNodes();
+        if (validationError) {
           console.error("Validation failed; aborting run");
+          toast({
+            title: `Validation failed: ${validationError}`,
+            variant: "destructive",
+            duration: 2000,
+          });
           setSaveRunRequest({
             request: "none",
             state: "none",
@@ -652,8 +692,8 @@ export default function useAgentGraph(
 
       const payload = {
         id: savedAgent?.id!,
-        name: agentName || "Agent Name",
-        description: agentDescription || "Agent Description",
+        name: agentName || `New Agent ${new Date().toISOString()}`,
+        description: agentDescription || "",
         nodes: formattedNodes,
         links: links,
       };
@@ -830,6 +870,7 @@ export default function useAgentGraph(
     setAgentDescription,
     savedAgent,
     availableNodes,
+    availableFlows,
     getOutputType,
     requestSave,
     requestSaveAndRun,

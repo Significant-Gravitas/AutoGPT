@@ -125,7 +125,7 @@ def execute_node(
 
     def update_execution(status: ExecutionStatus) -> ExecutionResult:
         exec_update = db_client.update_execution_status(node_exec_id, status)
-        db_client.send_execution_update(exec_update.model_dump())
+        db_client.send_execution_update(exec_update)
         return exec_update
 
     node = db_client.get_node(node_id)
@@ -251,7 +251,7 @@ def _enqueue_next_nodes(
         exec_update = db_client.update_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
         )
-        db_client.send_execution_update(exec_update.model_dump())
+        db_client.send_execution_update(exec_update)
         return NodeExecution(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
@@ -572,10 +572,11 @@ class Executor:
         exec_stats["walltime"] = timing_info.wall_time
         exec_stats["cputime"] = timing_info.cpu_time
         exec_stats["error"] = str(error) if error else None
-        cls.db_client.update_graph_execution_stats(
+        result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             stats=exec_stats,
         )
+        cls.db_client.send_execution_update(result)
 
     @classmethod
     @time_measured
@@ -729,7 +730,7 @@ class ExecutionManager(AppService):
             )
             self.active_graph_runs[graph_exec_id] = (future, cancel_event)
             future.add_done_callback(
-                lambda _: self.active_graph_runs.pop(graph_exec_id)
+                lambda _: self.active_graph_runs.pop(graph_exec_id, None)
             )
 
     def cleanup(self):
@@ -744,11 +745,17 @@ class ExecutionManager(AppService):
 
     @expose
     def add_execution(
-        self, graph_id: str, data: BlockInput, user_id: str
-    ) -> dict[str, Any]:
-        graph: Graph | None = self.db_client.get_graph(graph_id, user_id=user_id)
+        self,
+        graph_id: str,
+        data: BlockInput,
+        user_id: str,
+        graph_version: int | None = None,
+    ) -> GraphExecution:
+        graph: Graph | None = self.db_client.get_graph(
+            graph_id=graph_id, user_id=user_id, version=graph_version
+        )
         if not graph:
-            raise Exception(f"Graph #{graph_id} not found.")
+            raise ValueError(f"Graph #{graph_id} not found.")
 
         graph.validate_graph(for_run=True)
         self._validate_node_input_credentials(graph, user_id)
@@ -770,7 +777,7 @@ class ExecutionManager(AppService):
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
-                raise Exception(error)
+                raise ValueError(error)
             else:
                 nodes_input.append((node.id, input_data))
 
@@ -796,7 +803,7 @@ class ExecutionManager(AppService):
             exec_update = self.db_client.update_execution_status(
                 node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.input_data
             )
-            self.db_client.send_execution_update(exec_update.model_dump())
+            self.db_client.send_execution_update(exec_update)
 
         graph_exec = GraphExecution(
             user_id=user_id,
@@ -806,7 +813,7 @@ class ExecutionManager(AppService):
         )
         self.queue.add(graph_exec)
 
-        return graph_exec.model_dump()
+        return graph_exec
 
     @expose
     def cancel_execution(self, graph_exec_id: str) -> None:
@@ -843,7 +850,7 @@ class ExecutionManager(AppService):
                 exec_update = self.db_client.update_execution_status(
                     node_exec.node_exec_id, ExecutionStatus.FAILED
                 )
-                self.db_client.send_execution_update(exec_update.model_dump())
+                self.db_client.send_execution_update(exec_update)
 
     def _validate_node_input_credentials(self, graph: Graph, user_id: str):
         """Checks all credentials for all nodes of the graph"""
