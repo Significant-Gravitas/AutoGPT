@@ -500,8 +500,9 @@ const FlowEditor: React.FC<{
 
       setViewport(
         {
-          x: -viewportCoordinates.x * 0.8 + window.innerWidth / 2,
-          // Rough estimate of the height of the node is 400px.
+          // Rough estimate of the dimension of the node is: 500x400px.
+          // Though we skip shifting the X, considering the block menu side-bar.
+          x: -viewportCoordinates.x * 0.8 + (window.innerWidth - 0.0) / 2,
           y: -viewportCoordinates.y * 0.8 + (window.innerHeight - 400) / 2,
           zoom: 0.8,
         },
