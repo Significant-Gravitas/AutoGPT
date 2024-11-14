@@ -8,33 +8,33 @@
 
 **Location:** `classic/original_autogpt/` in the GitHub repo
 
-AutoGPT was conceived when OpenAI published their GPT-4 model accompanied by a paper
+**Maintance Notice:** AutoGPT Classic is not supported from a security perspective. 
+Dependencies will not be updated, nor will issues be fixed. If someone wishes to
+contribute to novel development, we will give best effort merging to the changes that
+pass the existing CI.
+
+AutoGPT Classic was conceived when OpenAI published their GPT-4 model accompanied by a paper
 outlining the advanced reasoning and task-solving abilities of the model. The concept
 was (and still is) fairly simple: let an LLM decide what to do over and over, while
 feeding the results of its actions back into the prompt. This allows the program to
 iteratively and incrementally work towards its objective.
 
 The fact that this program is able to execute actions on behalf of its user makes
-it an **agent**. In the case of AutoGPT, the user still has to authorize every action,
+it an **agent**. In the case of AutoGPT Classic, the user still has to authorize every action,
 but as the project progresses we'll be able to give the agent more autonomy and only
 require consent for select actions.
 
-AutoGPT is a **generalist agent**, meaning it is not designed with a specific task in
+AutoGPT Classic is a **generalist agent**, meaning it is not designed with a specific task in
 mind. Instead, it is designed to be able to execute a wide range of tasks across many
 disciplines, as long as it can be done on a computer.
-
-## Coming soon
-* How does AutoGPT work?
-* What can I use AutoGPT for?
-* What does the future of AutoGPT look like?
 
 # AutoGPT Classic Documentation
 
 Welcome to the AutoGPT Classic Documentation.
 
-The AutoGPT project consists of four main components:
+The AutoGPT Classic project consists of four main components:
 
-- The [Agent](#agent) &ndash; also known as just "AutoGPT"
+- The [Agent](#agent) &ndash; also known as just "AutoGPT Classic"
 - The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
 - The [Forge](#forge)
 - The [Frontend](#frontend)
@@ -43,19 +43,21 @@ To tie these together, we also have a [CLI] at the root of the project.
 
 ## 🤖 Agent
 
-**[📖 About AutoGPT](#autogpt-agent)**
+**[📖 About AutoGPT Classic](#autogpt-agent)**
 &ensp;|&ensp;
 **[🔧 Setup](setup/index.md)**
 &ensp;|&ensp;
 **[💻 Usage](./usage.md)**
 
-The heart of AutoGPT, and the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you*.
+The former heart of AutoGPT, and the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you*.
 
 We continue to develop this project with the goal of providing access to AI assistance to the masses, and building the future transparently and together.
 
 - 💡 **Explore** - See what AI can do and be inspired by a glimpse of the future.
 
 - 🚀 **Build with us** - We welcome any input, whether it's code or ideas for new features or improvements! Join us on [Discord](https://discord.gg/autogpt) and find out how you can join in on the action.
+
+If you'd like to see what's next, check out the [AutoGPT Platform](/).
 
 <small>* it isn't quite there yet, but that is the ultimate goal that we are still pursuing</small>
 
@@ -65,13 +67,13 @@ We continue to develop this project with the goal of providing access to AI assi
 
 **[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md)**
 
-Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
+Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT Classic and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
 <!-- TODO: insert visual demonstrating the benchmark -->
 
 - 📦 [**`agbenchmark`**](https://pypi.org/project/agbenchmark/) on Pypi
 
-- 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
+- 🔌 **Agent Protocol Standardization** - AutoGPT Classic uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
 
 ---
 
@@ -104,7 +106,7 @@ An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
 ## 🔧 CLI
 [CLI]: #cli
 
-The project CLI makes it easy to use all of the components in the repo, separately or
+The project CLI makes it easy to use all of the components of AutoGPT Classic in the repo, separately or
 together. To install its dependencies, simply run `./run setup`, and you're ready to go!
 
 ```shell
@@ -122,7 +124,7 @@ Commands:
 
 Common commands:
 
-* `./run agent start autogpt` &ndash; [runs](./usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT agent
+* `./run agent start autogpt` &ndash; [runs](./usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT Classic agent
 * `./run agent create <name>` &ndash; creates a new Forge-based agent project at `agents/<name>`
 * `./run benchmark start <agent>` &ndash; benchmarks the specified agent
 

@@ -34,6 +34,7 @@ class BlockType(Enum):
     INPUT = "Input"
     OUTPUT = "Output"
     NOTE = "Note"
+    AGENT = "Agent"
 
 
 class BlockCategory(Enum):
@@ -48,6 +49,7 @@ class BlockCategory(Enum):
     COMMUNICATION = "Block that interacts with communication platforms."
     DEVELOPER_TOOLS = "Developer tools such as GitHub blocks."
     DATA = "Block that interacts with structured data."
+    AGENT = "Block that interacts with other agents."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -299,7 +301,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         ):
             if output_name == "error":
                 raise RuntimeError(output_data)
-            if error := self.output_schema.validate_field(output_name, output_data):
+            if self.block_type == BlockType.STANDARD and (
+                error := self.output_schema.validate_field(output_name, output_data)
+            ):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
 

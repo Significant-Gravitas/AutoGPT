@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 
 from backend.data import redis
 from backend.data.queue import AsyncRedisExecutionEventBus
@@ -30,15 +30,6 @@ async def lifespan(app: FastAPI):
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
-
-logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.config.backend_cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 def get_connection_manager():
@@ -176,8 +167,16 @@ async def websocket_router(
 
 class WebsocketServer(AppProcess):
     def run(self):
+        logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
+        server_app = CORSMiddleware(
+            app=app,
+            allow_origins=settings.config.backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         uvicorn.run(
-            app,
+            server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
         )
