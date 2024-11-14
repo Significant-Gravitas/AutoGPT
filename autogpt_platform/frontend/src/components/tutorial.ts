@@ -112,7 +112,7 @@ export const startTutorial = (
   function handleMouseUp(event: { target: any }) {
     const target = event.target;
     const validConnectionPoint = document.querySelector(
-      '[data-testid^="rf__node-"]:nth-child(2) [data-id$="-a-target"]'
+      '[data-testid^="rf__node-"]:nth-child(2) [data-id$="-a-target"]',
     );
 
     if (validConnectionPoint && !validConnectionPoint.contains(target)) {
@@ -444,7 +444,8 @@ export const startTutorial = (
     ],
     beforeShowPromise: () => {
       return waitForElement(
-        '[data-testid^="rf__node-"]:first-child [data-id$="-result-source"]');
+        '[data-testid^="rf__node-"]:first-child [data-id$="-result-source"]',
+      );
     },
     when: {
       show: () => {
@@ -452,7 +453,7 @@ export const startTutorial = (
         resetConnectionState(); // Reset state when revisiting this step
         tour.modal.show();
         const outputPin = document.querySelector(
-          '[data-testid^="rf__node-"]:first-child [data-id$="-result-source"]'
+          '[data-testid^="rf__node-"]:first-child [data-id$="-result-source"]',
         );
         if (outputPin) {
           outputPin.addEventListener("mousedown", handleMouseDown);
@@ -460,7 +461,7 @@ export const startTutorial = (
       },
       hide: () => {
         const outputPin = document.querySelector(
-          '[data-testid^="rf__node-"]:first-child [data-id$="-result-source"]'
+          '[data-testid^="rf__node-"]:first-child [data-id$="-result-source"]',
         );
         if (outputPin) {
           outputPin.removeEventListener("mousedown", handleMouseDown);
@@ -479,7 +480,9 @@ export const startTutorial = (
     },
     buttons: [],
     beforeShowPromise: () => {
-      return waitForElement('[data-testid^="rf__node-"]:nth-child(2) [data-id$="-a-target"]').then(() => {
+      return waitForElement(
+        '[data-testid^="rf__node-"]:nth-child(2) [data-id$="-a-target"]',
+      ).then(() => {
         detectConnection();
       });
     },
