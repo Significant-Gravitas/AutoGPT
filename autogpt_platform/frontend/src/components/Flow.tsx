@@ -27,11 +27,7 @@ import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
 import { BlockUIType, Link } from "@/lib/autogpt-server-api";
-import {
-  getTypeColor,
-  filterBlocksByType,
-  findNewlyAddedBlockCoordinates,
-} from "@/lib/utils";
+import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -48,7 +44,6 @@ import RunnerUIWrapper, {
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
-import { forceLoad } from "@sentry/nextjs";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
@@ -86,8 +81,6 @@ const FlowEditor: React.FC<{
     setViewport,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
-  const [copiedNodes, setCopiedNodes] = useState<CustomNode[]>([]);
-  const [copiedEdges, setCopiedEdges] = useState<CustomEdge[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
@@ -99,6 +92,7 @@ const FlowEditor: React.FC<{
     setAgentDescription,
     savedAgent,
     availableNodes,
+    availableFlows,
     getOutputType,
     requestSave,
     requestSaveAndRun,
@@ -416,8 +410,37 @@ const FlowEditor: React.FC<{
 
   const { x, y, zoom } = useViewport();
 
+  // Set the initial view port to center the canvas.
+  useEffect(() => {
+    if (nodes.length <= 0 || x !== 0 || y !== 0) {
+      return;
+    }
+
+    const topLeft = { x: Infinity, y: Infinity };
+    const bottomRight = { x: -Infinity, y: -Infinity };
+
+    nodes.forEach((node) => {
+      const { x, y } = node.position;
+      topLeft.x = Math.min(topLeft.x, x);
+      topLeft.y = Math.min(topLeft.y, y);
+      // Rough estimate of the width and height of the node: 500x400.
+      bottomRight.x = Math.max(bottomRight.x, x + 500);
+      bottomRight.y = Math.max(bottomRight.y, y + 400);
+    });
+
+    const centerX = (topLeft.x + bottomRight.x) / 2;
+    const centerY = (topLeft.y + bottomRight.y) / 2;
+    const zoom = 0.8;
+
+    setViewport({
+      x: window.innerWidth / 2 - centerX * zoom,
+      y: window.innerHeight / 2 - centerY * zoom,
+      zoom: zoom,
+    });
+  }, [nodes, setViewport, x, y]);
+
   const addNode = useCallback(
-    (blockId: string, nodeType: string) => {
+    (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
@@ -440,14 +463,14 @@ const FlowEditor: React.FC<{
           ? // we will get all the dimension of nodes, then store
             findNewlyAddedBlockCoordinates(
               nodeDimensions,
-              (nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500) / zoom,
-              60 / zoom,
-              zoom,
+              nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
+              60,
+              1.0,
             )
           : // we will get all the dimension of nodes, then store
             {
-              x: (window.innerWidth / 2 - x) / zoom,
-              y: (window.innerHeight / 2 - y) / zoom,
+              x: window.innerWidth / 2 - x,
+              y: window.innerHeight / 2 - y,
             };
 
       const newNode: CustomNode = {
@@ -462,7 +485,7 @@ const FlowEditor: React.FC<{
           categories: nodeSchema.categories,
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: {},
+          hardcodedValues: hardcodedValues,
           connections: [],
           isOutputOpen: false,
           block_id: blockId,
@@ -477,8 +500,10 @@ const FlowEditor: React.FC<{
 
       setViewport(
         {
-          x: -viewportCoordinates.x * zoom + window.innerWidth / 2,
-          y: -viewportCoordinates.y * zoom + window.innerHeight / 2 - 100,
+          // Rough estimate of the dimension of the node is: 500x400px.
+          // Though we skip shifting the X, considering the block menu side-bar.
+          x: -viewportCoordinates.x * 0.8 + (window.innerWidth - 0.0) / 2,
+          y: -viewportCoordinates.y * 0.8 + (window.innerHeight - 400) / 2,
           zoom: 0.8,
         },
         { duration: 500 },
@@ -501,7 +526,6 @@ const FlowEditor: React.FC<{
       clearNodesStatusAndOutput,
       x,
       y,
-      zoom,
     ],
   );
 
@@ -618,6 +642,7 @@ const FlowEditor: React.FC<{
                 pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
                 blocks={availableNodes}
                 addBlock={addNode}
+                flows={availableFlows}
               />
             }
             botChildren={

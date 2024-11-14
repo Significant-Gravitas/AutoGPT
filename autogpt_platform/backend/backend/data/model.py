@@ -151,11 +151,22 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     type: CT
 
 
+class CredentialsFieldSchemaExtra(BaseModel, Generic[CP, CT]):
+    # TODO: move discrimination mechanism out of CredentialsField (frontend + backend)
+    credentials_provider: list[CP]
+    credentials_scopes: Optional[list[str]]
+    credentials_types: list[CT]
+    discriminator: Optional[str] = None
+    discriminator_mapping: Optional[dict[str, CP]] = None
+
+
 def CredentialsField(
-    provider: CP,
+    provider: CP | list[CP],
     supported_credential_types: set[CT],
     required_scopes: set[str] = set(),
     *,
+    discriminator: Optional[str] = None,
+    discriminator_mapping: Optional[dict[str, Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
@@ -164,20 +175,21 @@ def CredentialsField(
     `CredentialsField` must and can only be used on fields named `credentials`.
     This is enforced by the `BlockSchema` base class.
     """
-    json_extra = {
-        k: v
-        for k, v in {
-            "credentials_provider": provider,
-            "credentials_scopes": list(required_scopes) or None,  # omit if empty
-            "credentials_types": list(supported_credential_types),
-        }.items()
-        if v is not None
-    }
+    if not isinstance(provider, str) and len(provider) > 1 and not discriminator:
+        raise TypeError("Multi-provider CredentialsField requires discriminator!")
+
+    field_schema_extra = CredentialsFieldSchemaExtra[CP, CT](
+        credentials_provider=[provider] if isinstance(provider, str) else provider,
+        credentials_scopes=list(required_scopes) or None,  # omit if empty
+        credentials_types=list(supported_credential_types),
+        discriminator=discriminator,
+        discriminator_mapping=discriminator_mapping,
+    )
 
     return Field(
         title=title,
         description=description,
-        json_schema_extra=json_extra,
+        json_schema_extra=field_schema_extra.model_dump(exclude_none=True),
         **kwargs,
     )
 
