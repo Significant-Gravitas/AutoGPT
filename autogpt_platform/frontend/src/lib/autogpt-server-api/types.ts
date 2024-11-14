@@ -98,16 +98,18 @@ export type CredentialsType = "api_key" | "oauth2";
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  ANTHROPIC: "anthropic",
   D_ID: "d_id",
   DISCORD: "discord",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
+  GROQ: "groq",
   IDEOGRAM: "ideogram",
   JINA: "jina",
-  LLM: "llm",
   MEDIUM: "medium",
   NOTION: "notion",
+  OLLAMA: "ollama",
   OPENAI: "openai",
   OPENWEATHERMAP: "openweathermap",
   PINECONE: "pinecone",
@@ -121,9 +123,12 @@ export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: CredentialsProviderName;
+  /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
+  credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
+  discriminator?: string;
+  discriminator_mapping?: { [key: string]: CredentialsProviderName };
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
