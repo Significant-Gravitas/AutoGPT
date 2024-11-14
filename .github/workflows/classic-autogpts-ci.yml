@@ -64,6 +64,7 @@ jobs:
           ./run agent start ${{ matrix.agent-name }}
           cd ${{ matrix.agent-name }}
           poetry run agbenchmark --mock --test=BasicRetrieval --test=Battleship --test=WebArenaTask_0
+          poetry run agbenchmark --test=WriteFile
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
