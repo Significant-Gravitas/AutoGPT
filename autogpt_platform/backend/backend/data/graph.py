@@ -9,6 +9,7 @@ from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeL
 from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockInput, BlockType, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
@@ -174,23 +175,34 @@ class Graph(BaseDbModel):
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
 
-    def reassign_ids(self, reassign_graph_id: bool = False):
+    def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
         """
-        self.validate_graph()
 
+        # Reassign Graph ID
         id_map = {node.id: str(uuid.uuid4()) for node in self.nodes}
         if reassign_graph_id:
             self.id = str(uuid.uuid4())
 
+        # Reassign Node IDs
         for node in self.nodes:
             node.id = id_map[node.id]
 
+        # Reassign Link IDs
         for link in self.links:
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
+
+        # Reassign User IDs for agent blocks
+        for node in self.nodes:
+            if node.block_id != AgentExecutorBlock().id:
+                continue
+            node.input_default["user_id"] = user_id
+            node.input_default.setdefault("data", {})
+
+        self.validate_graph()
 
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
@@ -215,6 +227,7 @@ class Graph(BaseDbModel):
                     for_run  # Skip input completion validation, unless when executing.
                     or block.block_type == BlockType.INPUT
                     or block.block_type == BlockType.OUTPUT
+                    or block.block_type == BlockType.AGENT
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
@@ -248,17 +261,25 @@ class Graph(BaseDbModel):
                     )
 
                 sanitized_name = sanitize(name)
+                vals = node.input_default
                 if i == 0:
-                    fields = f"Valid output fields: {block.output_schema.get_fields()}"
+                    fields = (
+                        block.output_schema.get_fields()
+                        if block.block_type != BlockType.AGENT
+                        else vals.get("output_schema", {}).get("properties", {}).keys()
+                    )
                 else:
-                    fields = f"Valid input fields: {block.input_schema.get_fields()}"
+                    fields = (
+                        block.input_schema.get_fields()
+                        if block.block_type != BlockType.AGENT
+                        else vals.get("input_schema", {}).get("properties", {}).keys()
+                    )
                 if sanitized_name not in fields:
-                    raise ValueError(f"{suffix}, `{name}` invalid, {fields}")
+                    fields_msg = f"Allowed fields: {fields}"
+                    raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
 
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
-
-            # TODO: Add type compatibility check here.
 
     @staticmethod
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
