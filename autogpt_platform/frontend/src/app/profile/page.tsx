@@ -4,17 +4,14 @@ import { useSupabase } from "@/components/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext } from "react";
+import { useCallback, useContext, useMemo } from "react";
 import { FaSpinner } from "react-icons/fa";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { LogOutIcon, Trash2Icon } from "lucide-react";
 import { providerIcons } from "@/components/integrations/credentials-input";
-import {
-  CredentialsProviderName,
-  CredentialsProvidersContext,
-} from "@/components/integrations/credentials-provider";
+import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import {
   Table,
   TableBody,
@@ -23,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 
 export default function PrivatePage() {
   const { user, isLoading, error } = useUser();
@@ -62,7 +60,24 @@ export default function PrivatePage() {
     [providers, toast],
   );
 
-  if (isLoading || !providers || !providers) {
+  //TODO: remove when the way system credentials are handled is updated
+  // This contains ids for built-in "Use Credits for X" credentials
+  const hiddenCredentials = useMemo(
+    () => [
+      "fdb7f412-f519-48d1-9b5f-d2f73d0e01fe", // Revid
+      "760f84fc-b270-42de-91f6-08efe1b512d0", // Ideogram
+      "6b9fc200-4726-4973-86c9-cd526f5ce5db", // Replicate
+      "53c25cb8-e3ee-465c-a4d1-e75a4c899c2a", // OpenAI
+      "24e5d942-d9e3-4798-8151-90143ee55629", // Anthropic
+      "4ec22295-8f97-4dd1-b42b-2c6957a02545", // Groq
+      "7f7b0654-c36b-4565-8fa7-9a52575dfae2", // D-ID
+      "7f26de70-ba0d-494e-ba76-238e65e7b45f", // Jina
+      "66f20754-1b81-48e4-91d0-f4f0dd82145f", // Unreal Speech
+    ],
+    [],
+  );
+
+  if (isLoading || !providers) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
@@ -76,15 +91,15 @@ export default function PrivatePage() {
   }
 
   const allCredentials = Object.values(providers).flatMap((provider) =>
-    [...provider.savedOAuthCredentials, ...provider.savedApiKeys].map(
-      (credentials) => ({
+    [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+      .filter((cred) => !hiddenCredentials.includes(cred.id))
+      .map((credentials) => ({
         ...credentials,
         provider: provider.provider,
         providerName: provider.providerName,
         ProviderIcon: providerIcons[provider.provider],
         TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
-      }),
-    ),
+      })),
   );
 
   return (

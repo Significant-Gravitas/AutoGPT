@@ -233,7 +233,9 @@ class AgentOutputBlock(Block):
         )
         name: str = SchemaField(description="The name of the output.")
         title: str | None = SchemaField(
-            description="The title of the input.", default=None, advanced=True
+            description="The title of the output.",
+            default=None,
+            advanced=True,
         )
         description: str | None = SchemaField(
             description="The description of the output.",
@@ -262,7 +264,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description=("Stores the output of the graph for users to see."),
+            description="Stores the output of the graph for users to see.",
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[

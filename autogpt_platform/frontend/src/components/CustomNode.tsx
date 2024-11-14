@@ -18,7 +18,14 @@ import {
   BlockUIType,
   BlockCost,
 } from "@/lib/autogpt-server-api/types";
-import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
+import {
+  beautifyString,
+  cn,
+  getValue,
+  hasNonNullNonObjectValue,
+  parseKeys,
+  setNestedProperty,
+} from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { history } from "./history";
@@ -34,9 +41,12 @@ import NodeOutputs from "./NodeOutputs";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { DotsVerticalIcon, TrashIcon, CopyIcon } from "@radix-ui/react-icons";
-
-type ParsedKey = { key: string; index?: number };
+import {
+  DotsVerticalIcon,
+  TrashIcon,
+  CopyIcon,
+  ExitIcon,
+} from "@radix-ui/react-icons";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -92,6 +102,14 @@ export function CustomNode({
   >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
+  let nodeFlowId = "";
+
+  if (data.uiType === BlockUIType.AGENT) {
+    // Display the graph's schema instead AgentExecutorBlock's schema.
+    data.inputSchema = data.hardcodedValues?.input_schema || {};
+    data.outputSchema = data.hardcodedValues?.output_schema || {};
+    nodeFlowId = data.hardcodedValues?.graph_id || nodeFlowId;
+  }
 
   if (!flowContext) {
     throw new Error("FlowContext consumer must be inside FlowEditor component");
@@ -163,38 +181,6 @@ export function CustomNode({
     if (!schema?.properties) return null;
     let keys = Object.entries(schema.properties);
     switch (nodeType) {
-      case BlockUIType.INPUT:
-        // For INPUT blocks, dont include connection handles
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} data-id={`input-handle-${propKey}`}>
-                <span className="text-m green mb-0 text-gray-900">
-                  {propSchema.title || beautifyString(propKey)}
-                </span>
-                <div key={propKey}>
-                  {!isConnected && (
-                    <NodeGenericInputField
-                      nodeId={id}
-                      propKey={propKey}
-                      propSchema={propSchema}
-                      currentValue={getValue(propKey)}
-                      connections={data.connections}
-                      handleInputChange={handleInputChange}
-                      handleInputClick={handleInputClick}
-                      errors={data.errors ?? {}}
-                      displayName={propSchema.title || beautifyString(propKey)}
-                    />
-                  )}
-                </div>
-              </div>
-            )
-          );
-        });
-
       case BlockUIType.NOTE:
         // For NOTE blocks, don't render any input handles
         const [noteKey, noteSchema] = keys[0];
@@ -204,7 +190,7 @@ export function CustomNode({
               className=""
               selfKey={noteKey}
               schema={noteSchema as BlockIOStringSubSchema}
-              value={getValue(noteKey)}
+              value={getValue(noteKey, data.hardcodedValues)}
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               error={data.errors?.[noteKey] ?? ""}
@@ -213,59 +199,25 @@ export function CustomNode({
           </div>
         );
 
-      case BlockUIType.OUTPUT:
-        // For OUTPUT blocks, only show the 'value' property
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} data-id={`output-handle-${propKey}`}>
-                {propKey !== "value" ? (
-                  <span className="text-m green mb-0 text-gray-900">
-                    {propSchema.title || beautifyString(propKey)}
-                  </span>
-                ) : (
-                  <NodeHandle
-                    keyName={propKey}
-                    isConnected={isConnected}
-                    isRequired={isRequired}
-                    schema={propSchema}
-                    side="left"
-                  />
-                )}
-                {!isConnected && (
-                  <NodeGenericInputField
-                    nodeId={id}
-                    propKey={propKey}
-                    propSchema={propSchema}
-                    currentValue={getValue(propKey)}
-                    connections={data.connections}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                    errors={data.errors ?? {}}
-                    displayName={propSchema.title || beautifyString(propKey)}
-                  />
-                )}
-              </div>
-            )
-          );
-        });
-
       default:
+        const getInputPropKey = (key: string) =>
+          nodeType == BlockUIType.AGENT ? `data.${key}` : key;
+
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
           const isConnected = isHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
+          const isConnectable =
+            // No input connection handles for credentials
+            propKey !== "credentials" &&
+            // No input connection handles on INPUT blocks
+            nodeType !== BlockUIType.INPUT &&
+            // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
+            !(nodeType == BlockUIType.OUTPUT && propKey == "name");
           return (
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
-                {"credentials_provider" in propSchema ? (
-                  <span className="text-m green mb-0 text-gray-900">
-                    Credentials
-                  </span>
-                ) : (
+                {isConnectable ? (
                   <NodeHandle
                     keyName={propKey}
                     isConnected={isConnected}
@@ -273,13 +225,25 @@ export function CustomNode({
                     schema={propSchema}
                     side="left"
                   />
+                ) : (
+                  propKey != "credentials" && (
+                    <span
+                      className="text-m green mb-0 text-gray-900"
+                      title={propSchema.description}
+                    >
+                      {propSchema.title || beautifyString(propKey)}
+                    </span>
+                  )
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
                     nodeId={id}
-                    propKey={propKey}
+                    propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
-                    currentValue={getValue(propKey)}
+                    currentValue={getValue(
+                      getInputPropKey(propKey),
+                      data.hardcodedValues,
+                    )}
                     connections={data.connections}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
@@ -318,8 +282,6 @@ export function CustomNode({
       current[lastKey.key] = value;
     }
 
-    // console.log(`Updating hardcoded values for node ${id}:`, newValues);
-
     if (!isInitialSetup.current) {
       history.push({
         type: "UPDATE_INPUT",
@@ -334,48 +296,6 @@ export function CustomNode({
     // Remove error with the same key
     setNestedProperty(errors, path, null);
     setErrors({ ...errors });
-  };
-
-  // Helper function to parse keys with array indices
-  //TODO move to utils
-  const parseKeys = (key: string): ParsedKey[] => {
-    const splits = key.split(/_@_|_#_|_\$_|\./);
-    const keys: ParsedKey[] = [];
-    let currentKey: string | null = null;
-
-    splits.forEach((split) => {
-      const isInteger = /^\d+$/.test(split);
-      if (!isInteger) {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey });
-        }
-        currentKey = split;
-      } else {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey, index: parseInt(split, 10) });
-          currentKey = null;
-        } else {
-          throw new Error("Invalid key format: array index without a key");
-        }
-      }
-    });
-
-    if (currentKey !== null) {
-      keys.push({ key: currentKey });
-    }
-
-    return keys;
-  };
-
-  const getValue = (key: string) => {
-    const keys = parseKeys(key);
-    return keys.reduce((acc, k) => {
-      if (acc === undefined) return undefined;
-      if (k.index !== undefined) {
-        return Array.isArray(acc[k.key]) ? acc[k.key][k.index] : undefined;
-      }
-      return acc[k.key];
-    }, data.hardcodedValues as any);
   };
 
   const isHandleConnected = (key: string) => {
@@ -400,7 +320,7 @@ export function CustomNode({
   const handleInputClick = (key: string) => {
     console.debug(`Opening modal for key: ${key}`);
     setActiveKey(key);
-    const value = getValue(key);
+    const value = getValue(key, data.hardcodedValues);
     setInputModalValue(
       typeof value === "object" ? JSON.stringify(value, null, 2) : value,
     );
@@ -468,9 +388,7 @@ export function CustomNode({
     });
   }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
-  const hasConfigErrors =
-    data.errors &&
-    Object.entries(data.errors).some(([_, value]) => value !== null);
+  const hasConfigErrors = data.errors && hasNonNullNonObjectValue(data.errors);
   const outputData = data.executionResults?.at(-1)?.data;
   const hasOutputError =
     typeof outputData === "object" &&
@@ -480,8 +398,8 @@ export function CustomNode({
   useEffect(() => {
     if (hasConfigErrors) {
       const filteredErrors = Object.fromEntries(
-        Object.entries(data.errors || {}).filter(
-          ([_, value]) => value !== null,
+        Object.entries(data.errors || {}).filter(([, value]) =>
+          hasNonNullNonObjectValue(value),
         ),
       );
       console.error(
@@ -587,6 +505,15 @@ export function CustomNode({
         <CopyIcon className="mr-2 h-5 w-5" />
         <span>Copy</span>
       </ContextMenu.Item>
+      {nodeFlowId && (
+        <ContextMenu.Item
+          onSelect={() => window.open(`/build?flowID=${nodeFlowId}`)}
+          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+        >
+          <ExitIcon className="mr-2 h-5 w-5" />
+          <span>Open agent</span>
+        </ContextMenu.Item>
+      )}
       <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
       <ContextMenu.Item
         onSelect={deleteNode}
