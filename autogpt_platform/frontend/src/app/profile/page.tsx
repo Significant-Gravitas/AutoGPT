@@ -71,6 +71,8 @@ export default function PrivatePage() {
       "24e5d942-d9e3-4798-8151-90143ee55629", // Anthropic
       "4ec22295-8f97-4dd1-b42b-2c6957a02545", // Groq
       "7f7b0654-c36b-4565-8fa7-9a52575dfae2", // D-ID
+      "7f26de70-ba0d-494e-ba76-238e65e7b45f", // Jina
+      "66f20754-1b81-48e4-91d0-f4f0dd82145f", // Unreal Speech
     ],
     [],
   );
