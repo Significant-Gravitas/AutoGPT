@@ -322,7 +322,7 @@ const NodeCredentialsInput: FC<{
 };
 
 const InputRef = (value: any): ((el: HTMLInputElement | null) => void) => {
-  return (el) => el && value && (el.value = value);
+  return (el) => el && value != null && (el.value = value);
 };
 
 const NodeKeyValueInput: FC<{
@@ -608,7 +608,15 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= schema.default || "";
+  if (!value) {
+    value = schema.default || "";
+    // Force update hardcodedData so discriminators can update
+    // e.g. credentials update when provider changes
+    // this won't happen if the value is only set here to schema.default
+    if (schema.default) {
+      handleInputChange(selfKey, value);
+    }
+  }
   return (
     <div className={className}>
       {schema.enum ? (

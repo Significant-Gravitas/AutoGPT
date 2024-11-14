@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "next lint && prettier --check .",
     "format": "prettier --write .",
+    "type-check": "tsc --noEmit",
     "test": "playwright test",
     "test-ui": "playwright test --ui",
     "gentests": "playwright codegen http://localhost:3000",

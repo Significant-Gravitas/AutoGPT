@@ -359,15 +359,19 @@ export default function useAgentGraph(
     });
   }, [updateQueue, nodesSyncedWithSavedAgent, updateNodesWithExecutionData]);
 
-  const validateNodes = useCallback((): boolean => {
-    let isValid = true;
+  const validateNodes = useCallback((): string | null => {
+    let errorMessage = null;
 
     nodes.forEach((node) => {
       const validate = ajv.compile(node.data.inputSchema);
       const errors = {} as { [key: string]: string };
 
       // Validate values against schema using AJV
-      const valid = validate(node.data.hardcodedValues);
+      const inputData =
+        node.data.uiType === BlockUIType.AGENT
+          ? node.data.hardcodedValues?.data || {}
+          : node.data.hardcodedValues || {};
+      const valid = validate(inputData);
       if (!valid) {
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
@@ -385,7 +389,7 @@ export default function useAgentGraph(
             return;
           }
           console.warn("Error", error);
-          isValid = false;
+          errorMessage = error.message || "Invalid input";
           if (path && error.message) {
             const key = path.slice(1);
             console.log("Error", key, error.message);
@@ -417,7 +421,7 @@ export default function useAgentGraph(
       });
     });
 
-    return isValid;
+    return errorMessage;
   }, [nodes]);
 
   // Handle user requests
@@ -471,10 +475,11 @@ export default function useAgentGraph(
         });
         // If run was requested, run the agent
       } else if (saveRunRequest.request === "run") {
-        if (!validateNodes()) {
+        const validationError = validateNodes();
+        if (validationError) {
           console.error("Validation failed; aborting run");
           toast({
-            title: "Invalid credentials or inputs",
+            title: `Validation failed: ${validationError}`,
             variant: "destructive",
             duration: 2000,
           });
