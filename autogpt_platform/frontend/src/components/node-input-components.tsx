@@ -322,7 +322,7 @@ const NodeCredentialsInput: FC<{
 };
 
 const InputRef = (value: any): ((el: HTMLInputElement | null) => void) => {
-  return (el) => el && value && (el.value = value);
+  return (el) => el && value != null && (el.value = value);
 };
 
 const NodeKeyValueInput: FC<{
