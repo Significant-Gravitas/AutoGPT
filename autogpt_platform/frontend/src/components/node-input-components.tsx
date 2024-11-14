@@ -348,9 +348,10 @@ const NodeKeyValueInput: FC<{
 }) => {
   const getPairValues = useCallback(() => {
     // Map will preserve the order of entries.
-    const defaultEntries = new Map(
-      Object.entries(entries ?? schema.default ?? {}),
-    );
+    let inputEntries = entries ?? schema.default;
+    if (!inputEntries || typeof inputEntries !== "object") inputEntries = {};
+
+    const defaultEntries = new Map(Object.entries(inputEntries));
     const prefix = `${selfKey}_#_`;
     connections
       .filter((c) => c.targetHandle.startsWith(prefix) && c.target === nodeId)
@@ -500,7 +501,8 @@ const NodeArrayInput: FC<{
   className,
   displayName,
 }) => {
-  entries ??= schema.default ?? [];
+  entries ??= schema.default;
+  if (!entries || !Array.isArray(entries)) entries = [];
 
   const prefix = `${selfKey}_$_`;
   connections

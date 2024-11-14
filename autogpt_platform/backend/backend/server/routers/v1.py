@@ -16,7 +16,7 @@ from backend.data import graph as graph_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
-from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.server.model import CreateGraph, SetGraphActiveVersion
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
@@ -476,7 +476,7 @@ async def update_schedule(
 )
 async def get_execution_schedules(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> dict[str, str]:
+) -> list[scheduler.JobInfo]:
     return execution_scheduler_client().get_execution_schedules(graph_id, user_id)
 
 
