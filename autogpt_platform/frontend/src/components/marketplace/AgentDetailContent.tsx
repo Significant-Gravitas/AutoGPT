@@ -10,76 +10,91 @@ import MarketplaceAPI from "@/lib/marketplace-api";
 import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
 import "@xyflow/react/dist/style.css";
 import { makeAnalyticsEvent } from "./actions";
-
-async function downloadAgent(id: string): Promise<void> {
-  const api = new MarketplaceAPI();
-  try {
-    const file = await api.downloadAgentFile(id);
-    console.debug(`Agent file downloaded:`, file);
-
-    // Create a Blob from the file content
-    const blob = new Blob([file], { type: "application/json" });
-
-    // Create a temporary URL for the Blob
-    const url = window.URL.createObjectURL(blob);
-
-    // Create a temporary anchor element
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `agent_${id}.json`; // Set the filename
-
-    // Append the anchor to the body, click it, and remove it
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    // Revoke the temporary URL
-    window.URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error(`Error downloading agent:`, error);
-    throw error;
-  }
-}
-
-async function installGraph(id: string): Promise<void> {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
-    "http://localhost:8015/api/v1/market";
-  const api = new MarketplaceAPI(apiUrl);
-
-  const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
-  const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
-  try {
-    console.debug(`Installing agent with id: ${id}`);
-    let agent = await api.downloadAgent(id);
-    console.debug(`Agent downloaded:`, agent);
-    const data: GraphCreatable = {
-      id: agent.id,
-      version: agent.version,
-      is_active: true,
-      is_template: false,
-      name: agent.name,
-      description: agent.description,
-      nodes: agent.graph.nodes,
-      links: agent.graph.links,
-    };
-    const result = await serverAPI.createTemplate(data);
-    makeAnalyticsEvent({
-      event_name: "agent_installed_from_marketplace",
-      event_data: {
-        marketplace_agent_id: id,
-        installed_agent_id: result.id,
-        installation_location: InstallationLocation.CLOUD,
-      },
-    });
-    console.debug(`Agent installed successfully`, result);
-  } catch (error) {
-    console.error(`Error installing agent:`, error);
-    throw error;
-  }
-}
+import { useToast } from "../ui/use-toast";
 
 function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
+  const { toast } = useToast();
+
+  const downloadAgent = async (id: string): Promise<void> => {
+    const api = new MarketplaceAPI();
+    try {
+      const file = await api.downloadAgentFile(id);
+      console.debug(`Agent file downloaded:`, file);
+
+      // Create a Blob from the file content
+      const blob = new Blob([file], { type: "application/json" });
+
+      // Create a temporary URL for the Blob
+      const url = window.URL.createObjectURL(blob);
+
+      // Create a temporary anchor element
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `agent_${id}.json`; // Set the filename
+
+      // Append the anchor to the body, click it, and remove it
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Revoke the temporary URL
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(`Error downloading agent:`, error);
+      throw error;
+    }
+  };
+
+  const installGraph = async (id: string): Promise<void> => {
+    toast({
+      title: "Saving and opening a new agent...",
+      duration: 2000,
+    });
+    const apiUrl =
+      process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
+      "http://localhost:8015/api/v1/market";
+    const api = new MarketplaceAPI(apiUrl);
+
+    const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
+    const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
+    try {
+      console.debug(`Installing agent with id: ${id}`);
+      let agent = await api.downloadAgent(id);
+      console.debug(`Agent downloaded:`, agent);
+      const data: GraphCreatable = {
+        id: agent.id,
+        version: agent.version,
+        is_active: true,
+        is_template: false,
+        name: agent.name,
+        description: agent.description,
+        nodes: agent.graph.nodes,
+        links: agent.graph.links,
+      };
+      const result = await serverAPI.createTemplate(data);
+      makeAnalyticsEvent({
+        event_name: "agent_installed_from_marketplace",
+        event_data: {
+          marketplace_agent_id: id,
+          installed_agent_id: result.id,
+          installation_location: InstallationLocation.CLOUD,
+        },
+      });
+      console.debug(`Agent installed successfully`, result);
+      serverAPI.createGraph(result.id, agent.version).then((newGraph) => {
+        window.location.href = `/build?flowID=${newGraph.id}`;
+      });
+    } catch (error) {
+      console.error(`Error installing agent:`, error);
+      toast({
+        title: "Error saving template",
+        variant: "destructive",
+        duration: 2000,
+      });
+      throw error;
+    }
+  };
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
       <div className="mb-4 flex items-center justify-between">

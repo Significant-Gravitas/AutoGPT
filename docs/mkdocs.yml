@@ -7,49 +7,46 @@ docs_dir: content
 nav:
   - Home: index.md
 
-  - The AutoGPT Server 🆕: 
-    - Build your own Blocks: server/new_blocks.md
-    - Setup: server/setup.md
-    - Advanced Setup: server/advanced_setup.md
-    - Using Ollama: server/ollama.md
-    - Using D-ID: server/d_id.md
-    - Blocks: server/blocks/blocks.md
+  - The AutoGPT Platform 🆕: 
+    - Getting Started: platform/getting-started.md
+    - Advanced Setup: platform/advanced_setup.md
+    - Build your own Blocks: platform/new_blocks.md
+    - Using Ollama: platform/ollama.md
+    - Using D-ID: platform/d_id.md
+    - Blocks: platform/blocks/blocks.md
 
-  - AutoGPT Agent:
-      - Introduction: AutoGPT/index.md
+  - AutoGPT Classic:
+      - Introduction: classic/index.md
       - Setup:
-          - Setting up AutoGPT: AutoGPT/setup/index.md
-          - Set up with Docker: AutoGPT/setup/docker.md
-          - For Developers: AutoGPT/setup/for-developers.md
+          - Setting up AutoGPT: classic/setup/index.md
+          - Set up with Docker: classic/setup/docker.md
+          - For Developers: classic/setup/for-developers.md
           - Configuration:
-              - Options: AutoGPT/configuration/options.md
-              - Search: AutoGPT/configuration/search.md
-              - Voice: AutoGPT/configuration/voice.md
-      - Usage: AutoGPT/usage.md
+              - Options: classic/configuration/options.md
+              - Search: classic/configuration/search.md
+              - Voice: classic/configuration/voice.md
+      - Usage: classic/usage.md
       - Help us improve AutoGPT:
-          - Share your debug logs with us: AutoGPT/share-your-logs.md
+          - Share your debug logs with us: classic/share-your-logs.md
           - Contribution guide: contributing.md
-          - Running tests: AutoGPT/testing.md
+          - Running tests: classic/testing.md
           - Code of Conduct: code-of-conduct.md
+      - Benchmark:
+          - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md
+      - Forge:
+         - Introduction: forge/get-started.md
+         - Components:
+             - Introduction: forge/components/introduction.md
+             - Agents: forge/components/agents.md
+             - Components: forge/components/components.md
+             - Protocols: forge/components/protocols.md
+             - Commands: forge/components/commands.md
+             - Built in Components: forge/components/built-in-components.md
+             - Creating Components: forge/components/creating-components.md
+      - Frontend:
+         - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md
 
-  - Benchmark:
-      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md
-
-  - Forge:
-      - Introduction: forge/get-started.md
-      - Components:
-          - Introduction: forge/components/introduction.md
-          - Agents: forge/components/agents.md
-          - Components: forge/components/components.md
-          - Protocols: forge/components/protocols.md
-          - Commands: forge/components/commands.md
-          - Built in Components: forge/components/built-in-components.md
-          - Creating Components: forge/components/creating-components.md
-
-  - Frontend:
-      - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md
-
-  - Docs: docs/index.md
+  - Contribute: contribute/index.md
     
   # - Challenges:
   #     - Introduction: challenges/introduction.md

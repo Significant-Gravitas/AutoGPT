@@ -1,10 +1,10 @@
 import json
 from enum import Enum
-
-import requests
+from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.request import requests
 
 
 class HttpMethod(Enum):
@@ -31,9 +31,14 @@ class SendWebRequestBlock(Block):
             description="The headers to include in the request",
             default={},
         )
-        body: object = SchemaField(
+        json_format: bool = SchemaField(
+            title="JSON format",
+            description="Whether to send and receive body as JSON",
+            default=True,
+        )
+        body: Any = SchemaField(
             description="The body of the request",
-            default={},
+            default=None,
         )
 
     class Output(BlockSchema):
@@ -58,13 +63,16 @@ class SendWebRequestBlock(Block):
             input_data.method.value,
             input_data.url,
             headers=input_data.headers,
-            json=input_data.body,
+            json=input_data.body if input_data.json_format else None,
+            data=input_data.body if not input_data.json_format else None,
         )
+        result = response.json() if input_data.json_format else response.text
+
         if response.status_code // 100 == 2:
-            yield "response", response.json()
+            yield "response", result
         elif response.status_code // 100 == 4:
-            yield "client_error", response.json()
+            yield "client_error", result
         elif response.status_code // 100 == 5:
-            yield "server_error", response.json()
+            yield "server_error", result
         else:
             raise ValueError(f"Unexpected status code: {response.status_code}")

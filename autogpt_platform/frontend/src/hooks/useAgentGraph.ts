@@ -17,6 +17,7 @@ import { Connection, MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useToast } from "@/components/ui/use-toast";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -25,6 +26,7 @@ export default function useAgentGraph(
   template?: boolean,
   passDataToBeads?: boolean,
 ) {
+  const { toast } = useToast();
   const [router, searchParams, pathname] = [
     useRouter(),
     useSearchParams(),
@@ -485,7 +487,16 @@ export default function useAgentGraph(
               },
             );
           })
-          .catch(() => setSaveRunRequest({ request: "run", state: "error" }));
+          .catch((error) => {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            toast({
+              variant: "destructive",
+              title: "Error saving agent",
+              description: errorMessage,
+            });
+            setSaveRunRequest({ request: "run", state: "error" });
+          });
 
         processedUpdates.current = processedUpdates.current = [];
       }
@@ -508,6 +519,7 @@ export default function useAgentGraph(
     }
   }, [
     api,
+    toast,
     saveRunRequest,
     savedAgent,
     nodesSyncedWithSavedAgent,
@@ -588,7 +600,7 @@ export default function useAgentGraph(
     [availableNodes],
   );
 
-  const saveAgent = useCallback(
+  const _saveAgent = useCallback(
     async (asTemplate: boolean = false) => {
       //FIXME frontend ids should be resolved better (e.g. returned from the server)
       // currently this relays on block_id and position
@@ -755,6 +767,24 @@ export default function useAgentGraph(
       agentDescription,
       prepareNodeInputData,
     ],
+  );
+
+  const saveAgent = useCallback(
+    async (asTemplate: boolean = false) => {
+      try {
+        await _saveAgent(asTemplate);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        console.error("Error saving agent", error);
+        toast({
+          variant: "destructive",
+          title: "Error saving agent",
+          description: errorMessage,
+        });
+      }
+    },
+    [_saveAgent, toast],
   );
 
   const requestSave = useCallback(
