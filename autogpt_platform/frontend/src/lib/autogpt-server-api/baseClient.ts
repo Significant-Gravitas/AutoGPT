@@ -16,6 +16,8 @@ import {
   NodeExecutionResult,
   OAuth2Credentials,
   User,
+  ScheduleCreatable,
+  ScheduleUpdateable,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -236,6 +238,31 @@ export default class BaseAutoGPTServerAPI {
 
   private async _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
+  }
+
+  // Scheduling request
+  async createSchedule(
+    graphId: string,
+    schedule: ScheduleCreatable,
+  ): Promise<{ id: string }> {
+    return this._request(
+      "POST",
+      `/graphs/${graphId}/schedules?cron=${schedule.cron}`,
+      {
+        input_data: schedule.input_data,
+      },
+    );
+  }
+
+  async updateSchedule(
+    scheduleId: string,
+    update: ScheduleUpdateable,
+  ): Promise<{ id: string }> {
+    return this._request("PUT", `/graphs/schedules/${scheduleId}`, update);
+  }
+
+  async getSchedules(graphId: string): Promise<{ [key: string]: string }> {
+    return this._get(`/graphs/${graphId}/schedules`);
   }
 
   private async _request(

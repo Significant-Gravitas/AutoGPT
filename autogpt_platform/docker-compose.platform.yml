@@ -65,6 +65,7 @@ services:
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
+      - EXECUTIONSCHEDULER_HOST=rest_server
       - EXECUTIONMANAGER_HOST=executor
       - DATABASEMANAGER_HOST=executor
       - FRONTEND_BASE_URL=http://localhost:3000
