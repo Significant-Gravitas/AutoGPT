@@ -6,6 +6,7 @@ import pydantic
 import backend.data.graph
 from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash
 
+
 class Methods(enum.Enum):
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
@@ -42,12 +43,15 @@ class CreateAPIKeyRequest(pydantic.BaseModel):
     permissions: typing.List[APIKeyPermission]
     description: typing.Optional[str] = None
 
+
 class CreateAPIKeyResponse(pydantic.BaseModel):
     api_key: APIKeyWithoutHash
     plain_text_key: str
 
+
 class SetGraphActiveVersion(pydantic.BaseModel):
     active_graph_version: int
+
 
 class UpdatePermissionsRequest(pydantic.BaseModel):
     permissions: typing.List[APIKeyPermission]
