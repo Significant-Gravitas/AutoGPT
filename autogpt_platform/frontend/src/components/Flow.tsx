@@ -415,23 +415,27 @@ const FlowEditor: React.FC<{
     if (nodes.length <= 0 || x !== 0 || y !== 0) {
       return;
     }
+
     const topLeft = { x: Infinity, y: Infinity };
     const bottomRight = { x: -Infinity, y: -Infinity };
+
     nodes.forEach((node) => {
       const { x, y } = node.position;
       topLeft.x = Math.min(topLeft.x, x);
       topLeft.y = Math.min(topLeft.y, y);
-      bottomRight.x = Math.max(bottomRight.x, x + 100);
-      bottomRight.y = Math.max(bottomRight.y, y + 100);
+      // Rough estimate of the width and height of the node: 500x400.
+      bottomRight.x = Math.max(bottomRight.x, x + 500);
+      bottomRight.y = Math.max(bottomRight.y, y + 400);
     });
 
     const centerX = (topLeft.x + bottomRight.x) / 2;
     const centerY = (topLeft.y + bottomRight.y) / 2;
+    const zoom = 0.8;
 
     setViewport({
-      x: -centerX + window.innerWidth / 2,
-      y: -centerY + window.innerHeight / 2,
-      zoom: 0.8,
+      x: window.innerWidth / 2 - centerX * zoom,
+      y: window.innerHeight / 2 - centerY * zoom,
+      zoom: zoom,
     });
   }, [nodes, setViewport, x, y]);
 
@@ -459,14 +463,14 @@ const FlowEditor: React.FC<{
           ? // we will get all the dimension of nodes, then store
             findNewlyAddedBlockCoordinates(
               nodeDimensions,
-              (nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500) / zoom,
-              60 / zoom,
-              zoom,
+              nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
+              60,
+              1.0,
             )
           : // we will get all the dimension of nodes, then store
             {
-              x: (window.innerWidth / 2 - x) / zoom,
-              y: (window.innerHeight / 2 - y) / zoom,
+              x: window.innerWidth / 2 - x,
+              y: window.innerHeight / 2 - y,
             };
 
       const newNode: CustomNode = {
@@ -496,8 +500,9 @@ const FlowEditor: React.FC<{
 
       setViewport(
         {
-          x: -viewportCoordinates.x * zoom + window.innerWidth / 2,
-          y: -viewportCoordinates.y * zoom + window.innerHeight / 2 - 100,
+          x: -viewportCoordinates.x * 0.8 + window.innerWidth / 2,
+          // Rough estimate of the height of the node is 400px.
+          y: -viewportCoordinates.y * 0.8 + (window.innerHeight - 400) / 2,
           zoom: 0.8,
         },
         { duration: 500 },
@@ -520,7 +525,6 @@ const FlowEditor: React.FC<{
       clearNodesStatusAndOutput,
       x,
       y,
-      zoom,
     ],
   );
 
