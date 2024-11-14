@@ -22,6 +22,7 @@ import {
   beautifyString,
   cn,
   getValue,
+  hasNonNullNonObjectValue,
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
@@ -40,7 +41,12 @@ import NodeOutputs from "./NodeOutputs";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { DotsVerticalIcon, TrashIcon, CopyIcon } from "@radix-ui/react-icons";
+import {
+  DotsVerticalIcon,
+  TrashIcon,
+  CopyIcon,
+  ExitIcon,
+} from "@radix-ui/react-icons";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -96,11 +102,13 @@ export function CustomNode({
   >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
+  let nodeFlowId = "";
 
   if (data.uiType === BlockUIType.AGENT) {
     // Display the graph's schema instead AgentExecutorBlock's schema.
     data.inputSchema = data.hardcodedValues?.input_schema || {};
     data.outputSchema = data.hardcodedValues?.output_schema || {};
+    nodeFlowId = data.hardcodedValues?.graph_id || nodeFlowId;
   }
 
   if (!flowContext) {
@@ -218,21 +226,24 @@ export function CustomNode({
                     side="left"
                   />
                 ) : (
-                  <span
-                    className="text-m green mb-0 text-gray-900"
-                    title={propSchema.description}
-                  >
-                    {propKey == "credentials"
-                      ? "Credentials"
-                      : propSchema.title || beautifyString(propKey)}
-                  </span>
+                  propKey != "credentials" && (
+                    <span
+                      className="text-m green mb-0 text-gray-900"
+                      title={propSchema.description}
+                    >
+                      {propSchema.title || beautifyString(propKey)}
+                    </span>
+                  )
                 )}
                 {!isConnected && (
                   <NodeGenericInputField
                     nodeId={id}
                     propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
-                    currentValue={getValue(propKey, data.hardcodedValues)}
+                    currentValue={getValue(
+                      getInputPropKey(propKey),
+                      data.hardcodedValues,
+                    )}
                     connections={data.connections}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
@@ -377,9 +388,7 @@ export function CustomNode({
     });
   }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
-  const hasConfigErrors =
-    data.errors &&
-    Object.entries(data.errors).some(([_, value]) => value !== null);
+  const hasConfigErrors = data.errors && hasNonNullNonObjectValue(data.errors);
   const outputData = data.executionResults?.at(-1)?.data;
   const hasOutputError =
     typeof outputData === "object" &&
@@ -389,8 +398,8 @@ export function CustomNode({
   useEffect(() => {
     if (hasConfigErrors) {
       const filteredErrors = Object.fromEntries(
-        Object.entries(data.errors || {}).filter(
-          ([_, value]) => value !== null,
+        Object.entries(data.errors || {}).filter(([, value]) =>
+          hasNonNullNonObjectValue(value),
         ),
       );
       console.error(
@@ -496,6 +505,15 @@ export function CustomNode({
         <CopyIcon className="mr-2 h-5 w-5" />
         <span>Copy</span>
       </ContextMenu.Item>
+      {nodeFlowId && (
+        <ContextMenu.Item
+          onSelect={() => window.open(`/build?flowID=${nodeFlowId}`)}
+          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+        >
+          <ExitIcon className="mr-2 h-5 w-5" />
+          <span>Open agent</span>
+        </ContextMenu.Item>
+      )}
       <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
       <ContextMenu.Item
         onSelect={deleteNode}
