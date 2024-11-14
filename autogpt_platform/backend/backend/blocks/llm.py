@@ -369,7 +369,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                     "X-Title": "AutoGPT",
                 },
                 model=llm_model.value,
-                messages=prompt,
+                messages=prompt,  # type: ignore
                 max_tokens=max_tokens,
             )
 
