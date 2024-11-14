@@ -1,85 +1,15 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional, Type
 
-import prisma.errors
 from prisma import Json
 from prisma.enums import UserBlockCreditType
+from prisma.errors import UniqueViolationError
 from prisma.models import UserBlockCredit
-from pydantic import BaseModel
 
-from backend.blocks.llm import (
-    MODEL_METADATA,
-    AIConversationBlock,
-    AIStructuredResponseGeneratorBlock,
-    AITextGeneratorBlock,
-    AITextSummarizerBlock,
-    LlmModel,
-)
-from backend.blocks.search import ExtractWebsiteContentBlock, SearchTheWebBlock
-from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.data.block import Block, BlockInput, get_block
+from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.cost import BlockCost, BlockCostType
 from backend.util.settings import Config
-
-
-class BlockCostType(str, Enum):
-    RUN = "run"  # cost X credits per run
-    BYTE = "byte"  # cost X credits per byte
-    SECOND = "second"  # cost X credits per second
-
-
-class BlockCost(BaseModel):
-    cost_amount: int
-    cost_filter: BlockInput
-    cost_type: BlockCostType
-
-    def __init__(
-        self,
-        cost_amount: int,
-        cost_type: BlockCostType = BlockCostType.RUN,
-        cost_filter: Optional[BlockInput] = None,
-        **data: Any,
-    ) -> None:
-        super().__init__(
-            cost_amount=cost_amount,
-            cost_filter=cost_filter or {},
-            cost_type=cost_type,
-            **data,
-        )
-
-
-llm_cost = [
-    BlockCost(
-        cost_type=BlockCostType.RUN,
-        cost_filter={
-            "model": model,
-            "api_key": None,  # Running LLM with user own API key is free.
-        },
-        cost_amount=metadata.cost_factor,
-    )
-    for model, metadata in MODEL_METADATA.items()
-] + [
-    BlockCost(
-        # Default cost is running LlmModel.GPT4O.
-        cost_amount=MODEL_METADATA[LlmModel.GPT4O].cost_factor,
-        cost_filter={"api_key": None},
-    ),
-]
-
-BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
-    AIConversationBlock: llm_cost,
-    AITextGeneratorBlock: llm_cost,
-    AIStructuredResponseGeneratorBlock: llm_cost,
-    AITextSummarizerBlock: llm_cost,
-    CreateTalkingAvatarVideoBlock: [
-        BlockCost(cost_amount=15, cost_filter={"api_key": None})
-    ],
-    SearchTheWebBlock: [BlockCost(cost_amount=1)],
-    ExtractWebsiteContentBlock: [
-        BlockCost(cost_amount=1, cost_filter={"raw_content": False})
-    ],
-}
 
 
 class UserCreditBase(ABC):
@@ -166,7 +96,7 @@ class UserCredit(UserCreditBase):
                     "createdAt": self.time_now(),
                 }
             )
-        except prisma.errors.UniqueViolationError:
+        except UniqueViolationError:
             pass  # Already refilled this month
 
         return self.num_user_credits_refill

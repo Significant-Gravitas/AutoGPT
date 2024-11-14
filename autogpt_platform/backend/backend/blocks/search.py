@@ -1,18 +1,12 @@
-from typing import Any
+from typing import Literal
 from urllib.parse import quote
 
-import requests
+from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+from pydantic import SecretStr
 
+from backend.blocks.helpers.http import GetRequest
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
-
-
-class GetRequest:
-    @classmethod
-    def get_request(cls, url: str, json=False) -> Any:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json() if json else response.text
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
@@ -44,42 +38,6 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
         if "extract" not in response:
             raise RuntimeError(f"Unable to parse Wikipedia response: {response}")
         yield "summary", response["extract"]
-
-
-class SearchTheWebBlock(Block, GetRequest):
-    class Input(BlockSchema):
-        query: str = SchemaField(description="The search query to search the web for")
-
-    class Output(BlockSchema):
-        results: str = SchemaField(
-            description="The search results including content from top 5 URLs"
-        )
-        error: str = SchemaField(description="Error message if the search fails")
-
-    def __init__(self):
-        super().__init__(
-            id="87840993-2053-44b7-8da4-187ad4ee518c",
-            description="This block searches the internet for the given search query.",
-            categories={BlockCategory.SEARCH},
-            input_schema=SearchTheWebBlock.Input,
-            output_schema=SearchTheWebBlock.Output,
-            test_input={"query": "Artificial Intelligence"},
-            test_output=("results", "search content"),
-            test_mock={"get_request": lambda url, json: "search content"},
-        )
-
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Encode the search query
-        encoded_query = quote(input_data.query)
-
-        # Prepend the Jina Search URL to the encoded query
-        jina_search_url = f"https://s.jina.ai/{encoded_query}"
-
-        # Make the request to Jina Search
-        response = self.get_request(jina_search_url, json=False)
-
-        # Output the search results
-        yield "results", response
 
 
 class ExtractWebsiteContentBlock(Block, GetRequest):
@@ -120,12 +78,34 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         yield "content", content
 
 
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="openweathermap",
+    api_key=SecretStr("mock-openweathermap-api-key"),
+    title="Mock OpenWeatherMap API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
+
+
 class GetWeatherInformationBlock(Block, GetRequest):
     class Input(BlockSchema):
         location: str = SchemaField(
             description="Location to get weather information for"
         )
-        api_key: BlockSecret = SecretField(key="openweathermap_api_key")
+        credentials: CredentialsMetaInput[
+            Literal["openweathermap"], Literal["api_key"]
+        ] = CredentialsField(
+            provider="openweathermap",
+            supported_credential_types={"api_key"},
+            description="The OpenWeatherMap integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
+        )
         use_celsius: bool = SchemaField(
             default=True,
             description="Whether to use Celsius or Fahrenheit for temperature",
@@ -151,8 +131,8 @@ class GetWeatherInformationBlock(Block, GetRequest):
             description="Retrieves weather information for a specified location using OpenWeatherMap API.",
             test_input={
                 "location": "New York",
-                "api_key": "YOUR_API_KEY",
                 "use_celsius": True,
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
                 ("temperature", "21.66"),
@@ -165,11 +145,14 @@ class GetWeatherInformationBlock(Block, GetRequest):
                     "weather": [{"description": "overcast clouds"}],
                 }
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         units = "metric" if input_data.use_celsius else "imperial"
-        api_key = input_data.api_key.get_secret_value()
+        api_key = credentials.api_key
         location = input_data.location
         url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
         weather_data = self.get_request(url, json=True)

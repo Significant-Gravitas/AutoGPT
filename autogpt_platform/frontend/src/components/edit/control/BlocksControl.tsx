@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Block } from "@/lib/autogpt-server-api";
+import { Block, BlockUIType } from "@/lib/autogpt-server-api";
 import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
 import { IconToyBrick } from "@/components/ui/icons";
 import { getPrimaryCategoryColor } from "@/lib/utils";
@@ -19,11 +19,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { GraphMeta } from "@/lib/autogpt-server-api";
 
 interface BlocksControlProps {
   blocks: Block[];
-  addBlock: (id: string, name: string) => void;
+  addBlock: (
+    id: string,
+    name: string,
+    hardcodedValues: Record<string, any>,
+  ) => void;
   pinBlocksPopover: boolean;
+  flows: GraphMeta[];
 }
 
 /**
@@ -39,29 +45,42 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   blocks,
   addBlock,
   pinBlocksPopover,
+  flows,
 }) => {
-  const blockList = blocks.sort((a, b) => a.name.localeCompare(b.name));
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [filteredBlocks, setFilteredBlocks] = useState<Block[]>(blockList);
 
-  const resetFilters = React.useCallback(() => {
-    setSearchQuery("");
-    setSelectedCategory(null);
-    setFilteredBlocks(blockList);
-  }, [blockList]);
+  const getFilteredBlockList = (): Block[] => {
+    const blockList = blocks
+      .filter((b) => b.uiType !== BlockUIType.AGENT)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const agentList = flows.map(
+      (flow) =>
+        ({
+          id: "e189baac-8c20-45a1-94a7-55177ea42565", // TODO: fetch this programmatically.
+          name: flow.name,
+          description:
+            `Ver.${flow.version}` +
+            (flow.description ? ` | ${flow.description}` : ""),
+          categories: [{ category: "AGENT", description: "" }],
+          inputSchema: flow.input_schema,
+          outputSchema: flow.output_schema,
+          staticOutput: false,
+          uiType: BlockUIType.AGENT,
+          uiKey: flow.id,
+          costs: [],
+          hardcodedValues: {
+            graph_id: flow.id,
+            graph_version: flow.version,
+            input_schema: flow.input_schema,
+            output_schema: flow.output_schema,
+          },
+        }) as Block,
+    );
 
-  // Extract unique categories from blocks
-  const categories = Array.from(
-    new Set([
-      null,
-      ...blocks.flatMap((block) => block.categories.map((cat) => cat.category)),
-    ]),
-  );
-
-  React.useEffect(() => {
-    setFilteredBlocks(
-      blockList.filter(
+    return blockList
+      .concat(agentList)
+      .filter(
         (block: Block) =>
           (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             beautifyString(block.name)
@@ -69,9 +88,23 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               .includes(searchQuery.toLowerCase())) &&
           (!selectedCategory ||
             block.categories.some((cat) => cat.category === selectedCategory)),
-      ),
-    );
-  }, [blockList, searchQuery, selectedCategory]);
+      );
+  };
+
+  const resetFilters = React.useCallback(() => {
+    setSearchQuery("");
+    setSelectedCategory(null);
+  }, []);
+
+  // Extract unique categories from blocks
+  const categories = Array.from(
+    new Set([
+      null,
+      ...blocks
+        .flatMap((block) => block.categories.map((cat) => cat.category))
+        .sort(),
+    ]),
+  );
 
   return (
     <Popover
@@ -150,12 +183,14 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               className="h-[60vh] w-fit w-full"
               data-id="blocks-control-scroll-area"
             >
-              {filteredBlocks.map((block) => (
+              {getFilteredBlockList().map((block) => (
                 <Card
-                  key={block.id}
+                  key={block.uiKey || block.id}
                   className="m-2 my-4 flex h-20 cursor-pointer shadow-none hover:shadow-lg"
                   data-id={`block-card-${block.id}`}
-                  onClick={() => addBlock(block.id, block.name)}
+                  onClick={() =>
+                    addBlock(block.id, block.name, block?.hardcodedValues || {})
+                  }
                 >
                   <div
                     className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(block.categories)}`}

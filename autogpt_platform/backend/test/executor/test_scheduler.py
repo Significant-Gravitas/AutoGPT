@@ -12,7 +12,7 @@ from backend.util.test import SpinTestServer
 async def test_agent_schedule(server: SpinTestServer):
     await db.connect()
     test_user = await create_test_user()
-    test_graph = await server.agent_server.create_graph(
+    test_graph = await server.agent_server.test_create_graph(
         create_graph=CreateGraph(graph=create_test_graph()),
         is_template=False,
         user_id=test_user.id,

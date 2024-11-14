@@ -124,7 +124,7 @@ and it should be enclosed within this block format:
 
 Here are a couple of sample of the Block class implementation:
 
-{"--------------\n".join([sample_block_codes[v] for v in sample_block_modules])}
+{"--------------".join([sample_block_codes[v] for v in sample_block_modules])}
 """,
         },
     )
@@ -252,7 +252,7 @@ async def block_autogen_agent():
         test_user = await create_test_user()
         test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"input": "Write me a block that writes a string into a file."}
-        response = server.agent_server.execute_graph(
+        response = await server.agent_server.test_execute_graph(
             test_graph.id, input_data, test_user.id
         )
         print(response)

@@ -1,9 +1,11 @@
-import requests
+from urllib.parse import urlparse
+
 from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+from ._api import get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -11,6 +13,10 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+
+
+def is_github_url(url: str) -> bool:
+    return urlparse(url).netloc == "github.com"
 
 
 # --8<-- [start:GithubCommentBlockExample]
@@ -62,27 +68,10 @@ class GithubCommentBlock(Block):
     def post_comment(
         credentials: GithubCredentials, issue_url: str, body_text: str
     ) -> tuple[int, str]:
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + "/comments"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos") + "/comments"
-            )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
         data = {"body": body_text}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        comments_url = issue_url + "/comments"
+        response = api.post(comments_url, json=data)
         comment = response.json()
         return comment["id"], comment["html_url"]
 
@@ -156,16 +145,10 @@ class GithubMakeIssueBlock(Block):
     def create_issue(
         credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> tuple[int, str]:
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
         data = {"title": title, "body": body}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        issues_url = repo_url + "/issues"
+        response = api.post(issues_url, json=data)
         issue = response.json()
         return issue["number"], issue["html_url"]
 
@@ -232,21 +215,12 @@ class GithubReadIssueBlock(Block):
     def read_issue(
         credentials: GithubCredentials, issue_url: str
     ) -> tuple[str, str, str]:
-        api_url = issue_url.replace("github.com", "api.github.com/repos")
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        response = api.get(issue_url)
         data = response.json()
         title = data.get("title", "No title found")
         body = data.get("body", "No body content found")
         user = data.get("user", {}).get("login", "No user found")
-
         return title, body, user
 
     def run(
@@ -318,20 +292,13 @@ class GithubListIssuesBlock(Block):
     def list_issues(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.IssueItem]:
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        issues_url = repo_url + "/issues"
+        response = api.get(issues_url)
         data = response.json()
         issues: list[GithubListIssuesBlock.Output.IssueItem] = [
             {"title": issue["title"], "url": issue["html_url"]} for issue in data
         ]
-
         return issues
 
     def run(
@@ -385,28 +352,10 @@ class GithubAddLabelBlock(Block):
 
     @staticmethod
     def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        # Convert the provided GitHub URL to the API URL
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + "/labels"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos") + "/labels"
-            )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
         data = {"labels": [label]}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        labels_url = issue_url + "/labels"
+        api.post(labels_url, json=data)
         return "Label added successfully"
 
     def run(
@@ -463,31 +412,9 @@ class GithubRemoveLabelBlock(Block):
 
     @staticmethod
     def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        # Convert the provided GitHub URL to the API URL
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + f"/labels/{label}"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos")
-                + f"/labels/{label}"
-            )
-
-        # Log the constructed API URL for debugging
-        print(f"Constructed API URL: {api_url}")
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.delete(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        label_url = issue_url + f"/labels/{label}"
+        api.delete(label_url)
         return "Label removed successfully"
 
     def run(
@@ -550,23 +477,10 @@ class GithubAssignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        # Extracting repo path and issue number from the issue URL
-        repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
-            "/issues/"
-        )
-        api_url = (
-            f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
+        assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        api.post(assignees_url, json=data)
         return "Issue assigned successfully"
 
     def run(
@@ -629,23 +543,10 @@ class GithubUnassignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        # Extracting repo path and issue number from the issue URL
-        repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
-            "/issues/"
-        )
-        api_url = (
-            f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
+        assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-
-        response = requests.delete(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        api.delete(assignees_url, json=data)
         return "Issue unassigned successfully"
 
     def run(

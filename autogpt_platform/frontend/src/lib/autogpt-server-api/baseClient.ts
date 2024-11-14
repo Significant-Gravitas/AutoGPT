@@ -16,6 +16,8 @@ import {
   NodeExecutionResult,
   OAuth2Credentials,
   User,
+  ScheduleCreatable,
+  ScheduleUpdateable,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -28,7 +30,7 @@ export default class BaseAutoGPTServerAPI {
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-      "http://localhost:8006/api",
+      "http://localhost:8006/api/v1",
     wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
       "ws://localhost:8001/ws",
     supabaseClient: SupabaseClient | null = null,
@@ -238,6 +240,31 @@ export default class BaseAutoGPTServerAPI {
     return this._request("GET", path, query);
   }
 
+  // Scheduling request
+  async createSchedule(
+    graphId: string,
+    schedule: ScheduleCreatable,
+  ): Promise<{ id: string }> {
+    return this._request(
+      "POST",
+      `/graphs/${graphId}/schedules?cron=${schedule.cron}`,
+      {
+        input_data: schedule.input_data,
+      },
+    );
+  }
+
+  async updateSchedule(
+    scheduleId: string,
+    update: ScheduleUpdateable,
+  ): Promise<{ id: string }> {
+    return this._request("PUT", `/graphs/schedules/${scheduleId}`, update);
+  }
+
+  async getSchedules(graphId: string): Promise<{ [key: string]: string }> {
+    return this._get(`/graphs/${graphId}/schedules`);
+  }
+
   private async _request(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
@@ -287,7 +314,7 @@ export default class BaseAutoGPTServerAPI {
         errorDetail = response.statusText;
       }
 
-      throw new Error(`HTTP error ${response.status}! ${errorDetail}`);
+      throw new Error(errorDetail);
     }
 
     // Handle responses with no content (like DELETE requests)
