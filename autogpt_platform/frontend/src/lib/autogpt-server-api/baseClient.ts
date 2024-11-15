@@ -330,11 +330,17 @@ export default class BaseAutoGPTServerAPI {
 
   startHeartbeat() {
     this.stopHeartbeat();
-    this.heartbeatInterval = setInterval(() => {
+    this.heartbeatInterval = window.setInterval(() => {
       if (this.webSocket?.readyState === WebSocket.OPEN) {
-        this.sendWebSocketMessage("heartbeat", "ping");
+        this.webSocket.send(
+          JSON.stringify({
+            method: "heartbeat",
+            data: "ping",
+            success: true,
+          }),
+        );
 
-        this.heartbeatTimeoutId = setTimeout(() => {
+        this.heartbeatTimeoutId = window.setTimeout(() => {
           console.warn("Heartbeat timeout - reconnecting");
           this.webSocket?.close();
           this.connectWebSocket();
@@ -361,22 +367,24 @@ export default class BaseAutoGPTServerAPI {
     }
   }
 
-async connectWebSocket(): Promise<void> {
+  async connectWebSocket(): Promise<void> {
     this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
-        const token = (await this.supabaseClient?.auth.getSession())?.data.session?.access_token || "";
+        const token =
+          (await this.supabaseClient?.auth.getSession())?.data.session
+            ?.access_token || "";
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
 
         this.webSocket.onopen = () => {
           console.debug("WebSocket connection established");
-          this.startHeartbeat();  // Start heartbeat when connection opens
+          this.startHeartbeat(); // Start heartbeat when connection opens
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
           console.debug("WebSocket connection closed", event);
-          this.stopHeartbeat();   // Stop heartbeat when connection closes
+          this.stopHeartbeat(); // Stop heartbeat when connection closes
           this.webSocket = null;
           // Attempt to reconnect after a delay
           setTimeout(() => this.connectWebSocket(), 1000);
@@ -384,7 +392,7 @@ async connectWebSocket(): Promise<void> {
 
         this.webSocket.onerror = (error) => {
           console.error("WebSocket error:", error);
-          this.stopHeartbeat();   // Stop heartbeat on error
+          this.stopHeartbeat(); // Stop heartbeat on error
           reject(error);
         };
 
@@ -401,7 +409,7 @@ async connectWebSocket(): Promise<void> {
             message.data = parseNodeExecutionResultTimestamps(message.data);
           }
           this.wsMessageHandlers[message.method]?.forEach((handler) =>
-            handler(message.data)
+            handler(message.data),
           );
         };
       } catch (error) {
@@ -413,7 +421,7 @@ async connectWebSocket(): Promise<void> {
   }
 
   disconnectWebSocket() {
-    this.stopHeartbeat();  // Stop heartbeat when disconnecting
+    this.stopHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
     }

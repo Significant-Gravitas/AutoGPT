@@ -1,5 +1,5 @@
 import enum
-import typing
+from typing import Union, Any, Optional
 
 import pydantic
 
@@ -17,7 +17,7 @@ class Methods(enum.Enum):
 
 class WsMessage(pydantic.BaseModel):
     method: Methods
-    data: typing.Dict[str, typing.Any] | list[typing.Any] | None = None
+    data: Optional[Union[dict[str, Any], list[Any], str]] = None
     success: bool | None = None
     channel: str | None = None
     error: str | None = None
