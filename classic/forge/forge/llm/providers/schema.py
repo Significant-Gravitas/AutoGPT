@@ -55,7 +55,6 @@ class ModelProviderName(str, enum.Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GROQ = "groq"
-    OPEN_ROUTER = "open_router"
     LLAMAFILE = "llamafile"
 
 
