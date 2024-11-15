@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Input } from "./ui/input";
+import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
 import { CredentialsInput } from "./integrations/credentials-input";
@@ -413,11 +413,11 @@ const NodeKeyValueInput: FC<{
             />
             {!isConnected(key) && (
               <div className="nodrag mb-2 flex items-center space-x-2">
-                <Input
+                <LocalValuedInput
                   type="text"
                   placeholder="Key"
-                  ref={InputRef(key ?? "")}
-                  onBlur={(e) =>
+                  value={key ?? ""}
+                  onChange={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: e.target.value,
@@ -426,11 +426,11 @@ const NodeKeyValueInput: FC<{
                     )
                   }
                 />
-                <Input
+                <LocalValuedInput
                   type="text"
                   placeholder="Value"
-                  ref={InputRef(value ?? "")}
-                  onBlur={(e) =>
+                  value={value ?? ""}
+                  onChange={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: key,
@@ -640,17 +640,15 @@ const NodeStringInput: FC<{
           className="nodrag relative"
           onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
         >
-          <Input
+          <LocalValuedInput
             type="text"
             id={selfKey}
-            ref={InputRef(
-              schema.secret && value ? "*".repeat(value.length) : value,
-            )}
+            value={schema.secret && value ? "*".repeat(value.length) : value}
+            onChange={(e) => handleInputChange(selfKey, e.target.value)}
             readOnly={schema.secret}
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
-            onBlur={(e) => handleInputChange(selfKey, e.target.value)}
             className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
           />
           <Button
@@ -737,11 +735,13 @@ const NodeNumberInput: FC<{
   return (
     <div className={className}>
       <div className="nodrag flex items-center justify-between space-x-3">
-        <Input
+        <LocalValuedInput
           type="number"
           id={selfKey}
-          ref={InputRef(value)}
-          onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
+          value={value}
+          onChange={(e) =>
+            handleInputChange(selfKey, parseFloat(e.target.value))
+          }
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
           }
