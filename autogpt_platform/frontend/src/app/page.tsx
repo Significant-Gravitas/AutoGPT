@@ -40,7 +40,7 @@ const Monitor = () => {
       const removedSchedule = await api.deleteSchedule(scheduleId);
       setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
     },
-    [api],
+    [schedules, api],
   );
 
   const fetchAgents = useCallback(() => {
