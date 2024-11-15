@@ -1,37 +1,98 @@
 import logging
-import time
-from datetime import datetime
+import os
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.job import Job as JobObj
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from autogpt_libs.utils.cache import thread_cached
+from dotenv import load_dotenv
+from pydantic import BaseModel
+from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
-from backend.data.schedule import (
-    ExecutionSchedule,
-    add_schedule,
-    get_active_schedules,
-    get_schedules,
-    update_schedule,
-)
 from backend.executor.manager import ExecutionManager
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config
+
+
+def _extract_schema_from_url(database_url) -> tuple[str, str]:
+    """
+    Extracts the schema from the DATABASE_URL and returns the schema and cleaned URL.
+    """
+    parsed_url = urlparse(database_url)
+    query_params = parse_qs(parsed_url.query)
+
+    # Extract the 'schema' parameter
+    schema_list = query_params.pop("schema", None)
+    schema = schema_list[0] if schema_list else "public"
+
+    # Reconstruct the query string without the 'schema' parameter
+    new_query = urlencode(query_params, doseq=True)
+    new_parsed_url = parsed_url._replace(query=new_query)
+    database_url_clean = str(urlunparse(new_parsed_url))
+
+    return schema, database_url_clean
+
 
 logger = logging.getLogger(__name__)
 
 
 def log(msg, **kwargs):
-    logger.warning("[ExecutionScheduler] " + msg, **kwargs)
+    logger.info("[ExecutionScheduler] " + msg, **kwargs)
+
+
+def job_listener(event):
+    """Logs job execution outcomes for better monitoring."""
+    if event.exception:
+        log(f"Job {event.job_id} failed.")
+    else:
+        log(f"Job {event.job_id} completed successfully.")
+
+
+@thread_cached
+def get_execution_client() -> ExecutionManager:
+    return get_service_client(ExecutionManager)
+
+
+def execute_graph(**kwargs):
+    args = JobArgs(**kwargs)
+    try:
+        log(f"Executing recurring job for graph #{args.graph_id}")
+        get_execution_client().add_execution(
+            args.graph_id, args.input_data, args.user_id
+        )
+    except Exception as e:
+        logger.exception(f"Error executing graph {args.graph_id}: {e}")
+
+
+class JobArgs(BaseModel):
+    graph_id: str
+    input_data: BlockInput
+    user_id: str
+    graph_version: int
+    cron: str
+
+
+class JobInfo(JobArgs):
+    id: str
+    name: str
+    next_run_time: str
+
+    @staticmethod
+    def from_db(job_args: JobArgs, job_obj: JobObj) -> "JobInfo":
+        return JobInfo(
+            id=job_obj.id,
+            name=job_obj.name,
+            next_run_time=job_obj.next_run_time.isoformat(),
+            **job_args.model_dump(),
+        )
 
 
 class ExecutionScheduler(AppService):
-
-    def __init__(self, refresh_interval=10):
-        super().__init__()
-        self.use_db = True
-        self.last_check = datetime.min
-        self.refresh_interval = refresh_interval
+    scheduler: BlockingScheduler
 
     @classmethod
     def get_port(cls) -> int:
@@ -43,43 +104,18 @@ class ExecutionScheduler(AppService):
         return get_service_client(ExecutionManager)
 
     def run_service(self):
-        scheduler = BackgroundScheduler()
-        scheduler.start()
-        while True:
-            self.__refresh_jobs_from_db(scheduler)
-            time.sleep(self.refresh_interval)
-
-    def __refresh_jobs_from_db(self, scheduler: BackgroundScheduler):
-        schedules = self.run_and_wait(get_active_schedules(self.last_check))
-        for schedule in schedules:
-            if schedule.last_updated:
-                self.last_check = max(self.last_check, schedule.last_updated)
-
-            if not schedule.is_enabled:
-                log(f"Removing recurring job {schedule.id}: {schedule.schedule}")
-                scheduler.remove_job(schedule.id)
-                continue
-
-            log(f"Adding recurring job {schedule.id}: {schedule.schedule}")
-            scheduler.add_job(
-                self.__execute_graph,
-                CronTrigger.from_crontab(schedule.schedule),
-                id=schedule.id,
-                args=[schedule.graph_id, schedule.input_data, schedule.user_id],
-                replace_existing=True,
-            )
-
-    def __execute_graph(self, graph_id: str, input_data: dict, user_id: str):
-        try:
-            log(f"Executing recurring job for graph #{graph_id}")
-            self.execution_client.add_execution(graph_id, input_data, user_id)
-        except Exception as e:
-            logger.exception(f"Error executing graph {graph_id}: {e}")
-
-    @expose
-    def update_schedule(self, schedule_id: str, is_enabled: bool, user_id: str) -> str:
-        self.run_and_wait(update_schedule(schedule_id, is_enabled, user_id))
-        return schedule_id
+        load_dotenv()
+        db_schema, db_url = _extract_schema_from_url(os.getenv("DATABASE_URL"))
+        self.scheduler = BlockingScheduler(
+            jobstores={
+                "default": SQLAlchemyJobStore(
+                    engine=create_engine(db_url),
+                    metadata=MetaData(schema=db_schema),
+                )
+            }
+        )
+        self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+        self.scheduler.start()
 
     @expose
     def add_execution_schedule(
@@ -89,17 +125,50 @@ class ExecutionScheduler(AppService):
         cron: str,
         input_data: BlockInput,
         user_id: str,
-    ) -> str:
-        schedule = ExecutionSchedule(
+    ) -> JobInfo:
+        job_args = JobArgs(
             graph_id=graph_id,
+            input_data=input_data,
             user_id=user_id,
             graph_version=graph_version,
-            schedule=cron,
-            input_data=input_data,
+            cron=cron,
         )
-        return self.run_and_wait(add_schedule(schedule)).id
+        job = self.scheduler.add_job(
+            execute_graph,
+            CronTrigger.from_crontab(cron),
+            kwargs=job_args.model_dump(),
+            replace_existing=True,
+        )
+        log(f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}")
+        return JobInfo.from_db(job_args, job)
 
     @expose
-    def get_execution_schedules(self, graph_id: str, user_id: str) -> dict[str, str]:
-        schedules = self.run_and_wait(get_schedules(graph_id, user_id=user_id))
-        return {v.id: v.schedule for v in schedules}
+    def delete_schedule(self, schedule_id: str, user_id: str) -> JobInfo:
+        job = self.scheduler.get_job(schedule_id)
+        if not job:
+            log(f"Job {schedule_id} not found.")
+            raise ValueError(f"Job #{schedule_id} not found.")
+
+        job_args = JobArgs(**job.kwargs)
+        if job_args.user_id != user_id:
+            raise ValueError("User ID does not match the job's user ID.")
+
+        log(f"Deleting job {schedule_id}")
+        job.remove()
+
+        return JobInfo.from_db(job_args, job)
+
+    @expose
+    def get_execution_schedules(
+        self, graph_id: str | None = None, user_id: str | None = None
+    ) -> list[JobInfo]:
+        schedules = []
+        for job in self.scheduler.get_jobs():
+            job_args = JobArgs(**job.kwargs)
+            if (
+                job.next_run_time is not None
+                and (graph_id is None or job_args.graph_id == graph_id)
+                and (user_id is None or job_args.user_id == user_id)
+            ):
+                schedules.append(JobInfo.from_db(job_args, job))
+        return schedules
