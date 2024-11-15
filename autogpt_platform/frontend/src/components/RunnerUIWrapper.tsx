@@ -10,24 +10,55 @@ import { Node } from "@xyflow/react";
 import { filterBlocksByType } from "@/lib/utils";
 import { BlockIORootSchema, BlockUIType } from "@/lib/autogpt-server-api/types";
 
+interface HardcodedValues {
+  name: any;
+  description: any;
+  value: any;
+  placeholder_values: any;
+  limit_to_placeholder_values: any;
+}
+
+export interface InputItem {
+  id: string;
+  type: "input";
+  inputSchema: BlockIORootSchema;
+  hardcodedValues: HardcodedValues;
+}
+
 interface RunnerUIWrapperProps {
   nodes: Node[];
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+  setIsScheduling: React.Dispatch<React.SetStateAction<boolean>>;
   isRunning: boolean;
+  isScheduling: boolean;
   requestSaveAndRun: () => void;
+  scheduleRunner: (cronExpression: string, input: InputItem[]) => Promise<void>;
 }
 
 export interface RunnerUIWrapperRef {
   openRunnerInput: () => void;
   openRunnerOutput: () => void;
   runOrOpenInput: () => void;
+  collectInputsForScheduling: (cronExpression: string) => void;
 }
 
 const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
-  ({ nodes, setNodes, isRunning, requestSaveAndRun }, ref) => {
+  (
+    {
+      nodes,
+      setIsScheduling,
+      setNodes,
+      isScheduling,
+      isRunning,
+      requestSaveAndRun,
+      scheduleRunner,
+    },
+    ref,
+  ) => {
     const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
     const [isRunnerOutputOpen, setIsRunnerOutputOpen] = useState(false);
-
+    const [scheduledInput, setScheduledInput] = useState(false);
+    const [cronExpression, setCronExpression] = useState("");
     const getBlockInputsAndOutputs = useCallback(() => {
       const inputBlocks = filterBlocksByType(
         nodes,
@@ -107,10 +138,23 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       }
     };
 
+    const collectInputsForScheduling = (cron_exp: string) => {
+      const { inputs } = getBlockInputsAndOutputs();
+      setCronExpression(cron_exp);
+
+      if (inputs.length > 0) {
+        setScheduledInput(true);
+        setIsRunnerInputOpen(true);
+      } else {
+        scheduleRunner(cron_exp, []);
+      }
+    };
+
     useImperativeHandle(ref, () => ({
       openRunnerInput,
       openRunnerOutput,
       runOrOpenInput,
+      collectInputsForScheduling,
     }));
 
     return (
@@ -123,6 +167,18 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
           onRun={() => {
             setIsRunnerInputOpen(false);
             requestSaveAndRun();
+          }}
+          scheduledInput={scheduledInput}
+          isScheduling={isScheduling}
+          onSchedule={async () => {
+            setIsScheduling(true);
+            await scheduleRunner(
+              cronExpression,
+              getBlockInputsAndOutputs().inputs,
+            );
+            setIsScheduling(false);
+            setIsRunnerInputOpen(false);
+            setScheduledInput(false);
           }}
           isRunning={isRunning}
         />

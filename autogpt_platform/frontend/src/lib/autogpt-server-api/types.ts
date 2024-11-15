@@ -123,7 +123,8 @@ export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: CredentialsProviderName;
+  /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
+  credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
@@ -426,4 +427,21 @@ export type ProfileDetails = {
   description: string;
   links: string[];
   avatar_url: string;
+};
+
+export type Schedule = {
+  id: string;
+  name: string;
+  cron: string;
+  user_id: string;
+  graph_id: string;
+  graph_version: number;
+  input_data: { [key: string]: any };
+  next_run_time: string;
+};
+
+export type ScheduleCreatable = {
+  cron: string;
+  graph_id: string;
+  input_data: { [key: string]: any };
 };
