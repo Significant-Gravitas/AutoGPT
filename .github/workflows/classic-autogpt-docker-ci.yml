@@ -2,7 +2,7 @@ name: Classic - AutoGPT Docker CI
 
 on:
   push:
-    branches: [ master, development ]
+    branches: [master, dev]
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
       - 'classic/original_autogpt/**'
@@ -34,58 +34,58 @@ jobs:
       matrix:
         build-type: [release, dev]
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - if: runner.debug
-      run: |
-        ls -al
-        du -hs *
+      - if: runner.debug
+        run: |
+          ls -al
+          du -hs *
 
-    - id: build
-      name: Build image
-      uses: docker/build-push-action@v5
-      with:
-        context: classic/
-        file: classic/Dockerfile.autogpt
-        build-args: BUILD_TYPE=${{ matrix.build-type }}
-        tags: ${{ env.IMAGE_NAME }}
-        labels: GIT_REVISION=${{ github.sha }}
-        load: true    # save to docker images
-        # cache layers in GitHub Actions cache to speed up builds
-        cache-from: type=gha,scope=autogpt-docker-${{ matrix.build-type }}
-        cache-to: type=gha,scope=autogpt-docker-${{ matrix.build-type }},mode=max
+      - id: build
+        name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: classic/
+          file: classic/Dockerfile.autogpt
+          build-args: BUILD_TYPE=${{ matrix.build-type }}
+          tags: ${{ env.IMAGE_NAME }}
+          labels: GIT_REVISION=${{ github.sha }}
+          load: true # save to docker images
+          # cache layers in GitHub Actions cache to speed up builds
+          cache-from: type=gha,scope=autogpt-docker-${{ matrix.build-type }}
+          cache-to: type=gha,scope=autogpt-docker-${{ matrix.build-type }},mode=max
 
-    - name: Generate build report
-      env:
-        event_name: ${{ github.event_name }}
-        event_ref: ${{ github.event.ref }}
-        event_ref_type: ${{ github.event.ref}}
+      - name: Generate build report
+        env:
+          event_name: ${{ github.event_name }}
+          event_ref: ${{ github.event.ref }}
+          event_ref_type: ${{ github.event.ref}}
 
-        build_type: ${{ matrix.build-type }}
+          build_type: ${{ matrix.build-type }}
 
-        prod_branch: master
-        dev_branch: development
-        repository: ${{ github.repository }}
-        base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'development' && 'development' || 'master' }}
+          prod_branch: master
+          dev_branch: dev
+          repository: ${{ github.repository }}
+          base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'dev' && 'dev' || 'master' }}
 
-        current_ref: ${{ github.ref_name }}
-        commit_hash: ${{ github.event.after }}
-        source_url: ${{ format('{0}/tree/{1}', github.event.repository.url, github.event.release && github.event.release.tag_name || github.sha) }}
-        push_forced_label: ${{ github.event.forced && '☢️ forced' || '' }}
+          current_ref: ${{ github.ref_name }}
+          commit_hash: ${{ github.event.after }}
+          source_url: ${{ format('{0}/tree/{1}', github.event.repository.url, github.event.release && github.event.release.tag_name || github.sha) }}
+          push_forced_label: ${{ github.event.forced && '☢️ forced' || '' }}
 
-        new_commits_json: ${{ toJSON(github.event.commits) }}
-        compare_url_template: ${{ format('/{0}/compare/{{base}}...{{head}}', github.repository) }}
+          new_commits_json: ${{ toJSON(github.event.commits) }}
+          compare_url_template: ${{ format('/{0}/compare/{{base}}...{{head}}', github.repository) }}
 
-        github_context_json: ${{ toJSON(github) }}
-        job_env_json: ${{ toJSON(env) }}
-        vars_json: ${{ toJSON(vars) }}
+          github_context_json: ${{ toJSON(github) }}
+          job_env_json: ${{ toJSON(env) }}
+          vars_json: ${{ toJSON(vars) }}
 
-      run: .github/workflows/scripts/docker-ci-summary.sh >> $GITHUB_STEP_SUMMARY
-      continue-on-error: true
+        run: .github/workflows/scripts/docker-ci-summary.sh >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true
 
   test:
     runs-on: ubuntu-latest
@@ -121,12 +121,12 @@ jobs:
         with:
           context: classic/
           file: classic/Dockerfile.autogpt
-          build-args: BUILD_TYPE=dev  # include pytest
+          build-args: BUILD_TYPE=dev # include pytest
           tags: >
             ${{ env.IMAGE_NAME }},
             ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}
           labels: GIT_REVISION=${{ github.sha }}
-          load: true                  # save to docker images
+          load: true # save to docker images
           # cache layers in GitHub Actions cache to speed up builds
           cache-from: type=gha,scope=autogpt-docker-dev
           cache-to: type=gha,scope=autogpt-docker-dev,mode=max
