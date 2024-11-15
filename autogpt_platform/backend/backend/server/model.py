@@ -1,5 +1,5 @@
 import enum
-from typing import Union, Any, Optional
+from typing import Union, Any, Optional, List
 
 import pydantic
 
@@ -41,8 +41,8 @@ class CreateGraph(pydantic.BaseModel):
 
 class CreateAPIKeyRequest(pydantic.BaseModel):
     name: str
-    permissions: typing.List[APIKeyPermission]
-    description: typing.Optional[str] = None
+    permissions: List[APIKeyPermission]
+    description: Optional[str] = None
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):
