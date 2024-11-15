@@ -3,6 +3,7 @@ import os
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -40,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 def log(msg, **kwargs):
-    logger.warning("[ExecutionScheduler] " + msg, **kwargs)
+    logger.info("[ExecutionScheduler] " + msg, **kwargs)
 
 
 def job_listener(event):
@@ -80,6 +81,15 @@ class JobInfo(JobArgs):
     name: str
     next_run_time: str
 
+    @staticmethod
+    def from_db(job_args: JobArgs, job_obj: JobObj) -> "JobInfo":
+        return JobInfo(
+            id=job_obj.id,
+            name=job_obj.name,
+            next_run_time=job_obj.next_run_time.isoformat(),
+            **job_args.model_dump(),
+        )
+
 
 class ExecutionScheduler(AppService):
     scheduler: BlockingScheduler
@@ -115,8 +125,7 @@ class ExecutionScheduler(AppService):
         cron: str,
         input_data: BlockInput,
         user_id: str,
-    ) -> str:
-        job_id = f"{user_id}_{graph_id}"
+    ) -> JobInfo:
         job_args = JobArgs(
             graph_id=graph_id,
             input_data=input_data,
@@ -124,35 +133,30 @@ class ExecutionScheduler(AppService):
             graph_version=graph_version,
             cron=cron,
         )
-        self.scheduler.add_job(
+        job = self.scheduler.add_job(
             execute_graph,
             CronTrigger.from_crontab(cron),
-            id=job_id,
             kwargs=job_args.model_dump(),
             replace_existing=True,
         )
-        log(f"Added job {job_id} with cron schedule '{cron}'")
-        return job_id
+        log(f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}")
+        return JobInfo.from_db(job_args, job)
 
     @expose
-    def update_schedule(self, schedule_id: str, is_enabled: bool, user_id: str) -> str:
+    def delete_schedule(self, schedule_id: str, user_id: str) -> JobInfo:
         job = self.scheduler.get_job(schedule_id)
         if not job:
             log(f"Job {schedule_id} not found.")
-            return schedule_id
+            raise ValueError(f"Job #{schedule_id} not found.")
 
         job_args = JobArgs(**job.kwargs)
         if job_args.user_id != user_id:
             raise ValueError("User ID does not match the job's user ID.")
 
-        if not is_enabled:
-            log(f"Pausing job {schedule_id}")
-            job.pause()
-        else:
-            log(f"Resuming job {schedule_id}")
-            job.resume()
+        log(f"Deleting job {schedule_id}")
+        job.remove()
 
-        return schedule_id
+        return JobInfo.from_db(job_args, job)
 
     @expose
     def get_execution_schedules(
@@ -166,12 +170,5 @@ class ExecutionScheduler(AppService):
                 and (graph_id is None or job_args.graph_id == graph_id)
                 and (user_id is None or job_args.user_id == user_id)
             ):
-                schedules.append(
-                    JobInfo(
-                        id=job.id,
-                        name=job.name,
-                        next_run_time=job.next_run_time.isoformat(),
-                        **job_args.model_dump(),
-                    )
-                )
+                schedules.append(JobInfo.from_db(job_args, job))
         return schedules
