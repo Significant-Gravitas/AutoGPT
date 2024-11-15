@@ -1,11 +1,11 @@
 from typing import Any, Literal
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -86,7 +86,6 @@ class UnrealTextToSpeechBlock(Block):
         }
 
         response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
         return response.json()
 
     def run(

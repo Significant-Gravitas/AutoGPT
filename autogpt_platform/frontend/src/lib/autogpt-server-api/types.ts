@@ -25,7 +25,9 @@ export type Block = {
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
   uiType: BlockUIType;
+  uiKey?: string;
   costs: BlockCost[];
+  hardcodedValues: { [key: string]: any } | null;
 };
 
 export type BlockIORootSchema = {
@@ -96,16 +98,18 @@ export type CredentialsType = "api_key" | "oauth2";
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  ANTHROPIC: "anthropic",
   D_ID: "d_id",
   DISCORD: "discord",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
+  GROQ: "groq",
   IDEOGRAM: "ideogram",
   JINA: "jina",
-  LLM: "llm",
   MEDIUM: "medium",
   NOTION: "notion",
+  OLLAMA: "ollama",
   OPENAI: "openai",
   OPENWEATHERMAP: "openweathermap",
   PINECONE: "pinecone",
@@ -119,9 +123,12 @@ export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: CredentialsProviderName;
+  /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
+  credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
+  discriminator?: string;
+  discriminator_mapping?: { [key: string]: CredentialsProviderName };
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
@@ -190,6 +197,8 @@ export type GraphMeta = {
   is_template: boolean;
   name: string;
   description: string;
+  input_schema: BlockIOObjectSubSchema;
+  output_schema: BlockIOObjectSubSchema;
 };
 
 export type GraphMetaWithRuns = GraphMeta & {
@@ -204,12 +213,19 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  "version" | "is_active" | "is_template" | "links"
+  | "version"
+  | "is_active"
+  | "is_template"
+  | "links"
+  | "input_schema"
+  | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;
   is_template?: boolean;
   links: Array<LinkCreatable>;
+  input_schema?: BlockIOObjectSubSchema;
+  output_schema?: BlockIOObjectSubSchema;
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
@@ -299,6 +315,7 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  AGENT = "Agent",
 }
 
 export type AnalyticsMetrics = {
@@ -311,4 +328,21 @@ export type AnalyticsDetails = {
   type: string;
   data: { [key: string]: any };
   index: string;
+};
+
+export type Schedule = {
+  id: string;
+  name: string;
+  cron: string;
+  user_id: string;
+  graph_id: string;
+  graph_version: number;
+  input_data: { [key: string]: any };
+  next_run_time: string;
+};
+
+export type ScheduleCreatable = {
+  cron: string;
+  graph_id: string;
+  input_data: { [key: string]: any };
 };

@@ -23,10 +23,10 @@ model User {
   // Relations
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
-  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
+  APIKeys                      APIKey[]
 
   @@index([id])
   @@index([email])
@@ -50,12 +50,6 @@ model AgentGraph {
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
-
-  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
-  agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -192,30 +186,6 @@ model AgentNodeExecutionInputOutput {
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
 }
 
-// This model describes the recurring execution schedule of an Agent.
-model AgentGraphExecutionSchedule {
-  id        String    @id
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
-
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
-
-  schedule  String // cron expression
-  isEnabled Boolean @default(true)
-  inputData String // JSON serialized object
-
-  // default and set the value on each update, lastUpdated field has no time zone.
-  lastUpdated DateTime @updatedAt
-
-  // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([isEnabled])
-}
-
 model AnalyticsDetails {
   // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
   // typical uuid() inserts are handled by prisma
@@ -281,4 +251,43 @@ model UserBlockCredit {
   metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+}
+
+enum APIKeyPermission {
+  EXECUTE_GRAPH // Can execute agent graphs
+  READ_GRAPH // Can get graph versions and details
+  EXECUTE_BLOCK // Can execute individual blocks
+  READ_BLOCK // Can get block information
+}
+
+model APIKey {
+  id          String             @id @default(uuid())
+  name        String
+  prefix      String             // First 8 chars for identification
+  postfix     String
+  key         String             @unique // Hashed key
+  status      APIKeyStatus       @default(ACTIVE)
+  permissions APIKeyPermission[]
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  description String?
+
+  // Relation to user
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([key])
+  @@index([prefix])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+enum APIKeyStatus {
+  ACTIVE
+  REVOKED
+  SUSPENDED
 }

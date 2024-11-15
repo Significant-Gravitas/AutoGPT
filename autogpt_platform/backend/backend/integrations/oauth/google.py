@@ -103,12 +103,11 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
     def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         session = AuthorizedSession(credentials)
-        response = session.post(
+        session.post(
             self.revoke_uri,
             params={"token": credentials.access_token.get_secret_value()},
             headers={"content-type": "application/x-www-form-urlencoded"},
         )
-        response.raise_for_status()
         return True
 
     def _request_email(
