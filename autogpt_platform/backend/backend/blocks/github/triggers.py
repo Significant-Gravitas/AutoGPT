@@ -51,7 +51,7 @@ class GitHubTriggerBase:
 
 class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
     EXAMPLE_PAYLOAD_FILE = (
-        Path(__file__).parent / "webhook_payloads" / "pull_request.synchronize.json"
+        Path(__file__).parent / "example_payloads" / "pull_request.synchronize.json"
     )
 
     # --8<-- [start:example-event-filter]
