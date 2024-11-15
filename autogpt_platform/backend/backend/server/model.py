@@ -55,4 +55,4 @@ class SetGraphActiveVersion(pydantic.BaseModel):
 
 
 class UpdatePermissionsRequest(pydantic.BaseModel):
-    permissions: typing.List[APIKeyPermission]
+    permissions: List[APIKeyPermission]
