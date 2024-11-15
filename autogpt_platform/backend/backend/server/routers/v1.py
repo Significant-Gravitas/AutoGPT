@@ -1,23 +1,42 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, List
 
+import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException
-from typing_extensions import TypedDict
+from typing_extensions import Optional, TypedDict
 
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data.api_key import (
+    APIKeyError,
+    APIKeyNotFoundError,
+    APIKeyPermissionError,
+    APIKeyWithoutHash,
+    generate_api_key,
+    get_api_key_by_id,
+    list_user_api_keys,
+    revoke_api_key,
+    suspend_api_key,
+    update_api_key_permissions,
+)
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
-from backend.executor import ExecutionManager, ExecutionScheduler
-from backend.server.model import CreateGraph, SetGraphActiveVersion
+from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
+from backend.server.model import (
+    CreateAPIKeyRequest,
+    CreateAPIKeyResponse,
+    CreateGraph,
+    SetGraphActiveVersion,
+    UpdatePermissionsRequest,
+)
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
@@ -209,7 +228,7 @@ async def update_graph(
             400, detail="Changing is_template on an existing graph is forbidden"
         )
     graph.is_active = not graph.is_template
-    graph.reassign_ids()
+    graph.reassign_ids(user_id=user_id)
 
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
@@ -265,7 +284,7 @@ async def execute_graph(
         graph_exec = execution_manager_client().add_execution(
             graph_id, node_input, user_id=user_id
         )
-        return {"id": graph_exec["graph_exec_id"]}
+        return {"id": graph_exec.graph_exec_id}
     except Exception as e:
         msg = e.__str__().encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
@@ -403,7 +422,7 @@ async def do_create_graph(
 
     graph.is_template = is_template
     graph.is_active = not is_template
-    graph.reassign_ids(reassign_graph_id=True)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     return await graph_db.create_graph(graph, user_id=user_id)
 
@@ -424,60 +443,64 @@ async def create_new_template(
 ########################################################
 
 
+class ScheduleCreationRequest(pydantic.BaseModel):
+    cron: str
+    input_data: dict[Any, Any]
+    graph_id: str
+
+
 @v1_router.post(
-    path="/graphs/{graph_id}/schedules",
-    tags=["graphs"],
+    path="/schedules",
+    tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
 async def create_schedule(
-    graph_id: str,
-    cron: str,
-    input_data: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
-) -> dict[Any, Any]:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
+    schedule: ScheduleCreationRequest,
+) -> scheduler.JobInfo:
+    graph = await graph_db.get_graph(schedule.graph_id, user_id=user_id)
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
-    return {
-        "id": await asyncio.to_thread(
-            lambda: execution_scheduler_client().add_execution_schedule(
-                graph_id=graph_id,
-                graph_version=graph.version,
-                cron=cron,
-                input_data=input_data,
-                user_id=user_id,
-            )
+        raise HTTPException(
+            status_code=404, detail=f"Graph #{schedule.graph_id} not found."
         )
-    }
+
+    return await asyncio.to_thread(
+        lambda: execution_scheduler_client().add_execution_schedule(
+            graph_id=schedule.graph_id,
+            graph_version=graph.version,
+            cron=schedule.cron,
+            input_data=schedule.input_data,
+            user_id=user_id,
+        )
+    )
 
 
-@v1_router.put(
-    path="/graphs/schedules/{schedule_id}",
-    tags=["graphs"],
+@v1_router.delete(
+    path="/schedules/{schedule_id}",
+    tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def update_schedule(
+async def delete_schedule(
     schedule_id: str,
-    input_data: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[Any, Any]:
-    is_enabled = input_data.get("is_enabled", False)
-    execution_scheduler_client().update_schedule(
-        schedule_id, is_enabled, user_id=user_id
-    )
+    execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     return {"id": schedule_id}
 
 
 @v1_router.get(
-    path="/graphs/{graph_id}/schedules",
-    tags=["graphs"],
+    path="/schedules",
+    tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
 async def get_execution_schedules(
-    graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> dict[str, str]:
-    return execution_scheduler_client().get_execution_schedules(graph_id, user_id)
+    user_id: Annotated[str, Depends(get_user_id)],
+    graph_id: str | None = None,
+) -> list[scheduler.JobInfo]:
+    return execution_scheduler_client().get_execution_schedules(
+        user_id=user_id,
+        graph_id=graph_id,
+    )
 
 
 ########################################################
@@ -520,4 +543,134 @@ async def update_configuration(
             "updated_fields": updated_fields,
         }
     except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+########################################################
+#####################  API KEY ##############################
+########################################################
+
+
+@v1_router.post(
+    "/api-keys",
+    response_model=CreateAPIKeyResponse,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def create_api_key(
+    request: CreateAPIKeyRequest, user_id: Annotated[str, Depends(get_user_id)]
+) -> CreateAPIKeyResponse:
+    """Create a new API key"""
+    try:
+        api_key, plain_text = await generate_api_key(
+            name=request.name,
+            user_id=user_id,
+            permissions=request.permissions,
+            description=request.description,
+        )
+        return CreateAPIKeyResponse(api_key=api_key, plain_text_key=plain_text)
+    except APIKeyError as e:
+        logger.error(f"Failed to create API key: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@v1_router.get(
+    "/api-keys",
+    response_model=List[APIKeyWithoutHash],
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_api_keys(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> List[APIKeyWithoutHash]:
+    """List all API keys for the user"""
+    try:
+        return await list_user_api_keys(user_id)
+    except APIKeyError as e:
+        logger.error(f"Failed to list API keys: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@v1_router.get(
+    "/api-keys/{key_id}",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_api_key(
+    key_id: str, user_id: Annotated[str, Depends(get_user_id)]
+) -> APIKeyWithoutHash:
+    """Get a specific API key"""
+    try:
+        api_key = await get_api_key_by_id(key_id, user_id)
+        if not api_key:
+            raise HTTPException(status_code=404, detail="API key not found")
+        return api_key
+    except APIKeyError as e:
+        logger.error(f"Failed to get API key: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@v1_router.delete(
+    "/api-keys/{key_id}",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def delete_api_key(
+    key_id: str, user_id: Annotated[str, Depends(get_user_id)]
+) -> Optional[APIKeyWithoutHash]:
+    """Revoke an API key"""
+    try:
+        return await revoke_api_key(key_id, user_id)
+    except APIKeyNotFoundError:
+        raise HTTPException(status_code=404, detail="API key not found")
+    except APIKeyPermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except APIKeyError as e:
+        logger.error(f"Failed to revoke API key: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@v1_router.post(
+    "/api-keys/{key_id}/suspend",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def suspend_key(
+    key_id: str, user_id: Annotated[str, Depends(get_user_id)]
+) -> Optional[APIKeyWithoutHash]:
+    """Suspend an API key"""
+    try:
+        return await suspend_api_key(key_id, user_id)
+    except APIKeyNotFoundError:
+        raise HTTPException(status_code=404, detail="API key not found")
+    except APIKeyPermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except APIKeyError as e:
+        logger.error(f"Failed to suspend API key: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@v1_router.put(
+    "/api-keys/{key_id}/permissions",
+    response_model=APIKeyWithoutHash,
+    tags=["api-keys"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def update_permissions(
+    key_id: str,
+    request: UpdatePermissionsRequest,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> Optional[APIKeyWithoutHash]:
+    """Update API key permissions"""
+    try:
+        return await update_api_key_permissions(key_id, user_id, request.permissions)
+    except APIKeyNotFoundError:
+        raise HTTPException(status_code=404, detail="API key not found")
+    except APIKeyPermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except APIKeyError as e:
+        logger.error(f"Failed to update API key permissions: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))

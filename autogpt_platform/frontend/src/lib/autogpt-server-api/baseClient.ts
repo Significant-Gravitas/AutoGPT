@@ -16,6 +16,9 @@ import {
   NodeExecutionResult,
   OAuth2Credentials,
   User,
+  ScheduleCreatable,
+  ScheduleUpdateable,
+  Schedule,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -236,6 +239,18 @@ export default class BaseAutoGPTServerAPI {
 
   private async _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
+  }
+
+  async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
+    return this._request("POST", `/schedules`, schedule);
+  }
+
+  async deleteSchedule(scheduleId: string): Promise<Schedule> {
+    return this._request("DELETE", `/schedules/${scheduleId}`);
+  }
+
+  async listSchedules(): Promise<Schedule[]> {
+    return this._get(`/schedules`);
   }
 
   private async _request(

@@ -69,13 +69,13 @@ export const FlowRunsTimeline = ({
                 <p>
                   <strong>Agent:</strong> {flow ? flow.name : "Unknown"}
                 </p>
-                <p>
+                <div>
                   <strong>Status:</strong>&nbsp;
                   <FlowRunStatusBadge
                     status={data.status}
                     className="px-1.5 py-0"
                   />
-                </p>
+                </div>
                 <p>
                   <strong>Started:</strong>{" "}
                   {moment(data.startTime).format("YYYY-MM-DD HH:mm:ss")}
