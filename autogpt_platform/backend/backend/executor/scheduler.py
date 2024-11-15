@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def log(msg, **kwargs):
-    logger.warning("[ExecutionScheduler] " + msg, **kwargs)
+    logger.info("[ExecutionScheduler] " + msg, **kwargs)
 
 
 class ExecutionScheduler(AppService):
