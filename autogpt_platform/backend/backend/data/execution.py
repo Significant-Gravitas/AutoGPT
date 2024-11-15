@@ -97,7 +97,7 @@ class ExecutionResult(BaseModel):
     def from_db(execution: AgentNodeExecution):
         if execution.executionData:
             # Execution that has been queued for execution will persist its data.
-            input_data = json.loads(execution.executionData)
+            input_data = json.loads(execution.executionData, target_type=dict[str, Any])
         else:
             # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
