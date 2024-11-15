@@ -1,8 +1,8 @@
 import json
-from typing import Any, Type, TypeVar, get_args, get_origin
+from typing import Any, Type, TypeVar, cast, get_args, get_origin
 
 
-class ConversionError(Exception):
+class ConversionError(ValueError):
     pass
 
 
@@ -102,7 +102,7 @@ def __convert_bool(value: Any) -> bool:
         return bool(value)
 
 
-def convert(value: Any, target_type: Type):
+def _try_convert(value: Any, target_type: Type, raise_on_mismatch: bool) -> Any:
     origin = get_origin(target_type)
     args = get_args(target_type)
     if origin is None:
@@ -133,6 +133,8 @@ def convert(value: Any, target_type: Type):
                 return {convert(v, args[0]) for v in value}
             else:
                 return value
+    elif raise_on_mismatch:
+        raise TypeError(f"Value {value} is not of expected type {target_type}")
     else:
         # Need to convert value to the origin type
         if origin is list:
@@ -175,3 +177,17 @@ def convert(value: Any, target_type: Type):
             return __convert_bool(value)
         else:
             return value
+
+
+T = TypeVar("T")
+
+
+def type_match(value: Any, target_type: Type[T]) -> T:
+    return cast(T, _try_convert(value, target_type, raise_on_mismatch=True))
+
+
+def convert(value: Any, target_type: Type[T]) -> T:
+    try:
+        return cast(T, _try_convert(value, target_type, raise_on_mismatch=False))
+    except Exception as e:
+        raise ConversionError(f"Failed to convert {value} to {target_type}") from e
