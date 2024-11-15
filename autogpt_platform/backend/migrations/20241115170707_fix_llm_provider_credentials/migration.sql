@@ -1,5 +1,5 @@
 -- Correct credentials.provider field on all nodes with 'llm' provider credentials
-UPDATE platform."AgentNode"
+UPDATE "AgentNode"
 SET    "constantInput" = JSONB_SET(
          "constantInput"::jsonb,
          '{credentials,provider}',
