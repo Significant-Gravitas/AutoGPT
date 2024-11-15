@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "autogpt-platform-backend"
-version = "0.1.0"
+version = "0.3.0"
 description = "A platform for building AI-powered agentic workflows"
 authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
