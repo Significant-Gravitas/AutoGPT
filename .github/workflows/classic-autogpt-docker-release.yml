@@ -8,7 +8,7 @@ on:
     inputs:
       no_cache:
         type: boolean
-        description: "Build from scratch, without using cached layers"
+        description: 'Build from scratch, without using cached layers'
 
 env:
   IMAGE_NAME: auto-gpt
@@ -54,6 +54,7 @@ jobs:
             ${{ env.DEPLOY_IMAGE_NAME }}:latest,
             ${{ env.DEPLOY_IMAGE_NAME }}:${{ steps.sanitize_tag.outputs.tag }}
           labels: GIT_REVISION=${{ github.sha }}
+
           # cache layers in GitHub Actions cache to speed up builds
           cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }},scope=autogpt-docker-release
           cache-to: type=gha,scope=autogpt-docker-release,mode=max
