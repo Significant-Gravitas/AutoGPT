@@ -90,7 +90,7 @@
     "@types/react-dom": "^18",
     "@types/react-modal": "^3.16.3",
     "concurrently": "^9.1.0",
-    "eslint": "^8",
+    "eslint": "^9",
     "eslint-config-next": "15.0.3",
     "eslint-plugin-storybook": "^0.11.0",
     "postcss": "^8",
