@@ -4,15 +4,15 @@ on:
   push:
     branches: [master, dev]
     paths:
-      - ".github/workflows/classic-autogpt-docker-ci.yml"
-      - "classic/original_autogpt/**"
-      - "classic/forge/**"
+      - '.github/workflows/classic-autogpt-docker-ci.yml'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
-      - ".github/workflows/classic-autogpt-docker-ci.yml"
-      - "classic/original_autogpt/**"
-      - "classic/forge/**"
+      - '.github/workflows/classic-autogpt-docker-ci.yml'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
 
 concurrency:
   group: ${{ format('classic-autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
