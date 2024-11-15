@@ -34,7 +34,7 @@ import {
 interface SchedulesTableProps {
   schedules: Schedule[];
   agents: GraphMeta[];
-  onToggleSchedule: (scheduleId: string, enabled: boolean) => void;
+  onRemoveSchedule: (scheduleId: string, enabled: boolean) => void;
   sortColumn: keyof Schedule;
   sortDirection: "asc" | "desc";
   onSort: (column: keyof Schedule) => void;
@@ -43,7 +43,7 @@ interface SchedulesTableProps {
 export const SchedulesTable = ({
   schedules,
   agents,
-  onToggleSchedule,
+  onRemoveSchedule,
   sortColumn,
   sortDirection,
   onSort,
@@ -70,7 +70,7 @@ export const SchedulesTable = ({
     });
 
   const handleToggleSchedule = (scheduleId: string, enabled: boolean) => {
-    onToggleSchedule(scheduleId, enabled);
+    onRemoveSchedule(scheduleId, enabled);
     if (!enabled) {
       toast({
         title: "Schedule Disabled",
@@ -165,13 +165,13 @@ export const SchedulesTable = ({
                 Graph Name
               </TableHead>
               <TableHead
-                onClick={() => onSort("id")}
+                onClick={() => onSort("next_run_time")}
                 className="cursor-pointer"
               >
-                ID
+                Next Execution
               </TableHead>
               <TableHead
-                onClick={() => onSort("schedule")}
+                onClick={() => onSort("cron")}
                 className="cursor-pointer"
               >
                 Schedule
@@ -197,10 +197,12 @@ export const SchedulesTable = ({
                     {agents.find((a) => a.id === schedule.graph_id)?.name ||
                       schedule.graph_id}
                   </TableCell>
-                  <TableCell>{schedule.id}</TableCell>
+                  <TableCell>
+                    {new Date(schedule.next_run_time).toLocaleString()}
+                  </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
-                      {cron_manager.generateDescription(schedule.schedule)}
+                      {cron_manager.generateDescription(schedule.cron || "")}
                     </Badge>
                   </TableCell>
 
@@ -210,7 +212,7 @@ export const SchedulesTable = ({
                         variant={"destructive"}
                         onClick={() => handleToggleSchedule(schedule.id, false)}
                       >
-                        Disable
+                        Remove
                       </Button>
                     </div>
                   </TableCell>
