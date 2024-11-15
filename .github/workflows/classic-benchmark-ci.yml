@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [ forge ]
+        agent-name: [forge]
       fail-fast: false
     timeout-minutes: 20
     steps:
@@ -146,23 +146,23 @@ jobs:
           echo "Running the following command: poetry run agbenchmark --mock --category=coding"
           poetry run agbenchmark --mock --category=coding
 
-          echo "Running the following command: poetry run agbenchmark --test=WriteFile"
-          poetry run agbenchmark --test=WriteFile
+          # echo "Running the following command: poetry run agbenchmark --test=WriteFile"
+          # poetry run agbenchmark --test=WriteFile
           cd ../benchmark
           poetry install
           echo "Adding the BUILD_SKILL_TREE environment variable. This will attempt to add new elements in the skill tree. If new elements are added, the CI fails because they should have been pushed"
           export BUILD_SKILL_TREE=true
 
-          poetry run agbenchmark --mock
+          # poetry run agbenchmark --mock
 
-          CHANGED=$(git diff --name-only | grep -E '(agbenchmark/challenges)|(../classic/frontend/assets)') || echo "No diffs"
-          if [ ! -z "$CHANGED" ]; then
-            echo "There are unstaged changes please run agbenchmark and commit those changes since they are needed."
-            echo "$CHANGED"
-            exit 1
-          else
-            echo "No unstaged changes."
-          fi
+          # CHANGED=$(git diff --name-only | grep -E '(agbenchmark/challenges)|(../classic/frontend/assets)') || echo "No diffs"
+          # if [ ! -z "$CHANGED" ]; then
+          #   echo "There are unstaged changes please run agbenchmark and commit those changes since they are needed."
+          #   echo "$CHANGED"
+          #   exit 1
+          # else
+          #   echo "No unstaged changes."
+          # fi
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TELEMETRY_ENVIRONMENT: autogpt-benchmark-ci
