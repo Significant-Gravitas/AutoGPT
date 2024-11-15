@@ -11,7 +11,7 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/benchmark/**'
-      - 'lassic/run'
+      - 'classic/run'
       - 'classic/cli.py'
       - 'classic/setup.py'
       - '!**/*.md'
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [original_autogpt]
+        agent-name: [ original_autogpt ]
       fail-fast: false
     timeout-minutes: 20
     env:
