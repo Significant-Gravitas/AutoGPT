@@ -117,6 +117,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"
+    PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
+        "perplexity/llama-3.1-sonar-large-128k-online"
+    )
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -159,6 +162,9 @@ MODEL_METADATA = {
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 4000),
     LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 4000),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 8192),
+    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
+        "open_router", 8192
+    ),
 }
 
 for model in LlmModel:
