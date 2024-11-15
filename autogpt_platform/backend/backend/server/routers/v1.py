@@ -3,6 +3,7 @@ import logging
 from collections import defaultdict
 from typing import Annotated, Any, Dict, List
 
+import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -28,7 +29,7 @@ from backend.data.api_key import (
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import get_block_costs, get_user_credit_model
 from backend.data.user import get_or_create_user
-from backend.executor import ExecutionManager, ExecutionScheduler
+from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -442,60 +443,64 @@ async def create_new_template(
 ########################################################
 
 
+class ScheduleCreationRequest(pydantic.BaseModel):
+    cron: str
+    input_data: dict[Any, Any]
+    graph_id: str
+
+
 @v1_router.post(
-    path="/graphs/{graph_id}/schedules",
-    tags=["graphs"],
+    path="/schedules",
+    tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
 async def create_schedule(
-    graph_id: str,
-    cron: str,
-    input_data: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
-) -> dict[Any, Any]:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
+    schedule: ScheduleCreationRequest,
+) -> scheduler.JobInfo:
+    graph = await graph_db.get_graph(schedule.graph_id, user_id=user_id)
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
-    return {
-        "id": await asyncio.to_thread(
-            lambda: execution_scheduler_client().add_execution_schedule(
-                graph_id=graph_id,
-                graph_version=graph.version,
-                cron=cron,
-                input_data=input_data,
-                user_id=user_id,
-            )
+        raise HTTPException(
+            status_code=404, detail=f"Graph #{schedule.graph_id} not found."
         )
-    }
+
+    return await asyncio.to_thread(
+        lambda: execution_scheduler_client().add_execution_schedule(
+            graph_id=schedule.graph_id,
+            graph_version=graph.version,
+            cron=schedule.cron,
+            input_data=schedule.input_data,
+            user_id=user_id,
+        )
+    )
 
 
-@v1_router.put(
-    path="/graphs/schedules/{schedule_id}",
-    tags=["graphs"],
+@v1_router.delete(
+    path="/schedules/{schedule_id}",
+    tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def update_schedule(
+async def delete_schedule(
     schedule_id: str,
-    input_data: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[Any, Any]:
-    is_enabled = input_data.get("is_enabled", False)
-    execution_scheduler_client().update_schedule(
-        schedule_id, is_enabled, user_id=user_id
-    )
+    execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     return {"id": schedule_id}
 
 
 @v1_router.get(
-    path="/graphs/{graph_id}/schedules",
-    tags=["graphs"],
+    path="/schedules",
+    tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
 async def get_execution_schedules(
-    graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> dict[str, str]:
-    return execution_scheduler_client().get_execution_schedules(graph_id, user_id)
+    user_id: Annotated[str, Depends(get_user_id)],
+    graph_id: str | None = None,
+) -> list[scheduler.JobInfo]:
+    return execution_scheduler_client().get_execution_schedules(
+        user_id=user_id,
+        graph_id=graph_id,
+    )
 
 
 ########################################################

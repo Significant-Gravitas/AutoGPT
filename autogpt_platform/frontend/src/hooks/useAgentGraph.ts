@@ -870,21 +870,17 @@ export default function useAgentGraph(
     async (cronExpression: string, inputs: InputItem[]) => {
       await saveAgent();
       try {
-        const converted = inputs.reduce(
-          (acc, input) => ({
-            ...acc,
-            [input.id]: {
-              type: input.type,
-              inputSchema: input.inputSchema,
-              hardcodedValues: input.hardcodedValues,
-            },
-          }),
-          {},
-        );
         if (flowID) {
-          await api.createSchedule(flowID, {
+          await api.createSchedule({
+            graph_id: flowID,
             cron: cronExpression,
-            input_data: converted,
+            input_data: inputs.reduce(
+              (acc, input) => ({
+                ...acc,
+                [input.hardcodedValues.name]: input.hardcodedValues.value,
+              }),
+              {},
+            ),
           });
           toast({
             title: "Agent scheduling successful",
