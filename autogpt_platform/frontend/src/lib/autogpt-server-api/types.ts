@@ -330,6 +330,7 @@ export type AnalyticsDetails = {
   index: string;
 };
 
+
 // API Key Types
 
 export enum APIKeyPermission {
@@ -362,3 +363,20 @@ export interface CreateAPIKeyResponse {
   api_key: APIKey;
   plain_text_key: string;
 }
+
+// Schedule types
+export type Schedule = {
+  id: string;
+  schedule: string; //cron expression
+  graph_id: string;
+};
+
+export type ScheduleCreatable = {
+  cron: string;
+  input_data: { [key: string]: any };
+};
+
+export type ScheduleUpdateable = {
+  is_enabled: boolean;
+};
+
