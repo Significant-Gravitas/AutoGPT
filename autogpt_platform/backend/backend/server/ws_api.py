@@ -138,6 +138,11 @@ async def websocket_router(
         while True:
             data = await websocket.receive_text()
             message = WsMessage.model_validate_json(data)
+
+            if message.method == Methods.HEARTBEAT and message.data == "ping":
+                await manager.handle_heartbeat(websocket)
+                continue
+
             if message.method == Methods.SUBSCRIBE:
                 await handle_subscribe(websocket, manager, message)
 

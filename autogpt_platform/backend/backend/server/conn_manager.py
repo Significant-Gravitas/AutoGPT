@@ -20,6 +20,13 @@ class ConnectionManager:
         for subscribers in self.subscriptions.values():
             subscribers.discard(websocket)
 
+    async def handle_heartbeat(self, websocket: WebSocket):
+        """Handle heartbeat messages by responding with pong"""
+        await websocket.send_json({
+            "method": Methods.HEARTBEAT,
+            "data": "pong"
+        })
+
     async def subscribe(self, graph_id: str, websocket: WebSocket):
         if graph_id not in self.subscriptions:
             self.subscriptions[graph_id] = set()

@@ -12,6 +12,7 @@ class Methods(enum.Enum):
     UNSUBSCRIBE = "unsubscribe"
     EXECUTION_EVENT = "execution_event"
     ERROR = "error"
+    HEARTBEAT = "heartbeat"
 
 
 class WsMessage(pydantic.BaseModel):
