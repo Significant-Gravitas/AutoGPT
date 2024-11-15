@@ -134,7 +134,7 @@ def _try_convert(value: Any, target_type: Type, raise_on_mismatch: bool) -> Any:
             else:
                 return value
     elif raise_on_mismatch:
-        raise ConversionError(f"Failed to convert {value} to {target_type}")
+        raise TypeError(f"Value {value} is not of expected type {target_type}")
     else:
         # Need to convert value to the origin type
         if origin is list:
