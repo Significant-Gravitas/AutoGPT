@@ -443,10 +443,6 @@ async def create_new_template(
 ########################################################
 
 
-class ScheduleUpdateRequest(pydantic.BaseModel):
-    is_enabled: bool = False
-
-
 class ScheduleCreationRequest(pydantic.BaseModel):
     cron: str
     input_data: dict[Any, Any]
