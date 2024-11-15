@@ -329,3 +329,19 @@ export type AnalyticsDetails = {
   data: { [key: string]: any };
   index: string;
 };
+
+// Schedule types
+export type Schedule = {
+  id: string;
+  schedule: string; //cron expression
+  graph_id: string;
+};
+
+export type ScheduleCreatable = {
+  cron: string;
+  input_data: { [key: string]: any };
+};
+
+export type ScheduleUpdateable = {
+  is_enabled: boolean;
+};

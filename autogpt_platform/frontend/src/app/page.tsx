@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
   GraphMetaWithRuns,
   ExecutionMeta,
+  Schedule,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
@@ -15,16 +16,50 @@ import {
   FlowRunsList,
   FlowRunsStats,
 } from "@/components/monitor";
+import { SchedulesTable } from "@/components/monitor/scheduleTable";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<GraphMetaWithRuns[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<GraphMetaWithRuns | null>(
     null,
   );
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
+  const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
+
+  const fetchSchedules = useCallback(async () => {
+    const schedulesData: Schedule[] = [];
+    for (const flow of flows) {
+      const flowSchedules = await api.getSchedules(flow.id);
+      Object.entries(flowSchedules).forEach(([id, schedule]) => {
+        schedulesData.push({
+          id,
+          schedule,
+          graph_id: flow.id,
+        });
+      });
+    }
+
+    setSchedules(schedulesData);
+  }, [api, flows]);
+
+  const toggleSchedule = useCallback(
+    async (scheduleId: string, enabled: boolean) => {
+      await api.updateSchedule(scheduleId, { is_enabled: enabled });
+      setSchedules((prevSchedules) =>
+        prevSchedules.map((schedule) =>
+          schedule.id === scheduleId
+            ? { ...schedule, isEnabled: enabled }
+            : schedule,
+        ),
+      );
+    },
+    [api],
+  );
 
   const fetchAgents = useCallback(() => {
     api.listGraphsWithRuns().then((agent) => {
@@ -45,13 +80,26 @@ const Monitor = () => {
   }, [api, fetchAgents]);
 
   useEffect(() => {
+    fetchSchedules();
+  }, [fetchSchedules, flows]);
+
+  useEffect(() => {
     const intervalId = setInterval(() => fetchAgents(), 5000);
     return () => clearInterval(intervalId);
   }, [fetchAgents, flows]);
 
   const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
-  const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
+  const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3";
   const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
+
+  const handleSort = (column: keyof Schedule) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10">
@@ -101,6 +149,16 @@ const Monitor = () => {
             <FlowRunsStats flows={flows} flowRuns={flowRuns} />
           </Card>
         )}
+      <div className="col-span-full md:col-span-3 lg:col-span-2 xl:col-span-6">
+        <SchedulesTable
+          schedules={schedules} // all schedules
+          agents={flows} // for filtering purpose
+          onToggleSchedule={toggleSchedule}
+          sortColumn={sortColumn}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+        />
+      </div>
     </div>
   );
 };
