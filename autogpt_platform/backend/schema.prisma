@@ -23,7 +23,6 @@ model User {
   // Relations
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
-  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
@@ -51,7 +50,6 @@ model AgentGraph {
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -186,30 +184,6 @@ model AgentNodeExecutionInputOutput {
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
-}
-
-// This model describes the recurring execution schedule of an Agent.
-model AgentGraphExecutionSchedule {
-  id        String    @id
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
-
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
-
-  schedule  String // cron expression
-  isEnabled Boolean @default(true)
-  inputData String // JSON serialized object
-
-  // default and set the value on each update, lastUpdated field has no time zone.
-  lastUpdated DateTime @updatedAt
-
-  // Link to User model
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([isEnabled])
 }
 
 model AnalyticsDetails {
