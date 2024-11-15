@@ -45,9 +45,17 @@ resources:
     cpu: 100m
     memory: 128Mi
   limits:
-    cpu: 1
-    memory: 1Gi
+    cpu: 500m
+    memory: 512Mi
 
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
 
 autoscaling:
   enabled: false
@@ -66,21 +74,6 @@ tolerations: []
 affinity: {}
 
 domain: ""
-
-cors:
-  allowOrigins:
-    - "https://dev-builder.agpt.co"
-  allowMethods:
-    - "GET"
-    - "POST"
-    - "PUT"
-    - "DELETE"
-    - "OPTIONS"
-  allowHeaders:
-    - "Content-Type"
-    - "Authorization"
-  maxAge: 3600
-  allowCredentials: true
 
 cloudSqlProxy:
   image:
