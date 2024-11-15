@@ -32,33 +32,15 @@ const Monitor = () => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const fetchSchedules = useCallback(async () => {
-    const schedulesData: Schedule[] = [];
-    for (const flow of flows) {
-      const flowSchedules = await api.getSchedules(flow.id);
-      Object.entries(flowSchedules).forEach(([id, schedule]) => {
-        schedulesData.push({
-          id,
-          schedule,
-          graph_id: flow.id,
-        });
-      });
-    }
+    setSchedules(await api.listSchedules());
+  }, [api]);
 
-    setSchedules(schedulesData);
-  }, [api, flows]);
-
-  const toggleSchedule = useCallback(
-    async (scheduleId: string, enabled: boolean) => {
-      await api.updateSchedule(scheduleId, { is_enabled: enabled });
-      setSchedules((prevSchedules) =>
-        prevSchedules.map((schedule) =>
-          schedule.id === scheduleId
-            ? { ...schedule, isEnabled: enabled }
-            : schedule,
-        ),
-      );
+  const removeSchedule = useCallback(
+    async (scheduleId: string) => {
+      const removedSchedule = await api.deleteSchedule(scheduleId);
+      setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
     },
-    [api],
+    [schedules, api],
   );
 
   const fetchAgents = useCallback(() => {
@@ -77,11 +59,11 @@ const Monitor = () => {
 
   useEffect(() => {
     fetchAgents();
-  }, [api, fetchAgents]);
+  }, [fetchAgents]);
 
   useEffect(() => {
     fetchSchedules();
-  }, [fetchSchedules, flows]);
+  }, [fetchSchedules]);
 
   useEffect(() => {
     const intervalId = setInterval(() => fetchAgents(), 5000);
@@ -149,11 +131,11 @@ const Monitor = () => {
             <FlowRunsStats flows={flows} flowRuns={flowRuns} />
           </Card>
         )}
-      <div className="col-span-full md:col-span-3 lg:col-span-2 xl:col-span-6">
+      <div className="col-span-full xl:col-span-6">
         <SchedulesTable
           schedules={schedules} // all schedules
           agents={flows} // for filtering purpose
-          onToggleSchedule={toggleSchedule}
+          onRemoveSchedule={removeSchedule}
           sortColumn={sortColumn}
           sortDirection={sortDirection}
           onSort={handleSort}
