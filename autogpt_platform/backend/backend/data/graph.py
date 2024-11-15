@@ -550,10 +550,10 @@ async def fix_llm_provider_credentials():
         SELECT    "User".id            user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
-        FROM      platform."AgentGraph" graph
-        LEFT JOIN platform."AgentNode"  node
+        FROM      "AgentNode"  node
+        LEFT JOIN "AgentGraph" graph
         ON        node."agentGraphId" = graph.id
-        LEFT JOIN platform."User"
+        LEFT JOIN "User"
         ON        graph."userId" = "User".id
         WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
         ORDER BY  user_id;
