@@ -57,8 +57,8 @@ class Node(BaseDbModel):
         obj = Node(
             id=node.id,
             block_id=node.AgentBlock.id,
-            input_default=json.loads(node.constantInput),
-            metadata=json.loads(node.metadata),
+            input_default=json.loads(node.constantInput, target_type=dict[str, Any]),
+            metadata=json.loads(node.metadata, target_type=dict[str, Any]),
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
@@ -81,10 +81,13 @@ class GraphExecution(BaseDbModel):
         duration = (end_time - start_time).total_seconds()
         total_run_time = duration
 
-        if execution.stats:
-            stats = json.loads(execution.stats)
-            duration = stats.get("walltime", duration)
-            total_run_time = stats.get("nodes_walltime", total_run_time)
+        try:
+            stats = json.loads(execution.stats or "{}", target_type=dict[str, Any])
+        except ValueError:
+            stats = {}
+
+        duration = stats.get("walltime", duration)
+        total_run_time = stats.get("nodes_walltime", total_run_time)
 
         return GraphExecution(
             id=execution.id,
@@ -312,7 +315,9 @@ class Graph(BaseDbModel):
     def _process_node(node: AgentNode, hide_credentials: bool) -> Node:
         node_dict = node.model_dump()
         if hide_credentials and "constantInput" in node_dict:
-            constant_input = json.loads(node_dict["constantInput"])
+            constant_input = json.loads(
+                node_dict["constantInput"], target_type=dict[str, Any]
+            )
             constant_input = Graph._hide_credentials_in_input(constant_input)
             node_dict["constantInput"] = json.dumps(constant_input)
         return Node.from_db(AgentNode(**node_dict))
