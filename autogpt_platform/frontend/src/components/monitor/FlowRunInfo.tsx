@@ -22,27 +22,16 @@ export const FlowRunInfo: React.FC<
   }
 > = ({ flow, flowRun, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);
-  const [graph, setGraph] = useState<Graph | null>(null);
-  const [executionResults, setExecutionResults] = useState<
-    NodeExecutionResult[] | null
-  >(null);
   const [blockOutputs, setBlockOutputs] = useState<BlockOutput[]>([]);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
-  // Fetch graph and execution data
-  useEffect(() => {
-    api.getGraph(flow.id, flow.version).then((graph) => {
-      setGraph(graph);
-    });
-    api.getGraphExecutionInfo(flow.id, flowRun.id).then((executions) => {
-      setExecutionResults(executions);
-    });
-  }, [api]);
-
-  useEffect(() => {
-    if (!graph || !executionResults) {
-      return;
-    }
+  const fetchBlockResults = useCallback(async () => {
+    console.log("fetchBlockResults");
+    const graph = await api.getGraph(flow.id, flow.version);
+    const executionResults = await api.getGraphExecutionInfo(
+      flow.id,
+      flowRun.id,
+    );
 
     // Filter nodes to only get output blocks
     const outputNodes = graph.nodes.filter(
@@ -74,6 +63,7 @@ export const FlowRunInfo: React.FC<
     setBlockOutputs(
       outputNodes.map((node) => ({
         id: node.id,
+        type: "output" as const,
         outputSchema: {} as BlockIORootSchema,
         hardcodedValues: {
           name:
@@ -85,7 +75,16 @@ export const FlowRunInfo: React.FC<
         result: latestCompletedResults.get(node.id)?.output_data || undefined,
       })),
     );
-  }, [graph, executionResults]);
+  }, [api, flow.id, flow.version, flowRun.id]);
+
+  // Fetch graph and execution data
+  useEffect(() => {
+    if (!isOutputOpen || blockOutputs.length > 0) {
+      return;
+    }
+
+    fetchBlockResults();
+  }, [api, isOutputOpen]);
 
   if (flowRun.graphID != flow.id) {
     throw new Error(
@@ -143,8 +142,7 @@ export const FlowRunInfo: React.FC<
             {moment(flowRun.endTime).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
-            <strong>Duration (run time):</strong> {flowRun.duration} (
-            {flowRun.totalRunTime}) seconds
+            <strong>Duration (run time):</strong> {flowRun.duration}s
           </p>
           {/* <p><strong>Total cost:</strong> €1,23</p> */}
         </CardContent>
