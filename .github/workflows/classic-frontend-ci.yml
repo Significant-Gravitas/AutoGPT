@@ -5,14 +5,14 @@ on:
     branches:
       - master
       - dev
-      - "ci-test*" # This will match any branch that starts with "ci-test"
+      - 'ci-test*' # This will match any branch that starts with "ci-test"
     paths:
-      - "classic/frontend/**"
-      - ".github/workflows/classic-frontend-ci.yml"
+      - 'classic/frontend/**'
+      - '.github/workflows/classic-frontend-ci.yml'
   pull_request:
     paths:
-      - "classic/frontend/**"
-      - ".github/workflows/classic-frontend-ci.yml"
+      - 'classic/frontend/**'
+      - '.github/workflows/classic-frontend-ci.yml'
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.13.2"
+          flutter-version: '3.13.2'
 
       - name: Build Flutter to Web
         run: |
