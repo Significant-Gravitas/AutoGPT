@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal, Type
 
+import prisma
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
 from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
@@ -56,8 +57,8 @@ class Node(BaseDbModel):
         obj = Node(
             id=node.id,
             block_id=node.AgentBlock.id,
-            input_default=json.loads(node.constantInput),
-            metadata=json.loads(node.metadata),
+            input_default=json.loads(node.constantInput, target_type=dict[str, Any]),
+            metadata=json.loads(node.metadata, target_type=dict[str, Any]),
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
@@ -80,10 +81,13 @@ class GraphExecution(BaseDbModel):
         duration = (end_time - start_time).total_seconds()
         total_run_time = duration
 
-        if execution.stats:
-            stats = json.loads(execution.stats)
-            duration = stats.get("walltime", duration)
-            total_run_time = stats.get("nodes_walltime", total_run_time)
+        try:
+            stats = json.loads(execution.stats or "{}", target_type=dict[str, Any])
+        except ValueError:
+            stats = {}
+
+        duration = stats.get("walltime", duration)
+        total_run_time = stats.get("nodes_walltime", total_run_time)
 
         return GraphExecution(
             id=execution.id,
@@ -311,7 +315,9 @@ class Graph(BaseDbModel):
     def _process_node(node: AgentNode, hide_credentials: bool) -> Node:
         node_dict = node.model_dump()
         if hide_credentials and "constantInput" in node_dict:
-            constant_input = json.loads(node_dict["constantInput"])
+            constant_input = json.loads(
+                node_dict["constantInput"], target_type=dict[str, Any]
+            )
             constant_input = Graph._hide_credentials_in_input(constant_input)
             node_dict["constantInput"] = json.dumps(constant_input)
         return Node.from_db(AgentNode(**node_dict))
@@ -523,3 +529,84 @@ async def __create_graph(tx, graph: Graph, user_id: str):
             for link in graph.links
         ]
     )
+
+
+# ------------------------ UTILITIES ------------------------ #
+
+
+async def fix_llm_provider_credentials():
+    """Fix node credentials with provider `llm`"""
+    from autogpt_libs.supabase_integration_credentials_store import (
+        SupabaseIntegrationCredentialsStore,
+    )
+
+    from .redis import get_redis
+    from .user import get_user_integrations
+
+    store = SupabaseIntegrationCredentialsStore(get_redis())
+
+    broken_nodes = await prisma.get_client().query_raw(
+        """
+        SELECT    "User".id            user_id,
+                  node.id              node_id,
+                  node."constantInput" node_preset_input
+        FROM      platform."AgentNode"  node
+        LEFT JOIN platform."AgentGraph" graph
+        ON        node."agentGraphId" = graph.id
+        LEFT JOIN platform."User"       "User"
+        ON        graph."userId" = "User".id
+        WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
+        ORDER BY  user_id;
+        """
+    )
+    logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
+
+    user_id: str = ""
+    user_integrations = None
+    for node in broken_nodes:
+        if node["user_id"] != user_id:
+            # Save queries by only fetching once per user
+            user_id = node["user_id"]
+            user_integrations = await get_user_integrations(user_id)
+        elif not user_integrations:
+            raise RuntimeError(f"Impossible state while processing node {node}")
+
+        node_id: str = node["node_id"]
+        node_preset_input: dict = json.loads(node["node_preset_input"])
+        credentials_meta: dict = node_preset_input["credentials"]
+
+        credentials = next(
+            (
+                c
+                for c in user_integrations.credentials
+                if c.id == credentials_meta["id"]
+            ),
+            None,
+        )
+        if not credentials:
+            continue
+        if credentials.type != "api_key":
+            logger.warning(
+                f"User {user_id} credentials {credentials.id} with provider 'llm' "
+                f"has invalid type '{credentials.type}'"
+            )
+            continue
+
+        api_key = credentials.api_key.get_secret_value()
+        if api_key.startswith("sk-ant-api03-"):
+            credentials.provider = credentials_meta["provider"] = "anthropic"
+        elif api_key.startswith("sk-"):
+            credentials.provider = credentials_meta["provider"] = "openai"
+        elif api_key.startswith("gsk_"):
+            credentials.provider = credentials_meta["provider"] = "groq"
+        else:
+            logger.warning(
+                f"Could not identify provider from key prefix {api_key[:13]}*****"
+            )
+            continue
+
+        store.update_creds(user_id, credentials)
+        await AgentNode.prisma().update(
+            where={"id": node_id},
+            data={"constantInput": json.dumps(node_preset_input)},
+        )

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "autogpt-platform-backend"
-version = "0.1.0"
+version = "0.3.0"
 description = "A platform for building AI-powered agentic workflows"
 authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
@@ -47,6 +47,8 @@ googlemaps = "^4.10.0"
 replicate = "^1.0.3"
 pinecone = "^5.3.1"
 cryptography = "^43.0.3"
+sqlalchemy = "^2.0.36"
+psycopg2-binary = "^2.9.10"
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.30.0"
 httpx = "^0.27.0"

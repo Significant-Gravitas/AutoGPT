@@ -9,6 +9,7 @@ import uvicorn
 
 import backend.data.block
 import backend.data.db
+import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
 import backend.util.service
@@ -22,6 +23,8 @@ logger = logging.getLogger(__name__)
 async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
     await backend.data.block.initialize_blocks()
+    await backend.data.user.migrate_and_encrypt_user_integrations()
+    await backend.data.graph.fix_llm_provider_credentials()
     yield
     await backend.data.db.disconnect()
 
