@@ -404,7 +404,7 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          <div key={getEntryKey(key)}>
+          <div key={index}>
             <NodeHandle
               keyName={getEntryKey(key)}
               schema={{ type: "string" }}
