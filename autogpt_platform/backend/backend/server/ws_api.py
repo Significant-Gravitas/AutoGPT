@@ -53,24 +53,24 @@ async def event_broadcaster(manager: ConnectionManager):
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if settings.config.enable_auth:
-        token = websocket.query_params.get("token")
-        if not token:
-            await websocket.close(code=4001, reason="Missing authentication token")
-            return ""
-
-        try:
-            payload = parse_jwt_token(token)
-            user_id = payload.get("sub")
-            if not user_id:
-                await websocket.close(code=4002, reason="Invalid token")
-                return ""
-            return user_id
-        except ValueError:
-            await websocket.close(code=4003, reason="Invalid token")
-            return ""
-    else:
+    if not settings.config.enable_auth:
         return DEFAULT_USER_ID
+
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return ""
+
+    try:
+        payload = parse_jwt_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4002, reason="Invalid token")
+            return ""
+        return user_id
+    except ValueError:
+        await websocket.close(code=4003, reason="Invalid token")
+        return ""
 
 
 async def handle_subscribe(
@@ -138,6 +138,13 @@ async def websocket_router(
         while True:
             data = await websocket.receive_text()
             message = WsMessage.model_validate_json(data)
+
+            if message.method == Methods.HEARTBEAT:
+                await websocket.send_json(
+                    {"method": Methods.HEARTBEAT.value, "data": "pong", "success": True}
+                )
+                continue
+
             if message.method == Methods.SUBSCRIBE:
                 await handle_subscribe(websocket, manager, message)
 
