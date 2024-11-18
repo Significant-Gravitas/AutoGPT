@@ -105,10 +105,11 @@ export const FlowInfo: React.FC<
             </DropdownMenu>
           )}
           <Link
-            className={buttonVariants({ variant: "outline" })}
+            className={buttonVariants({ variant: "default" })}
             href={`/build?flowID=${flow.id}`}
           >
-            <Pencil2Icon />
+            <Pencil2Icon className="mr-2" />
+            Open in Builder
           </Link>
           <Button
             variant="outline"
@@ -126,7 +127,7 @@ export const FlowInfo: React.FC<
               )
             }
           >
-            <ExitIcon />
+            <ExitIcon className="mr-2" /> Export
           </Button>
           <Button variant="outline" onClick={() => setIsDeleteModalOpen(true)}>
             <Trash2Icon className="h-full" />
