@@ -158,14 +158,27 @@ class MailerLiteSubscribeBlock(Block):
                  for k, v in subscriber_data.get("fields", {}).items()}
             )
             
-            yield "subscriber_id", int(subscriber_data.get("id", "-1"))
-            yield "subscriber_email", str(subscriber_data.get("email", ""))
-            yield "subscriber_status", str(subscriber_data.get("status", ""))
-            yield "subscriber_source", str(subscriber_data.get("source", ""))
-            yield "subscriber_stats", stats
-            yield "signup_date", str(subscriber_data.get("subscribed_at", ""))
-            yield "signup_ip", str(subscriber_data.get("ip_address", ""))
-            yield "subscriber_fields", fields
+            # Collect data
+            subscriber_id = int(subscriber_data.get("id", "-1"))
+            if subscriber_id == -1:
+                raise ValueError("Subscriber ID not found in response")
+            subscriber_email = str(subscriber_data.get("email", ""))
+            subscriber_status = str(subscriber_data.get("status", ""))
+            subscriber_source = str(subscriber_data.get("source", ""))
+            subscriber_stats = stats
+            signup_date = str(subscriber_data.get("subscribed_at", ""))
+            signup_ip = str(subscriber_data.get("ip_address", ""))
+            subscriber_fields = fields
+
+            # Yield data
+            yield "subscriber_id", subscriber_id
+            yield "subscriber_email", subscriber_email
+            yield "subscriber_status", subscriber_status
+            yield "subscriber_source", subscriber_source
+            yield "subscriber_stats", subscriber_stats
+            yield "signup_date", signup_date
+            yield "signup_ip", signup_ip
+            yield "subscriber_fields", subscriber_fields
     
         except Exception as e:
             logger.error(f"[MailerLiteSubscribeBlock] API Error: {str(e)}")
@@ -287,20 +300,32 @@ class MailerLiteCreateGroupBlock(Block):
                 else:
                     raise ValueError(f"Unexpected response type: {type(response)}")
                 
-                yield "group_id", int(group_data.get("id", "-1"))
-                yield "created_group_name", str(group_data.get("name", ""))
-                yield "active_count", str(group_data.get("active_count", 0))
-                yield "open_rate", str(
-                    group_data.get("open_rate", {}).get("float", 0) 
-                    if isinstance(group_data.get("open_rate"), dict) 
+                # Collect data
+                group_id = int(group_data.get("id", "-1"))
+                if group_id == -1:
+                    raise ValueError("Group ID not found in response")
+                
+                created_group_name = str(group_data.get("name", ""))
+                active_count = str(group_data.get("active_count", 0))
+                open_rate = str(
+                    group_data.get("open_rate", {}).get("float", 0)
+                    if isinstance(group_data.get("open_rate"), dict)
                     else 0
                 )
-                yield "click_rate", str(
+                click_rate = str(
                     group_data.get("click_rate", {}).get("float", 0)
                     if isinstance(group_data.get("click_rate"), dict)
                     else 0
                 )
-                yield "creation_date", str(group_data.get("created_at", ""))
+                creation_date = str(group_data.get("created_at", ""))
+
+                # Yield data
+                yield "group_id", group_id
+                yield "created_group_name", created_group_name
+                yield "active_count", active_count
+                yield "open_rate", open_rate
+                yield "click_rate", click_rate
+                yield "creation_date", creation_date
 
             except Exception as e:
                 logger.error(f"[MailerLiteCreateGroupBlock] API Error: {str(e)}")
@@ -443,10 +468,17 @@ class MailerLiteAssignToGroupBlock(Block):
                 "junk_count": int(group_data.get("junk_count", 0))
             })
             
-            yield "assigned_group_id", int(group_data.get("id", "-1"))
-            yield "assigned_group_name", str(group_data.get("name", ""))
-            yield "group_stats", stats
-            yield "assignment_date", str(group_data.get("created_at", ""))
+            assigned_group_id = int(group_data.get("id", "-1"))
+            if assigned_group_id == -1:
+                raise ValueError("Group ID not found in response")
+            assigned_group_name = str(group_data.get("name", ""))
+            group_stats = stats
+            assignment_date = str(group_data.get("created_at", ""))
+            
+            yield "assigned_group_id", assigned_group_id
+            yield "assigned_group_name", assigned_group_name
+            yield "group_stats", group_stats
+            yield "assignment_date", assignment_date
 
         except Exception as e:
             yield "error", str(e)
