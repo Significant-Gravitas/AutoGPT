@@ -2,7 +2,7 @@
 FROM node:21-alpine AS base
 WORKDIR /app
 COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/yarn.lock ./
-RUN yarn install --frozen-lockfile
+RUN --mount=type=cache,target=/usr/local/share/.cache yarn install --frozen-lockfile
 
 # Dev stage
 FROM base AS dev
@@ -16,17 +16,23 @@ FROM base AS build
 COPY autogpt_platform/frontend/ .
 RUN yarn build
 
-# Prod stage
+# Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY --from=build /app/package.json /app/yarn.lock ./
-RUN yarn install --frozen-lockfile
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 
-COPY --from=build /app/.next ./.next
+RUN mkdir .next
+RUN chown nextjs:nodejs .next
+
+COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
+
 COPY --from=build /app/public ./public
-COPY --from=build /app/next.config.mjs ./next.config.mjs
+
+USER nextjs
 
 EXPOSE 3000
-CMD ["yarn", "start"]
+CMD ["node", "server.js"]
