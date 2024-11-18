@@ -405,8 +405,8 @@ const NodeKeyValueInput: FC<{
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
           /* 
-          `index` is used as a DOM key instead of the actual `key`,
-          because the `key` changes on each input making the input lose focus.
+          The `index` is used as a DOM key instead of the actual `key`
+          because the `key` can change with each input, causing the input to lose focus.
           */
           <div key={index}>
             <NodeHandle
