@@ -49,6 +49,7 @@ pinecone = "^5.3.1"
 cryptography = "^43.0.3"
 sqlalchemy = "^2.0.36"
 psycopg2-binary = "^2.9.10"
+mailerlite = "^0.1.6"
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.30.0"
 httpx = "^0.27.0"

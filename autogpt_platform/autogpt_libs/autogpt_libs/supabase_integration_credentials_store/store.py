@@ -86,7 +86,13 @@ unreal_credentials = APIKeyCredentials(#
     title="Use Credits for Unreal",
     expires_at=None,
 )
-
+mailerlite_credentials = APIKeyCredentials(
+    id="b7cd8145-b014-43ff-a390-39c7a647e19e",
+    provider="mailerlite",
+    api_key=SecretStr(settings.secrets.mailerlite_api_key),
+    title="Use Credits for MailerLite",
+    expires_at=None,
+)
 
 DEFAULT_CREDENTIALS = [
     revid_credentials,
@@ -98,6 +104,7 @@ DEFAULT_CREDENTIALS = [
     did_credentials,
     jina_credentials,
     unreal_credentials,
+    mailerlite_credentials,
 ]
 
 
@@ -145,6 +152,8 @@ class SupabaseIntegrationCredentialsStore:
             all_credentials.append(jina_credentials)
         if settings.secrets.unreal_speech_api_key:
             all_credentials.append(unreal_credentials)
+        if settings.secrets.mailerlite_api_key:
+            all_credentials.append(mailerlite_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:

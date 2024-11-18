@@ -64,6 +64,7 @@ export const providerIcons: Record<
   replicate: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  mailerlite: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

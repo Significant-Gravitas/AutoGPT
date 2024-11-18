@@ -38,6 +38,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   replicate: "Replicate",
   revid: "Rev.ID",
   unreal_speech: "Unreal Speech",
+  mailerlite: "MailerLite",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
 

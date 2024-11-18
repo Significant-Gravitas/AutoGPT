@@ -116,6 +116,7 @@ export const PROVIDER_NAMES = {
   REPLICATE: "replicate",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  MAILERLITE: "mailerlite",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
