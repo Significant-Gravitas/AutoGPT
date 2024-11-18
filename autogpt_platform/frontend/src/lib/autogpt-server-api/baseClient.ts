@@ -17,7 +17,6 @@ import {
   OAuth2Credentials,
   User,
   ScheduleCreatable,
-  ScheduleUpdateable,
   Schedule,
 } from "./types";
 
@@ -274,11 +273,14 @@ export default class BaseAutoGPTServerAPI {
     }
 
     const hasRequestBody = method !== "GET" && payload !== undefined;
+    const loggedInAsUserId =
+      sessionStorage && sessionStorage.getItem("auth.loggedInAsUserId");
     const response = await fetch(url, {
       method,
       headers: {
         ...(hasRequestBody && { "Content-Type": "application/json" }),
         ...(token && { Authorization: `Bearer ${token}` }),
+        ...(loggedInAsUserId && { "X-LoggedIn-As-User": loggedInAsUserId }),
       },
       body: hasRequestBody ? JSON.stringify(payload) : undefined,
     });
