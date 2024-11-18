@@ -404,7 +404,11 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          <div key={getEntryKey(key)}>
+          /* 
+          The `index` is used as a DOM key instead of the actual `key`
+          because the `key` can change with each input, causing the input to lose focus.
+          */
+          <div key={index}>
             <NodeHandle
               keyName={getEntryKey(key)}
               schema={{ type: "string" }}
