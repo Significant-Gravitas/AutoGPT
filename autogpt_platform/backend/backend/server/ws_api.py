@@ -141,7 +141,7 @@ async def websocket_router(
 
             if message.method == Methods.HEARTBEAT:
                 await websocket.send_json({
-                    "method": Methods.HEARTBEAT,
+                    "method": Methods.HEARTBEAT.value,
                     "data": "pong",
                     "success": True
                 })
