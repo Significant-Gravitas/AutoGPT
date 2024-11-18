@@ -10,7 +10,7 @@ settings = Settings()
 
 def get_user_id(request: Request, user: User = Depends(requires_user)) -> str:
     if user.role == "admin" and (
-        logged_as := request.headers.get("X-LoggedIn-As-User")
+        login_user_id := request.headers.get("X-LoggedIn-As-User")
     ):
-        return logged_as
+        return login_user_id
     return user.user_id
