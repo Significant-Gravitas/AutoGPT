@@ -45,8 +45,20 @@ export default function useCredentials(): CredentialsData | null {
       ]) ||
     null;
 
-  const providerName =
-    discriminatorValue || credentialsSchema.credentials_provider;
+  let providerName: CredentialsProviderName;
+  if (credentialsSchema.credentials_provider.length > 1) {
+    if (!credentialsSchema.discriminator) {
+      throw new Error(
+        "Multi-provider credential input requires discriminator!",
+      );
+    }
+    if (!discriminatorValue) {
+      return null;
+    }
+    providerName = discriminatorValue;
+  } else {
+    providerName = credentialsSchema.credentials_provider[0];
+  }
   const provider = allProviders ? allProviders[providerName] : null;
 
   // If block input schema doesn't have credentials, return null
@@ -60,13 +72,14 @@ export default function useCredentials(): CredentialsData | null {
 
   // No provider means maybe it's still loading
   if (!provider) {
-    return {
-      provider: credentialsSchema.credentials_provider,
-      schema: credentialsSchema,
-      supportsApiKey,
-      supportsOAuth2,
-      isLoading: true,
-    };
+    // return {
+    //   provider: credentialsSchema.credentials_provider,
+    //   schema: credentialsSchema,
+    //   supportsApiKey,
+    //   supportsOAuth2,
+    //   isLoading: true,
+    // };
+    return null;
   }
 
   // Filter by OAuth credentials that have sufficient scopes for this block

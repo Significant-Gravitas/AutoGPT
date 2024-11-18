@@ -23,4 +23,35 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 );
 Input.displayName = "Input";
 
-export { Input };
+const LocalValuedInput: React.FC<InputProps> = ({
+  value,
+  onChange,
+  ...props
+}) => {
+  /**
+   * Input component that manages its own value state.
+   * This component is useful when you want to control the value of the input
+   * from the parent component, but also want to allow the user to change the value.
+   */
+  const [inputValue, setInputValue] = React.useState(value ?? "");
+
+  React.useEffect(() => {
+    if (value !== undefined && value !== inputValue) {
+      setInputValue(value);
+    }
+    // Note:
+    // It's intended that the `inputValue` not being added to the dependency array,
+    // `inputValue` should only be updated from the outside only when `value` changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+    if (onChange) onChange(e);
+  };
+
+  return <Input {...props} value={inputValue} onChange={handleChange} />;
+};
+LocalValuedInput.displayName = "LocalValuedInput";
+
+export { Input, LocalValuedInput };

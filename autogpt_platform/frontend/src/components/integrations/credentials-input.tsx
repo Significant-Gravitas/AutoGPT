@@ -234,7 +234,12 @@ export const CredentialsInput: FC<{
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
     return (
       <>
-        <span className="text-m green mb-0 text-gray-900">Credentials</span>
+        <span
+          className="text-m green mb-0 text-gray-900"
+          title={schema.description}
+        >
+          Credentials
+        </span>
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
             <Button onClick={handleOAuthLogin}>

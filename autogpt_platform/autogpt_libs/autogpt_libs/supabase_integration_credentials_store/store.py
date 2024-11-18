@@ -79,6 +79,13 @@ jina_credentials = APIKeyCredentials(
     title="Use Credits for Jina",
     expires_at=None,
 )
+unreal_credentials = APIKeyCredentials(#
+    id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
+    provider="unreal",
+    api_key=SecretStr(settings.secrets.unreal_speech_api_key),
+    title="Use Credits for Unreal",
+    expires_at=None,
+)
 
 
 DEFAULT_CREDENTIALS = [
@@ -90,6 +97,7 @@ DEFAULT_CREDENTIALS = [
     groq_credentials,
     did_credentials,
     jina_credentials,
+    unreal_credentials,
 ]
 
 
@@ -135,6 +143,8 @@ class SupabaseIntegrationCredentialsStore:
             all_credentials.append(did_credentials)
         if settings.secrets.jina_api_key:
             all_credentials.append(jina_credentials)
+        if settings.secrets.unreal_speech_api_key:
+            all_credentials.append(unreal_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:

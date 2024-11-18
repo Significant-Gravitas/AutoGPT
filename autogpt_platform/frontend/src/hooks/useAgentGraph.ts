@@ -19,6 +19,7 @@ import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
+import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
@@ -34,6 +35,7 @@ export default function useAgentGraph(
     useSearchParams(),
     usePathname(),
   ];
+  const [isScheduling, setIsScheduling] = useState(false);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
@@ -359,15 +361,19 @@ export default function useAgentGraph(
     });
   }, [updateQueue, nodesSyncedWithSavedAgent, updateNodesWithExecutionData]);
 
-  const validateNodes = useCallback((): boolean => {
-    let isValid = true;
+  const validateNodes = useCallback((): string | null => {
+    let errorMessage = null;
 
     nodes.forEach((node) => {
       const validate = ajv.compile(node.data.inputSchema);
       const errors = {} as { [key: string]: string };
 
       // Validate values against schema using AJV
-      const valid = validate(node.data.hardcodedValues);
+      const inputData =
+        node.data.uiType === BlockUIType.AGENT
+          ? node.data.hardcodedValues?.data || {}
+          : node.data.hardcodedValues || {};
+      const valid = validate(inputData);
       if (!valid) {
         // Populate errors if validation fails
         validate.errors?.forEach((error) => {
@@ -385,7 +391,7 @@ export default function useAgentGraph(
             return;
           }
           console.warn("Error", error);
-          isValid = false;
+          errorMessage = error.message || "Invalid input";
           if (path && error.message) {
             const key = path.slice(1);
             console.log("Error", key, error.message);
@@ -417,7 +423,7 @@ export default function useAgentGraph(
       });
     });
 
-    return isValid;
+    return errorMessage;
   }, [nodes]);
 
   // Handle user requests
@@ -471,10 +477,11 @@ export default function useAgentGraph(
         });
         // If run was requested, run the agent
       } else if (saveRunRequest.request === "run") {
-        if (!validateNodes()) {
+        const validationError = validateNodes();
+        if (validationError) {
           console.error("Validation failed; aborting run");
           toast({
-            title: "Invalid credentials or inputs",
+            title: `Validation failed: ${validationError}`,
             variant: "destructive",
             duration: 2000,
           });
@@ -858,6 +865,46 @@ export default function useAgentGraph(
     }));
   }, [saveRunRequest]);
 
+  // runs after saving cron expression and inputs (if exists)
+  const scheduleRunner = useCallback(
+    async (cronExpression: string, inputs: InputItem[]) => {
+      await saveAgent();
+      try {
+        if (flowID) {
+          await api.createSchedule({
+            graph_id: flowID,
+            cron: cronExpression,
+            input_data: inputs.reduce(
+              (acc, input) => ({
+                ...acc,
+                [input.hardcodedValues.name]: input.hardcodedValues.value,
+              }),
+              {},
+            ),
+          });
+          toast({
+            title: "Agent scheduling successful",
+          });
+
+          // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
+          if (searchParams.get("open_scheduling") === "true") {
+            router.push("/");
+          }
+        } else {
+          return;
+        }
+      } catch (error) {
+        console.log(error);
+        toast({
+          variant: "destructive",
+          title: "Error scheduling agent",
+          description: "Please retry",
+        });
+      }
+    },
+    [api, flowID, saveAgent, toast, router, searchParams],
+  );
+
   return {
     agentName,
     setAgentName,
@@ -870,9 +917,12 @@ export default function useAgentGraph(
     requestSave,
     requestSaveAndRun,
     requestStopRun,
+    scheduleRunner,
     isSaving: saveRunRequest.state == "saving",
     isRunning: saveRunRequest.state == "running",
     isStopping: saveRunRequest.state == "stopping",
+    isScheduling,
+    setIsScheduling,
     nodes,
     setNodes,
     edges,

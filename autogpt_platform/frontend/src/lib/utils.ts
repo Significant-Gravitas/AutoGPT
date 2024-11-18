@@ -314,6 +314,14 @@ export function findNewlyAddedBlockCoordinates(
   };
 }
 
+export function hasNonNullNonObjectValue(obj: any): boolean {
+  if (obj !== null && typeof obj === "object") {
+    return Object.values(obj).some((value) => hasNonNullNonObjectValue(value));
+  } else {
+    return obj !== null && typeof obj !== "object";
+  }
+}
+
 type ParsedKey = { key: string; index?: number };
 
 export function parseKeys(key: string): ParsedKey[] {
