@@ -3,14 +3,6 @@ import pathlib
 import sys
 
 
-def get_secrets_path() -> pathlib.Path:
-    return get_data_path() / "secrets"
-
-
-def get_config_path() -> pathlib.Path:
-    return get_data_path()
-
-
 def get_frontend_path() -> pathlib.Path:
     if getattr(sys, "frozen", False):
         # The application is frozen
