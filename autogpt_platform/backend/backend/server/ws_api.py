@@ -140,11 +140,9 @@ async def websocket_router(
             message = WsMessage.model_validate_json(data)
 
             if message.method == Methods.HEARTBEAT:
-                await websocket.send_json({
-                    "method": Methods.HEARTBEAT.value,
-                    "data": "pong",
-                    "success": True
-                })
+                await websocket.send_json(
+                    {"method": Methods.HEARTBEAT.value, "data": "pong", "success": True}
+                )
                 continue
 
             if message.method == Methods.SUBSCRIBE:
