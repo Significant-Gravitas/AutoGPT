@@ -705,7 +705,7 @@ class ExecutionManager(AppService):
     def run_service(self):
         from backend.data.credential_store import IntegrationCredentialsStore
 
-        self.credentials_store = IntegrationCredentialsStore(redis=redis.get_redis())
+        self.credentials_store = IntegrationCredentialsStore()
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,

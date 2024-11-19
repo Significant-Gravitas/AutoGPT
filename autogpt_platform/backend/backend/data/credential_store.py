@@ -79,7 +79,7 @@ jina_credentials = APIKeyCredentials(
     title="Use Credits for Jina",
     expires_at=None,
 )
-unreal_credentials = APIKeyCredentials(  #
+unreal_credentials = APIKeyCredentials(
     id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
     provider="unreal",
     api_key=SecretStr(settings.secrets.unreal_speech_api_key),
@@ -102,8 +102,10 @@ DEFAULT_CREDENTIALS = [
 
 
 class IntegrationCredentialsStore:
-    def __init__(self, redis: "Redis"):
-        self.locks = RedisKeyedMutex(redis)
+    def __init__(self):
+        from backend.data.redis import get_redis
+
+        self.locks = RedisKeyedMutex(get_redis())
 
     @property
     @thread_cached

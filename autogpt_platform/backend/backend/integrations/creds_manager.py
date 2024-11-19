@@ -50,7 +50,7 @@ class IntegrationCredentialsManager:
     def __init__(self):
         redis_conn = redis.get_redis()
         self._locks = RedisKeyedMutex(redis_conn)
-        self.store = IntegrationCredentialsStore(redis=redis_conn)
+        self.store = IntegrationCredentialsStore()
 
     def create(self, user_id: str, credentials: Credentials) -> None:
         return self.store.add_creds(user_id, credentials)
