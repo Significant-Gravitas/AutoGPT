@@ -199,8 +199,8 @@ class OAuthState(BaseModel):
     token: str
     provider: str
     expires_at: int
-    scopes: list[str]
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
+    scopes: list[str]
 
 
 class UserMetadata(BaseModel):
