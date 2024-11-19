@@ -315,16 +315,26 @@ class AgentOutputBlock(Block):
 
 class AddToDictionaryBlock(Block):
     class Input(BlockSchema):
-        dictionary: dict | None = SchemaField(
-            default=None,
+        dictionary: dict[Any, Any] = SchemaField(
+            default={},
             description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
-            placeholder='{"key1": "value1", "key2": "value2"}',
         )
         key: str = SchemaField(
-            description="The key for the new entry.", placeholder="new_key"
+            default="",
+            description="The key for the new entry.",
+            placeholder="new_key",
+            advanced=False,
         )
         value: Any = SchemaField(
-            description="The value for the new entry.", placeholder="new_value"
+            default=None,
+            description="The value for the new entry.",
+            placeholder="new_value",
+            advanced=False,
+        )
+        entries: dict[Any, Any] = SchemaField(
+            default={},
+            description="The entries to add to the dictionary. This is the batch version of the `key` and `value` fields.",
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -347,6 +357,10 @@ class AddToDictionaryBlock(Block):
                     "value": "new_value",
                 },
                 {"key": "first_key", "value": "first_value"},
+                {
+                    "dictionary": {"existing_key": "existing_value"},
+                    "entries": {"new_key": "new_value", "first_key": "first_value"},
+                },
             ],
             test_output=[
                 (
@@ -354,38 +368,49 @@ class AddToDictionaryBlock(Block):
                     {"existing_key": "existing_value", "new_key": "new_value"},
                 ),
                 ("updated_dictionary", {"first_key": "first_value"}),
+                (
+                    "updated_dictionary",
+                    {
+                        "existing_key": "existing_value",
+                        "new_key": "new_value",
+                        "first_key": "first_value",
+                    },
+                ),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # If no dictionary is provided, create a new one
-        if input_data.dictionary is None:
-            updated_dict = {}
-        else:
-            # Create a copy of the input dictionary to avoid modifying the original
-            updated_dict = input_data.dictionary.copy()
+        updated_dict = input_data.dictionary.copy()
 
-        # Add the new key-value pair
-        updated_dict[input_data.key] = input_data.value
+        if input_data.value is not None and input_data.key:
+            updated_dict[input_data.key] = input_data.value
+
+        for key, value in input_data.entries.items():
+            updated_dict[key] = value
 
         yield "updated_dictionary", updated_dict
 
 
 class AddToListBlock(Block):
     class Input(BlockSchema):
-        list: List[Any] | None = SchemaField(
-            default=None,
+        list: List[Any] = SchemaField(
+            default=[],
+            advanced=False,
             description="The list to add the entry to. If not provided, a new list will be created.",
-            placeholder='[1, "string", {"key": "value"}]',
         )
         entry: Any = SchemaField(
             description="The entry to add to the list. Can be of any type (string, int, dict, etc.).",
-            placeholder='{"new_key": "new_value"}',
+            advanced=False,
+            default=None,
+        )
+        entries: List[Any] = SchemaField(
+            default=[],
+            description="The entries to add to the list. This is the batch version of the `entry` field.",
+            advanced=True,
         )
         position: int | None = SchemaField(
             default=None,
             description="The position to insert the new entry. If not provided, the entry will be appended to the end of the list.",
-            placeholder="0",
         )
 
     class Output(BlockSchema):
@@ -409,6 +434,12 @@ class AddToListBlock(Block):
                 },
                 {"entry": "first_entry"},
                 {"list": ["a", "b", "c"], "entry": "d"},
+                {
+                    "entry": "e",
+                    "entries": ["f", "g"],
+                    "list": ["a", "b"],
+                    "position": 1,
+                },
             ],
             test_output=[
                 (
@@ -422,22 +453,20 @@ class AddToListBlock(Block):
                 ),
                 ("updated_list", ["first_entry"]),
                 ("updated_list", ["a", "b", "c", "d"]),
+                ("updated_list", ["a", "f", "g", "e", "b"]),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # If no list is provided, create a new one
-        if input_data.list is None:
-            updated_list = []
-        else:
-            # Create a copy of the input list to avoid modifying the original
-            updated_list = input_data.list.copy()
+        entries_added = input_data.entries.copy()
+        if input_data.entry:
+            entries_added.append(input_data.entry)
 
-        # Add the new entry
-        if input_data.position is None:
-            updated_list.append(input_data.entry)
+        updated_list = input_data.list.copy()
+        if (pos := input_data.position) is not None:
+            updated_list = updated_list[:pos] + entries_added + updated_list[pos:]
         else:
-            updated_list.insert(input_data.position, input_data.entry)
+            updated_list += entries_added
 
         yield "updated_list", updated_list
 
