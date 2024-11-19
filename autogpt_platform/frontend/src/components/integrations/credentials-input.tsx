@@ -60,6 +60,7 @@ export const providerIcons: Record<
   ollama: fallbackIcon,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,
+  open_router: fallbackIcon,
   pinecone: fallbackIcon,
   replicate: fallbackIcon,
   revid: fallbackIcon,
