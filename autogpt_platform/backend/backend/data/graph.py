@@ -536,7 +536,7 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 
 async def fix_llm_provider_credentials():
     """Fix node credentials with provider `llm`"""
-    from backend.data.credential_store import IntegrationCredentialsStore
+    from backend.integrations.credential_store import IntegrationCredentialsStore
 
     from .user import get_user_integrations
 

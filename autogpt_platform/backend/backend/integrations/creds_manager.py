@@ -6,7 +6,7 @@ from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
 
 from backend.data import redis
-from backend.data.credential_store import IntegrationCredentialsStore
+from backend.integrations.credential_store import IntegrationCredentialsStore
 from backend.data.model import Credentials
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.settings import Settings

@@ -13,7 +13,7 @@ from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
 from backend.util.settings import Settings
 
-from .model import (
+from ..data.model import (
     APIKeyCredentials,
     Credentials,
     OAuth2Credentials,

@@ -703,7 +703,7 @@ class ExecutionManager(AppService):
         return settings.config.execution_manager_port
 
     def run_service(self):
-        from backend.data.credential_store import IntegrationCredentialsStore
+        from backend.integrations.credential_store import IntegrationCredentialsStore
 
         self.credentials_store = IntegrationCredentialsStore()
         self.executor = ProcessPoolExecutor(

@@ -20,7 +20,7 @@ from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.data.block import Block
 from backend.data.cost import BlockCost, BlockCostType
-from backend.data.credential_store import (
+from backend.integrations.credential_store import (
     anthropic_credentials,
     did_credentials,
     groq_credentials,
