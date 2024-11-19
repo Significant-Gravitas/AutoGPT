@@ -116,10 +116,10 @@ export const FlowRunInfo: React.FC<
               <ExitIcon className="mr-2" /> View Outputs
             </Button>
             <Link
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ variant: "default" })}
               href={`/build?flowID=${flow.id}`}
             >
-              <Pencil2Icon className="mr-2" /> Edit Agent
+              <Pencil2Icon className="mr-2" /> Open in Builder
             </Link>
           </div>
         </CardHeader>
@@ -137,7 +137,8 @@ export const FlowRunInfo: React.FC<
             {moment(flowRun.endTime).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
-            <strong>Duration (run time):</strong> {flowRun.duration}s
+            <strong>Duration (run time):</strong> {flowRun.duration} (
+            {flowRun.totalRunTime}) seconds
           </p>
         </CardContent>
       </Card>
@@ -149,4 +150,5 @@ export const FlowRunInfo: React.FC<
     </>
   );
 };
+
 export default FlowRunInfo;

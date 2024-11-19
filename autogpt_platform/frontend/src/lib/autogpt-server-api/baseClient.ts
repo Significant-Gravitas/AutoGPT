@@ -28,6 +28,10 @@ export default class BaseAutoGPTServerAPI {
   private wsConnecting: Promise<void> | null = null;
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private supabaseClient: SupabaseClient | null = null;
+  heartbeatInterval: number | null = null;
+  readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
+  readonly HEARTBEAT_TIMEOUT = 10000; // 10 seconds
+  heartbeatTimeoutId: number | null = null;
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
@@ -324,34 +328,84 @@ export default class BaseAutoGPTServerAPI {
     }
   }
 
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatInterval = window.setInterval(() => {
+      if (this.webSocket?.readyState === WebSocket.OPEN) {
+        this.webSocket.send(
+          JSON.stringify({
+            method: "heartbeat",
+            data: "ping",
+            success: true,
+          }),
+        );
+
+        this.heartbeatTimeoutId = window.setTimeout(() => {
+          console.log("Heartbeat timeout - reconnecting");
+          this.webSocket?.close();
+          this.connectWebSocket();
+        }, this.HEARTBEAT_TIMEOUT);
+      }
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.heartbeatTimeoutId) {
+      clearTimeout(this.heartbeatTimeoutId);
+      this.heartbeatTimeoutId = null;
+    }
+  }
+
+  handleHeartbeatResponse() {
+    if (this.heartbeatTimeoutId) {
+      clearTimeout(this.heartbeatTimeoutId);
+      this.heartbeatTimeoutId = null;
+    }
+  }
+
   async connectWebSocket(): Promise<void> {
     this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         const token =
           (await this.supabaseClient?.auth.getSession())?.data.session
             ?.access_token || "";
-
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
 
         this.webSocket.onopen = () => {
-          console.debug("WebSocket connection established");
+          console.log("WebSocket connection established");
+          this.startHeartbeat(); // Start heartbeat when connection opens
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.debug("WebSocket connection closed", event);
+          console.log("WebSocket connection closed", event);
+          this.stopHeartbeat(); // Stop heartbeat when connection closes
           this.webSocket = null;
+          // Attempt to reconnect after a delay
+          setTimeout(() => this.connectWebSocket(), 1000);
         };
 
         this.webSocket.onerror = (error) => {
           console.error("WebSocket error:", error);
+          this.stopHeartbeat(); // Stop heartbeat on error
           reject(error);
         };
 
         this.webSocket.onmessage = (event) => {
           const message: WebsocketMessage = JSON.parse(event.data);
-          if (message.method == "execution_event") {
+
+          // Handle heartbeat response
+          if (message.method === "heartbeat" && message.data === "pong") {
+            this.handleHeartbeatResponse();
+            return;
+          }
+
+          if (message.method === "execution_event") {
             message.data = parseNodeExecutionResultTimestamps(message.data);
           }
           this.wsMessageHandlers[message.method]?.forEach((handler) =>
@@ -367,6 +421,7 @@ export default class BaseAutoGPTServerAPI {
   }
 
   disconnectWebSocket() {
+    this.stopHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
     }
@@ -423,6 +478,7 @@ type GraphCreateRequestBody =
 type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
   execution_event: NodeExecutionResult;
+  heartbeat: "ping" | "pong";
 };
 
 type WebsocketMessage = {

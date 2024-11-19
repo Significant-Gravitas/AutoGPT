@@ -124,7 +124,8 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
 async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)]
 ) -> dict[str, int]:
-    return {"credits": await _user_credit_model.get_or_refill_credit(user_id)}
+    # Credits can go negative, so ensure it's at least 0 for user to see.
+    return {"credits": max(await _user_credit_model.get_or_refill_credit(user_id), 0)}
 
 
 ########################################################
