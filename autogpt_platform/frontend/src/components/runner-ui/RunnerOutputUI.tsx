@@ -10,6 +10,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Clipboard } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 
 interface BlockOutput {
   id: string;
@@ -52,6 +55,18 @@ export function RunnerOutputUI({
   onClose,
   blockOutputs,
 }: OutputModalProps) {
+  const { toast } = useToast();
+
+  const copyOutput = (name: string, output: any) => {
+    const formattedOutput = formatOutput(output);
+    navigator.clipboard.writeText(formattedOutput).then(() => {
+      toast({
+        title: `"${name}" output copied to clipboard!`,
+        duration: 2000,
+      });
+    });
+  };
+
   const adjustTextareaHeight = (textarea: HTMLTextAreaElement) => {
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
@@ -85,21 +100,33 @@ export function RunnerOutputUI({
                       </Label>
                     )}
 
-                    <div className="rounded-md bg-gray-100 p-2">
+                    <div className="rounded-md bg-gray-100 p-2 relative group">
+                      <Button
+                        className="absolute right-1 top-1 m-1 hidden p-2 group-hover:block z-10"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyOutput(
+                          block.hardcodedValues.name || "Unnamed Output",
+                          block.result
+                        )}
+                        title="Copy Output"
+                      >
+                        <Clipboard size={18} />
+                      </Button>
                       <Textarea
                         readOnly
                         value={formatOutput(block.result ?? "No output yet")}
-                        className="h-auto w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent text-sm"
-                        style={{
-                          height: "auto",
-                          minHeight: "2.5rem",
-                          maxHeight: "400px",
+                        className="resize-none whitespace-pre-wrap break-words border-none bg-transparent text-sm w-full"
+                        style={{ 
+                          height: 'auto', 
+                          minHeight: '2.5rem',
+                          maxHeight: '400px'
                         }}
                         ref={(el) => {
                           if (el) {
                             adjustTextareaHeight(el);
                             if (el.scrollHeight > 400) {
-                              el.style.height = "400px";
+                              el.style.height = '400px';
                             }
                           }
                         }}
