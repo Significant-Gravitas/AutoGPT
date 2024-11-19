@@ -145,7 +145,7 @@ export const AgentImportForm: React.FC<
                           );
                           if (
                             !["name", "description", "nodes", "links"].every(
-                              (key) => !!obj[key],
+                              (key) => key in obj && obj[key] != null,
                             )
                           ) {
                             throw new Error(
