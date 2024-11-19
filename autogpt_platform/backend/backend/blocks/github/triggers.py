@@ -98,7 +98,6 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         )
 
     def __init__(self):
-        from backend.integrations.providers import ProviderName
         from backend.integrations.webhooks.github import GithubWebhookType
 
         example_payload = json.loads(self.EXAMPLE_PAYLOAD_FILE.read_text())
@@ -111,7 +110,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             output_schema=GithubPullRequestTriggerBlock.Output,
             # --8<-- [start:example-webhook_config]
             webhook_config=BlockWebhookConfig(
-                provider=ProviderName.GITHUB,
+                provider="github",
                 webhook_type=GithubWebhookType.REPO,
                 resource_format="{repo}",
                 event_filter_input="events",

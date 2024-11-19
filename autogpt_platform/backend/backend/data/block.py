@@ -19,7 +19,6 @@ from autogpt_libs.supabase_integration_credentials_store.types import Credential
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
-from backend.integrations.providers import ProviderName
 from backend.util import json
 
 from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
@@ -189,7 +188,7 @@ class EmptySchema(BlockSchema):
 
 # --8<-- [start:BlockWebhookConfig]
 class BlockWebhookConfig(BaseModel):
-    provider: ProviderName
+    provider: str
     """The service provider that the webhook connects to"""
 
     webhook_type: str

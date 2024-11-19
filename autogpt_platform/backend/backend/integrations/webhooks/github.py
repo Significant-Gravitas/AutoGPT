@@ -8,7 +8,6 @@ from fastapi import HTTPException, Request
 from strenum import StrEnum
 
 from backend.data import integrations
-from backend.integrations.providers import ProviderName
 
 from .base import BaseWebhooksManager
 
@@ -21,7 +20,7 @@ class GithubWebhookType(StrEnum):
 
 
 class GithubWebhooksManager(BaseWebhooksManager):
-    PROVIDER_NAME = ProviderName.GITHUB
+    PROVIDER_NAME = "github"
 
     WebhookType = GithubWebhookType
 

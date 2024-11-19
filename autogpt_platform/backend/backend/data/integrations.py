@@ -7,7 +7,6 @@ from pydantic import Field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
-from backend.integrations.providers import ProviderName
 
 from .db import BaseDbModel
 
@@ -123,7 +122,7 @@ async def delete_webhook(webhook_id: str) -> None:
 
 
 class WebhookEvent(BaseDbModel):
-    provider: ProviderName
+    provider: str
     webhook_id: str
     event_type: str
     payload: dict
