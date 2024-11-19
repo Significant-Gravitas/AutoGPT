@@ -392,13 +392,8 @@ def validate_exec(
         except Exception as e:
             return None, f"Input data doesn't match {node_block.name}: {str(e)}"
 
-        graph = get_db_client().get_graph(exec_data.graph_id, exec_data.graph_version)
-        if not graph:
-            return None, f"Graph #{exec_data.graph_id} not found."
-
         # Validation input
-        error_prefix = f"Input data missing or mismatch for `{graph.name}`:"
-        input_schema = graph.input_schema
+        input_schema = exec_data.input_schema
         required_fields = set(input_schema["required"])
         input_default = exec_data.data
     else:
@@ -408,12 +403,12 @@ def validate_exec(
                 data[name] = convert(value, data_type)
 
         # Validation input
-        error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
         input_schema = node_block.input_schema.jsonschema()
         required_fields = node_block.input_schema.get_required_fields()
         input_default = node.input_default
 
     # Input data (without default values) should contain all required fields.
+    error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
     input_fields_from_nodes = {link.sink_name for link in node.input_links}
     if not input_fields_from_nodes.issubset(data):
         return None, f"{error_prefix} {input_fields_from_nodes - set(data)}"
