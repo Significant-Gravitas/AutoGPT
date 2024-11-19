@@ -33,7 +33,9 @@ def loads(data: str, *args, target_type: Type[T] | None = None, **kwargs) -> Any
     return parsed
 
 
-def validate_jsonschema(schema: dict[str, Any], data: dict[str, Any]) -> str | None:
+def validate_with_jsonschema(
+    schema: dict[str, Any], data: dict[str, Any]
+) -> str | None:
     """
     Validate the data against the schema.
     Returns the validation error message if the data does not match the schema.

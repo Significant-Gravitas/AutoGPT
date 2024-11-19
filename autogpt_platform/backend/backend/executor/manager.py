@@ -423,7 +423,7 @@ def validate_exec(
         return None, f"{error_prefix} {required_fields - set(data)}"
 
     # Last validation: Validate the input values against the schema.
-    if error := json.validate_jsonschema(schema=input_schema, data=data):
+    if error := json.validate_with_jsonschema(schema=input_schema, data=data):
         error_message = f"{error_prefix} {error}"
         logger.error(error_message)
         return None, error_message

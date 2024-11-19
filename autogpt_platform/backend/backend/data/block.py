@@ -94,7 +94,7 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def validate_data(cls, data: BlockInput) -> str | None:
-        return json.validate_jsonschema(schema=cls.jsonschema(), data=data)
+        return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
 
     @classmethod
     def validate_field(cls, field_name: str, data: BlockInput) -> str | None:
