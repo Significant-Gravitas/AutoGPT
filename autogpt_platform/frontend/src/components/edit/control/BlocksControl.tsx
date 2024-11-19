@@ -205,7 +205,10 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                         {beautifyString(block.name).replace(/ Block$/, "")}
                       </span>
                       <span className="block break-words text-xs font-normal text-gray-500">
-                        {block.description}
+                        {/* Cap description at 100 characters max */}
+                        {block.description?.length > 100
+                          ? block.description.slice(0, 100) + "..."
+                          : block.description}
                       </span>
                     </div>
                     <div

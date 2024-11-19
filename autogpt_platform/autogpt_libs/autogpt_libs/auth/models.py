@@ -1,5 +1,8 @@
 from dataclasses import dataclass
 
+DEFAULT_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+DEFAULT_EMAIL = "default@example.com"
+
 
 # Using dataclass here to avoid adding dependency on pydantic
 @dataclass(frozen=True)

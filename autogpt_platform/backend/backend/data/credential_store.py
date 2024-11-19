@@ -86,6 +86,13 @@ unreal_credentials = APIKeyCredentials(
     title="Use Credits for Unreal",
     expires_at=None,
 )
+open_router_credentials = APIKeyCredentials(
+    id="b5a0e27d-0c98-4df3-a4b9-10193e1f3c40",
+    provider="open_router",
+    api_key=SecretStr(settings.secrets.open_router_api_key),
+    title="Use Credits for Open Router",
+    expires_at=None,
+)
 
 
 DEFAULT_CREDENTIALS = [
@@ -98,6 +105,7 @@ DEFAULT_CREDENTIALS = [
     did_credentials,
     jina_credentials,
     unreal_credentials,
+    open_router_credentials,
 ]
 
 
@@ -147,6 +155,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(jina_credentials)
         if settings.secrets.unreal_speech_api_key:
             all_credentials.append(unreal_credentials)
+        if settings.secrets.open_router_api_key:
+            all_credentials.append(open_router_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:

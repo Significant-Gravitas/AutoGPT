@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, cast
 
+from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma import Json
 from prisma.models import User
@@ -10,9 +11,6 @@ from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
 from backend.util.encryption import JSONCryptor
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
-DEFAULT_EMAIL = "default@example.com"
 
 
 async def get_or_create_user(user_data: dict) -> User:
