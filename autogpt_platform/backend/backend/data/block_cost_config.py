@@ -26,11 +26,11 @@ from backend.integrations.credential_store import (
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
+    open_router_credentials,
     openai_credentials,
     replicate_credentials,
     revid_credentials,
     unreal_credentials,
-    open_router_credentials,
 )
 
 # =============== Configure the cost for each LLM Model call =============== #

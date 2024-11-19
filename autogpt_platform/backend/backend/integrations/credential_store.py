@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from pydantic import SecretStr
 
 if TYPE_CHECKING:
-    from redis import Redis
     from backend.executor.database import DatabaseManager
 
 from autogpt_libs.utils.cache import thread_cached
