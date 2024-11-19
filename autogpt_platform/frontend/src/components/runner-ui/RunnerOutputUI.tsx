@@ -100,15 +100,17 @@ export function RunnerOutputUI({
                       </Label>
                     )}
 
-                    <div className="rounded-md bg-gray-100 p-2 relative group">
+                    <div className="group relative rounded-md bg-gray-100 p-2">
                       <Button
-                        className="absolute right-1 top-1 m-1 hidden p-2 group-hover:block z-10"
+                        className="absolute right-1 top-1 z-10 m-1 hidden p-2 group-hover:block"
                         variant="outline"
                         size="icon"
-                        onClick={() => copyOutput(
-                          block.hardcodedValues.name || "Unnamed Output",
-                          block.result
-                        )}
+                        onClick={() =>
+                          copyOutput(
+                            block.hardcodedValues.name || "Unnamed Output",
+                            block.result,
+                          )
+                        }
                         title="Copy Output"
                       >
                         <Clipboard size={18} />
@@ -116,17 +118,17 @@ export function RunnerOutputUI({
                       <Textarea
                         readOnly
                         value={formatOutput(block.result ?? "No output yet")}
-                        className="resize-none whitespace-pre-wrap break-words border-none bg-transparent text-sm w-full"
-                        style={{ 
-                          height: 'auto', 
-                          minHeight: '2.5rem',
-                          maxHeight: '400px'
+                        className="w-full resize-none whitespace-pre-wrap break-words border-none bg-transparent text-sm"
+                        style={{
+                          height: "auto",
+                          minHeight: "2.5rem",
+                          maxHeight: "400px",
                         }}
                         ref={(el) => {
                           if (el) {
                             adjustTextareaHeight(el);
                             if (el.scrollHeight > 400) {
-                              el.style.height = '400px';
+                              el.style.height = "400px";
                             }
                           }
                         }}
