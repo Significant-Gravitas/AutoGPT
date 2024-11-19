@@ -26,21 +26,18 @@ export const FlowRunInfo: React.FC<
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const fetchBlockResults = useCallback(async () => {
-    console.log("fetchBlockResults");
-    const graph = await api.getGraph(flow.id, flow.version);
     const executionResults = await api.getGraphExecutionInfo(
       flow.id,
       flowRun.id,
     );
 
-    // Filter nodes to only get output blocks
-    const outputNodes = graph.nodes.filter(
-      (node) => node.block_id === "363ae599-353e-4804-937e-b2ee3cef3da4",
-    );
-
-    // Create a map of the latest COMPLETED execution results by node_id
+    // Create a map of the latest COMPLETED execution results of output nodes by node_id
     const latestCompletedResults = executionResults
-      .filter((result) => result.status === "COMPLETED")
+      .filter(
+        (result) =>
+          result.status === "COMPLETED" &&
+          result.block_id === "363ae599-353e-4804-937e-b2ee3cef3da4",
+      )
       .reduce((acc, result) => {
         const existing = acc.get(result.node_id);
 
@@ -59,20 +56,18 @@ export const FlowRunInfo: React.FC<
         return acc;
       }, new Map<string, NodeExecutionResult>());
 
-    // Transform output nodes to BlockOutput format
+    // Transform results to BlockOutput format
     setBlockOutputs(
-      outputNodes.map((node) => ({
-        id: node.id,
+      Array.from(latestCompletedResults.values()).map((result) => ({
+        id: result.node_id,
         type: "output" as const,
-        outputSchema: {} as BlockIORootSchema,
         hardcodedValues: {
-          name:
-            latestCompletedResults.get(node.id)?.input_data.name || "Output",
-          description:
-            latestCompletedResults.get(node.id)?.input_data.description ||
-            "Output from the agent",
+          name: result.input_data.name || "Output",
+          description: result.input_data.description || "Output from the agent",
+          value: result.input_data.value,
         },
-        result: latestCompletedResults.get(node.id)?.output_data || undefined,
+        // Change this line to extract the array directly
+        result: result.output_data?.output || undefined,
       })),
     );
   }, [api, flow.id, flow.version, flowRun.id]);
@@ -84,7 +79,7 @@ export const FlowRunInfo: React.FC<
     }
 
     fetchBlockResults();
-  }, [api, isOutputOpen]);
+  }, [isOutputOpen, blockOutputs]);
 
   if (flowRun.graphID != flow.id) {
     throw new Error(
@@ -144,7 +139,6 @@ export const FlowRunInfo: React.FC<
           <p>
             <strong>Duration (run time):</strong> {flowRun.duration}s
           </p>
-          {/* <p><strong>Total cost:</strong> €1,23</p> */}
         </CardContent>
       </Card>
       <RunnerOutputUI

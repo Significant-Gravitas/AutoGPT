@@ -13,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 
 export interface BlockOutput {
   id: string;
-  outputSchema: BlockIORootSchema;
   hardcodedValues: {
     name: string;
     description: string;

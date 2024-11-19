@@ -240,11 +240,12 @@ export type GraphExecuteResponse = {
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
-  graph_exec_id: string;
-  node_exec_id: string;
   graph_id: string;
   graph_version: number;
+  graph_exec_id: string;
+  node_exec_id: string;
   node_id: string;
+  block_id: string;
   status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
   input_data: { [key: string]: any };
   output_data: { [key: string]: Array<any> };
