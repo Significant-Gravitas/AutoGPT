@@ -6,6 +6,7 @@ from autogpt_libs.supabase_integration_credentials_store.store import (
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
+    open_router_credentials,
     openai_credentials,
     replicate_credentials,
     revid_credentials,
@@ -54,6 +55,15 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA3_1_8B: 1,
     LlmModel.OLLAMA_LLAMA3_8B: 1,
     LlmModel.OLLAMA_LLAMA3_405B: 1,
+    LlmModel.GEMINI_FLASH_1_5_8B: 1,
+    LlmModel.GEMINI_FLASH_1_5_EXP: 1,
+    LlmModel.GROK_BETA: 5,
+    LlmModel.MISTRAL_NEMO: 1,
+    LlmModel.COHERE_COMMAND_R_08_2024: 1,
+    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
+    LlmModel.EVA_QWEN_2_5_32B: 1,
+    LlmModel.DEEPSEEK_CHAT: 2,
+    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: 1,
 }
 
 for model in LlmModel:
@@ -123,6 +133,23 @@ LLM_COST = (
             cost_amount=MODEL_COST[LlmModel.GPT4O],
             cost_filter={"api_key": None},
         ),
+    ]
+    # Open Router Models
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": open_router_credentials.id,
+                    "provider": open_router_credentials.provider,
+                    "type": open_router_credentials.type,
+                },
+            },
+            cost_amount=cost,
+        )
+        for model, cost in MODEL_COST.items()
+        if MODEL_METADATA[model].provider == "open_router"
     ]
 )
 

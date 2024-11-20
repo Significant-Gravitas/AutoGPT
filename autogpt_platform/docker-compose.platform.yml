@@ -107,6 +107,7 @@ services:
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
       - DATABASEMANAGER_HOST=0.0.0.0 
+      - EXECUTIONMANAGER_HOST=0.0.0.0
       - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=  # DO NOT USE IN PRODUCTION!!
     ports:
       - "8002:8000"

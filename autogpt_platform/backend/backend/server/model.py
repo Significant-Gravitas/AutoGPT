@@ -1,5 +1,5 @@
 import enum
-import typing
+from typing import Any, List, Optional, Union
 
 import pydantic
 
@@ -12,11 +12,12 @@ class Methods(enum.Enum):
     UNSUBSCRIBE = "unsubscribe"
     EXECUTION_EVENT = "execution_event"
     ERROR = "error"
+    HEARTBEAT = "heartbeat"
 
 
 class WsMessage(pydantic.BaseModel):
     method: Methods
-    data: typing.Dict[str, typing.Any] | list[typing.Any] | None = None
+    data: Optional[Union[dict[str, Any], list[Any], str]] = None
     success: bool | None = None
     channel: str | None = None
     error: str | None = None
@@ -40,8 +41,8 @@ class CreateGraph(pydantic.BaseModel):
 
 class CreateAPIKeyRequest(pydantic.BaseModel):
     name: str
-    permissions: typing.List[APIKeyPermission]
-    description: typing.Optional[str] = None
+    permissions: List[APIKeyPermission]
+    description: Optional[str] = None
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):
@@ -54,4 +55,4 @@ class SetGraphActiveVersion(pydantic.BaseModel):
 
 
 class UpdatePermissionsRequest(pydantic.BaseModel):
-    permissions: typing.List[APIKeyPermission]
+    permissions: List[APIKeyPermission]

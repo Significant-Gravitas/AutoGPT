@@ -1,7 +1,8 @@
 import fastapi
 
 from .middleware import auth_middleware
-from .models import User
+from .models import User, DEFAULT_USER_ID, DEFAULT_EMAIL
+from .config import Settings
 
 
 def requires_user(payload: dict = fastapi.Depends(auth_middleware)) -> User:
@@ -16,8 +17,12 @@ def requires_admin_user(
 
 def verify_user(payload: dict | None, admin_only: bool) -> User:
     if not payload:
+        if Settings.ENABLE_AUTH:
+            raise fastapi.HTTPException(
+                status_code=401, detail="Authorization header is missing"
+            )
         # This handles the case when authentication is disabled
-        payload = {"sub": "3e53486c-cf57-477e-ba2a-cb02dc828e1a", "role": "admin"}
+        payload = {"sub": DEFAULT_USER_ID, "role": "admin"}
 
     user_id = payload.get("sub")
 

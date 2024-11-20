@@ -11,7 +11,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from backend.util.data import get_data_path, get_secrets_path
+from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -238,6 +238,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
+    open_router_api_key: str = Field(default="", description="Open Router API Key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
@@ -298,11 +299,3 @@ class Settings(BaseModel):
                 with open(config_path, "w") as f:
                     json.dump(config_to_save, f, indent=2)
             self.config.clear_updates()
-
-        # Save updated secrets to individual files
-        secrets_dir = get_secrets_path()
-        for key in self.secrets.updated_fields:
-            secret_file = os.path.join(secrets_dir, key)
-            with open(secret_file, "w") as f:
-                f.write(str(getattr(self.secrets, key)))
-        self.secrets.clear_updates()

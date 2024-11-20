@@ -13,15 +13,7 @@ const nextConfig = {
       "placekitten.com", // for placeholder images
     ],
   },
-  // async redirects() {
-  //   return [
-  //     {
-  //       source: "/monitor", // FIXME: Remove after 2024-09-01
-  //       destination: "/",
-  //       permanent: false,
-  //     },
-  //   ];
-  // },
+  output: "standalone",
   // TODO: Re-enable TypeScript checks once current issues are resolved
   typescript: {
     ignoreBuildErrors: true,

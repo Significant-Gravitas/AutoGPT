@@ -10,7 +10,7 @@ Blocks are reusable components that can be connected to form a graph representin
 
 Follow these steps to create and test a new block:
 
-1. **Create a new Python file** in the `backend/blocks` directory. Name it descriptively and use snake_case. For example: `get_wikipedia_summary.py`.
+1. **Create a new Python file** for your block in the `autogpt_platform/backend/backend/blocks` directory. Name it descriptively and use snake_case. For example: `get_wikipedia_summary.py`.
 
 2. **Import necessary modules and create a class that inherits from `Block`**. Make sure to include all necessary imports for your block.
 
