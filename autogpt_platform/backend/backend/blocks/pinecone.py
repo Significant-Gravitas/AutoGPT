@@ -10,10 +10,11 @@ from backend.data.model import (
     CredentialsMetaInput,
     SchemaField,
 )
+from backend.integrations.providers import ProviderName
 
 PineconeCredentials = APIKeyCredentials
 PineconeCredentialsInput = CredentialsMetaInput[
-    Literal["pinecone"],
+    Literal[ProviderName.PINECONE],
     Literal["api_key"],
 ]
 

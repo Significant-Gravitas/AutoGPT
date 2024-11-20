@@ -12,6 +12,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     SchemaField,
 )
+from backend.integrations.providers import ProviderName
 from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -141,7 +142,7 @@ logger = logging.getLogger(__name__)
 class AIShortformVideoCreatorBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
-            Literal["revid"], Literal["api_key"]
+            Literal[ProviderName.REVID], Literal["api_key"]
         ] = CredentialsField(
             description="The revid.ai integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",

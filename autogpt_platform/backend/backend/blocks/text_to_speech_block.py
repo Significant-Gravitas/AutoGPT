@@ -9,6 +9,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     SchemaField,
 )
+from backend.integrations.providers import ProviderName
 from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -38,7 +39,7 @@ class UnrealTextToSpeechBlock(Block):
             default="Scarlett",
         )
         credentials: CredentialsMetaInput[
-            Literal["unreal_speech"], Literal["api_key"]
+            Literal[ProviderName.UNREAL_SPEECH], Literal["api_key"]
         ] = CredentialsField(
             description="The Unreal Speech integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",

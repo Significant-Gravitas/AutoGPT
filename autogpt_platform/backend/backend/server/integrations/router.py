@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
@@ -20,11 +20,15 @@ from backend.data.model import (
 )
 from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
+from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
 from backend.util.exceptions import NeedConfirmation
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from backend.integrations.oauth import BaseOAuthHandler
 
 from ..utils import get_user_id
 
@@ -264,7 +268,9 @@ async def delete_credentials(
 @router.post("/{provider}/webhooks/{webhook_id}/ingress")
 async def webhook_ingress_generic(
     request: Request,
-    provider: Annotated[str, Path(title="Provider where the webhook was registered")],
+    provider: Annotated[
+        ProviderName, Path(title="Provider where the webhook was registered")
+    ],
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
     logger.debug(f"Received {provider} webhook ingress for ID {webhook_id}")
@@ -302,7 +308,9 @@ async def webhook_ingress_generic(
 
 @router.post("/{provider}/webhooks/{webhook_id}/ping")
 async def webhook_ping(
-    provider: Annotated[str, Path(title="Provider where the webhook was registered")],
+    provider: Annotated[
+        ProviderName, Path(title="Provider where the webhook was registered")
+    ],
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
     user_id: Annotated[str, Depends(get_user_id)],  # require auth
 ):
@@ -349,7 +357,7 @@ async def remove_all_webhooks_for_credentials(
             logger.warning(f"Webhook #{webhook.id} failed to prune")
 
 
-def _get_provider_oauth_handler(req: Request, provider_name: str) -> BaseOAuthHandler:
+def _get_provider_oauth_handler(req: Request, provider_name: str) -> "BaseOAuthHandler":
     if provider_name not in HANDLERS_BY_NAME:
         raise HTTPException(
             status_code=404, detail=f"Unknown provider '{provider_name}'"

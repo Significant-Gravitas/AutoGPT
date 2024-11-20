@@ -8,6 +8,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     OAuth2Credentials,
 )
+from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
 
 secrets = Secrets()
@@ -17,7 +18,7 @@ GITHUB_OAUTH_IS_CONFIGURED = bool(
 
 GithubCredentials = APIKeyCredentials | OAuth2Credentials
 GithubCredentialsInput = CredentialsMetaInput[
-    Literal["github"],
+    Literal[ProviderName.GITHUB],
     Literal["api_key", "oauth2"] if GITHUB_OAUTH_IS_CONFIGURED else Literal["api_key"],
 ]
 

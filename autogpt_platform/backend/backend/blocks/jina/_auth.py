@@ -3,10 +3,11 @@ from typing import Literal
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 JinaCredentials = APIKeyCredentials
 JinaCredentialsInput = CredentialsMetaInput[
-    Literal["jina"],
+    Literal[ProviderName.JINA],
     Literal["api_key"],
 ]
 

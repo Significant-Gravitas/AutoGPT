@@ -11,6 +11,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     SchemaField,
 )
+from backend.integrations.providers import ProviderName
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
@@ -65,7 +66,7 @@ class GetWeatherInformationBlock(Block, GetRequest):
             description="Location to get weather information for"
         )
         credentials: CredentialsMetaInput[
-            Literal["openweathermap"], Literal["api_key"]
+            Literal[ProviderName.OPENWEATHERMAP], Literal["api_key"]
         ] = CredentialsField(
             description="The OpenWeatherMap integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
