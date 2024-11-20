@@ -337,15 +337,73 @@ For the WikipediaSummaryBlock:
 
 This approach allows us to test the block's logic comprehensively without relying on external services, while also accommodating non-deterministic outputs.
 
+## Security Best Practices for SSRF Prevention
+
+When creating blocks that handle external URL inputs or make network requests, it's crucial to use the platform's built-in SSRF protection mechanisms. The `backend.util.request` module provides a secure `Requests` wrapper class that should be used for all HTTP requests.
+
+### Using the Secure Requests Wrapper
+
+```python
+from backend.util.request import requests
+
+class MyNetworkBlock(Block):
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            # The requests wrapper automatically validates URLs and blocks dangerous requests
+            response = requests.get(input_data.url)
+            yield "result", response.text
+        except ValueError as e:
+            # URL validation failed
+            raise RuntimeError(f"Invalid URL provided: {e}")
+        except requests.exceptions.RequestException as e:
+            # Request failed
+            raise RuntimeError(f"Request failed: {e}")
+```
+
+The `Requests` wrapper provides these security features:
+
+1. **URL Validation**:
+    - Blocks requests to private IP ranges (RFC 1918)
+    - Validates URL format and protocol
+    - Resolves DNS and checks IP addresses
+    - Supports whitelisting trusted origins
+
+2. **Secure Defaults**:
+    - Disables redirects by default
+    - Raises exceptions for non-200 status codes
+    - Supports custom headers and validators
+
+3. **Protected IP Ranges**:
+   The wrapper denies requests to these networks:
+
+    ```python title="backend/util/request.py"
+    --8<-- "autogpt_platform/backend/backend/util/request.py:BLOCKED_IP_NETWORKS"
+    ```
+
+### Custom Request Configuration
+
+If you need to customize the request behavior:
+
+```python
+from backend.util.request import Requests
+
+# Create a custom requests instance with specific trusted origins
+custom_requests = Requests(
+    trusted_origins=["api.trusted-service.com"],
+    raise_for_status=True,
+    extra_headers={"User-Agent": "MyBlock/1.0"}
+)
+```
+
 ## Tips for Effective Block Testing
 
 1. **Provide realistic test_input**: Ensure your test input covers typical use cases.
 
 2. **Define appropriate test_output**:
 
-   - For deterministic outputs, use specific expected values.
-   - For non-deterministic outputs or when only the type matters, use Python types (e.g., `str`, `int`, `dict`).
-   - You can mix specific values and types, e.g., `("key1", str), ("key2", 42)`.
+    - For deterministic outputs, use specific expected values.
+    - For non-deterministic outputs or when only the type matters, use Python types (e.g., `str`, `int`, `dict`).
+    - You can mix specific values and types, e.g., `("key1", str), ("key2", 42)`.
 
 3. **Use test_mock for network calls**: This prevents tests from failing due to network issues or API changes.
 
