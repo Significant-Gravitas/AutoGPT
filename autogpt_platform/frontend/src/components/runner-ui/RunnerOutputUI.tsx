@@ -11,9 +11,8 @@ import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-interface BlockOutput {
+export interface BlockOutput {
   id: string;
-  outputSchema: BlockIORootSchema;
   hardcodedValues: {
     name: string;
     description: string;
