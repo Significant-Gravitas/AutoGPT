@@ -10,7 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Block, BlockUIType } from "@/lib/autogpt-server-api";
+import { Block, BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
 import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
 import { IconToyBrick } from "@/components/ui/icons";
 import { getPrimaryCategoryColor } from "@/lib/utils";
@@ -57,7 +57,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
     const agentList = flows.map(
       (flow) =>
         ({
-          id: "e189baac-8c20-45a1-94a7-55177ea42565", // TODO: fetch this programmatically.
+          id: SpecialBlockID.AGENT,
           name: flow.name,
           description:
             `Ver.${flow.version}` +
