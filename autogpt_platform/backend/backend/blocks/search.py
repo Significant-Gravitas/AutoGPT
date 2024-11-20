@@ -1,20 +1,12 @@
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import quote
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
+from backend.blocks.helpers.http import GetRequest
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
-
-
-class GetRequest:
-    @classmethod
-    def get_request(cls, url: str, json=False) -> Any:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json() if json else response.text
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
@@ -46,42 +38,6 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
         if "extract" not in response:
             raise RuntimeError(f"Unable to parse Wikipedia response: {response}")
         yield "summary", response["extract"]
-
-
-class SearchTheWebBlock(Block, GetRequest):
-    class Input(BlockSchema):
-        query: str = SchemaField(description="The search query to search the web for")
-
-    class Output(BlockSchema):
-        results: str = SchemaField(
-            description="The search results including content from top 5 URLs"
-        )
-        error: str = SchemaField(description="Error message if the search fails")
-
-    def __init__(self):
-        super().__init__(
-            id="87840993-2053-44b7-8da4-187ad4ee518c",
-            description="This block searches the internet for the given search query.",
-            categories={BlockCategory.SEARCH},
-            input_schema=SearchTheWebBlock.Input,
-            output_schema=SearchTheWebBlock.Output,
-            test_input={"query": "Artificial Intelligence"},
-            test_output=("results", "search content"),
-            test_mock={"get_request": lambda url, json: "search content"},
-        )
-
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Encode the search query
-        encoded_query = quote(input_data.query)
-
-        # Prepend the Jina Search URL to the encoded query
-        jina_search_url = f"https://s.jina.ai/{encoded_query}"
-
-        # Make the request to Jina Search
-        response = self.get_request(jina_search_url, json=False)
-
-        # Output the search results
-        yield "results", response
 
 
 class ExtractWebsiteContentBlock(Block, GetRequest):

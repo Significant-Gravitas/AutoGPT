@@ -47,18 +47,18 @@ export const FlowRunInfo: React.FC<
             </Button>
           )}
           <Link
-            className={buttonVariants({ variant: "outline" })}
+            className={buttonVariants({ variant: "default" })}
             href={`/build?flowID=${flow.id}`}
           >
-            <Pencil2Icon className="mr-2" /> Edit Agent
+            <Pencil2Icon className="mr-2" /> Open in Builder
           </Link>
         </div>
       </CardHeader>
       <CardContent>
-        <p>
+        <div>
           <strong>Status:</strong>{" "}
           <FlowRunStatusBadge status={flowRun.status} />
-        </p>
+        </div>
         <p>
           <strong>Started:</strong>{" "}
           {moment(flowRun.startTime).format("YYYY-MM-DD HH:mm:ss")}

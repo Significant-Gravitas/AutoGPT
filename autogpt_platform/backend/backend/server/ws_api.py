@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 
 from backend.data import redis
 from backend.data.queue import AsyncRedisExecutionEventBus
@@ -31,15 +31,6 @@ docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
 
-logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.config.backend_cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 def get_connection_manager():
     global _connection_manager
@@ -62,24 +53,24 @@ async def event_broadcaster(manager: ConnectionManager):
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if settings.config.enable_auth:
-        token = websocket.query_params.get("token")
-        if not token:
-            await websocket.close(code=4001, reason="Missing authentication token")
-            return ""
-
-        try:
-            payload = parse_jwt_token(token)
-            user_id = payload.get("sub")
-            if not user_id:
-                await websocket.close(code=4002, reason="Invalid token")
-                return ""
-            return user_id
-        except ValueError:
-            await websocket.close(code=4003, reason="Invalid token")
-            return ""
-    else:
+    if not settings.config.enable_auth:
         return DEFAULT_USER_ID
+
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return ""
+
+    try:
+        payload = parse_jwt_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4002, reason="Invalid token")
+            return ""
+        return user_id
+    except ValueError:
+        await websocket.close(code=4003, reason="Invalid token")
+        return ""
 
 
 async def handle_subscribe(
@@ -147,6 +138,13 @@ async def websocket_router(
         while True:
             data = await websocket.receive_text()
             message = WsMessage.model_validate_json(data)
+
+            if message.method == Methods.HEARTBEAT:
+                await websocket.send_json(
+                    {"method": Methods.HEARTBEAT.value, "data": "pong", "success": True}
+                )
+                continue
+
             if message.method == Methods.SUBSCRIBE:
                 await handle_subscribe(websocket, manager, message)
 
@@ -176,8 +174,16 @@ async def websocket_router(
 
 class WebsocketServer(AppProcess):
     def run(self):
+        logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
+        server_app = CORSMiddleware(
+            app=app,
+            allow_origins=settings.config.backend_cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         uvicorn.run(
-            app,
+            server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
         )

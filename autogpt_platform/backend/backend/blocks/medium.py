@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import List, Literal
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
@@ -13,6 +12,7 @@ from backend.data.model import (
     SchemaField,
     SecretField,
 )
+from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",

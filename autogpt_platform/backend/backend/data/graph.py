@@ -1,28 +1,24 @@
 import asyncio
 import logging
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, Type
 
-import prisma.types
+import prisma
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
-from prisma.types import AgentGraphInclude
-from pydantic import BaseModel
-from pydantic_core import PydanticUndefinedType
+from prisma.types import AgentGraphWhereInput
+from pydantic.fields import computed_field
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
-from backend.data.block import BlockInput, get_block, get_blocks
+from backend.data.block import BlockInput, BlockType, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
 from backend.data.execution import ExecutionStatus
+from backend.data.includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from backend.util import json
 
 logger = logging.getLogger(__name__)
-
-
-class InputSchemaItem(BaseModel):
-    node_id: str
-    description: str | None = None
-    title: str | None = None
 
 
 class Link(BaseDbModel):
@@ -61,15 +57,15 @@ class Node(BaseDbModel):
         obj = Node(
             id=node.id,
             block_id=node.AgentBlock.id,
-            input_default=json.loads(node.constantInput),
-            metadata=json.loads(node.metadata),
+            input_default=json.loads(node.constantInput, target_type=dict[str, Any]),
+            metadata=json.loads(node.metadata, target_type=dict[str, Any]),
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
         return obj
 
 
-class ExecutionMeta(BaseDbModel):
+class GraphExecution(BaseDbModel):
     execution_id: str
     started_at: datetime
     ended_at: datetime
@@ -78,20 +74,22 @@ class ExecutionMeta(BaseDbModel):
     status: ExecutionStatus
 
     @staticmethod
-    def from_agent_graph_execution(execution: AgentGraphExecution):
+    def from_db(execution: AgentGraphExecution):
         now = datetime.now(timezone.utc)
         start_time = execution.startedAt or execution.createdAt
         end_time = execution.updatedAt or now
         duration = (end_time - start_time).total_seconds()
+        total_run_time = duration
 
-        total_run_time = 0
-        if execution.AgentNodeExecutions:
-            for node_execution in execution.AgentNodeExecutions:
-                node_start = node_execution.startedTime or now
-                node_end = node_execution.endedTime or now
-                total_run_time += (node_end - node_start).total_seconds()
+        try:
+            stats = json.loads(execution.stats or "{}", target_type=dict[str, Any])
+        except ValueError:
+            stats = {}
 
-        return ExecutionMeta(
+        duration = stats.get("walltime", duration)
+        total_run_time = stats.get("nodes_walltime", total_run_time)
+
+        return GraphExecution(
             id=execution.id,
             execution_id=execution.id,
             started_at=start_time,
@@ -102,39 +100,70 @@ class ExecutionMeta(BaseDbModel):
         )
 
 
-class GraphMeta(BaseDbModel):
+class Graph(BaseDbModel):
     version: int = 1
     is_active: bool = True
     is_template: bool = False
     name: str
     description: str
-    executions: list[ExecutionMeta] | None = None
+    executions: list[GraphExecution] = []
+    nodes: list[Node] = []
+    links: list[Link] = []
 
     @staticmethod
-    def from_db(graph: AgentGraph):
-        if graph.AgentGraphExecution:
-            executions = [
-                ExecutionMeta.from_agent_graph_execution(execution)
-                for execution in graph.AgentGraphExecution
-            ]
-        else:
-            executions = None
+    def _generate_schema(
+        type_class: Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input],
+        data: list[dict],
+    ) -> dict[str, Any]:
+        props = []
+        for p in data:
+            try:
+                props.append(type_class(**p))
+            except Exception as e:
+                logger.warning(f"Invalid {type_class}: {p}, {e}")
 
-        return GraphMeta(
-            id=graph.id,
-            version=graph.version,
-            is_active=graph.isActive,
-            is_template=graph.isTemplate,
-            name=graph.name or "",
-            description=graph.description or "",
-            executions=executions,
+        return {
+            "type": "object",
+            "properties": {
+                p.name: {
+                    "secret": p.secret,
+                    "advanced": p.advanced,
+                    "title": p.title or p.name,
+                    **({"description": p.description} if p.description else {}),
+                    **({"default": p.value} if p.value is not None else {}),
+                }
+                for p in props
+            },
+            "required": [p.name for p in props if p.value is None],
+        }
+
+    @computed_field
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        return self._generate_schema(
+            AgentInputBlock.Input,
+            [
+                node.input_default
+                for node in self.nodes
+                if (b := get_block(node.block_id))
+                and b.block_type == BlockType.INPUT
+                and "name" in node.input_default
+            ],
         )
 
-
-class Graph(GraphMeta):
-    nodes: list[Node]
-    links: list[Link]
-    subgraphs: dict[str, list[str]] = {}  # subgraph_id -> [node_id]
+    @computed_field
+    @property
+    def output_schema(self) -> dict[str, Any]:
+        return self._generate_schema(
+            AgentOutputBlock.Input,
+            [
+                node.input_default
+                for node in self.nodes
+                if (b := get_block(node.block_id))
+                and b.block_type == BlockType.OUTPUT
+                and "name" in node.input_default
+            ],
+        )
 
     @property
     def starting_nodes(self) -> list[Node]:
@@ -142,7 +171,7 @@ class Graph(GraphMeta):
         input_nodes = {
             v.id
             for v in self.nodes
-            if isinstance(get_block(v.block_id), AgentInputBlock)
+            if (b := get_block(v.block_id)) and b.block_type == BlockType.INPUT
         }
         return [
             node
@@ -150,97 +179,70 @@ class Graph(GraphMeta):
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
 
-    @property
-    def ending_nodes(self) -> list[Node]:
-        return [
-            v for v in self.nodes if isinstance(get_block(v.block_id), AgentOutputBlock)
-        ]
-
-    @property
-    def subgraph_map(self) -> dict[str, str]:
-        """
-        Returns a mapping of node_id to subgraph_id.
-        A node in the main graph will be mapped to the graph's id.
-        """
-        subgraph_map = {
-            node_id: subgraph_id
-            for subgraph_id, node_ids in self.subgraphs.items()
-            for node_id in node_ids
-        }
-        subgraph_map.update(
-            {node.id: self.id for node in self.nodes if node.id not in subgraph_map}
-        )
-        return subgraph_map
-
-    def reassign_ids(self, reassign_graph_id: bool = False):
+    def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
         """
-        self.validate_graph()
 
-        id_map = {
-            **{node.id: str(uuid.uuid4()) for node in self.nodes},
-            **{subgraph_id: str(uuid.uuid4()) for subgraph_id in self.subgraphs},
-        }
-
+        # Reassign Graph ID
+        id_map = {node.id: str(uuid.uuid4()) for node in self.nodes}
         if reassign_graph_id:
             self.id = str(uuid.uuid4())
 
+        # Reassign Node IDs
         for node in self.nodes:
             node.id = id_map[node.id]
 
+        # Reassign Link IDs
         for link in self.links:
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
-        self.subgraphs = {
-            id_map[subgraph_id]: [id_map[node_id] for node_id in node_ids]
-            for subgraph_id, node_ids in self.subgraphs.items()
-        }
+        # Reassign User IDs for agent blocks
+        for node in self.nodes:
+            if node.block_id != AgentExecutorBlock().id:
+                continue
+            node.input_default["user_id"] = user_id
+            node.input_default.setdefault("data", {})
+
+        self.validate_graph()
 
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
             return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
 
-        # Nodes: required fields are filled or connected, except for InputBlock.
+        input_links = defaultdict(list)
+        for link in self.links:
+            input_links[link.sink_id].append(link)
+
+        # Nodes: required fields are filled or connected
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
-            if not for_run:
-                continue  # Skip input completion validation, unless when executing.
-
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
-                + [sanitize(link.sink_name) for link in node.input_links]
+                + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
             for name in block.input_schema.get_required_fields():
-                if name not in provided_inputs and not isinstance(
-                    block, AgentInputBlock
+                if name not in provided_inputs and (
+                    for_run  # Skip input completion validation, unless when executing.
+                    or block.block_type == BlockType.INPUT
+                    or block.block_type == BlockType.OUTPUT
+                    or block.block_type == BlockType.AGENT
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
                     )
+
         node_map = {v.id: v for v in self.nodes}
 
         def is_static_output_block(nid: str) -> bool:
             bid = node_map[nid].block_id
             b = get_block(bid)
             return b.static_output if b else False
-
-        def is_input_output_block(nid: str) -> bool:
-            bid = node_map[nid].block_id
-            b = get_block(bid)
-            return isinstance(b, AgentInputBlock) or isinstance(b, AgentOutputBlock)
-
-        # subgraphs: all nodes in subgraph must be present in the graph.
-        for subgraph_id, node_ids in self.subgraphs.items():
-            for node_id in node_ids:
-                if node_id not in node_map:
-                    raise ValueError(f"Subgraph {subgraph_id}'s node {node_id} invalid")
-        subgraph_map = self.subgraph_map
 
         # Links: links are connected and the connected pin data type are compatible.
         for link in self.links:
@@ -263,73 +265,42 @@ class Graph(GraphMeta):
                     )
 
                 sanitized_name = sanitize(name)
+                vals = node.input_default
                 if i == 0:
-                    fields = f"Valid output fields: {block.output_schema.get_fields()}"
+                    fields = (
+                        block.output_schema.get_fields()
+                        if block.block_type != BlockType.AGENT
+                        else vals.get("output_schema", {}).get("properties", {}).keys()
+                    )
                 else:
-                    fields = f"Valid input fields: {block.input_schema.get_fields()}"
+                    fields = (
+                        block.input_schema.get_fields()
+                        if block.block_type != BlockType.AGENT
+                        else vals.get("input_schema", {}).get("properties", {}).keys()
+                    )
                 if sanitized_name not in fields:
-                    raise ValueError(f"{suffix}, `{name}` invalid, {fields}")
-
-            if (
-                subgraph_map.get(link.source_id) != subgraph_map.get(link.sink_id)
-                and not is_input_output_block(link.source_id)
-                and not is_input_output_block(link.sink_id)
-            ):
-                raise ValueError(f"{suffix}, Connecting nodes from different subgraph.")
+                    fields_msg = f"Allowed fields: {fields}"
+                    raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
 
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
 
-            # TODO: Add type compatibility check here.
-
-    def get_input_schema(self) -> list[InputSchemaItem]:
-        """
-        Walks the graph and returns all the inputs that are either not:
-        - static
-        - provided by parent node
-        """
-        input_schema = []
-        for node in self.nodes:
-            block = get_block(node.block_id)
-            if not block:
-                continue
-
-            for input_name, input_schema_item in (
-                block.input_schema.jsonschema().get("properties", {}).items()
-            ):
-                # Check if the input is not static and not provided by a parent node
-                if (
-                    input_name not in node.input_default
-                    and not any(
-                        link.sink_name == input_name for link in node.input_links
-                    )
-                    and isinstance(
-                        block.input_schema.model_fields.get(input_name).default,
-                        PydanticUndefinedType,
-                    )
-                ):
-                    input_schema.append(
-                        InputSchemaItem(
-                            node_id=node.id,
-                            description=input_schema_item.get("description"),
-                            title=input_schema_item.get("title"),
-                        )
-                    )
-
-        return input_schema
-
     @staticmethod
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
-        nodes = [
-            *(graph.AgentNodes or []),
-            *(
-                node
-                for subgraph in graph.AgentSubGraphs or []
-                for node in subgraph.AgentNodes or []
-            ),
+        executions = [
+            GraphExecution.from_db(execution)
+            for execution in graph.AgentGraphExecution or []
         ]
+        nodes = graph.AgentNodes or []
+
         return Graph(
-            **GraphMeta.from_db(graph).model_dump(),
+            id=graph.id,
+            version=graph.version,
+            is_active=graph.isActive,
+            is_template=graph.isTemplate,
+            name=graph.name or "",
+            description=graph.description or "",
+            executions=executions,
             nodes=[Graph._process_node(node, hide_credentials) for node in nodes],
             links=list(
                 {
@@ -338,17 +309,15 @@ class Graph(GraphMeta):
                     for link in (node.Input or []) + (node.Output or [])
                 }
             ),
-            subgraphs={
-                subgraph.id: [node.id for node in subgraph.AgentNodes or []]
-                for subgraph in graph.AgentSubGraphs or []
-            },
         )
 
     @staticmethod
     def _process_node(node: AgentNode, hide_credentials: bool) -> Node:
         node_dict = node.model_dump()
         if hide_credentials and "constantInput" in node_dict:
-            constant_input = json.loads(node_dict["constantInput"])
+            constant_input = json.loads(
+                node_dict["constantInput"], target_type=dict[str, Any]
+            )
             constant_input = Graph._hide_credentials_in_input(constant_input)
             node_dict["constantInput"] = json.dumps(constant_input)
         return Node.from_db(AgentNode(**node_dict))
@@ -370,20 +339,6 @@ class Graph(GraphMeta):
         return result
 
 
-AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
-    "Input": True,
-    "Output": True,
-    "AgentBlock": True,
-}
-
-__SUBGRAPH_INCLUDE = {"AgentNodes": {"include": AGENT_NODE_INCLUDE}}
-
-AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
-    **__SUBGRAPH_INCLUDE,
-    "AgentSubGraphs": {"include": __SUBGRAPH_INCLUDE},  # type: ignore
-}
-
-
 # --------------------- Model functions --------------------- #
 
 
@@ -395,11 +350,11 @@ async def get_node(node_id: str) -> Node:
     return Node.from_db(node)
 
 
-async def get_graphs_meta(
+async def get_graphs(
     user_id: str,
     include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
-) -> list[GraphMeta]:
+) -> list[Graph]:
     """
     Retrieves graph metadata objects.
     Default behaviour is to get all currently active graphs.
@@ -410,9 +365,9 @@ async def get_graphs_meta(
         user_id: The ID of the user that owns the graph.
 
     Returns:
-        list[GraphMeta]: A list of objects representing the retrieved graph metadata.
+        list[Graph]: A list of objects representing the retrieved graph metadata.
     """
-    where_clause: prisma.types.AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {}
 
     if filter_by == "active":
         where_clause["isActive"] = True
@@ -421,23 +376,17 @@ async def get_graphs_meta(
 
     where_clause["userId"] = user_id
 
+    graph_include = AGENT_GRAPH_INCLUDE
+    graph_include["AgentGraphExecution"] = include_executions
+
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=(
-            AgentGraphInclude(
-                AgentGraphExecution={"include": {"AgentNodeExecutions": True}}
-            )
-            if include_executions
-            else None
-        ),
+        include=graph_include,
     )
 
-    if not graphs:
-        return []
-
-    return [GraphMeta.from_db(graph) for graph in graphs]
+    return [Graph.from_db(graph) for graph in graphs]
 
 
 async def get_graph(
@@ -454,7 +403,7 @@ async def get_graph(
 
     Returns `None` if the record is not found.
     """
-    where_clause: prisma.types.AgentGraphWhereInput = {
+    where_clause: AgentGraphWhereInput = {
         "id": graph_id,
         "isTemplate": template,
     }
@@ -463,7 +412,7 @@ async def get_graph(
     elif not template:
         where_clause["isActive"] = True
 
-    if user_id and not template:
+    if user_id is not None and not template:
         where_clause["userId"] = user_id
 
     graph = await AgentGraph.prisma().find_first(
@@ -551,31 +500,11 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 
     await asyncio.gather(
         *[
-            AgentGraph.prisma(tx).create(
-                data={
-                    "id": subgraph_id,
-                    "agentGraphParentId": graph.id,
-                    "version": graph.version,
-                    "name": f"SubGraph of {graph.name}",
-                    "description": f"Sub-Graph of {graph.id}",
-                    "isTemplate": graph.is_template,
-                    "isActive": graph.is_active,
-                    "userId": user_id,
-                }
-            )
-            for subgraph_id in graph.subgraphs
-        ]
-    )
-
-    subgraph_map = graph.subgraph_map
-
-    await asyncio.gather(
-        *[
             AgentNode.prisma(tx).create(
                 {
                     "id": node.id,
                     "agentBlockId": node.block_id,
-                    "agentGraphId": subgraph_map.get(node.id, graph.id),
+                    "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
                     "constantInput": json.dumps(node.input_default),
                     "metadata": json.dumps(node.metadata),
@@ -600,3 +529,84 @@ async def __create_graph(tx, graph: Graph, user_id: str):
             for link in graph.links
         ]
     )
+
+
+# ------------------------ UTILITIES ------------------------ #
+
+
+async def fix_llm_provider_credentials():
+    """Fix node credentials with provider `llm`"""
+    from autogpt_libs.supabase_integration_credentials_store import (
+        SupabaseIntegrationCredentialsStore,
+    )
+
+    from .redis import get_redis
+    from .user import get_user_integrations
+
+    store = SupabaseIntegrationCredentialsStore(get_redis())
+
+    broken_nodes = await prisma.get_client().query_raw(
+        """
+        SELECT    "User".id            user_id,
+                  node.id              node_id,
+                  node."constantInput" node_preset_input
+        FROM      platform."AgentNode"  node
+        LEFT JOIN platform."AgentGraph" graph
+        ON        node."agentGraphId" = graph.id
+        LEFT JOIN platform."User"       "User"
+        ON        graph."userId" = "User".id
+        WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
+        ORDER BY  user_id;
+        """
+    )
+    logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
+
+    user_id: str = ""
+    user_integrations = None
+    for node in broken_nodes:
+        if node["user_id"] != user_id:
+            # Save queries by only fetching once per user
+            user_id = node["user_id"]
+            user_integrations = await get_user_integrations(user_id)
+        elif not user_integrations:
+            raise RuntimeError(f"Impossible state while processing node {node}")
+
+        node_id: str = node["node_id"]
+        node_preset_input: dict = json.loads(node["node_preset_input"])
+        credentials_meta: dict = node_preset_input["credentials"]
+
+        credentials = next(
+            (
+                c
+                for c in user_integrations.credentials
+                if c.id == credentials_meta["id"]
+            ),
+            None,
+        )
+        if not credentials:
+            continue
+        if credentials.type != "api_key":
+            logger.warning(
+                f"User {user_id} credentials {credentials.id} with provider 'llm' "
+                f"has invalid type '{credentials.type}'"
+            )
+            continue
+
+        api_key = credentials.api_key.get_secret_value()
+        if api_key.startswith("sk-ant-api03-"):
+            credentials.provider = credentials_meta["provider"] = "anthropic"
+        elif api_key.startswith("sk-"):
+            credentials.provider = credentials_meta["provider"] = "openai"
+        elif api_key.startswith("gsk_"):
+            credentials.provider = credentials_meta["provider"] = "groq"
+        else:
+            logger.warning(
+                f"Could not identify provider from key prefix {api_key[:13]}*****"
+            )
+            continue
+
+        store.update_creds(user_id, credentials)
+        await AgentNode.prisma().update(
+            where={"id": node_id},
+            data={"constantInput": json.dumps(node_preset_input)},
+        )

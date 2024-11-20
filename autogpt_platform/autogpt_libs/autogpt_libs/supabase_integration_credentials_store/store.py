@@ -46,21 +46,21 @@ replicate_credentials = APIKeyCredentials(
 )
 openai_credentials = APIKeyCredentials(
     id="53c25cb8-e3ee-465c-a4d1-e75a4c899c2a",
-    provider="llm",
+    provider="openai",
     api_key=SecretStr(settings.secrets.openai_api_key),
     title="Use Credits for OpenAI",
     expires_at=None,
 )
 anthropic_credentials = APIKeyCredentials(
     id="24e5d942-d9e3-4798-8151-90143ee55629",
-    provider="llm",
+    provider="anthropic",
     api_key=SecretStr(settings.secrets.anthropic_api_key),
     title="Use Credits for Anthropic",
     expires_at=None,
 )
 groq_credentials = APIKeyCredentials(
     id="4ec22295-8f97-4dd1-b42b-2c6957a02545",
-    provider="llm",
+    provider="groq",
     api_key=SecretStr(settings.secrets.groq_api_key),
     title="Use Credits for Groq",
     expires_at=None,
@@ -72,6 +72,28 @@ did_credentials = APIKeyCredentials(
     title="Use Credits for D-ID",
     expires_at=None,
 )
+jina_credentials = APIKeyCredentials(
+    id="7f26de70-ba0d-494e-ba76-238e65e7b45f",
+    provider="jina",
+    api_key=SecretStr(settings.secrets.jina_api_key),
+    title="Use Credits for Jina",
+    expires_at=None,
+)
+unreal_credentials = APIKeyCredentials(
+    id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
+    provider="unreal",
+    api_key=SecretStr(settings.secrets.unreal_speech_api_key),
+    title="Use Credits for Unreal",
+    expires_at=None,
+)
+open_router_credentials = APIKeyCredentials(
+    id="b5a0e27d-0c98-4df3-a4b9-10193e1f3c40",
+    provider="open_router",
+    api_key=SecretStr(settings.secrets.open_router_api_key),
+    title="Use Credits for Open Router",
+    expires_at=None,
+)
+
 
 DEFAULT_CREDENTIALS = [
     revid_credentials,
@@ -81,6 +103,9 @@ DEFAULT_CREDENTIALS = [
     anthropic_credentials,
     groq_credentials,
     did_credentials,
+    jina_credentials,
+    unreal_credentials,
+    open_router_credentials,
 ]
 
 
@@ -124,6 +149,12 @@ class SupabaseIntegrationCredentialsStore:
             all_credentials.append(anthropic_credentials)
         if settings.secrets.did_api_key:
             all_credentials.append(did_credentials)
+        if settings.secrets.jina_api_key:
+            all_credentials.append(jina_credentials)
+        if settings.secrets.unreal_speech_api_key:
+            all_credentials.append(unreal_credentials)
+        if settings.secrets.open_router_api_key:
+            all_credentials.append(open_router_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:

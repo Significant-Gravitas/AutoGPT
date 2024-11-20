@@ -5,6 +5,7 @@ from typing import Literal
 import replicate
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
+from replicate.helpers import FileOutput
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
@@ -197,7 +198,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         client = replicate.Client(api_token=api_key.get_secret_value())
 
         # Run the model with additional parameters
-        output = client.run(
+        output: FileOutput | list[FileOutput] = client.run(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`
             f"{model_name}",
             input={
                 "prompt": prompt,
@@ -210,13 +211,21 @@ class ReplicateFluxAdvancedModelBlock(Block):
                 "output_quality": output_quality,
                 "safety_tolerance": safety_tolerance,
             },
+            wait=False,  # don't arbitrarily return data:octect/stream or sometimes url depending on the model???? what is this api
         )
 
         # Check if output is a list or a string and extract accordingly; otherwise, assign a default message
         if isinstance(output, list) and len(output) > 0:
-            result_url = output[0]  # If output is a list, get the first element
+            if isinstance(output[0], FileOutput):
+                result_url = output[0].url  # If output is a list, get the first element
+            else:
+                result_url = output[
+                    0
+                ]  # If output is a list and not a FileOutput, get the first element. Should never happen, but just in case.
+        elif isinstance(output, FileOutput):
+            result_url = output.url  # If output is a FileOutput, use the url
         elif isinstance(output, str):
-            result_url = output  # If output is a string, use it directly
+            result_url = output  # If output is a string (for some reason due to their janky type hinting), use it directly
         else:
             result_url = (
                 "No output received"  # Fallback message if output is not as expected

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from prisma.models import User
 
@@ -9,9 +11,12 @@ from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
+logger = logging.getLogger(__name__)
+
 
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
-    return await s.agent_server.create_graph(CreateGraph(graph=g), False, u.id)
+    logger.info(f"Creating graph for user {u.id}")
+    return await s.agent_server.test_create_graph(CreateGraph(graph=g), u.id)
 
 
 async def execute_graph(
@@ -21,12 +26,20 @@ async def execute_graph(
     input_data: dict,
     num_execs: int = 4,
 ) -> str:
+    logger.info(f"Executing graph {test_graph.id} for user {test_user.id}")
+    logger.info(f"Input data: {input_data}")
+
     # --- Test adding new executions --- #
-    response = agent_server.execute_graph(test_graph.id, input_data, test_user.id)
+    response = await agent_server.test_execute_graph(
+        test_graph.id, input_data, test_user.id
+    )
     graph_exec_id = response["id"]
+    logger.info(f"Created execution with ID: {graph_exec_id}")
 
     # Execution queue should be empty
+    logger.info("Waiting for execution to complete...")
     result = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
+    logger.info(f"Execution completed with {len(result)} results")
     assert result and len(result) == num_execs
     return graph_exec_id
 
@@ -37,7 +50,8 @@ async def assert_sample_graph_executions(
     test_user: User,
     graph_exec_id: str,
 ):
-    executions = await agent_server.get_graph_run_node_execution_results(
+    logger.info(f"Checking execution results for graph {test_graph.id}")
+    executions = await agent_server.test_get_graph_run_node_execution_results(
         test_graph.id,
         graph_exec_id,
         test_user.id,
@@ -57,6 +71,7 @@ async def assert_sample_graph_executions(
 
     # Executing StoreValueBlock
     exec = executions[0]
+    logger.info(f"Checking first StoreValueBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
     assert (
@@ -69,6 +84,7 @@ async def assert_sample_graph_executions(
 
     # Executing StoreValueBlock
     exec = executions[1]
+    logger.info(f"Checking second StoreValueBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
     assert (
@@ -81,6 +97,7 @@ async def assert_sample_graph_executions(
 
     # Executing FillTextTemplateBlock
     exec = executions[2]
+    logger.info(f"Checking FillTextTemplateBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!!!"]}
@@ -95,6 +112,7 @@ async def assert_sample_graph_executions(
 
     # Executing PrintToConsoleBlock
     exec = executions[3]
+    logger.info(f"Checking PrintToConsoleBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"status": ["printed"]}
@@ -104,6 +122,7 @@ async def assert_sample_graph_executions(
 
 @pytest.mark.asyncio(scope="session")
 async def test_agent_execution(server: SpinTestServer):
+    logger.info("Starting test_agent_execution")
     test_user = await create_test_user()
     test_graph = await create_graph(server, create_test_graph(), test_user)
     data = {"input_1": "Hello", "input_2": "World"}
@@ -117,6 +136,7 @@ async def test_agent_execution(server: SpinTestServer):
     await assert_sample_graph_executions(
         server.agent_server, test_graph, test_user, graph_exec_id
     )
+    logger.info("Completed test_agent_execution")
 
 
 @pytest.mark.asyncio(scope="session")
@@ -132,6 +152,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
                 // key
     StoreValueBlock2
     """
+    logger.info("Starting test_input_pin_always_waited")
     nodes = [
         graph.Node(
             block_id=StoreValueBlock().id,
@@ -172,7 +193,8 @@ async def test_input_pin_always_waited(server: SpinTestServer):
         server.agent_server, test_graph, test_user, {}, 3
     )
 
-    executions = await server.agent_server.get_graph_run_node_execution_results(
+    logger.info("Checking execution results")
+    executions = await server.agent_server.test_get_graph_run_node_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
     assert len(executions) == 3
@@ -180,6 +202,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     # Hence executing extraction of "key" from {"key1": "value1", "key2": "value2"}
     assert executions[2].status == execution.ExecutionStatus.COMPLETED
     assert executions[2].output_data == {"output": ["value2"]}
+    logger.info("Completed test_input_pin_always_waited")
 
 
 @pytest.mark.asyncio(scope="session")
@@ -197,6 +220,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     And later, another output is produced on input pin `b`, which is a static link,
     this input will complete the input of those three incomplete executions.
     """
+    logger.info("Starting test_static_input_link_on_graph")
     nodes = [
         graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
         graph.Node(block_id=StoreValueBlock().id, input_default={"input": 4}),  # a
@@ -252,11 +276,14 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     graph_exec_id = await execute_graph(
         server.agent_server, test_graph, test_user, {}, 8
     )
-    executions = await server.agent_server.get_graph_run_node_execution_results(
+    logger.info("Checking execution results")
+    executions = await server.agent_server.test_get_graph_run_node_execution_results(
         test_graph.id, graph_exec_id, test_user.id
     )
     assert len(executions) == 8
     # The last 3 executions will be a+b=4+5=9
-    for exec_data in executions[-3:]:
+    for i, exec_data in enumerate(executions[-3:]):
+        logger.info(f"Checking execution {i+1} of last 3: {exec_data}")
         assert exec_data.status == execution.ExecutionStatus.COMPLETED
         assert exec_data.output_data == {"result": [9]}
+    logger.info("Completed test_static_input_link_on_graph")

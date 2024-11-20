@@ -1,8 +1,9 @@
 from base64 import b64encode
 from urllib.parse import urlencode
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+
+from backend.util.request import requests
 
 from .base import BaseOAuthHandler
 
@@ -49,7 +50,6 @@ class NotionOAuthHandler(BaseOAuthHandler):
             "Accept": "application/json",
         }
         response = requests.post(self.token_url, json=request_body, headers=headers)
-        response.raise_for_status()
         token_data = response.json()
         # Email is only available for non-bot users
         email = (
