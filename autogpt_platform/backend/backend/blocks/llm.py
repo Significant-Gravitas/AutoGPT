@@ -30,11 +30,12 @@ logger = logging.getLogger(__name__)
 #     "ollama": BlockSecret(value=""),
 # }
 
-AICredentials = CredentialsMetaInput[Literal["llm"], Literal["api_key"]]
+LLMProviderName = Literal["anthropic", "groq", "openai", "ollama", "open_router"]
+AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
-    provider="llm",
+    provider="openai",
     api_key=SecretStr("mock-openai-api-key"),
     title="Mock OpenAI API key",
     expires_at=None,
@@ -50,15 +51,18 @@ TEST_CREDENTIALS_INPUT = {
 def AICredentialsField() -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
-        provider="llm",
+        provider=["anthropic", "groq", "openai", "ollama", "open_router"],
         supported_credential_types={"api_key"},
+        discriminator="model",
+        discriminator_mapping={
+            model.value: model.metadata.provider for model in LlmModel
+        },
     )
 
 
 class ModelMetadata(NamedTuple):
     provider: str
     context_window: int
-    cost_factor: int
 
 
 class LlmModelMeta(EnumMeta):
@@ -104,6 +108,18 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # Ollama models
     OLLAMA_LLAMA3_8B = "llama3"
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
+    # OpenRouter models
+    GEMINI_FLASH_1_5_8B = "google/gemini-flash-1.5"
+    GEMINI_FLASH_1_5_EXP = "google/gemini-flash-1.5-exp"
+    GROK_BETA = "x-ai/grok-beta"
+    MISTRAL_NEMO = "mistralai/mistral-nemo"
+    COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
+    COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
+    EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
+    DEEPSEEK_CHAT = "deepseek/deepseek-chat"
+    PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
+        "perplexity/llama-3.1-sonar-large-128k-online"
+    )
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -117,31 +133,38 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     def context_window(self) -> int:
         return self.metadata.context_window
 
-    @property
-    def cost_factor(self) -> int:
-        return self.metadata.cost_factor
-
 
 MODEL_METADATA = {
-    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000, cost_factor=16),
-    LlmModel.O1_MINI: ModelMetadata("openai", 62000, cost_factor=4),
-    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=1),
-    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=3),
-    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=10),
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=1),
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=4),
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=1),
-    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=1),
-    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=1),
-    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=1),
-    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=1),
-    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=1),
-    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=1),
+    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000),
+    LlmModel.O1_MINI: ModelMetadata("openai", 62000),
+    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000),
+    LlmModel.GPT4O: ModelMetadata("openai", 128000),
+    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000),
+    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385),
+    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000),
+    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000),
+    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192),
+    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192),
+    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768),
+    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192),
+    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192),
+    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192),
     # Limited to 16k during preview
-    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=1),
-    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=1),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=1),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=1),
+    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072),
+    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
+    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
+    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
+    LlmModel.GEMINI_FLASH_1_5_8B: ModelMetadata("open_router", 8192),
+    LlmModel.GEMINI_FLASH_1_5_EXP: ModelMetadata("open_router", 8192),
+    LlmModel.GROK_BETA: ModelMetadata("open_router", 8192),
+    LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 4000),
+    LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 4000),
+    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 4000),
+    LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 4000),
+    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 8192),
+    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
+        "open_router", 8192
+    ),
 }
 
 for model in LlmModel:
@@ -353,6 +376,34 @@ class AIStructuredResponseGeneratorBlock(Block):
                 response.get("response") or "",
                 response.get("prompt_eval_count") or 0,
                 response.get("eval_count") or 0,
+            )
+        elif provider == "open_router":
+            client = openai.OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=credentials.api_key.get_secret_value(),
+            )
+
+            response = client.chat.completions.create(
+                extra_headers={
+                    "HTTP-Referer": "https://agpt.co",
+                    "X-Title": "AutoGPT",
+                },
+                model=llm_model.value,
+                messages=prompt,  # type: ignore
+                max_tokens=max_tokens,
+            )
+
+            # If there's no response, raise an error
+            if not response.choices:
+                if response:
+                    raise ValueError(f"OpenRouter error: {response}")
+                else:
+                    raise ValueError("No response from OpenRouter.")
+
+            return (
+                response.choices[0].message.content or "",
+                response.usage.prompt_tokens if response.usage else 0,
+                response.usage.completion_tokens if response.usage else 0,
             )
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")

@@ -5,10 +5,12 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal, Type
 
+import prisma
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
 from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockInput, BlockType, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
@@ -55,8 +57,8 @@ class Node(BaseDbModel):
         obj = Node(
             id=node.id,
             block_id=node.AgentBlock.id,
-            input_default=json.loads(node.constantInput),
-            metadata=json.loads(node.metadata),
+            input_default=json.loads(node.constantInput, target_type=dict[str, Any]),
+            metadata=json.loads(node.metadata, target_type=dict[str, Any]),
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
@@ -79,10 +81,13 @@ class GraphExecution(BaseDbModel):
         duration = (end_time - start_time).total_seconds()
         total_run_time = duration
 
-        if execution.stats:
-            stats = json.loads(execution.stats)
-            duration = stats.get("walltime", duration)
-            total_run_time = stats.get("nodes_walltime", total_run_time)
+        try:
+            stats = json.loads(execution.stats or "{}", target_type=dict[str, Any])
+        except ValueError:
+            stats = {}
+
+        duration = stats.get("walltime", duration)
+        total_run_time = stats.get("nodes_walltime", total_run_time)
 
         return GraphExecution(
             id=execution.id,
@@ -174,23 +179,34 @@ class Graph(BaseDbModel):
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
 
-    def reassign_ids(self, reassign_graph_id: bool = False):
+    def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
         """
-        self.validate_graph()
 
+        # Reassign Graph ID
         id_map = {node.id: str(uuid.uuid4()) for node in self.nodes}
         if reassign_graph_id:
             self.id = str(uuid.uuid4())
 
+        # Reassign Node IDs
         for node in self.nodes:
             node.id = id_map[node.id]
 
+        # Reassign Link IDs
         for link in self.links:
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
+
+        # Reassign User IDs for agent blocks
+        for node in self.nodes:
+            if node.block_id != AgentExecutorBlock().id:
+                continue
+            node.input_default["user_id"] = user_id
+            node.input_default.setdefault("data", {})
+
+        self.validate_graph()
 
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
@@ -215,6 +231,7 @@ class Graph(BaseDbModel):
                     for_run  # Skip input completion validation, unless when executing.
                     or block.block_type == BlockType.INPUT
                     or block.block_type == BlockType.OUTPUT
+                    or block.block_type == BlockType.AGENT
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
@@ -248,17 +265,25 @@ class Graph(BaseDbModel):
                     )
 
                 sanitized_name = sanitize(name)
+                vals = node.input_default
                 if i == 0:
-                    fields = f"Valid output fields: {block.output_schema.get_fields()}"
+                    fields = (
+                        block.output_schema.get_fields()
+                        if block.block_type != BlockType.AGENT
+                        else vals.get("output_schema", {}).get("properties", {}).keys()
+                    )
                 else:
-                    fields = f"Valid input fields: {block.input_schema.get_fields()}"
+                    fields = (
+                        block.input_schema.get_fields()
+                        if block.block_type != BlockType.AGENT
+                        else vals.get("input_schema", {}).get("properties", {}).keys()
+                    )
                 if sanitized_name not in fields:
-                    raise ValueError(f"{suffix}, `{name}` invalid, {fields}")
+                    fields_msg = f"Allowed fields: {fields}"
+                    raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
 
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
-
-            # TODO: Add type compatibility check here.
 
     @staticmethod
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
@@ -290,7 +315,9 @@ class Graph(BaseDbModel):
     def _process_node(node: AgentNode, hide_credentials: bool) -> Node:
         node_dict = node.model_dump()
         if hide_credentials and "constantInput" in node_dict:
-            constant_input = json.loads(node_dict["constantInput"])
+            constant_input = json.loads(
+                node_dict["constantInput"], target_type=dict[str, Any]
+            )
             constant_input = Graph._hide_credentials_in_input(constant_input)
             node_dict["constantInput"] = json.dumps(constant_input)
         return Node.from_db(AgentNode(**node_dict))
@@ -502,3 +529,84 @@ async def __create_graph(tx, graph: Graph, user_id: str):
             for link in graph.links
         ]
     )
+
+
+# ------------------------ UTILITIES ------------------------ #
+
+
+async def fix_llm_provider_credentials():
+    """Fix node credentials with provider `llm`"""
+    from autogpt_libs.supabase_integration_credentials_store import (
+        SupabaseIntegrationCredentialsStore,
+    )
+
+    from .redis import get_redis
+    from .user import get_user_integrations
+
+    store = SupabaseIntegrationCredentialsStore(get_redis())
+
+    broken_nodes = await prisma.get_client().query_raw(
+        """
+        SELECT    "User".id            user_id,
+                  node.id              node_id,
+                  node."constantInput" node_preset_input
+        FROM      platform."AgentNode"  node
+        LEFT JOIN platform."AgentGraph" graph
+        ON        node."agentGraphId" = graph.id
+        LEFT JOIN platform."User"       "User"
+        ON        graph."userId" = "User".id
+        WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
+        ORDER BY  user_id;
+        """
+    )
+    logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
+
+    user_id: str = ""
+    user_integrations = None
+    for node in broken_nodes:
+        if node["user_id"] != user_id:
+            # Save queries by only fetching once per user
+            user_id = node["user_id"]
+            user_integrations = await get_user_integrations(user_id)
+        elif not user_integrations:
+            raise RuntimeError(f"Impossible state while processing node {node}")
+
+        node_id: str = node["node_id"]
+        node_preset_input: dict = json.loads(node["node_preset_input"])
+        credentials_meta: dict = node_preset_input["credentials"]
+
+        credentials = next(
+            (
+                c
+                for c in user_integrations.credentials
+                if c.id == credentials_meta["id"]
+            ),
+            None,
+        )
+        if not credentials:
+            continue
+        if credentials.type != "api_key":
+            logger.warning(
+                f"User {user_id} credentials {credentials.id} with provider 'llm' "
+                f"has invalid type '{credentials.type}'"
+            )
+            continue
+
+        api_key = credentials.api_key.get_secret_value()
+        if api_key.startswith("sk-ant-api03-"):
+            credentials.provider = credentials_meta["provider"] = "anthropic"
+        elif api_key.startswith("sk-"):
+            credentials.provider = credentials_meta["provider"] = "openai"
+        elif api_key.startswith("gsk_"):
+            credentials.provider = credentials_meta["provider"] = "groq"
+        else:
+            logger.warning(
+                f"Could not identify provider from key prefix {api_key[:13]}*****"
+            )
+            continue
+
+        store.update_creds(user_id, credentials)
+        await AgentNode.prisma().update(
+            where={"id": node_id},
+            data={"constantInput": json.dumps(node_preset_input)},
+        )
