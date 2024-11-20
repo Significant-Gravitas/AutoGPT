@@ -16,6 +16,8 @@ pyjwt = "^2.10.0"
 python = ">=3.10,<4.0"
 python-dotenv = "^1.0.1"
 supabase = "^2.10.0"
+pytest-mock = "^3.14.0"
+pytest-asyncio = "^0.24.0"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.0"
