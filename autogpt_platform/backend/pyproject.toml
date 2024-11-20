@@ -12,6 +12,7 @@ python = "^3.10"
 aio-pika = "^9.4.3"
 anthropic = "^0.39.0"
 apscheduler = "^3.10.4"
+autogpt-libs = {path = "../autogpt_libs", develop = true }
 click = "^8.1.7"
 croniter = "^5.0.1"
 discord-py = "^2.4.0"
@@ -49,7 +50,6 @@ cryptography = "^43.0.3"
 sqlalchemy = "^2.0.36"
 psycopg2-binary = "^2.9.10"
 launchdarkly-server-sdk = "^9.8.0"
-autogpt-libs = {path = "../autogpt_libs", develop = true }
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.30.0"
 httpx = "^0.27.0"

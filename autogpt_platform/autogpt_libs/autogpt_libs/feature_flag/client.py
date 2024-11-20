@@ -68,7 +68,6 @@ def feature_flag(
         @wraps(func)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             try:
-                # Get user_id from kwargs since FastAPI injects it
                 user_id = kwargs.get('user_id')
                 logger.debug(f"Checking flag '{flag_key}' for user '{user_id}'")
 

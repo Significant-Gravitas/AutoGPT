@@ -22,7 +22,7 @@ import backend.util.settings
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
-logging.getLogger("autogpt_libs").setLevel(logging.DEBUG)
+logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 
 
 @contextlib.asynccontextmanager
