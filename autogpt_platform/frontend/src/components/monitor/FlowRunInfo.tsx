@@ -4,6 +4,7 @@ import AutoGPTServerAPI, {
   Graph,
   GraphMeta,
   NodeExecutionResult,
+  SpecialBlockID,
 } from "@/lib/autogpt-server-api";
 import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +37,7 @@ export const FlowRunInfo: React.FC<
       .filter(
         (result) =>
           result.status === "COMPLETED" &&
-          result.block_id === "363ae599-353e-4804-937e-b2ee3cef3da4",
+          result.block_id === SpecialBlockID.OUTPUT,
       )
       .reduce((acc, result) => {
         const existing = acc.get(result.node_id);
