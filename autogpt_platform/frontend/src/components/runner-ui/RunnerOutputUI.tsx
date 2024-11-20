@@ -14,9 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Clipboard } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-interface BlockOutput {
+export interface BlockOutput {
   id: string;
-  outputSchema: BlockIORootSchema;
   hardcodedValues: {
     name: string;
     description: string;

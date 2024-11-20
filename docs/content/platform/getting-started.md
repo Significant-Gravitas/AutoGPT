@@ -56,7 +56,7 @@ You can check if you have Docker installed by running the following command:
 
 ```bash
 docker -v
-docker-compose -v
+docker compose -v
 ```
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
