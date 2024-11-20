@@ -22,21 +22,21 @@ model User {
   integrations String   @default("")
 
   // Relations
-  AgentGraphs                  AgentGraph[]
-  AgentGraphExecutions         AgentGraphExecution[]
-  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
-  AnalyticsDetails             AnalyticsDetails[]
-  AnalyticsMetrics             AnalyticsMetrics[]
-  UserBlockCredit              UserBlockCredit[]
+  AgentGraphs          AgentGraph[]
+  AgentGraphExecutions AgentGraphExecution[]
+  AnalyticsDetails     AnalyticsDetails[]
+  AnalyticsMetrics     AnalyticsMetrics[]
+  UserBlockCredit      UserBlockCredit[]
 
   AgentPreset AgentPreset[]
   UserAgent   UserAgent[]
 
-  Profile                Profile[]
-  StoreListing           StoreListing[]
-  StoreListingReview     StoreListingReview[]
-  StoreListingSubmission StoreListingSubmission[]
-  APIKeys                APIKey[]
+  Profile                     Profile[]
+  StoreListing                StoreListing[]
+  StoreListingReview          StoreListingReview[]
+  StoreListingSubmission      StoreListingSubmission[]
+  APIKeys                     APIKey[]
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   @@index([id])
   @@index([email])
@@ -60,14 +60,14 @@ model AgentGraph {
   // This allows us to delete user data with deleting the agent which maybe in use by other users
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  AgentNodes                  AgentNode[]
-  AgentGraphExecution         AgentGraphExecution[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+  AgentNodes          AgentNode[]
+  AgentGraphExecution AgentGraphExecution[]
 
-  AgentPreset         AgentPreset[]
-  UserAgent           UserAgent[]
-  StoreListing        StoreListing[]
-  StoreListingVersion StoreListingVersion?
+  AgentPreset                 AgentPreset[]
+  UserAgent                   UserAgent[]
+  StoreListing                StoreListing[]
+  StoreListingVersion         StoreListingVersion?
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   @@id(name: "graphVersionId", [id, version])
 }

@@ -1,12 +1,19 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-import { CreatorDetails as Creator, StoreAgent } from "@/lib/autogpt-server-api";
+import {
+  CreatorDetails as Creator,
+  StoreAgent,
+} from "@/lib/autogpt-server-api";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 import { Metadata } from "next";
 import { CreatorInfoCard } from "@/components/agptui/CreatorInfoCard";
 import { CreatorLinks } from "@/components/agptui/CreatorLinks";
 
-export async function generateMetadata({ params }: { params: { creator: string } }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: { creator: string };
+}): Promise<Metadata> {
   const api = new AutoGPTServerAPI();
   const creator = await api.getStoreCreator(params.creator);
 
@@ -21,7 +28,7 @@ export async function generateStaticParams() {
   const creators = await api.getStoreCreators({ featured: true });
   return creators.creators.map((creator) => ({
     creator: creator.username,
-    lang: 'en'
+    lang: "en",
   }));
 }
 
@@ -31,18 +38,22 @@ export default async function Page({
   params: { lang: string; creator: string };
 }) {
   const api = new AutoGPTServerAPI();
-  
+
   try {
     const creator = await api.getStoreCreator(params.creator);
     const creatorAgents = await api.getStoreAgents({ creator: params.creator });
 
     return (
       <>
-        <div className="w-full px-4 sm:px-6 md:px-10 py-4 sm:py-6 md:py-8">
+        <div className="w-full px-4 py-4 sm:px-6 sm:py-6 md:px-10 md:py-8">
+          <BreadCrumbs
+            items={[
+              { name: "Store", link: "/store" },
+              { name: creator.name, link: "#" },
+            ]}
+          />
 
-          <BreadCrumbs items={[{ name: "Store", link: "/store" }, { name: creator.name, link: "#" }]}/>
-          
-          <div className="mt-4 sm:mt-6 md:mt-8 flex flex-col md:flex-row items-start gap-4 sm:gap-6 md:gap-8">
+          <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
             <div className="w-full md:w-auto md:shrink-0">
               <CreatorInfoCard
                 username={creator.name}
@@ -54,7 +65,7 @@ export default async function Page({
               />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
-              <div className="font-neue text-2xl sm:text-3xl md:text-[35px] font-normal leading-normal md:leading-[45px] text-neutral-900">
+              <div className="font-neue text-2xl font-normal leading-normal text-neutral-900 sm:text-3xl md:text-[35px] md:leading-[45px]">
                 {creator.description}
               </div>
               <CreatorLinks links={creator.links} />
@@ -68,13 +79,12 @@ export default async function Page({
               sectionTitle={`Agents by ${creator.name}`}
             />
           </div>
-
         </div>
       </>
     );
   } catch (error) {
     return (
-      <div className="w-full h-screen flex items-center justify-center">
+      <div className="flex h-screen w-full items-center justify-center">
         <div className="font-neue text-2xl text-neutral-900">
           Creator not found
         </div>

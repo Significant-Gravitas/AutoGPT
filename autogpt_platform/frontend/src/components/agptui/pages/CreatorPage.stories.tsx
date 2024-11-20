@@ -82,18 +82,17 @@ const mockCreatorInfo = {
     website: "https://ailabs.com",
     github: "https://github.com/ailabs",
     linkedin: "https://linkedin.com/company/ailabs",
-    other: [
-      "https://twitter.com/ailabs",
-      "https://medium.com/@ailabs",
-    ],
+    other: ["https://twitter.com/ailabs", "https://medium.com/@ailabs"],
   },
 };
 
 const mockCreatorAgents = [
   {
     agentName: "Super SEO Optimizer",
-    agentImage: "https://ddz4ak4pa3d19.cloudfront.net/cache/cc/11/cc1172271dcf723a34f488a3344e82b2.jpg",
-    description: "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
+    agentImage:
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/cc/11/cc1172271dcf723a34f488a3344e82b2.jpg",
+    description:
+      "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
     runs: 100000,
     rating: 4.9,
     avatarSrc: "https://example.com/avatar1.jpg",
@@ -208,7 +207,8 @@ export const LongDescription: Story = {
     ...Default.args,
     creatorInfo: {
       ...mockCreatorInfo,
-      description: "We are a team of passionate developers and researchers dedicated to pushing the boundaries of artificial intelligence. Our focus spans across multiple domains including natural language processing, computer vision, and reinforcement learning. With years of experience in both academia and industry, we strive to create AI agents that are not only powerful but also ethical and user-friendly. Our mission is to make AI accessible to everyone while maintaining the highest standards of quality and reliability.",
+      description:
+        "We are a team of passionate developers and researchers dedicated to pushing the boundaries of artificial intelligence. Our focus spans across multiple domains including natural language processing, computer vision, and reinforcement learning. With years of experience in both academia and industry, we strive to create AI agents that are not only powerful but also ethical and user-friendly. Our mission is to make AI accessible to everyone while maintaining the highest standards of quality and reliability.",
     },
   },
 };

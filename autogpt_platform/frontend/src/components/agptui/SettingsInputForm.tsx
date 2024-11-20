@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -54,26 +56,14 @@ export const SettingsInputForm = ({
               >
                 Email
               </label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <input
-                  id="email-input"
-                  type="email"
-                  value={email}
-                  className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base sm:w-[638px]"
-                  readOnly
-                  aria-label="Email address"
-                />
-                <div className="w-full sm:ml-4 sm:w-[88px]">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-[43px] w-full rounded-full bg-black text-white hover:bg-black/90"
-                    aria-label="Edit email"
-                  >
-                    Edit
-                  </Button>
-                </div>
-              </div>
+              <input
+                id="email-input"
+                type="email"
+                value={email}
+                className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base"
+                readOnly
+                aria-label="Email address"
+              />
             </div>
           </div>
 
@@ -85,26 +75,14 @@ export const SettingsInputForm = ({
               >
                 Password
               </label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <input
-                  id="password-input"
-                  type="password"
-                  value="************"
-                  className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base sm:w-[638px]"
-                  readOnly
-                  aria-label="Password field"
-                />
-                <div className="w-full sm:ml-4 sm:w-[88px]">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-[43px] w-full rounded-full bg-black text-white hover:bg-black/90"
-                    aria-label="Edit password"
-                  >
-                    Edit
-                  </Button>
-                </div>
-              </div>
+              <input
+                id="password-input"
+                type="password"
+                value="************"
+                className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base"
+                readOnly
+                aria-label="Password field"
+              />
             </div>
           </div>
         </div>
@@ -171,6 +149,23 @@ export const SettingsInputForm = ({
           </div>
         </div>
       </section>
+
+      <div className="mt-8 flex justify-end">
+        <div className="flex gap-3">
+          <Button
+            variant="secondary"
+            className="h-[50px] px-6 py-3 rounded-[35px] font-['Geist'] text-base font-medium bg-neutral-200 text-neutral-800 hover:bg-neutral-300 transition-colors"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            className="h-[50px] px-6 py-3 rounded-[35px] font-['Geist'] text-base font-medium bg-neutral-800 text-white hover:bg-neutral-900 transition-colors"
+          >
+            Save changes
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

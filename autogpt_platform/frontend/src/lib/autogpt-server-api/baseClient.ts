@@ -15,6 +15,7 @@ import {
   ExecutionMeta,
   NodeExecutionResult,
   OAuth2Credentials,
+  ProfileDetails,
   User,
   StoreAgentsResponse,
   StoreAgentDetails,
@@ -23,6 +24,8 @@ import {
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
   StoreSubmission,
+  ScheduleCreatable,
+  Schedule,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -58,7 +61,11 @@ export default class BaseAutoGPTServerAPI {
   }
 
   getUserCredit(): Promise<{ credits: number }> {
-    return this._get(`/credits`);
+    try {
+      return this._get(`/credits`);
+    } catch (error) {
+      return Promise.resolve({ credits: 0 });
+    }
   }
 
   getBlocks(): Promise<Block[]> {
@@ -245,6 +252,15 @@ export default class BaseAutoGPTServerAPI {
   /////////// V2 STORE API /////////////////
   /////////////////////////////////////////
 
+  getStoreProfile(): Promise<ProfileDetails | null> {
+    try {
+      return this._get("/store/profile");
+    } catch (error) {
+      console.error("Error fetching store profile:", error);
+      return Promise.resolve(null);
+    }
+  }
+
   getStoreAgents(params?: {
     featured?: boolean;
     creator?: string;
@@ -309,6 +325,18 @@ export default class BaseAutoGPTServerAPI {
     return this._request("GET", path, query);
   }
 
+  async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
+    return this._request("POST", `/schedules`, schedule);
+  }
+
+  async deleteSchedule(scheduleId: string): Promise<Schedule> {
+    return this._request("DELETE", `/schedules/${scheduleId}`);
+  }
+
+  async listSchedules(): Promise<Schedule[]> {
+    return this._get(`/schedules`);
+  }
+
   private async _request(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
@@ -320,7 +348,9 @@ export default class BaseAutoGPTServerAPI {
 
     const token =
       (await this.supabaseClient?.auth.getSession())?.data.session
-        ?.access_token || "";
+        ?.access_token || "no-token-found";
+
+    console.log("Request: ", method, path);
 
     let url = this.baseUrl + path;
     if (method === "GET" && payload) {

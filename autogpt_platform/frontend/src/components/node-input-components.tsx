@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Input } from "./ui/input";
+import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
 import { CredentialsInput } from "./integrations/credentials-input";
@@ -53,7 +53,6 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   object ||= ("default" in schema ? schema.default : null) ?? {};
   return (
     <div className={cn(className, "w-full flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
       {Object.entries(schema.properties).map(([propKey, propSchema]) => {
         const childKey = selfKey ? `${selfKey}.${propKey}` : propKey;
 
@@ -323,7 +322,7 @@ const NodeCredentialsInput: FC<{
 };
 
 const InputRef = (value: any): ((el: HTMLInputElement | null) => void) => {
-  return (el) => el && value && (el.value = value);
+  return (el) => el && value != null && (el.value = value);
 };
 
 const NodeKeyValueInput: FC<{
@@ -349,9 +348,10 @@ const NodeKeyValueInput: FC<{
 }) => {
   const getPairValues = useCallback(() => {
     // Map will preserve the order of entries.
-    const defaultEntries = new Map(
-      Object.entries(entries ?? schema.default ?? {}),
-    );
+    let inputEntries = entries ?? schema.default;
+    if (!inputEntries || typeof inputEntries !== "object") inputEntries = {};
+
+    const defaultEntries = new Map(Object.entries(inputEntries));
     const prefix = `${selfKey}_#_`;
     connections
       .filter((c) => c.targetHandle.startsWith(prefix) && c.target === nodeId)
@@ -414,11 +414,11 @@ const NodeKeyValueInput: FC<{
             />
             {!isConnected(key) && (
               <div className="nodrag mb-2 flex items-center space-x-2">
-                <Input
+                <LocalValuedInput
                   type="text"
                   placeholder="Key"
-                  ref={InputRef(key ?? "")}
-                  onBlur={(e) =>
+                  value={key ?? ""}
+                  onChange={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: e.target.value,
@@ -427,11 +427,11 @@ const NodeKeyValueInput: FC<{
                     )
                   }
                 />
-                <Input
+                <LocalValuedInput
                   type="text"
                   placeholder="Value"
-                  ref={InputRef(value ?? "")}
-                  onBlur={(e) =>
+                  value={value ?? ""}
+                  onChange={(e) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: key,
@@ -501,7 +501,8 @@ const NodeArrayInput: FC<{
   className,
   displayName,
 }) => {
-  entries ??= schema.default ?? [];
+  entries ??= schema.default;
+  if (!entries || !Array.isArray(entries)) entries = [];
 
   const prefix = `${selfKey}_$_`;
   connections
@@ -519,7 +520,6 @@ const NodeArrayInput: FC<{
     typeof errors[selfKey] === "string" ? errors[selfKey] : undefined;
   return (
     <div className={cn(className, "flex flex-col")}>
-      {displayName && <strong>{displayName}</strong>}
       {entries.map((entry: any, index: number) => {
         const entryKey = `${selfKey}_$_${index}`;
         const isConnected =
@@ -610,7 +610,15 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
-  value ||= schema.default || "";
+  if (!value) {
+    value = schema.default || "";
+    // Force update hardcodedData so discriminators can update
+    // e.g. credentials update when provider changes
+    // this won't happen if the value is only set here to schema.default
+    if (schema.default) {
+      handleInputChange(selfKey, value);
+    }
+  }
   return (
     <div className={className}>
       {schema.enum ? (
@@ -634,17 +642,15 @@ const NodeStringInput: FC<{
           className="nodrag relative"
           onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
         >
-          <Input
+          <LocalValuedInput
             type="text"
             id={selfKey}
-            ref={InputRef(
-              schema.secret && value ? "*".repeat(value.length) : value,
-            )}
+            value={schema.secret && value ? "*".repeat(value.length) : value}
+            onChange={(e) => handleInputChange(selfKey, e.target.value)}
             readOnly={schema.secret}
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
-            onBlur={(e) => handleInputChange(selfKey, e.target.value)}
             className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
           />
           <Button
@@ -731,11 +737,13 @@ const NodeNumberInput: FC<{
   return (
     <div className={className}>
       <div className="nodrag flex items-center justify-between space-x-3">
-        <Input
+        <LocalValuedInput
           type="number"
           id={selfKey}
-          ref={InputRef(value)}
-          onBlur={(e) => handleInputChange(selfKey, parseFloat(e.target.value))}
+          value={value}
+          onChange={(e) =>
+            handleInputChange(selfKey, parseFloat(e.target.value))
+          }
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
           }

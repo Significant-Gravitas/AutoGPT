@@ -20,7 +20,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
   totalRuns,
 }) => {
   return (
-    <div 
+    <div
       className="inline-flex h-auto min-h-[500px] w-full max-w-[440px] flex-col items-start justify-between rounded-[26px] bg-violet-100 p-4 sm:h-[632px] sm:w-[440px] sm:p-6"
       role="article"
       aria-label={`Creator profile for ${username}`}
@@ -33,23 +33,23 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
           </AvatarFallback>
         </Avatar>
         <div className="flex w-full flex-col items-start justify-start gap-1.5">
-          <div className="w-full font-poppins text-2xl sm:text-[35px] font-medium leading-8 sm:leading-10 text-neutral-900">
+          <div className="font-poppins w-full text-2xl font-medium leading-8 text-neutral-900 sm:text-[35px] sm:leading-10">
             {username}
           </div>
-          <div className="w-full font-neue text-lg sm:text-xl font-normal leading-6 sm:leading-7 text-neutral-800">
+          <div className="w-full font-neue text-lg font-normal leading-6 text-neutral-800 sm:text-xl sm:leading-7">
             @{handle}
           </div>
         </div>
       </div>
 
-      <div className="flex w-full flex-col items-start justify-start gap-6 sm:gap-[50px] my-4">
+      <div className="my-4 flex w-full flex-col items-start justify-start gap-6 sm:gap-[50px]">
         <div className="flex w-full flex-col items-start justify-start gap-3">
           <div className="h-px w-full bg-neutral-700" />
           <div className="flex flex-col items-start justify-start gap-2.5">
             <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800">
               Top categories
             </div>
-            <div 
+            <div
               className="flex flex-wrap items-center gap-2.5"
               role="list"
               aria-label="Categories"
@@ -71,8 +71,8 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
 
         <div className="flex w-full flex-col items-start justify-start gap-3">
           <div className="h-px w-full bg-neutral-700" />
-          <div className="flex w-full flex-col sm:flex-row justify-between items-start gap-4 sm:gap-0">
-            <div className="w-full sm:w-[164px] flex flex-col items-start justify-start gap-2.5">
+          <div className="flex w-full flex-col items-start justify-between gap-4 sm:flex-row sm:gap-0">
+            <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
               <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800">
                 Average rating
               </div>
@@ -80,16 +80,16 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
                 <div className="font-neue text-lg font-semibold leading-7 text-neutral-800">
                   {averageRating.toFixed(1)}
                 </div>
-                <div 
-                  className="flex items-center gap-px" 
-                  role="img" 
+                <div
+                  className="flex items-center gap-px"
+                  role="img"
                   aria-label={`Rating: ${averageRating} out of 5 stars`}
                 >
                   {StarRatingIcons(averageRating)}
                 </div>
               </div>
             </div>
-            <div className="w-full sm:w-[164px] flex flex-col items-start justify-start gap-2.5">
+            <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
               <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800">
                 Number of runs
               </div>
