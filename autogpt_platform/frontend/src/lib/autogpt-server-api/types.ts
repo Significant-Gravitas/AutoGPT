@@ -241,11 +241,12 @@ export type GraphExecuteResponse = {
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
-  graph_exec_id: string;
-  node_exec_id: string;
   graph_id: string;
   graph_version: number;
+  graph_exec_id: string;
+  node_exec_id: string;
   node_id: string;
+  block_id: string;
   status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
   input_data: { [key: string]: any };
   output_data: { [key: string]: Array<any> };
@@ -317,6 +318,12 @@ export enum BlockUIType {
   OUTPUT = "Output",
   NOTE = "Note",
   AGENT = "Agent",
+}
+
+export enum SpecialBlockID {
+  AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  INPUT = "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+  OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
 export type AnalyticsMetrics = {
