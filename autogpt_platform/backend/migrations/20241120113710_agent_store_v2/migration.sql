@@ -2,13 +2,7 @@
 CREATE TYPE "SubmissionStatus" AS ENUM ('DAFT', 'PENDING', 'APPROVED', 'REJECTED');
 
 -- AlterTable
-ALTER TABLE "AgentGraph" ADD COLUMN     "agentGraphParentId" TEXT;
-
--- AlterTable
 ALTER TABLE "AgentGraphExecution" ADD COLUMN     "agentPresetId" TEXT;
-
--- AlterTable
-ALTER TABLE "AgentGraphExecutionSchedule" ADD COLUMN     "agentPresetId" TEXT;
 
 -- AlterTable
 ALTER TABLE "AgentNodeExecutionInputOutput" ADD COLUMN     "agentPresetId" TEXT;
@@ -49,6 +43,23 @@ CREATE TABLE "UserAgent" (
     "isDeleted" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "UserAgent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AgentGraphExecutionSchedule" (
+    "id" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3),
+    "agentGraphId" TEXT NOT NULL,
+    "agentGraphVersion" INTEGER NOT NULL DEFAULT 1,
+    "schedule" TEXT NOT NULL,
+    "isEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "inputData" TEXT NOT NULL,
+    "lastUpdated" TIMESTAMP(3) NOT NULL,
+    "userId" TEXT NOT NULL,
+    "agentPresetId" TEXT,
+
+    CONSTRAINT "AgentGraphExecutionSchedule_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -138,6 +149,9 @@ CREATE INDEX "AgentPreset_userId_idx" ON "AgentPreset"("userId");
 CREATE INDEX "UserAgent_userId_idx" ON "UserAgent"("userId");
 
 -- CreateIndex
+CREATE INDEX "AgentGraphExecutionSchedule_isEnabled_idx" ON "AgentGraphExecutionSchedule"("isEnabled");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Profile_username_key" ON "Profile"("username");
 
 -- CreateIndex
@@ -168,9 +182,6 @@ CREATE INDEX "StoreListingSubmission_storeListingId_idx" ON "StoreListingSubmiss
 CREATE INDEX "StoreListingSubmission_Status_idx" ON "StoreListingSubmission"("Status");
 
 -- AddForeignKey
-ALTER TABLE "AgentGraph" ADD CONSTRAINT "AgentGraph_agentGraphParentId_version_fkey" FOREIGN KEY ("agentGraphParentId", "version") REFERENCES "AgentGraph"("id", "version") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -190,6 +201,12 @@ ALTER TABLE "AgentGraphExecution" ADD CONSTRAINT "AgentGraphExecution_agentPrese
 
 -- AddForeignKey
 ALTER TABLE "AgentNodeExecutionInputOutput" ADD CONSTRAINT "AgentNodeExecutionInputOutput_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSchedule_agentGraphId_agentGraphVersion_fkey" FOREIGN KEY ("agentGraphId", "agentGraphVersion") REFERENCES "AgentGraph"("id", "version") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSchedule_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSchedule_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;

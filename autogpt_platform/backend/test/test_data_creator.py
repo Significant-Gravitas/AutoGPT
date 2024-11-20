@@ -39,6 +39,12 @@ MIN_REVIEWS_PER_VERSION = 1  # Each version will have between 1-3 reviews
 MAX_REVIEWS_PER_VERSION = 5  # Total reviews depends on number of versions created
 
 
+def get_image():
+    url = faker.image_url()
+    while "placekitten.com" in url:
+        url = faker.image_url()
+    return url
+
 async def main():
     db = Prisma()
     await db.connect()
@@ -334,7 +340,7 @@ async def main():
                 "username": faker.unique.user_name(),
                 "description": faker.text(),
                 "links": [faker.url() for _ in range(3)],
-                "avatarUrl": faker.image_url(),
+                "avatarUrl": get_image(),
             }
         )
         profiles.append(profile)
@@ -367,7 +373,7 @@ async def main():
                 "name": graph.name or faker.sentence(nb_words=3),
                 "subHeading": faker.sentence(),
                 "videoUrl": faker.url(),
-                "imageUrls": [faker.image_url() for _ in range(3)],
+                "imageUrls": [get_image() for _ in range(3)],
                 "description": faker.text(),
                 "categories": [faker.word() for _ in range(3)],
                 "isFeatured": random.choice([True, False]),

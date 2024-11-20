@@ -4116,4 +4116,8 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
+<<<<<<< Updated upstream
 content-hash = "0b2bdc34bde2b2c8b81ad382cf8ef7a7b858153b3db76ffb0e7f5ce5e8bcf787"
+=======
+content-hash = "769bf89e5514b6bb56c13291bf0eb50a424ab5747cb4af22c92fc211035c27f1"
+>>>>>>> Stashed changes
