@@ -13,7 +13,8 @@ const meta = {
     onRunAgent: { action: "run agent clicked" },
     name: { control: "text" },
     creator: { control: "text" },
-    description: { control: "text" },
+    shortDescription: { control: "text" },
+    longDescription: { control: "text" },
     rating: { control: "number", min: 0, max: 5, step: 0.1 },
     runs: { control: "number" },
     categories: { control: "object" },
@@ -28,12 +29,21 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     onRunAgent: () => console.log("Run agent clicked"),
-    name: "SEO Optimizer",
-    creator: "AI Labs",
-    description: "Optimize your website's SEO with AI-powered suggestions",
-    rating: 4.5,
-    runs: 10000,
-    categories: ["SEO", "Marketing", "AI"],
+    name: "AI Video Generator",
+    creator: "Toran Richards",
+    shortDescription: "Transform ideas into breathtaking images with this AI-powered Image Generator.",
+    longDescription: `Create Viral-Ready Content in Seconds! Transform trending topics into engaging videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to quickly produce high-quality content.
+
+Key features include:
+- Customizable video output
+- 15+ pre-made templates
+- Auto scene detection
+- Smart text-to-speech
+- Multiple export formats
+- SEO-optimized suggestions`,
+    rating: 4.7,
+    runs: 1500,
+    categories: ["Video", "Content Creation", "Social Media"],
     lastUpdated: "2 days ago",
     version: "1.2.0",
   },
@@ -44,10 +54,11 @@ export const LowRating: Story = {
     ...Default.args,
     name: "Data Analyzer",
     creator: "DataTech",
-    description: "Analyze complex datasets with machine learning algorithms",
+    shortDescription: "Analyze complex datasets with machine learning algorithms",
+    longDescription: "A comprehensive data analysis tool that leverages machine learning to provide deep insights into your datasets. Currently in beta testing phase.",
     rating: 2.7,
     runs: 5000,
-    categories: ["Data Analysis"],
+    categories: ["Data Analysis", "Machine Learning"],
     lastUpdated: "1 week ago",
     version: "0.9.5",
   },
@@ -58,7 +69,8 @@ export const HighRuns: Story = {
     ...Default.args,
     name: "Code Assistant",
     creator: "DevAI",
-    description: "Get AI-powered coding help for various programming languages",
+    shortDescription: "Get AI-powered coding help for various programming languages",
+    longDescription: "An advanced AI coding assistant that supports multiple programming languages and frameworks. Features include code completion, refactoring suggestions, and bug detection.",
     rating: 4.8,
     runs: 1000000,
     categories: ["Programming", "AI", "Developer Tools"],
@@ -72,7 +84,8 @@ export const WithInteraction: Story = {
     ...Default.args,
     name: "Task Planner",
     creator: "Productivity AI",
-    description: "Plan and organize your tasks efficiently with AI",
+    shortDescription: "Plan and organize your tasks efficiently with AI",
+    longDescription: "An intelligent task management system that helps you organize, prioritize, and complete your tasks more efficiently. Features smart scheduling and AI-powered suggestions.",
     rating: 4.2,
     runs: 50000,
     categories: ["Productivity", "Task Management", "AI"],
@@ -81,10 +94,21 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    
+    // Test run agent button
     const runButton = canvas.getByText("Run agent");
-
     await userEvent.hover(runButton);
     await userEvent.click(runButton);
+
+    // Test rating interaction
+    const ratingStars = canvas.getAllByLabelText(/Star Icon/);
+    await userEvent.hover(ratingStars[3]);
+    await userEvent.click(ratingStars[3]);
+
+    // Test category interaction
+    const category = canvas.getByText("Productivity");
+    await userEvent.hover(category);
+    await userEvent.click(category);
   },
 };
 
@@ -93,8 +117,8 @@ export const LongDescription: Story = {
     ...Default.args,
     name: "AI Writing Assistant",
     creator: "WordCraft AI",
-    description:
-      "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and can even generate content ideas based on your input.",
+    shortDescription: "Enhance your writing with our advanced AI-powered assistant.",
+    longDescription: "It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and can even generate content ideas based on your input.",
     rating: 4.7,
     runs: 75000,
     categories: ["Writing", "AI", "Content Creation"],
