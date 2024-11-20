@@ -60,35 +60,43 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
         menuItemGroups={menuItemGroups}
       />
 
-      <div className="flex">
+      <div className="flex flex-col md:flex-row">
         <Sidebar linkGroups={sidebarLinkGroups} />
 
-        <main className="flex-1 px-6 py-8 md:px-10">
+        <main className="flex-1 px-4 py-6 md:px-10 md:py-8">
           {/* Header Section */}
-          <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="font-neue text-3xl font-medium leading-9 tracking-tight text-neutral-900">
-                Submit a New Agent
-              </h1>
-              <p className="mt-2 font-neue text-sm text-[#707070]">
-                Select from the list of agents you currently have, or upload
-                from your local machine.
-              </p>
-            </div>
-            <Button variant="default" size="lg">
-              Create New Agent
-            </Button>
+          <div className="mb-6 md:mb-8">
+            <h1 className="text-2xl md:text-[32px] font-medium leading-tight md:leading-[38px] text-neutral-900">
+              Agent dashboard
+            </h1>
           </div>
 
-          <Separator className="mb-8" />
-
-          {/* Agents Section */}
-          <div>
-            <h2 className="mb-4 text-xl font-bold text-neutral-900">
-              Your Agents
+          {/* Submit Agent Section */}
+          <div className="mb-6 md:mb-8">
+            <h2 className="mb-1 text-lg md:text-[20px] font-medium leading-tight md:leading-[24px] text-neutral-900">
+              Submit an agent
             </h2>
-            <AgentTable agents={agents} />
+            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 md:gap-0">
+              <p className="text-sm md:text-[14px] leading-[20px] text-neutral-600">
+                Select from the list of agents you currently already have, or upload from your local machine.
+              </p>
+              <button className="w-full md:w-auto h-12 px-5 py-3 bg-neutral-800 rounded-[38px] inline-flex items-center justify-center md:justify-start gap-2.5 md:ml-4">
+                <span className="text-white text-base font-medium font-['Geist'] leading-normal">Submit agent</span>
+              </button>
+            </div>
           </div>
+
+          <Separator className="my-6 md:my-8 bg-neutral-300" />
+
+          {/* Agents List Section */}
+          <div className="mb-4 md:mb-6">
+            <h2 className="text-lg md:text-[20px] font-medium leading-tight md:leading-[24px] text-neutral-900">
+              Your uploaded agents
+            </h2>
+          </div>
+
+          {/* Agent Table */}
+          <AgentTable agents={agents} />
         </main>
       </div>
     </div>

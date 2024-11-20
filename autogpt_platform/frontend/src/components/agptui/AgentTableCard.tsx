@@ -1,12 +1,21 @@
 // AgentCard.tsx
 import * as React from "react";
 import Image from "next/image";
-import { Button } from "./Button";
-import { IconStarFilled, IconEdit } from "@/components/ui/icons";
-import { Card } from "@/components/ui/card";
-import { AgentTableRowProps } from "./AgentTableRow";
+import { IconStarFilled, IconMore } from "@/components/ui/icons";
+import { Status, StatusType } from "./Status";
 
-export const AgentTableCard: React.FC<AgentTableRowProps> = ({
+export interface AgentTableCardProps {
+  agentName: string;
+  description: string;
+  imageSrc: string;
+  dateSubmitted: string;
+  status: StatusType;
+  runs?: number;
+  rating?: number;
+  onEdit: () => void;
+}
+
+export const AgentTableCard: React.FC<AgentTableCardProps> = ({
   agentName,
   description,
   imageSrc,
@@ -17,9 +26,9 @@ export const AgentTableCard: React.FC<AgentTableRowProps> = ({
   onEdit,
 }) => {
   return (
-    <Card className="mb-4 p-4">
-      <div className="flex">
-        <div className="relative mr-4 h-20 w-20 overflow-hidden rounded-xl">
+    <div className="p-4 border-b border-neutral-300">
+      <div className="flex gap-4">
+        <div className="relative w-[100px] h-[56px] overflow-hidden rounded-lg bg-[#d9d9d9]">
           <Image
             src={imageSrc}
             alt={agentName}
@@ -28,41 +37,33 @@ export const AgentTableCard: React.FC<AgentTableRowProps> = ({
           />
         </div>
         <div className="flex-1">
-          <h3 className="mb-2 font-neue text-lg font-medium tracking-tight text-[#272727]">
-            {agentName}
-          </h3>
-          <p className="mb-2 font-neue text-sm leading-tight tracking-tight text-[#282828]">
-            {description}
-          </p>
-          <div className="mb-2 font-neue text-sm leading-tight tracking-tight text-[#282828]">
-            <strong>Date submitted:</strong> {dateSubmitted}
-          </div>
-          <div className="mb-2 font-neue text-sm leading-tight tracking-tight text-[#282828]">
-            <strong>Status:</strong> {status}
-          </div>
-          {runs !== undefined && (
-            <div className="mb-2 font-neue text-sm leading-tight tracking-tight text-[#282828]">
-              <strong>Runs:</strong> {runs.toLocaleString()}
-            </div>
-          )}
-          {rating !== undefined && (
-            <div className="mb-2 flex items-center font-neue text-sm leading-tight tracking-tight text-[#282828]">
-              <strong>Rating:</strong>
-              <span className="ml-2">{rating.toFixed(1)}</span>
-              <IconStarFilled className="ml-1" />
-            </div>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2 flex items-center gap-1"
-            onClick={onEdit}
-          >
-            <IconEdit />
-            <span>Edit</span>
-          </Button>
+          <h3 className="text-[15px] font-medium text-neutral-800">{agentName}</h3>
+          <p className="text-sm text-neutral-600 line-clamp-2">{description}</p>
         </div>
+        <button onClick={onEdit} className="p-1 hover:bg-neutral-100 rounded-full h-fit">
+          <IconMore className="h-5 w-5 text-neutral-800" />
+        </button>
       </div>
-    </Card>
+      
+      <div className="mt-4 flex flex-wrap gap-4">
+        <Status status={status} />
+        <div className="text-sm text-neutral-600">
+          {dateSubmitted}
+        </div>
+        {runs && (
+          <div className="text-sm text-neutral-600">
+            {runs.toLocaleString()} runs
+          </div>
+        )}
+        {rating && (
+          <div className="flex items-center gap-1">
+            <span className="text-sm font-medium text-neutral-800">
+              {rating.toFixed(1)}
+            </span>
+            <IconStarFilled className="h-4 w-4 text-neutral-800" />
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
