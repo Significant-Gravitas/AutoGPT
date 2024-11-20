@@ -49,16 +49,17 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           Publish Agent
         </h2>
         <p className="text-center font-['Geist'] text-sm font-normal leading-7 text-neutral-600 sm:text-base">
-          Select your project that you'd like to publish
+          Select your project that you&apos;d like to publish
         </p>
       </div>
 
       {agents.length === 0 ? (
         <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
           <div className="w-full text-center font-['Geist'] text-lg font-normal leading-7 text-neutral-600 sm:w-[573px] sm:text-xl">
-            Uh-oh.. It seems like you don't have any agents in your library.
+            Uh-oh.. It seems like you don&apos;t have any agents in your
+            library.
             <br />
-            We'd suggest you to create an agent in our builder first
+            We&apos;d suggest you to create an agent in our builder first
           </div>
           <Button
             onClick={onOpenBuilder}

@@ -82,6 +82,7 @@ const mockCreatorInfo = {
     website: "https://ailabs.com",
     github: "https://github.com/ailabs",
     linkedin: "https://linkedin.com/company/ailabs",
+    other: ["https://twitter.com/ailabs", "https://medium.com/@ailabs"],
   },
 };
 
@@ -171,39 +172,43 @@ export const Default: Story = {
   },
 };
 
-export const WithInteraction: Story = {
-  args: {
-    ...Default.args,
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-
-    // Click on an agent card
-    const agentCard = canvas.getByText("Super SEO Optimizer");
-    await userEvent.click(agentCard);
-
-    // Click on a creator's social link
-    const githubLink = canvas.getByText("GitHub");
-    await userEvent.click(githubLink);
-  },
-};
-
-export const ManyAgents: Story = {
-  args: {
-    ...Default.args,
-    creatorAgents: Array(10).fill(mockCreatorAgents[0]),
-  },
-};
-
-export const NewCreator: Story = {
+export const NoLinks: Story = {
   args: {
     ...Default.args,
     creatorInfo: {
       ...mockCreatorInfo,
-      avgRating: 0,
-      agentCount: 1,
-      topCategories: ["AI"],
+      otherLinks: {},
     },
-    creatorAgents: [mockCreatorAgents[0]],
+  },
+};
+
+export const AllLinks: Story = {
+  args: {
+    ...Default.args,
+    creatorInfo: {
+      ...mockCreatorInfo,
+      otherLinks: {
+        website: "https://ailabs.com",
+        github: "https://github.com/ailabs",
+        linkedin: "https://linkedin.com/company/ailabs",
+        other: [
+          "https://twitter.com/ailabs",
+          "https://medium.com/@ailabs",
+          "https://youtube.com/@ailabs",
+          "https://tiktok.com/@ailabs",
+        ],
+      },
+    },
+  },
+};
+
+export const LongDescription: Story = {
+  args: {
+    ...Default.args,
+    creatorInfo: {
+      ...mockCreatorInfo,
+      description:
+        "We are a team of passionate developers and researchers dedicated to pushing the boundaries of artificial intelligence. Our focus spans across multiple domains including natural language processing, computer vision, and reinforcement learning. With years of experience in both academia and industry, we strive to create AI agents that are not only powerful but also ethical and user-friendly. Our mission is to make AI accessible to everyone while maintaining the highest standards of quality and reliability.",
+    },
   },
 };

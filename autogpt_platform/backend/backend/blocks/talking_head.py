@@ -1,12 +1,12 @@
 import time
 from typing import Literal
 
-import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -118,7 +118,6 @@ class CreateTalkingAvatarVideoBlock(Block):
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
         response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
         return response.json()
 
     def get_clip_status(self, api_key: SecretStr, clip_id: str) -> dict:
@@ -128,7 +127,6 @@ class CreateTalkingAvatarVideoBlock(Block):
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
         return response.json()
 
     def run(

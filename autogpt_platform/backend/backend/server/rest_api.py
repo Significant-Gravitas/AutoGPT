@@ -11,6 +11,7 @@ import backend.data.block
 import backend.data.db
 import backend.data.user
 import backend.server.routers.v1
+import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
 
@@ -62,7 +63,10 @@ app = fastapi.FastAPI(
 
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(500, handle_internal_http_error(500))
-app.include_router(backend.server.routers.v1.v1_router, tags=["v1"])
+app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
+)
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])

@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { FeaturedStoreCard } from "@/components/agptui/FeaturedStoreCard";
 import {
@@ -7,12 +9,14 @@ import {
 } from "@/components/ui/carousel";
 import { useCallback, useState } from "react";
 import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
-
-interface FeaturedAgent {
-  agentName: string;
-  subHeading: string;
-  agentImage: string;
-  creatorName: string;
+import { useRouter } from "next/navigation";
+export interface FeaturedAgent {
+  slug: string;
+  agent_name: string;
+  agent_image: string;
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
   description: string;
   runs: number;
   rating: number;
@@ -20,14 +24,17 @@ interface FeaturedAgent {
 
 interface FeaturedSectionProps {
   featuredAgents: FeaturedAgent[];
-  onCardClick: (agentName: string) => void;
 }
 
 export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   featuredAgents,
-  onCardClick,
 }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const router = useRouter();
+
+  const handleCardClick = (creator: string, slug: string) => {
+    router.push(`/store/agent/${creator}/${slug}`);
+  };
 
   const handlePrevSlide = useCallback(() => {
     setCurrentSlide((prev) =>
@@ -61,17 +68,17 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
             {featuredAgents.map((agent, index) => (
               <CarouselItem
                 key={index}
-                className="ml-0 min-w-64 max-w-68 basis-2/3 basis-auto"
+                className="ml-0 min-w-64 max-w-68 basis-auto"
               >
                 <FeaturedStoreCard
-                  agentName={agent.agentName}
-                  subHeading={agent.subHeading}
-                  agentImage={agent.agentImage}
-                  creatorName={agent.creatorName}
+                  agentName={agent.agent_name}
+                  subHeading={agent.sub_heading}
+                  agentImage={agent.agent_image}
+                  creatorName={agent.creator}
                   description={agent.description}
                   runs={agent.runs}
                   rating={agent.rating}
-                  onClick={() => onCardClick(agent.agentName)}
+                  onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
               </CarouselItem>
             ))}

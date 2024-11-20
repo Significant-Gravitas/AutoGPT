@@ -72,15 +72,25 @@ const mockMenuItemGroups = [
 ];
 
 const mockAgentInfo = {
-  name: "Super SEO Optimizer",
-  creator: "AI Labs",
-  description:
-    "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
-  rating: 4.9,
-  runs: 100000,
-  categories: ["SEO", "Marketing", "Content"],
-  lastUpdated: "2023-05-15",
-  version: "2.1.0",
+  name: "AI Video Generator",
+  creator: "Toran Richards",
+  shortDescription: "Transform ideas into breathtaking images with this AI-powered Image Generator.",
+  longDescription: `Create Viral-Ready Content in Seconds! Transform trending topics into engaging videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to quickly produce high-quality content.
+
+Key features include:
+- Customizable video output
+- 15+ pre-made templates
+- Auto scene detection
+- Smart text-to-speech
+- Multiple export formats
+- SEO-optimized suggestions
+
+Watch as the AI transforms your ideas into attention-grabbing scripts optimized for maximum engagement - SEO-optimized titles that capture attention in the first 3 seconds - Dual narrative storytelling, using metaphors, and strategically placed calls-to-action. The AI Short-form Video Generator consistently produces viral-worthy videos that resonate with your audience.`,
+  rating: 4.7,
+  runs: 1500,
+  categories: ["Video", "Content Creation", "Social Media"],
+  lastUpdated: "2 days ago",
+  version: "4.2.0",
 };
 
 const mockAgentImages = [
@@ -123,11 +133,11 @@ const mockOtherAgentsByCreator = [
 
 const mockSimilarAgents = [
   {
-    agentName: "SEO Master",
+    agentName: "Video Master Pro",
     agentImage:
       "https://ddz4ak4pa3d19.cloudfront.net/cache/59/b9/59b9415d4044f48f9b9e318c4c5a7984.jpg",
     description:
-      "Comprehensive SEO tool for website optimization and ranking improvement.",
+      "Professional video editing and enhancement tool powered by AI.",
     runs: 80000,
     rating: 4.8,
     avatarSrc: "https://example.com/avatar2.jpg",
@@ -153,6 +163,18 @@ const mockSimilarAgents = [
     avatarSrc: "https://example.com/avatar5.jpg",
   },
 ];
+
+const mockAgentInfoClear = {
+  name: "",
+  creator: "",
+  shortDescription: "",
+  longDescription: "",
+  rating: 0,
+  runs: 0,
+  categories: [""],
+  lastUpdated: "",
+  version: "",
+};
 
 export const Default: Story = {
   args: {
@@ -195,5 +217,12 @@ export const LongLists: Story = {
     ...Default.args,
     otherAgentsByCreator: Array(10).fill(mockOtherAgentsByCreator[0]),
     similarAgents: Array(10).fill(mockSimilarAgents[0]),
+  },
+};
+
+export const Empty: Story = {
+  args: {
+    ...Default.args,
+    agentInfo: mockAgentInfoClear,
   },
 };

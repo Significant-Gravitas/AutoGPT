@@ -55,10 +55,10 @@ export const FlowRunInfo: React.FC<
         </div>
       </CardHeader>
       <CardContent>
-        <p>
+        <div>
           <strong>Status:</strong>{" "}
           <FlowRunStatusBadge status={flowRun.status} />
-        </p>
+        </div>
         <p>
           <strong>Started:</strong>{" "}
           {moment(flowRun.startTime).format("YYYY-MM-DD HH:mm:ss")}

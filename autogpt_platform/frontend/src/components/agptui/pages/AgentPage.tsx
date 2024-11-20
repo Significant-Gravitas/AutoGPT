@@ -26,7 +26,8 @@ interface AgentPageProps {
   agentInfo: {
     name: string;
     creator: string;
-    description: string;
+    shortDescription: string;
+    longDescription: string;
     rating: number;
     runs: number;
     categories: string[];
@@ -97,13 +98,13 @@ export const AgentPage: React.FC<AgentPageProps> = ({
       <main className="px-4 md:mt-4 lg:mt-8">
         <BreadCrumbs items={breadcrumbs} />
 
-        <div className="flex flex-col gap-5 lg:flex-row">
-          <div>
+        <div className="flex flex-col lg:flex-row lg:gap-8 xl:gap-12">
+          <div className="w-full lg:max-w-[396px]">
             <AgentInfo
-              onRunAgent={handleRunAgent}
               name={agentInfo.name}
               creator={agentInfo.creator}
-              description={agentInfo.description}
+              shortDescription={agentInfo.shortDescription}
+              longDescription={agentInfo.longDescription}
               rating={agentInfo.rating}
               runs={agentInfo.runs}
               categories={agentInfo.categories}
@@ -111,27 +112,48 @@ export const AgentPage: React.FC<AgentPageProps> = ({
               version={agentInfo.version}
             />
           </div>
-          <AgentImages images={agentImages} />
+          <div className="flex-1">
+            <AgentImages images={agentImages} />
+          </div>
         </div>
+        
         <Separator className="my-6" />
         <AgentsSection
-          agents={otherAgentsByCreator}
+          agents={otherAgentsByCreator.map((agent) => ({
+            slug: agent.agentName.toLowerCase().replace(/\s+/g, '-'),
+            agent_name: agent.agentName,
+            agent_image: agent.agentImage,
+            creator: agentInfo.creator,
+            creator_avatar: agent.avatarSrc,
+            sub_heading: "",
+            description: agent.description,
+            runs: agent.runs,
+            rating: agent.rating,
+          }))}
           onCardClick={handleCardClick}
           sectionTitle={`Other agents by ${agentInfo.creator}`}
         />
         <Separator className="my-6" />
         <AgentsSection
-          agents={similarAgents}
+          agents={similarAgents.map((agent) => ({
+            slug: agent.agentName.toLowerCase().replace(/\s+/g, '-'),
+            agent_name: agent.agentName,
+            agent_image: agent.agentImage,
+            creator: agentInfo.creator,
+            creator_avatar: agent.avatarSrc,
+            sub_heading: "",
+            description: agent.description,
+            runs: agent.runs,
+            rating: agent.rating,
+          }))}
           onCardClick={handleCardClick}
           sectionTitle="Similar agents"
         />
-        <Separator className="my-6" />
         <BecomeACreator
           title="Want to contribute?"
           heading="We're always looking for more Creators!"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
-          onButtonClick={handleBecomeCreator}
         />
       </main>
     </div>

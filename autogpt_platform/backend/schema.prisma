@@ -8,6 +8,7 @@ generator client {
   provider             = "prisma-client-py"
   recursive_type_depth = 5
   interface            = "asyncio"
+  previewFeatures      = ["views"]
 }
 
 // User model to mirror Auth provider users
@@ -21,18 +22,21 @@ model User {
   integrations String   @default("")
 
   // Relations
-  AgentGraphs                  AgentGraph[]
-  AgentGraphExecutions         AgentGraphExecution[]
-  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
-  AnalyticsDetails             AnalyticsDetails[]
-  AnalyticsMetrics             AnalyticsMetrics[]
-  UserBlockCredit              UserBlockCredit[]
-  AgentPreset                  AgentPreset[]
-  UserAgent                    UserAgent[]
-  Profile                      Profile[]
-  StoreListing                 StoreListing[]
-  StoreListingReview           StoreListingReview[]
-  StoreListingSubmission       StoreListingSubmission[]
+  AgentGraphs          AgentGraph[]
+  AgentGraphExecutions AgentGraphExecution[]
+  AnalyticsDetails     AnalyticsDetails[]
+  AnalyticsMetrics     AnalyticsMetrics[]
+  UserBlockCredit      UserBlockCredit[]
+
+  AgentPreset AgentPreset[]
+  UserAgent   UserAgent[]
+
+  Profile                     Profile[]
+  StoreListing                StoreListing[]
+  StoreListingReview          StoreListingReview[]
+  StoreListingSubmission      StoreListingSubmission[]
+  APIKeys                     APIKey[]
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   @@index([id])
   @@index([email])
@@ -52,20 +56,18 @@ model AgentGraph {
 
   // Link to User model
   userId String
+  // FIX: Do not cascade delete the agent when the user is deleted
+  // This allows us to delete user data with deleting the agent which maybe in use by other users
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  AgentNodes                  AgentNode[]
-  AgentGraphExecution         AgentGraphExecution[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
+  AgentNodes          AgentNode[]
+  AgentGraphExecution AgentGraphExecution[]
 
-  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs      AgentGraph[]         @relation("AgentSubGraph")
-  agentGraphParentId  String?
-  AgentGraphParent    AgentGraph?          @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
-  AgentPreset         AgentPreset[]
-  UserAgent           UserAgent[]
-  StoreListing        StoreListing[]
-  StoreListingVersion StoreListingVersion?
+  AgentPreset                 AgentPreset[]
+  UserAgent                   UserAgent[]
+  StoreListing                StoreListing[]
+  StoreListingVersion         StoreListingVersion?
+  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -326,6 +328,11 @@ model AnalyticsDetails {
   @@index([type])
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   METRICS TRACKING TABLES    ////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model AnalyticsMetrics {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -349,6 +356,11 @@ enum UserBlockCreditType {
   USAGE
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model UserBlockCredit {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -384,6 +396,7 @@ model Profile {
   userId String?
   User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  name        String
   username    String @unique
   description String
 
@@ -392,6 +405,60 @@ model Profile {
   avatarUrl String?
 
   @@index([username])
+  @@index([userId])
+}
+
+view Creator {
+  username    String @unique
+  name        String
+  avatar_url  String
+  description String
+
+  top_categories String[]
+  links          String[]
+
+  num_agents   Int
+  agent_rating Float
+  agent_runs   Int
+}
+
+view StoreAgent {
+  listing_id String   @id
+  updated_at DateTime
+
+  slug        String
+  agent_name  String
+  agent_video String?
+  agent_image String[]
+
+  featured         Boolean  @default(false)
+  creator_username String
+  creator_avatar   String
+  sub_heading      String
+  description      String
+  categories       String[]
+  runs             Int
+  rating           Float
+  versions         String[]
+
+  @@unique([creator_username, slug])
+  @@index([creator_username])
+  @@index([featured])
+  @@index([categories])
+}
+
+view StoreSubmission {
+  listing_id     String           @id
+  user_id        String
+  name           String
+  description    String
+  image_urls     String[]
+  date_submitted DateTime
+  status         SubmissionStatus
+  runs           Int
+  rating         Float
+
+  @@index([user_id])
 }
 
 model StoreListing {
@@ -435,6 +502,7 @@ model StoreListingVersion {
   // TODO: Create a database view that shows only the latest version of each store listing.
   slug        String
   name        String
+  subHeading  String
   videoUrl    String?
   imageUrls   String[]
   description String
@@ -500,4 +568,43 @@ model StoreListingSubmission {
 
   @@index([storeListingId])
   @@index([Status])
+}
+
+enum APIKeyPermission {
+  EXECUTE_GRAPH // Can execute agent graphs
+  READ_GRAPH // Can get graph versions and details
+  EXECUTE_BLOCK // Can execute individual blocks
+  READ_BLOCK // Can get block information
+}
+
+model APIKey {
+  id          String             @id @default(uuid())
+  name        String
+  prefix      String // First 8 chars for identification
+  postfix     String
+  key         String             @unique // Hashed key
+  status      APIKeyStatus       @default(ACTIVE)
+  permissions APIKeyPermission[]
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  description String?
+
+  // Relation to user
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([key])
+  @@index([prefix])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+enum APIKeyStatus {
+  ACTIVE
+  REVOKED
+  SUSPENDED
 }

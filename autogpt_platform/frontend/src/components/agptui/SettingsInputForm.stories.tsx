@@ -17,7 +17,7 @@ export const Default: Story = {
     email: "johndoe@email.com",
     desktopNotifications: {
       first: false,
-      second: true
-    }
-  }
+      second: true,
+    },
+  },
 };
