@@ -37,7 +37,9 @@ export default function SupabaseProvider({
           if (event === "SIGNED_IN") {
             api.createUser();
           }
-          router.refresh();
+          if (event === "SIGNED_OUT") {
+            router.refresh();
+          }
         });
 
         return () => {

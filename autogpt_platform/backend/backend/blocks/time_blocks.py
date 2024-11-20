@@ -140,20 +140,25 @@ class GetCurrentDateAndTimeBlock(Block):
 class CountdownTimerBlock(Block):
     class Input(BlockSchema):
         input_message: Any = SchemaField(
+            advanced=False,
             description="Message to output after the timer finishes",
             default="timer finished",
         )
         seconds: Union[int, str] = SchemaField(
-            description="Duration in seconds", default=0
+            advanced=False, description="Duration in seconds", default=0
         )
         minutes: Union[int, str] = SchemaField(
-            description="Duration in minutes", default=0
+            advanced=False, description="Duration in minutes", default=0
         )
-        hours: Union[int, str] = SchemaField(description="Duration in hours", default=0)
-        days: Union[int, str] = SchemaField(description="Duration in days", default=0)
+        hours: Union[int, str] = SchemaField(
+            advanced=False, description="Duration in hours", default=0
+        )
+        days: Union[int, str] = SchemaField(
+            advanced=False, description="Duration in days", default=0
+        )
 
     class Output(BlockSchema):
-        output_message: str = SchemaField(
+        output_message: Any = SchemaField(
             description="Message after the timer finishes"
         )
 
