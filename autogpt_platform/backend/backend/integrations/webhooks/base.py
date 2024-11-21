@@ -9,6 +9,7 @@ from fastapi import Request
 from strenum import StrEnum
 
 from backend.data import integrations
+from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,11 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         resource: str,
         events: list[str],
     ) -> integrations.Webhook:
+        if not app_config.platform_base_url:
+            raise MissingConfigError(
+                "PLATFORM_BASE_URL must be set to use Webhook functionality"
+            )
+
         if webhook := await integrations.find_webhook(
             credentials.id, webhook_type, resource, events
         ):

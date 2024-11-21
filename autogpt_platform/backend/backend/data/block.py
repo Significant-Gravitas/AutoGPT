@@ -20,8 +20,11 @@ from prisma.models import AgentBlock
 from pydantic import BaseModel
 
 from backend.util import json
+from backend.util.settings import Config
 
 from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
+
+app_config = Config()
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
@@ -264,8 +267,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.webhook_config = webhook_config
         self.execution_stats = {}
 
-        # Enforce shape of webhook event filter
         if self.webhook_config:
+            # Enforce shape of webhook event filter
             event_filter_field = self.input_schema.model_fields[
                 self.webhook_config.event_filter_input
             ]
@@ -281,10 +284,16 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     f"{self.name} has an invalid webhook event selector: "
                     "field must be a BaseModel and all its fields must be boolean"
                 )
+
+            # Enforce presence of 'payload' input
             if "payload" not in self.input_schema.model_fields:
                 raise TypeError(
                     f"{self.name} is webhook-triggered but has no 'payload' input"
                 )
+
+            # Disable webhook-triggered block if webhook functionality not available
+            if not app_config.platform_base_url:
+                self.disabled = True
 
     @classmethod
     def create(cls: Type["Block"]) -> "Block":
