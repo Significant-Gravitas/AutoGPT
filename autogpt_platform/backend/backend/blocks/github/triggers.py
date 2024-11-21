@@ -45,7 +45,7 @@ class GitHubTriggerBase:
             "Includes information about the pull request, the event, "
             "and the user who triggered the event."
         )
-        sender: dict = SchemaField(
+        triggered_by_user: dict = SchemaField(
             description="Object representing the user who triggered the event"
         )
         error: str = SchemaField(
@@ -54,7 +54,7 @@ class GitHubTriggerBase:
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "payload", input_data.payload
-        yield "sender", input_data.payload["sender"]
+        yield "triggered_by_user", input_data.payload["sender"]
 
 
 class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
@@ -134,7 +134,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("payload", example_payload),
-                ("sender", example_payload["sender"]),
+                ("triggered_by_user", example_payload["sender"]),
                 ("event", example_payload["action"]),
                 ("number", example_payload["number"]),
                 ("pull_request", example_payload["pull_request"]),
