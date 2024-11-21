@@ -25,11 +25,11 @@ import {
 } from "../ui/icons";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { usePathname } from "next/navigation";
 
 interface MobileNavBarProps {
   userName?: string;
   userEmail?: string;
-  activeLink: string;
   avatarSrc?: string;
   menuItemGroups: {
     groupName?: string;
@@ -116,11 +116,13 @@ const PopoutMenuItem: React.FC<{
 export const MobileNavBar: React.FC<MobileNavBarProps> = ({
   userName,
   userEmail,
-  activeLink,
   avatarSrc,
   menuItemGroups,
 }) => {
   const [isOpen, setIsOpen] = React.useState(false);
+  const pathname = usePathname();
+  const parts = pathname.split("/");
+  const activeLink = parts.length > 1 ? parts[1] : parts[0];
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>

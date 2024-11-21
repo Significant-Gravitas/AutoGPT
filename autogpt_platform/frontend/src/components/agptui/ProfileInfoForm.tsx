@@ -14,7 +14,7 @@ export interface ProfileInfoFormProps {
   selectedCategories: string[];
 }
 
-export const AVAILABLE_CATEGORIES = [ 
+export const AVAILABLE_CATEGORIES = [
   "Entertainment",
   "Blog",
   "Business",
@@ -142,16 +142,16 @@ export const ProfileInfoForm = ({
 
       <hr className="my-8 border-neutral-300" />
 
-      <div className="h-[50px] flex justify-end items-center gap-3">
+      <div className="flex h-[50px] items-center justify-end gap-3">
         <Button
           variant="secondary"
-          className="h-[50px] px-6 py-3 rounded-[35px] font-['Geist'] text-base font-medium bg-neutral-200 text-neutral-800 hover:bg-neutral-300 transition-colors"
+          className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 font-['Geist'] text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300"
         >
           Cancel
         </Button>
         <Button
           variant="primary"
-          className="h-[50px] px-6 py-3 rounded-[35px] font-['Geist'] text-base font-medium bg-neutral-800 text-white hover:bg-neutral-900 transition-colors"
+          className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-['Geist'] text-base font-medium text-white transition-colors hover:bg-neutral-900"
         >
           Save changes
         </Button>

@@ -36,7 +36,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       tabIndex={0}
       aria-label={`${agentName} agent card`}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === "Enter" || e.key === " ") {
           handleClick();
         }
       }}
@@ -53,13 +53,10 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       <div className="-mt-8 flex flex-col px-4">
         {!hideAvatar ? (
           <Avatar className="mb-2 h-16 w-16">
-            <AvatarImage 
-              src={avatarSrc} 
-              alt={`${agentName} creator avatar`}
-            />
-            <AvatarFallback 
+            <AvatarImage src={avatarSrc} alt={`${agentName} creator avatar`} />
+            <AvatarFallback
               className="h-16 w-16"
-              role="img" 
+              role="img"
               aria-label={`${agentName} creator initial`}
             >
               {agentName.charAt(0)}
@@ -71,7 +68,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         <h2 className="mb-1 font-neue text-xl font-bold tracking-tight text-neutral-900">
           {agentName}
         </h2>
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <div className="font-neue text-base font-medium tracking-tight text-neutral-900">
             {runs.toLocaleString()}+ runs
           </div>
@@ -79,7 +76,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             <div className="mr-2 font-neue text-base font-medium tracking-tight text-neutral-900">
               {rating.toFixed(1)}
             </div>
-            <div 
+            <div
               className="inline-flex items-center justify-start gap-px"
               role="img"
               aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}

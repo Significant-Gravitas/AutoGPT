@@ -31,7 +31,8 @@ export const Default: Story = {
     onRunAgent: () => console.log("Run agent clicked"),
     name: "AI Video Generator",
     creator: "Toran Richards",
-    shortDescription: "Transform ideas into breathtaking images with this AI-powered Image Generator.",
+    shortDescription:
+      "Transform ideas into breathtaking images with this AI-powered Image Generator.",
     longDescription: `Create Viral-Ready Content in Seconds! Transform trending topics into engaging videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to quickly produce high-quality content.
 
 Key features include:
@@ -54,8 +55,10 @@ export const LowRating: Story = {
     ...Default.args,
     name: "Data Analyzer",
     creator: "DataTech",
-    shortDescription: "Analyze complex datasets with machine learning algorithms",
-    longDescription: "A comprehensive data analysis tool that leverages machine learning to provide deep insights into your datasets. Currently in beta testing phase.",
+    shortDescription:
+      "Analyze complex datasets with machine learning algorithms",
+    longDescription:
+      "A comprehensive data analysis tool that leverages machine learning to provide deep insights into your datasets. Currently in beta testing phase.",
     rating: 2.7,
     runs: 5000,
     categories: ["Data Analysis", "Machine Learning"],
@@ -69,8 +72,10 @@ export const HighRuns: Story = {
     ...Default.args,
     name: "Code Assistant",
     creator: "DevAI",
-    shortDescription: "Get AI-powered coding help for various programming languages",
-    longDescription: "An advanced AI coding assistant that supports multiple programming languages and frameworks. Features include code completion, refactoring suggestions, and bug detection.",
+    shortDescription:
+      "Get AI-powered coding help for various programming languages",
+    longDescription:
+      "An advanced AI coding assistant that supports multiple programming languages and frameworks. Features include code completion, refactoring suggestions, and bug detection.",
     rating: 4.8,
     runs: 1000000,
     categories: ["Programming", "AI", "Developer Tools"],
@@ -85,7 +90,8 @@ export const WithInteraction: Story = {
     name: "Task Planner",
     creator: "Productivity AI",
     shortDescription: "Plan and organize your tasks efficiently with AI",
-    longDescription: "An intelligent task management system that helps you organize, prioritize, and complete your tasks more efficiently. Features smart scheduling and AI-powered suggestions.",
+    longDescription:
+      "An intelligent task management system that helps you organize, prioritize, and complete your tasks more efficiently. Features smart scheduling and AI-powered suggestions.",
     rating: 4.2,
     runs: 50000,
     categories: ["Productivity", "Task Management", "AI"],
@@ -94,7 +100,7 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    
+
     // Test run agent button
     const runButton = canvas.getByText("Run agent");
     await userEvent.hover(runButton);
@@ -117,8 +123,10 @@ export const LongDescription: Story = {
     ...Default.args,
     name: "AI Writing Assistant",
     creator: "WordCraft AI",
-    shortDescription: "Enhance your writing with our advanced AI-powered assistant.",
-    longDescription: "It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and can even generate content ideas based on your input.",
+    shortDescription:
+      "Enhance your writing with our advanced AI-powered assistant.",
+    longDescription:
+      "It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and can even generate content ideas based on your input.",
     rating: 4.7,
     runs: 75000,
     categories: ["Writing", "AI", "Content Creation"],

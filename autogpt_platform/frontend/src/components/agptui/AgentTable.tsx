@@ -11,31 +11,39 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
   return (
     <div className="w-full">
       {/* Table header - Hide on mobile */}
-      <div className="hidden md:flex flex-col">
+      <div className="hidden flex-col md:flex">
         <div className="border-t border-neutral-300" />
         <div className="flex items-center px-4 py-2">
           <div className="flex items-center">
-            <div className="flex items-center min-w-[120px]">
-              <input 
-                type="checkbox" 
+            <div className="flex min-w-[120px] items-center">
+              <input
+                type="checkbox"
                 id="selectAllAgents"
                 aria-label="Select all agents"
-                className="w-5 h-5 rounded border-2 border-neutral-400 mr-4" 
+                className="mr-4 h-5 w-5 rounded border-2 border-neutral-400"
               />
-              <label 
-                htmlFor="selectAllAgents" 
+              <label
+                htmlFor="selectAllAgents"
                 className="text-sm font-medium text-neutral-800"
               >
                 Select all
               </label>
             </div>
           </div>
-          <div className="grid grid-cols-[400px,150px,150px,100px,100px,50px] w-full items-center ml-2">
-            <div className="text-sm font-medium text-neutral-800">Agent info</div>
-            <div className="text-sm font-medium text-neutral-800">Date submitted</div>
+          <div className="ml-2 grid w-full grid-cols-[400px,150px,150px,100px,100px,50px] items-center">
+            <div className="text-sm font-medium text-neutral-800">
+              Agent info
+            </div>
+            <div className="text-sm font-medium text-neutral-800">
+              Date submitted
+            </div>
             <div className="text-sm font-medium text-neutral-800">Status</div>
-            <div className="text-sm font-medium text-neutral-800 text-right">Runs</div>
-            <div className="text-sm font-medium text-neutral-800 text-right">Reviews</div>
+            <div className="text-right text-sm font-medium text-neutral-800">
+              Runs
+            </div>
+            <div className="text-right text-sm font-medium text-neutral-800">
+              Reviews
+            </div>
             <div></div>
           </div>
         </div>

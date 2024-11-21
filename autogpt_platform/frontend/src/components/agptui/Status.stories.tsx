@@ -10,10 +10,10 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     status: {
-      control: 'select',
-      options: ['draft', 'awaiting_review', 'approved', 'rejected'],
-    }
-  }
+      control: "select",
+      options: ["draft", "awaiting_review", "approved", "rejected"],
+    },
+  },
 } satisfies Meta<typeof Status>;
 
 export default meta;
