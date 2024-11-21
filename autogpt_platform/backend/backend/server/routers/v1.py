@@ -1,12 +1,12 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Annotated, Any, Dict, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -362,7 +362,7 @@ async def set_graph_active_version(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def execute_graph(
+def execute_graph(
     graph_id: str,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -533,7 +533,7 @@ async def create_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def delete_schedule(
+def delete_schedule(
     schedule_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[Any, Any]:
@@ -546,7 +546,7 @@ async def delete_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_execution_schedules(
+def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
 ) -> list[scheduler.JobInfo]:
@@ -554,49 +554,6 @@ async def get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
-
-
-########################################################
-##################### Settings ########################
-########################################################
-
-
-@v1_router.post(
-    path="/settings", tags=["settings"], dependencies=[Depends(auth_middleware)]
-)
-async def update_configuration(
-    updated_settings: Annotated[
-        Dict[str, Any],
-        Body(
-            examples=[
-                {
-                    "config": {
-                        "num_graph_workers": 10,
-                        "num_node_workers": 10,
-                    }
-                }
-            ]
-        ),
-    ],
-):
-    settings = Settings()
-    try:
-        updated_fields: dict[Any, Any] = {"config": [], "secrets": []}
-        for key, value in updated_settings.get("config", {}).items():
-            if hasattr(settings.config, key):
-                setattr(settings.config, key, value)
-                updated_fields["config"].append(key)
-        for key, value in updated_settings.get("secrets", {}).items():
-            if hasattr(settings.secrets, key):
-                setattr(settings.secrets, key, value)
-                updated_fields["secrets"].append(key)
-        settings.save()
-        return {
-            "message": "Settings updated successfully",
-            "updated_fields": updated_fields,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 ########################################################

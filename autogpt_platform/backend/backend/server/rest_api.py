@@ -92,9 +92,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_graph(
         graph_id: str, node_input: dict[typing.Any, typing.Any], user_id: str
     ):
-        return await backend.server.routers.v1.execute_graph(
-            graph_id, node_input, user_id
-        )
+        return backend.server.routers.v1.execute_graph(graph_id, node_input, user_id)
 
     @staticmethod
     async def test_create_graph(
