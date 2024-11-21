@@ -138,7 +138,9 @@ export const ManyAgents: Story = {
       .map((agent, index) => ({
         ...agent,
         agentName: `Agent ${index + 1}`,
-        status: ["approved", "awaiting_review", "draft", "rejected"][index % 4] as StatusType,
+        status: ["approved", "awaiting_review", "draft", "rejected"][
+          index % 4
+        ] as StatusType,
         rating: Math.round((4 + Math.random()) * 10) / 10,
         runs: Math.floor(Math.random() * 2000) + 500,
         onEdit: () => console.log(`Edit Agent ${index + 1}`),

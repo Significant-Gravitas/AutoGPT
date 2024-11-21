@@ -116,11 +116,11 @@ export const AgentPage: React.FC<AgentPageProps> = ({
             <AgentImages images={agentImages} />
           </div>
         </div>
-        
+
         <Separator className="my-6" />
         <AgentsSection
           agents={otherAgentsByCreator.map((agent) => ({
-            slug: agent.agentName.toLowerCase().replace(/\s+/g, '-'),
+            slug: agent.agentName.toLowerCase().replace(/\s+/g, "-"),
             agent_name: agent.agentName,
             agent_image: agent.agentImage,
             creator: agentInfo.creator,
@@ -136,7 +136,7 @@ export const AgentPage: React.FC<AgentPageProps> = ({
         <Separator className="my-6" />
         <AgentsSection
           agents={similarAgents.map((agent) => ({
-            slug: agent.agentName.toLowerCase().replace(/\s+/g, '-'),
+            slug: agent.agentName.toLowerCase().replace(/\s+/g, "-"),
             agent_name: agent.agentName,
             agent_image: agent.agentImage,
             creator: agentInfo.creator,

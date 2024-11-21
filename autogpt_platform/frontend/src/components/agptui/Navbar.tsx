@@ -1,13 +1,21 @@
 import * as React from "react";
 import Link from "next/link";
 import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import { IconType, IconLogIn } from "@/components/ui/icons";
+import {
+  IconType,
+  IconLogIn,
+  IconBuilder,
+  IconMarketplace,
+  IconLibrary,
+} from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 import CreditsCard from "./CreditsCard";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { User } from "@supabase/supabase-js";
 import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
+import { ThemeToggle } from "./ThemeToggle";
+import { NavbarLink } from "./NavbarLink";
 
 interface NavLink {
   name: string;
@@ -18,7 +26,6 @@ interface NavbarProps {
   user: User | null;
   isLoggedIn: boolean;
   links: NavLink[];
-  activeLink: string;
   menuItemGroups: {
     groupName?: string;
     items: {
@@ -46,7 +53,6 @@ export const Navbar = async ({
   user,
   isLoggedIn,
   links,
-  activeLink,
   menuItemGroups,
 }: NavbarProps) => {
   let profile: ProfileDetails | null = null;
@@ -61,45 +67,37 @@ export const Navbar = async ({
   return (
     <>
       <nav className="sticky top-0 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] md:inline-flex">
-        <div className="flex items-center space-x-10">
+        <div className="inline-flex h-[60px] items-center justify-start gap-6">
           {links.map((link) => (
-            <div key={link.name} className="relative">
-              <Link href={link.href}>
-                <div
-                  className={`text-[${activeLink === link.href ? "#272727" : "#474747"}] font-neue text-2xl font-medium leading-9 tracking-tight`}
-                >
-                  {link.name}
-                </div>
-              </Link>
-              {activeLink === link.href && (
-                <div className="absolute bottom-[-30px] left-[-10px] h-1.5 w-full bg-[#282828]" />
-              )}
-            </div>
+            <NavbarLink key={link.name} name={link.name} href={link.href} />
           ))}
         </div>
         {/* Profile section */}
-        {isLoggedIn ? (
-          <div className="flex items-center gap-4">
-            {profile && <CreditsCard credits={credits.credits} />}
-            <ProfilePopoutMenu
-              menuItemGroups={menuItemGroups}
-              userName={profile?.username}
-              userEmail={profile?.name}
-              avatarSrc={profile?.avatar_url}
-            />
-          </div>
-        ) : (
-          <Link href="/login">
-            <Button
-              variant="default"
-              size="sm"
-              className="flex items-center justify-end space-x-2"
-            >
-              <IconLogIn className="h-5 w-5" />
-              <span>Log In</span>
-            </Button>
-          </Link>
-        )}
+        <div className="flex items-center gap-4">
+          {isLoggedIn ? (
+            <div className="flex items-center gap-4">
+              {profile && <CreditsCard credits={credits.credits} />}
+              <ProfilePopoutMenu
+                menuItemGroups={menuItemGroups}
+                userName={profile?.username}
+                userEmail={profile?.name}
+                avatarSrc={profile?.avatar_url}
+              />
+            </div>
+          ) : (
+            <Link href="/login">
+              <Button
+                variant="default"
+                size="sm"
+                className="flex items-center justify-end space-x-2"
+              >
+                <IconLogIn className="h-5 w-5" />
+                <span>Log In</span>
+              </Button>
+            </Link>
+          )}
+          <ThemeToggle />
+        </div>
       </nav>
       {/* Mobile Navbar - Adjust positioning */}
       <>
@@ -107,7 +105,6 @@ export const Navbar = async ({
           <div className="fixed right-4 top-4 z-50">
             <MobileNavBar
               userName={profile?.username}
-              activeLink={activeLink}
               menuItemGroups={[
                 {
                   groupName: "Navigation",

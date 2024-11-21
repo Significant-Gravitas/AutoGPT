@@ -66,31 +66,34 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
         <main className="flex-1 px-4 py-6 md:px-10 md:py-8">
           {/* Header Section */}
           <div className="mb-6 md:mb-8">
-            <h1 className="text-2xl md:text-[32px] font-medium leading-tight md:leading-[38px] text-neutral-900">
+            <h1 className="text-2xl font-medium leading-tight text-neutral-900 md:text-[32px] md:leading-[38px]">
               Agent dashboard
             </h1>
           </div>
 
           {/* Submit Agent Section */}
           <div className="mb-6 md:mb-8">
-            <h2 className="mb-1 text-lg md:text-[20px] font-medium leading-tight md:leading-[24px] text-neutral-900">
+            <h2 className="mb-1 text-lg font-medium leading-tight text-neutral-900 md:text-[20px] md:leading-[24px]">
               Submit an agent
             </h2>
-            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 md:gap-0">
-              <p className="text-sm md:text-[14px] leading-[20px] text-neutral-600">
-                Select from the list of agents you currently already have, or upload from your local machine.
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:gap-0">
+              <p className="text-sm leading-[20px] text-neutral-600 md:text-[14px]">
+                Select from the list of agents you currently already have, or
+                upload from your local machine.
               </p>
-              <button className="w-full md:w-auto h-12 px-5 py-3 bg-neutral-800 rounded-[38px] inline-flex items-center justify-center md:justify-start gap-2.5 md:ml-4">
-                <span className="text-white text-base font-medium font-['Geist'] leading-normal">Submit agent</span>
+              <button className="inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-[38px] bg-neutral-800 px-5 py-3 md:ml-4 md:w-auto md:justify-start">
+                <span className="font-['Geist'] text-base font-medium leading-normal text-white">
+                  Submit agent
+                </span>
               </button>
             </div>
           </div>
 
-          <Separator className="my-6 md:my-8 bg-neutral-300" />
+          <Separator className="my-6 bg-neutral-300 md:my-8" />
 
           {/* Agents List Section */}
           <div className="mb-4 md:mb-6">
-            <h2 className="text-lg md:text-[20px] font-medium leading-tight md:leading-[24px] text-neutral-900">
+            <h2 className="text-lg font-medium leading-tight text-neutral-900 md:text-[20px] md:leading-[24px]">
               Your uploaded agents
             </h2>
           </div>

@@ -74,7 +74,8 @@ const mockMenuItemGroups = [
 const mockAgentInfo = {
   name: "AI Video Generator",
   creator: "Toran Richards",
-  shortDescription: "Transform ideas into breathtaking images with this AI-powered Image Generator.",
+  shortDescription:
+    "Transform ideas into breathtaking images with this AI-powered Image Generator.",
   longDescription: `Create Viral-Ready Content in Seconds! Transform trending topics into engaging videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to quickly produce high-quality content.
 
 Key features include:

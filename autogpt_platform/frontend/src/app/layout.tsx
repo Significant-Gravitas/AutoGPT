@@ -49,7 +49,6 @@ export default async function RootLayout({
             <Navbar
               user={user}
               isLoggedIn={!!user}
-              activeLink={"/store"}
               links={[
                 {
                   name: "Agent Store",
