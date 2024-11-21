@@ -18,12 +18,12 @@ const CreditsCard = ({ credits }: CreditsCardProps) => {
   };
 
   return (
-    <div className="inline-flex h-[60px] items-center gap-2.5 rounded-2xl bg-neutral-200 p-4">
+    <div className="inline-flex h-[60px] items-center gap-2.5 rounded-2xl bg-neutral-200 dark:bg-neutral-800 p-4">
       <div className="flex items-center gap-0.5">
-        <span className="font-['Geist'] text-base font-semibold leading-7 text-neutral-900">
+        <span className="font-['Poppins'] text-base font-semibold leading-7 text-neutral-900 dark:text-neutral-50">
           {currentCredits.toLocaleString()}
         </span>
-        <span className="font-['Geist'] text-base font-normal leading-7 text-neutral-900">
+        <span className="font-['Poppins'] pl-1 text-base font-semibold leading-7 text-neutral-900 dark:text-neutral-50">
           credits
         </span>
       </div>
