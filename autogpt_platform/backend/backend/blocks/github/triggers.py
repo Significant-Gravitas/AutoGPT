@@ -28,7 +28,11 @@ class GitHubTriggerBase:
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
-            description="Repository to subscribe to",
+            description=(
+                "Repository to subscribe to.\n\n"
+                "**Note:** Make sure your GitHub credentials have permissions "
+                "to create webhooks on this repo."
+            ),
             placeholder="{owner}/{repo}",
         )
         # --8<-- [start:example-payload-field]
@@ -36,7 +40,11 @@ class GitHubTriggerBase:
         # --8<-- [end:example-payload-field]
 
     class Output(BlockSchema):
-        payload: dict = SchemaField(description="Full payload of the event")
+        payload: dict = SchemaField(
+            description="The complete webhook payload that was received from GitHub. "
+            "Includes information about the pull request, the event, "
+            "and the user who triggered the event."
+        )
         sender: dict = SchemaField(
             description="Object representing the user who triggered the event"
         )
@@ -94,7 +102,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         )
         number: int = SchemaField(description="The number of the affected pull request")
         pull_request: dict = SchemaField(
-            description="Object representing the pull request"
+            description="Object representing the affected pull request"
         )
 
     def __init__(self):

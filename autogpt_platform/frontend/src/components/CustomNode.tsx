@@ -38,6 +38,7 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import NodeOutputs from "./NodeOutputs";
+import SchemaTooltip from "./SchemaTooltip";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -229,12 +230,12 @@ export function CustomNode({
                   />
                 ) : (
                   propKey != "credentials" && (
-                    <span
-                      className="text-m green mb-0 text-gray-900"
-                      title={propSchema.description}
-                    >
-                      {propSchema.title || beautifyString(propKey)}
-                    </span>
+                    <div className="flex gap-1">
+                      <span className="text-m green mb-0 text-gray-900">
+                        {propSchema.title || beautifyString(propKey)}
+                      </span>
+                      <SchemaTooltip description={propSchema.description} />
+                    </div>
                   )
                 )}
                 {isConnected || (
