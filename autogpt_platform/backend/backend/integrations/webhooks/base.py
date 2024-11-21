@@ -42,13 +42,17 @@ class BaseWebhooksManager(ABC, Generic[WT]):
 
     async def prune_webhook_if_dangling(
         self, webhook_id: str, credentials: Credentials
-    ) -> None:
+    ) -> bool:
         webhook = await integrations.get_webhook(webhook_id)
         if webhook.attached_nodes is None:
             raise ValueError("Error retrieving webhook including attached nodes")
-        if len(webhook.attached_nodes) == 0:
-            await self._deregister_webhook(webhook, credentials)
-            await integrations.delete_webhook(webhook.id)
+        if webhook.attached_nodes:
+            # Don't prune webhook if in use
+            return False
+
+        await self._deregister_webhook(webhook, credentials)
+        await integrations.delete_webhook(webhook.id)
+        return True
 
     # --8<-- [start:BaseWebhooksManager3]
     @classmethod

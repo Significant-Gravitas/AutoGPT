@@ -272,6 +272,13 @@ export type CredentialsDeleteResponse = {
   revoked: boolean | null;
 };
 
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+export type CredentialsDeleteNeedConfirmationResponse = {
+  deleted: false;
+  need_confirmation: true;
+  message: string;
+};
+
 /* Mirror of backend/data/model.py:CredentialsMetaInput */
 export type CredentialsMetaInput = {
   id: string;

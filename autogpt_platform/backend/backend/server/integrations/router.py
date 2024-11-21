@@ -10,8 +10,10 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
+    get_all_webhooks,
     get_webhook,
     listen_for_webhook_event,
     publish_webhook_event,
@@ -20,6 +22,7 @@ from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
+from backend.util.exceptions import NeedConfirmation
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -192,13 +195,22 @@ class CredentialsDeletionResponse(BaseModel):
     )
 
 
+class CredentialsDeletionNeedsConfirmationResponse(BaseModel):
+    deleted: Literal[False] = False
+    need_confirmation: Literal[True] = True
+    message: str
+
+
 @router.delete("/{provider}/credentials/{cred_id}")
-def delete_credentials(
+async def delete_credentials(
     request: Request,
     provider: Annotated[str, Path(title="The provider to delete credentials for")],
     cred_id: Annotated[str, Path(title="The ID of the credentials to delete")],
     user_id: Annotated[str, Depends(get_user_id)],
-) -> CredentialsDeletionResponse:
+    force: Annotated[
+        bool, Query(title="Whether to proceed if any linked webhooks are still in use")
+    ] = False,
+) -> CredentialsDeletionResponse | CredentialsDeletionNeedsConfirmationResponse:
     creds = creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(status_code=404, detail="Credentials not found")
@@ -206,6 +218,11 @@ def delete_credentials(
         raise HTTPException(
             status_code=404, detail="Credentials do not match the specified provider"
         )
+
+    try:
+        await remove_all_webhooks_for_credentials(creds, force)
+    except NeedConfirmation as e:
+        return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
     creds_manager.delete(user_id, cred_id)
 
@@ -277,6 +294,38 @@ async def webhook_ping(
 
 
 # --------------------------- UTILITIES ---------------------------- #
+
+
+async def remove_all_webhooks_for_credentials(
+    credentials: Credentials, force: bool = False
+) -> None:
+    """
+    Remove and deregister all webhooks that were registered using the given credentials.
+
+    Params:
+        credentials: The credentials for which to remove the associated webhooks.
+        force: Whether to proceed if any of the webhooks are still in use.
+
+    Raises:
+        NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
+    """
+    webhooks = await get_all_webhooks(credentials.id)
+    if any(w.attached_nodes for w in webhooks) and not force:
+        raise NeedConfirmation(
+            "Some webhooks linked to these credentials are still in use by an agent"
+        )
+    for webhook in webhooks:
+        # Unlink all nodes
+        for node in webhook.attached_nodes or []:
+            await set_node_webhook(node.id, None)
+
+        # Prune the webhook
+        webhook_manager = WEBHOOK_MANAGERS_BY_NAME[credentials.provider]()
+        success = await webhook_manager.prune_webhook_if_dangling(
+            webhook.id, credentials
+        )
+        if not success:
+            logger.warning(f"Webhook #{webhook.id} failed to prune")
 
 
 def _get_provider_oauth_handler(req: Request, provider_name: str) -> BaseOAuthHandler:
