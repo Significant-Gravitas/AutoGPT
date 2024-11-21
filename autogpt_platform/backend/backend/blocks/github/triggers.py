@@ -46,7 +46,7 @@ class GitHubTriggerBase:
             "and the user who triggered the event."
         )
         triggered_by_user: dict = SchemaField(
-            description="Object representing the user who triggered the event"
+            description="Object representing the GitHub user who triggered the event"
         )
         error: str = SchemaField(
             description="Error message if the payload could not be processed"
