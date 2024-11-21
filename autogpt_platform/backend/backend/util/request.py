@@ -9,6 +9,7 @@ from backend.util.settings import Config
 
 # List of IP networks to block
 BLOCKED_IP_NETWORKS = [
+    # --8<-- [start:BLOCKED_IP_NETWORKS]
     ipaddress.ip_network("0.0.0.0/8"),  # "This" Network
     ipaddress.ip_network("10.0.0.0/8"),  # Private-Use
     ipaddress.ip_network("127.0.0.0/8"),  # Loopback
@@ -17,6 +18,7 @@ BLOCKED_IP_NETWORKS = [
     ipaddress.ip_network("192.168.0.0/16"),  # Private-Use
     ipaddress.ip_network("224.0.0.0/4"),  # Multicast
     ipaddress.ip_network("240.0.0.0/4"),  # Reserved for Future Use
+    # --8<-- [end:BLOCKED_IP_NETWORKS]
 ]
 
 
