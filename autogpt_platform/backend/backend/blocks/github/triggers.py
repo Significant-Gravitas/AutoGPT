@@ -104,6 +104,9 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         pull_request: dict = SchemaField(
             description="Object representing the affected pull request"
         )
+        pull_request_url: str = SchemaField(
+            description="The URL of the affected pull request"
+        )
 
     def __init__(self):
         from backend.integrations.webhooks.github import GithubWebhookType
@@ -138,6 +141,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
                 ("event", example_payload["action"]),
                 ("number", example_payload["number"]),
                 ("pull_request", example_payload["pull_request"]),
+                ("pull_request_url", example_payload["pull_request"]["html_url"]),
             ],
         )
 
@@ -146,6 +150,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         yield "event", input_data.payload["action"]
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]
+        yield "pull_request_url", input_data.payload["pull_request"]["html_url"]
 
 
 # --8<-- [end:GithubTriggerExample]
