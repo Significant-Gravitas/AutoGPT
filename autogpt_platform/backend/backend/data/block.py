@@ -94,15 +94,7 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def validate_data(cls, data: BlockInput) -> str | None:
-        """
-        Validate the data against the schema.
-        Returns the validation error message if the data does not match the schema.
-        """
-        try:
-            jsonschema.validate(data, cls.jsonschema())
-            return None
-        except jsonschema.ValidationError as e:
-            return str(e)
+        return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
 
     @classmethod
     def validate_field(cls, field_name: str, data: BlockInput) -> str | None:

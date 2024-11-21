@@ -276,7 +276,7 @@ async def set_graph_active_version(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def execute_graph(
+def execute_graph(
     graph_id: str,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
@@ -481,7 +481,7 @@ async def create_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def delete_schedule(
+def delete_schedule(
     schedule_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[Any, Any]:
@@ -494,7 +494,7 @@ async def delete_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_execution_schedules(
+def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
 ) -> list[scheduler.JobInfo]:
