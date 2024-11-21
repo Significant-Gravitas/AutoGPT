@@ -1,6 +1,7 @@
 import json
 from typing import Any, Type, TypeVar, overload
 
+import jsonschema
 from fastapi.encoders import jsonable_encoder
 
 from .type import type_match
@@ -30,3 +31,17 @@ def loads(data: str, *args, target_type: Type[T] | None = None, **kwargs) -> Any
     if target_type:
         return type_match(parsed, target_type)
     return parsed
+
+
+def validate_with_jsonschema(
+    schema: dict[str, Any], data: dict[str, Any]
+) -> str | None:
+    """
+    Validate the data against the schema.
+    Returns the validation error message if the data does not match the schema.
+    """
+    try:
+        jsonschema.validate(data, schema)
+        return None
+    except jsonschema.ValidationError as e:
+        return str(e)
