@@ -42,8 +42,8 @@ class GitHubTriggerBase:
     class Output(BlockSchema):
         payload: dict = SchemaField(
             description="The complete webhook payload that was received from GitHub. "
-            "Includes information about the pull request, the event, "
-            "and the user who triggered the event."
+            "Includes information about the affected resource (e.g. pull request), "
+            "the event, and the user who triggered the event."
         )
         triggered_by_user: dict = SchemaField(
             description="Object representing the GitHub user who triggered the event"
