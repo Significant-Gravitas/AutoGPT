@@ -69,6 +69,10 @@ jobs:
         run: |
           cp ../supabase/docker/.env.example ../.env
 
+      - name: Copy backend .env
+        run: |
+          cp ../backend/.env.example ../backend/.env
+
       - name: Run docker compose
         run: |
           docker compose -f ../docker-compose.yml up -d
