@@ -89,7 +89,6 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       const outputs = outputBlocks.map((node) => ({
         id: node.id,
         type: "output" as const,
-        outputSchema: node.data.outputSchema as BlockIORootSchema,
         hardcodedValues: {
           name: (node.data.hardcodedValues as any).name || "Output",
           description:
