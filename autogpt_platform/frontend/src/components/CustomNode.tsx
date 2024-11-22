@@ -28,6 +28,7 @@ import {
 } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
@@ -554,9 +555,13 @@ export function CustomNode({
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
             <div className="font-roboto flex items-center px-3 text-lg font-semibold">
-              {beautifyString(
-                data.blockType?.replace(/Block$/, "") || data.title,
-              )}
+              <TextRenderer
+                value={beautifyString(
+                  data.blockType?.replace(/Block$/, "") || data.title,
+                )}
+                truncateLengthLimit={80}
+              />
+
               <div className="px-2 text-xs text-gray-500">
                 #{id.split("-")[0]}
               </div>
