@@ -55,7 +55,7 @@ class CompassAITriggerBlock(Block):
             input_schema=CompassAITriggerBlock.Input,
             output_schema=CompassAITriggerBlock.Output,
             webhook_config=BlockWebhookConfig(
-                provider="simple_hook_manager",
+                provider="compass",
                 webhook_type=CompassWebhookType.TRANSCRIPTION,
                 resource_format="{transcription_id}",
                 event_filter_input="events",
