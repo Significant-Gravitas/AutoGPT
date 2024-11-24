@@ -4,6 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from backend.blocks.github._api import get_api
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -16,6 +17,7 @@ from backend.data.model import SchemaField
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    GithubCredentials,
     GithubCredentialsField,
     GithubCredentialsInput,
 )
@@ -107,6 +109,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
         pull_request_url: str = SchemaField(
             description="The URL of the affected pull request"
         )
+        patch: str = SchemaField(description="The patch of the affected pull request")
 
     def __init__(self):
         from backend.integrations.webhooks.github import GithubWebhookType
@@ -145,12 +148,23 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
+    def run(
+        self, input_data: Input, credentials: GithubCredentials, **kwargs
+    ) -> BlockOutput:
+        api = get_api(credentials, convert_urls=False)
         yield from super().run(input_data, **kwargs)
+        if input_data.payload["pull_request"]["patch_url"]:
+            response = api.get(
+                input_data.payload["pull_request"]["patch_url"], allow_redirects=True
+            )
+            yield "patch", response.text
+        else:
+            yield "patch", ""
         yield "event", input_data.payload["action"]
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]
         yield "pull_request_url", input_data.payload["pull_request"]["html_url"]
+
 
 
 # --8<-- [end:GithubTriggerExample]
