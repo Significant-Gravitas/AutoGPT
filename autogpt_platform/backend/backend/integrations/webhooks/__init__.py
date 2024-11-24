@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING
 
+from backend.integrations.webhooks.simple_webhook_manager import CompassWebhookManager, SimpleWebhooksManager
+from pyparsing import C
+
 from .github import GithubWebhooksManager
 
 if TYPE_CHECKING:
@@ -10,6 +13,8 @@ WEBHOOK_MANAGERS_BY_NAME: dict[str, type["BaseWebhooksManager"]] = {
     handler.PROVIDER_NAME: handler
     for handler in [
         GithubWebhooksManager,
+        CompassWebhookManager,
+        SimpleWebhooksManager,
     ]
 }
 # --8<-- [end:WEBHOOK_MANAGERS_BY_NAME]
