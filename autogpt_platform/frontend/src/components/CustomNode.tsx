@@ -68,6 +68,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
+  webhookId?: string;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
