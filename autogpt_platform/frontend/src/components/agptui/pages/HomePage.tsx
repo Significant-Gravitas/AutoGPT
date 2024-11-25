@@ -90,10 +90,12 @@ export const Page: React.FC<PageProps> = ({
       />
       <main className="px-4">
         <HeroSection onFilterChange={handleFilterChange} />
-        <FeaturedSection
-          featuredAgents={featuredAgents}
-          onCardClick={handleCardClick}
-        />
+        <div className="my-16">
+          <FeaturedSection
+            featuredAgents={featuredAgents}
+            onCardClick={handleCardClick}
+          />
+        </div>
         <Separator />
         <AgentsSection
           sectionTitle="Top Agents"
@@ -107,10 +109,9 @@ export const Page: React.FC<PageProps> = ({
         />
         <Separator />
         <BecomeACreator
-          title="Want to contribute?"
-          heading="We're always looking for more Creators!"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
+          title="Become a creator"
+          description="Join a community where your AI creations can inspire, engage, and be downloaded by users around the world."
+          buttonText="Upload your agent"
           onButtonClick={handleBecomeCreator}
         />
       </main>

@@ -2,12 +2,8 @@
 
 import * as React from "react";
 import { CreatorCard } from "@/components/agptui/CreatorCard";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-} from "@/components/ui/carousel";
 import { useRouter } from "next/navigation";
+
 export interface FeaturedCreator {
   name: string;
   username: string;
@@ -29,46 +25,26 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
     router.push(`/store/creator/${creator}`);
   };
 
+  // Only show first 4 creators
+  const displayedCreators = featuredCreators.slice(0, 4);
+
   return (
-    <div className="flex w-screen flex-col items-center justify-center gap-6 py-8 md:w-full lg:items-start">
-      <div className="font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
-        Featured creators
-      </div>
-      <div className="w-full">
-        <Carousel
-          className="md:hidden"
-          opts={{
-            loop: true,
-          }}
-        >
-          <CarouselContent>
-            {featuredCreators.map((creator, index) => (
-              <CarouselItem
-                key={index}
-                className="min-w-[13.125rem] max-w-[14.125rem] basis-4/5 sm:basis-3/5"
-              >
-                <CreatorCard
-                  creatorName={creator.username}
-                  creatorImage={creator.avatar_url}
-                  bio={creator.description}
-                  agentsUploaded={creator.num_agents}
-                  avatarSrc={creator.avatar_url}
-                  onClick={() => handleCardClick(creator.username)}
-                />
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-        </Carousel>
-        <div className="hidden flex-wrap items-center justify-center gap-3 md:flex lg:justify-start">
-          {featuredCreators.map((creator, index) => (
+    <div className="flex w-full flex-col items-center justify-center py-16">
+      <div className="w-full max-w-[1360px]">
+        <h2 className="font-poppins mb-8 text-2xl font-semibold leading-7 text-neutral-800">
+          Featured creators
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {displayedCreators.map((creator, index) => (
             <CreatorCard
               key={index}
-              creatorName={creator.username}
+              creatorName={creator.name || creator.username}
               creatorImage={creator.avatar_url}
               bio={creator.description}
               agentsUploaded={creator.num_agents}
-              avatarSrc={creator.avatar_url}
               onClick={() => handleCardClick(creator.username)}
+              index={index}
             />
           ))}
         </div>

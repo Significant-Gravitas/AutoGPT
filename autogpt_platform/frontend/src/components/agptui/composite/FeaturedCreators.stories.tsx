@@ -24,28 +24,32 @@ type Story = StoryObj<typeof meta>;
 
 const defaultCreators = [
   {
-    creatorName: "AI Innovator",
-    creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    bio: "Pushing the boundaries of AI technology",
-    agentsUploaded: 15,
-    avatarSrc: "https://example.com/avatar1.jpg",
+    name: "AI Innovator",
+    username: "ai_innovator",
+    description: "Pushing the boundaries of AI technology with cutting-edge solutions and innovative approaches to machine learning.",
+    avatar_url: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    num_agents: 15,
   },
   {
-    creatorName: "Code Wizard",
-    creatorImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-    bio: "Crafting elegant solutions with AI",
-    agentsUploaded: 8,
-    avatarSrc: "https://example.com/avatar2.jpg",
+    name: "Code Wizard",
+    username: "code_wizard",
+    description: "Crafting elegant solutions with AI and helping others learn the magic of coding.",
+    avatar_url: "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+    num_agents: 8,
   },
   {
-    creatorName: "Data Alchemist",
-    creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    bio: "Transforming raw data into AI gold",
-    agentsUploaded: 12,
-    avatarSrc: "https://example.com/avatar3.jpg",
+    name: "Data Alchemist",
+    username: "data_alchemist",
+    description: "Transforming raw data into AI gold. Specializing in data processing and analytics.",
+    avatar_url: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    num_agents: 12,
+  },
+  {
+    name: "ML Master",
+    username: "ml_master",
+    description: "Specializing in machine learning algorithms and neural network architectures.",
+    avatar_url: "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+    num_agents: 20,
   },
 ];
 
@@ -68,20 +72,18 @@ export const ManyCreators: Story = {
     featuredCreators: [
       ...defaultCreators,
       {
-        name: "ML Master",
-        avatar_url:
-          "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-        description: "Specializing in machine learning algorithms",
-        num_agents: 20,
-        avatar_url: "https://example.com/avatar4.jpg",
+        name: "NLP Ninja",
+        username: "nlp_ninja",
+        description: "Expert in natural language processing and text analysis systems.",
+        avatar_url: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+        num_agents: 18,
       },
       {
-        name: "NLP Ninja",
-        avatar_url:
-          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-        description: "Expert in natural language processing",
-        num_agents: 18,
-        avatar_url: "https://example.com/avatar5.jpg",
+        name: "AI Explorer",
+        username: "ai_explorer",
+        description: "Discovering new frontiers in artificial intelligence and autonomous systems.",
+        avatar_url: "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+        num_agents: 25,
       },
     ],
     onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),

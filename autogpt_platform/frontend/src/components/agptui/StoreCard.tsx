@@ -2,6 +2,7 @@ import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/ui/icons";
+
 interface StoreCardProps {
   agentName: string;
   agentImage: string;
@@ -11,6 +12,7 @@ interface StoreCardProps {
   onClick: () => void;
   avatarSrc: string;
   hideAvatar?: boolean;
+  creatorName?: string;
 }
 
 export const StoreCard: React.FC<StoreCardProps> = ({
@@ -22,6 +24,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   onClick,
   avatarSrc,
   hideAvatar = false,
+  creatorName,
 }) => {
   const handleClick = () => {
     onClick();
@@ -29,7 +32,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="flex h-96 w-64 flex-col rounded-xl pb-2 transition-shadow duration-300 hover:shadow-lg sm:w-64 md:w-80 xl:w-110"
+      className="w-full max-w-[434px] rounded-[26px] flex-col justify-start items-start gap-2.5 inline-flex cursor-pointer hover:shadow-lg transition-all duration-300"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -41,43 +44,58 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         }
       }}
     >
-      <div className="relative h-48 w-full">
+      {/* Header Image Section with Avatar */}
+      <div className="relative w-full h-[200px] rounded-[20px] overflow-hidden">
         <Image
           src={agentImage}
           alt={`${agentName} preview image`}
           fill
-          sizes="192px"
-          className="rounded-xl object-cover"
+          className="object-cover"
+          priority
         />
-      </div>
-      <div className="-mt-8 flex flex-col px-4">
-        {!hideAvatar ? (
-          <Avatar className="mb-2 h-16 w-16">
-            <AvatarImage src={avatarSrc} alt={`${agentName} creator avatar`} />
-            <AvatarFallback
-              className="h-16 w-16"
-              role="img"
-              aria-label={`${agentName} creator initial`}
-            >
-              {agentName.charAt(0)}
-            </AvatarFallback>
-          </Avatar>
-        ) : (
-          <div className="h-16" aria-hidden="true" />
-        )}
-        <h2 className="mb-1 font-neue text-xl font-bold tracking-tight text-neutral-900">
-          {agentName}
-        </h2>
-        <div className="mb-4 flex items-center justify-between">
-          <div className="font-neue text-base font-medium tracking-tight text-neutral-900">
-            {runs.toLocaleString()}+ runs
+        {!hideAvatar && (
+          <div className="absolute left-4 bottom-4">
+            <Avatar className="h-16 w-16 border-2 border-white">
+              <AvatarImage 
+                src={avatarSrc} 
+                alt={`${creatorName || agentName} creator avatar`}
+              />
+              <AvatarFallback>
+                {(creatorName || agentName).charAt(0)}
+              </AvatarFallback>
+            </Avatar>
           </div>
-          <div className="flex items-center">
-            <div className="mr-2 font-neue text-base font-medium tracking-tight text-neutral-900">
+        )}
+      </div>
+
+      {/* Content Section */}
+      <div className="w-full px-1 py-4">
+        {/* Title and Creator */}
+        <h3 className="text-[#272727] text-2xl font-semibold font-['Poppins'] leading-tight mb-2">
+          {agentName}
+        </h3>
+        {!hideAvatar && creatorName && (
+          <p className="text-neutral-600 text-base font-normal font-['Geist'] mb-4">
+            by {creatorName}
+          </p>
+        )}
+
+        {/* Description */}
+        <p className="text-neutral-600 text-base font-normal font-['Geist'] leading-normal line-clamp-3 mb-4">
+          {description}
+        </p>
+
+        {/* Stats Row */}
+        <div className="flex justify-between items-center">
+          <div className="text-neutral-800 text-lg font-semibold font-['Geist']">
+            {runs.toLocaleString()} runs
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-neutral-800 text-lg font-semibold font-['Geist']">
               {rating.toFixed(1)}
-            </div>
-            <div
-              className="inline-flex items-center justify-start gap-px"
+            </span>
+            <div 
+              className="inline-flex items-center"
               role="img"
               aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
             >
@@ -85,9 +103,6 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             </div>
           </div>
         </div>
-        <p className="font-neue text-base font-normal leading-[21px] tracking-tight text-neutral-900">
-          {description}
-        </p>
       </div>
     </div>
   );

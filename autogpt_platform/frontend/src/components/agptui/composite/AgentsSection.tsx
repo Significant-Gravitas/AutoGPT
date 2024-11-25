@@ -8,6 +8,7 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel";
 import { useRouter } from "next/navigation";
+
 export interface Agent {
   slug: string;
   agent_name: string;
@@ -28,10 +29,13 @@ interface AgentsSectionProps {
 
 export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
-  agents: topAgents,
+  agents: allAgents,
   hideAvatars = false,
 }) => {
   const router = useRouter();
+  
+  // Take only the first 9 agents
+  const displayedAgents = allAgents.slice(0, 9);
 
   const handleCardClick = (creator: string, slug: string) => {
     router.push(`/store/agent/${creator}/${slug}`);
@@ -39,14 +43,15 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-center py-4 lg:py-8">
-      <div className="w-full">
+      <div className="w-full max-w-[1360px]">
         <div className="mb-6 font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828]">
           {sectionTitle}
         </div>
-        {!topAgents || topAgents.length === 0 ? (
+        {!displayedAgents || displayedAgents.length === 0 ? (
           <div className="text-center text-gray-500">No agents found</div>
         ) : (
           <>
+            {/* Mobile Carousel View */}
             <Carousel
               className="md:hidden"
               opts={{
@@ -54,7 +59,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
               }}
             >
               <CarouselContent>
-                {topAgents.map((agent, index) => (
+                {displayedAgents.map((agent, index) => (
                   <CarouselItem key={index} className="min-w-64 max-w-68">
                     <StoreCard
                       agentName={agent.agent_name}
@@ -63,6 +68,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
                       runs={agent.runs}
                       rating={agent.rating}
                       avatarSrc={agent.creator_avatar}
+                      creatorName={agent.creator}
                       hideAvatar={hideAvatars}
                       onClick={() => handleCardClick(agent.creator, agent.slug)}
                     />
@@ -70,8 +76,9 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
                 ))}
               </CarouselContent>
             </Carousel>
-            <div className="hidden grid-cols-1 place-items-center gap-3 md:grid md:grid-cols-2 lg:grid-cols-3">
-              {topAgents.map((agent, index) => (
+
+            <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 place-items-center">
+              {displayedAgents.map((agent, index) => (
                 <StoreCard
                   key={index}
                   agentName={agent.agent_name}
@@ -80,6 +87,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
                   runs={agent.runs}
                   rating={agent.rating}
                   avatarSrc={agent.creator_avatar}
+                  creatorName={agent.creator}
                   hideAvatar={hideAvatars}
                   onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
