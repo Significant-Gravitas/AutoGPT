@@ -1,15 +1,7 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
-
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import UserExpansionsBuilder
-from backend.blocks.twitter._types import  TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-
 
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
@@ -18,6 +10,20 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import UserExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class TwitterRetweetBlock(Block):
@@ -36,7 +42,7 @@ class TwitterRetweetBlock(Block):
         )
 
     class Output(BlockSchema):
-        success : bool = SchemaField(description="Whether the retweet was successful")
+        success: bool = SchemaField(description="Whether the retweet was successful")
         error: str = SchemaField(description="Error message if the retweet failed")
 
     def __init__(self):
@@ -51,10 +57,7 @@ class TwitterRetweetBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True),
-                ("error", "")
-            ],
+            test_output=[("success", True), ("error", "")],
         )
 
     @staticmethod
@@ -67,12 +70,10 @@ class TwitterRetweetBlock(Block):
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-
             client.retweet(
                 tweet_id=tweet_id,
                 user_auth=False,
             )
-
 
             return True
 
@@ -94,6 +95,7 @@ class TwitterRetweetBlock(Block):
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterRemoveRetweetBlock(Block):
     """
@@ -143,13 +145,10 @@ class TwitterRemoveRetweetBlock(Block):
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-
-
             client.unretweet(
                 source_tweet_id=tweet_id,
                 user_auth=False,
             )
-
 
             return True
 
@@ -171,6 +170,7 @@ class TwitterRemoveRetweetBlock(Block):
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetRetweetersBlock(Block):
     """
@@ -204,13 +204,19 @@ class TwitterGetRetweetersBlock(Block):
         # Common Outputs that user commonly uses
         ids: list = SchemaField(description="List of user ids who retweeted")
         names: list = SchemaField(description="List of user names who retweeted")
-        usernames: list = SchemaField(description="List of user usernames who retweeted")
+        usernames: list = SchemaField(
+            description="List of user usernames who retweeted"
+        )
         next_token: str = SchemaField(description="Token for next page of results")
 
         # Complete Outputs for advanced use
-        data : list[dict] = SchemaField(description="Complete Tweet data")
-        included : dict = SchemaField(description="Additional data that you have requested (Optional) via Expansions field")
-        meta : dict = SchemaField(description="Provides metadata such as pagination info (next_token) or result counts")
+        data: list[dict] = SchemaField(description="Complete Tweet data")
+        included: dict = SchemaField(
+            description="Additional data that you have requested (Optional) via Expansions field"
+        )
+        meta: dict = SchemaField(
+            description="Provides metadata such as pagination info (next_token) or result counts"
+        )
 
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -231,7 +237,7 @@ class TwitterGetRetweetersBlock(Block):
                 "place_fields": [],
                 "poll_fields": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -239,7 +245,10 @@ class TwitterGetRetweetersBlock(Block):
                 ("names", ["Test User"]),
                 ("usernames", ["testuser"]),
                 ("next_token", "next_token_value"),
-                ("data", [{"id": "12345", "name": "Test User", "username": "testuser"}]),
+                (
+                    "data",
+                    [{"id": "12345", "name": "Test User", "username": "testuser"}],
+                ),
                 ("included", {}),
                 ("meta", {"next_token": "next_token_value"}),
             ],
@@ -251,9 +260,9 @@ class TwitterGetRetweetersBlock(Block):
                     ["12345"],
                     ["Test User"],
                     ["testuser"],
-                    "next_token_value"
+                    "next_token_value",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -261,10 +270,10 @@ class TwitterGetRetweetersBlock(Block):
         credentials: TwitterCredentials,
         tweet_id: str,
         max_results: int,
-        pagination_token: str ,
+        pagination_token: str,
         expansions: list[UserExpansions],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -274,15 +283,19 @@ class TwitterGetRetweetersBlock(Block):
             params = {
                 "id": tweet_id,
                 "max_results": max_results,
-                "pagination_token":None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
+            params = (
+                UserExpansionsBuilder(params)
                 .add_expansions(expansions)
                 .add_tweet_fields(tweet_fields)
                 .add_user_fields(user_fields)
-                .build())
+                .build()
+            )
 
             response = cast(Response, client.get_retweeters(**params))
 
@@ -318,14 +331,16 @@ class TwitterGetRetweetersBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            data, included, meta, ids, names, usernames, next_token = self.get_retweeters(
-                credentials,
-                input_data.tweet_id,
-                input_data.max_results,
-                input_data.pagination_token,
-                input_data.expansions,
-                input_data.tweet_fields,
-                input_data.user_fields
+            data, included, meta, ids, names, usernames, next_token = (
+                self.get_retweeters(
+                    credentials,
+                    input_data.tweet_id,
+                    input_data.max_results,
+                    input_data.pagination_token,
+                    input_data.expansions,
+                    input_data.tweet_fields,
+                    input_data.user_fields,
+                )
             )
 
             if ids:

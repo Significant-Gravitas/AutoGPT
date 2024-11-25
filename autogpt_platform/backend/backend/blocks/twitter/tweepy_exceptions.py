@@ -1,5 +1,6 @@
 import tweepy
 
+
 def handle_tweepy_exception(e: Exception) -> str:
     if isinstance(e, tweepy.BadRequest):
         return f"Bad Request (400): {str(e)}"

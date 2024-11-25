@@ -5,10 +5,12 @@ from backend.data.model import SchemaField
 
 # -------------- Tweets -----------------
 
+
 class TweetReplySettings(str, Enum):
     mentioned_users = "Mentioned_Users_Only"
     following = "Following_Users_Only"
     all_users = "All_Users"
+
 
 class TweetUserFields(str, Enum):
     created_at = "Account_Creation_Date"
@@ -27,6 +29,7 @@ class TweetUserFields(str, Enum):
     verified = "Is_Verified"
     verified_type = "Verification_Type"
     withheld = "Content_Withholding_Info"
+
 
 class TweetFields(str, Enum):
     attachments = "Tweet_Attachments"
@@ -47,6 +50,7 @@ class TweetFields(str, Enum):
     source = "Tweet_Source"
     text = "Tweet_Text"
     withheld = "Withheld_Content"
+
 
 class PersonalTweetFields(str, Enum):
     attachments = "attachments"
@@ -71,12 +75,14 @@ class PersonalTweetFields(str, Enum):
     text = "text"
     withheld = "withheld"
 
+
 class TweetPollFields(str, Enum):
     duration_minutes = "Duration_Minutes"
     end_datetime = "End_DateTime"
     id = "Poll_ID"
     options = "Poll_Options"
     voting_status = "Voting_Status"
+
 
 class TweetPlaceFields(str, Enum):
     contained_within = "Contained_Within_Places"
@@ -87,6 +93,7 @@ class TweetPlaceFields(str, Enum):
     id = "Place_ID"
     place_name = "Place_Name"
     place_type = "Place_Type"
+
 
 class TweetMediaFields(str, Enum):
     duration_ms = "Duration_in_Milliseconds"
@@ -103,6 +110,7 @@ class TweetMediaFields(str, Enum):
     alt_text = "Alternative_Text"
     variants = "Media_Variants"
 
+
 class TweetExpansions(str, Enum):
     attachments_poll_ids = "Poll_IDs"
     attachments_media_keys = "Media_Keys"
@@ -114,17 +122,21 @@ class TweetExpansions(str, Enum):
     referenced_tweets_id = "Referenced_Tweet_ID"
     referenced_tweets_id_author_id = "Referenced_Tweet_Author_ID"
 
+
 class TweetExcludes(str, Enum):
     retweets = "retweets"
     replies = "replies"
 
+
 # -------------- Users -----------------
+
 
 class UserExpansions(str, Enum):
     pinned_tweet_id = "pinned_tweet_id"
 
 
 # -------------- DM's' -----------------
+
 
 class DMEventField(str, Enum):
     ID = "id"
@@ -137,16 +149,19 @@ class DMEventField(str, Enum):
     REFERENCED_TWEETS = "referenced_tweets"
     ATTACHMENTS = "attachments"
 
+
 class DMEventType(str, Enum):
     MESSAGE_CREATE = "MessageCreate"
     PARTICIPANTS_JOIN = "ParticipantsJoin"
     PARTICIPANTS_LEAVE = "ParticipantsLeave"
+
 
 class DMEventExpansion(str, Enum):
     ATTACHMENTS_MEDIA_KEYS = "attachments.media_keys"
     REFERENCED_TWEETS_ID = "referenced_tweets.id"
     SENDER_ID = "sender_id"
     PARTICIPANT_IDS = "participant_ids"
+
 
 class DMMediaField(str, Enum):
     DURATION_MS = "duration_ms"
@@ -159,6 +174,7 @@ class DMMediaField(str, Enum):
     PUBLIC_METRICS = "public_metrics"
     ALT_TEXT = "alt_text"
     VARIANTS = "variants"
+
 
 class DMTweetField(str, Enum):
     ATTACHMENTS = "attachments"
@@ -180,7 +196,9 @@ class DMTweetField(str, Enum):
     TEXT = "text"
     WITHHELD = "withheld"
 
+
 # -------------- Spaces -----------------
+
 
 class SpaceExpansions(str, Enum):
     invited_user_ids = "Invited_Users"
@@ -188,6 +206,7 @@ class SpaceExpansions(str, Enum):
     creator_id = "Creator"
     host_ids = "Hosts"
     topic_ids = "Topics"
+
 
 class SpaceFields(str, Enum):
     id = "Space_ID"
@@ -207,6 +226,7 @@ class SpaceFields(str, Enum):
     topic_ids = "Topic_IDs"
     updated_at = "Last_Updated_Time"
 
+
 class SpaceStates(str, Enum):
     LIVE = "live"
     SCHEDULED = "scheduled"
@@ -215,8 +235,10 @@ class SpaceStates(str, Enum):
 
 # -------------- List Expansions -----------------
 
+
 class ListExpansions(str, Enum):
     owner_id = "List_Owner_ID"
+
 
 class ListFields(str, Enum):
     id = "List_ID"
@@ -233,7 +255,7 @@ class ListFields(str, Enum):
 class TweetExpansionInputs(BlockSchema):
     expansions: list[TweetExpansions] = SchemaField(
         description="Choose what extra information you want to get with your tweets. For example:\n- Select 'Media_Keys' to get media details\n- Select 'Author_User_ID' to get user information\n- Select 'Place_ID' to get location details",
-        enum = TweetExpansions,
+        enum=TweetExpansions,
         placeholder="Pick the extra information you want to see",
         default=[],
         is_multi_select=True,
@@ -242,11 +264,11 @@ class TweetExpansionInputs(BlockSchema):
 
     media_fields: list[TweetMediaFields] = SchemaField(
         description="Select what media information you want to see (images, videos, etc). To use this, you must first select 'Media_Keys' in the expansions above.",
-        enum = TweetMediaFields,
+        enum=TweetMediaFields,
         placeholder="Choose what media details you want to see",
         default=[],
         is_multi_select=True,
-        advanced=True
+        advanced=True,
     )
 
     place_fields: list[TweetPlaceFields] = SchemaField(
@@ -255,7 +277,7 @@ class TweetExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = TweetPlaceFields
+        enum=TweetPlaceFields,
     )
 
     poll_fields: list[TweetPollFields] = SchemaField(
@@ -264,7 +286,7 @@ class TweetExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = TweetPollFields
+        enum=TweetPollFields,
     )
 
     tweet_fields: list[TweetFields] = SchemaField(
@@ -273,7 +295,7 @@ class TweetExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = TweetFields
+        enum=TweetFields,
     )
 
     user_fields: list[TweetUserFields] = SchemaField(
@@ -282,13 +304,14 @@ class TweetExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = TweetUserFields
+        enum=TweetUserFields,
     )
+
 
 class DMEventExpansionInputs(BlockSchema):
     expansions: list[DMEventExpansion] = SchemaField(
         description="Select expansions to include related data objects in the 'includes' section.",
-        enum = DMEventExpansion,
+        enum=DMEventExpansion,
         placeholder="Enter expansions",
         default=[],
         is_multi_select=True,
@@ -301,7 +324,7 @@ class DMEventExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = DMEventType
+        enum=DMEventType,
     )
 
     media_fields: list[DMMediaField] = SchemaField(
@@ -310,7 +333,7 @@ class DMEventExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = DMMediaField
+        enum=DMMediaField,
     )
 
     tweet_fields: list[DMTweetField] = SchemaField(
@@ -319,7 +342,7 @@ class DMEventExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = DMTweetField
+        enum=DMTweetField,
     )
 
     user_fields: list[TweetUserFields] = SchemaField(
@@ -328,41 +351,43 @@ class DMEventExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = TweetUserFields
+        enum=TweetUserFields,
     )
 
+
 class UserExpansionInputs(BlockSchema):
-        expansions: list[UserExpansions] = SchemaField(
-            description="Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet.",
-            enum = UserExpansions,
-            placeholder="Select extra user information to include",
-            default=[],
-            is_multi_select=True,
-            advanced=True,
-        )
+    expansions: list[UserExpansions] = SchemaField(
+        description="Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet.",
+        enum=UserExpansions,
+        placeholder="Select extra user information to include",
+        default=[],
+        is_multi_select=True,
+        advanced=True,
+    )
 
-        tweet_fields: list[TweetFields] = SchemaField(
-            description="Select what tweet information you want to see in pinned tweets. This only works if you select 'pinned_tweet_id' in expansions above.",
-            placeholder="Choose what details to see in pinned tweets",
-            default=[],
-            advanced=True,
-            is_multi_select=True,
-            enum = TweetFields
-        )
+    tweet_fields: list[TweetFields] = SchemaField(
+        description="Select what tweet information you want to see in pinned tweets. This only works if you select 'pinned_tweet_id' in expansions above.",
+        placeholder="Choose what details to see in pinned tweets",
+        default=[],
+        advanced=True,
+        is_multi_select=True,
+        enum=TweetFields,
+    )
 
-        user_fields: list[TweetUserFields] = SchemaField(
-            description="Select what user information you want to see, like username, bio, profile picture, etc.",
-            placeholder="Choose what user details you want to see",
-            default=[],
-            advanced=True,
-            is_multi_select=True,
-            enum = TweetUserFields
-        )
+    user_fields: list[TweetUserFields] = SchemaField(
+        description="Select what user information you want to see, like username, bio, profile picture, etc.",
+        placeholder="Choose what user details you want to see",
+        default=[],
+        advanced=True,
+        is_multi_select=True,
+        enum=TweetUserFields,
+    )
+
 
 class SpaceExpansionInputs(BlockSchema):
     expansions: list[SpaceExpansions] = SchemaField(
         description="Choose additional information you want to get with your Twitter Spaces:\n- Select 'Invited_Users' to see who was invited\n- Select 'Speakers' to see who can speak\n- Select 'Creator' to get details about who made the Space\n- Select 'Hosts' to see who's hosting\n- Select 'Topics' to see Space topics",
-        enum = SpaceExpansions,
+        enum=SpaceExpansions,
         placeholder="Pick what extra information you want to see about the Space",
         default=[],
         is_multi_select=True,
@@ -372,10 +397,10 @@ class SpaceExpansionInputs(BlockSchema):
     space_fields: list[SpaceFields] = SchemaField(
         description="Choose what Space details you want to see, such as:\n- Title\n- Start/End times\n- Number of participants\n- Language\n- State (live/scheduled)\n- And more",
         placeholder="Choose what Space information you want to get",
-        default=[SpaceFields.title_,SpaceFields.host_ids],
+        default=[SpaceFields.title_, SpaceFields.host_ids],
         advanced=True,
         is_multi_select=True,
-        enum = SpaceFields
+        enum=SpaceFields,
     )
 
     user_fields: list[TweetUserFields] = SchemaField(
@@ -384,13 +409,14 @@ class SpaceExpansionInputs(BlockSchema):
         default=[],
         advanced=True,
         is_multi_select=True,
-        enum = TweetUserFields
+        enum=TweetUserFields,
     )
+
 
 class ListExpansionInputs(BlockSchema):
     expansions: list[ListExpansions] = SchemaField(
         description="Choose what extra information you want to get with your Twitter Lists:\n- Select 'List_Owner_ID' to get details about who owns the list\n\nThis will let you see more details about the list owner when you also select user fields below.",
-        enum = ListExpansions,
+        enum=ListExpansions,
         placeholder="Pick what extra list information you want to see",
         default=[ListExpansions.owner_id],
         is_multi_select=True,
@@ -400,10 +426,10 @@ class ListExpansionInputs(BlockSchema):
     user_fields: list[TweetUserFields] = SchemaField(
         description="Choose what information you want to see about list owners. This only works when you select 'List_Owner_ID' in expansions above.\n\nYou can see things like:\n- Their username\n- Profile picture\n- Account details\n- And more",
         placeholder="Select what details you want to see about list owners",
-        default=[TweetUserFields.id,TweetUserFields.username],
+        default=[TweetUserFields.id, TweetUserFields.username],
         advanced=True,
         is_multi_select=True,
-        enum = TweetUserFields
+        enum=TweetUserFields,
     )
 
     list_fields: list[ListFields] = SchemaField(
@@ -412,8 +438,9 @@ class ListExpansionInputs(BlockSchema):
         default=[ListFields.owner_id],
         advanced=True,
         is_multi_select=True,
-        enum = ListFields
+        enum=ListFields,
     )
+
 
 class TweetTimeWindowInputs(BlockSchema):
     start_time: str = SchemaField(
@@ -434,7 +461,7 @@ class TweetTimeWindowInputs(BlockSchema):
         placeholder="Enter since ID",
     )
 
-    until_id: str  = SchemaField(
+    until_id: str = SchemaField(
         description="Returns results with Tweet ID less than this (that is, older than), and used with since_id",
         default="",
         placeholder="Enter until ID",

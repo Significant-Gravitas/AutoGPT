@@ -3,12 +3,6 @@ from typing import cast
 import tweepy
 from tweepy.client import Response
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._types import ListExpansionInputs, ListExpansions, ListFields, TweetUserFields
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.blocks.twitter._builders import ListExpansionsBuilder
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,21 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import ListExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    ListExpansionInputs,
+    ListExpansions,
+    ListFields,
+    TweetUserFields,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterGetListBlock(Block):
     """
@@ -30,7 +39,7 @@ class TwitterGetListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to lookup",
             placeholder="Enter list ID",
-            required=True
+            required=True,
         )
 
     class Output(BlockSchema):
@@ -42,7 +51,9 @@ class TwitterGetListBlock(Block):
 
         # Complete outputs
         data: dict = SchemaField(description="Complete list data")
-        included: dict = SchemaField(description="Additional data requested via expansions")
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata about the response")
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -58,7 +69,7 @@ class TwitterGetListBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "list_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -69,14 +80,14 @@ class TwitterGetListBlock(Block):
                 ("data", {"id": "84839422", "name": "Official Twitter Accounts"}),
                 ("included", {}),
                 ("meta", {}),
-                ("error", "")
+                ("error", ""),
             ],
             test_mock={
-                "get_list": lambda *args, **kwargs: ({
-                    "id": "84839422",
-                    "name": "Official Twitter Accounts"
-                }, {})
-            }
+                "get_list": lambda *args, **kwargs: (
+                    {"id": "84839422", "name": "Official Twitter Accounts"},
+                    {},
+                )
+            },
         )
 
     @staticmethod
@@ -92,23 +103,17 @@ class TwitterGetListBlock(Block):
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            params = {
-                "id": list_id,
-                "user_auth": False
-            }
+            params = {"id": list_id, "user_auth": False}
 
-            params = (ListExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_user_fields(user_fields)
-                    .add_list_fields(list_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_list(
-                    **params
-                )
+            params = (
+                ListExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_user_fields(user_fields)
+                .add_list_fields(list_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_list(**params))
 
             meta = {}
             owner_id = ""
@@ -145,7 +150,7 @@ class TwitterGetListBlock(Block):
                 input_data.list_id,
                 input_data.expansions,
                 input_data.user_fields,
-                input_data.list_fields
+                input_data.list_fields,
             )
 
             yield "id", str(list_data["id"])
@@ -163,6 +168,7 @@ class TwitterGetListBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetOwnedListsBlock(Block):
     """
     Gets all Lists owned by the specified user
@@ -170,13 +176,13 @@ class TwitterGetOwnedListsBlock(Block):
 
     class Input(ListExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["tweet.read", "users.read","list.read", "offline.access"]
+            ["tweet.read", "users.read", "list.read", "offline.access"]
         )
 
         user_id: str = SchemaField(
             description="The user ID whose owned Lists to retrieve",
             placeholder="Enter user ID",
-            required=True
+            required=True,
         )
 
         max_results: int = SchemaField(
@@ -190,7 +196,7 @@ class TwitterGetOwnedListsBlock(Block):
             description="Token for pagination",
             placeholder="Enter pagination token",
             advanced=True,
-            default=""
+            default="",
         )
 
     class Output(BlockSchema):
@@ -201,7 +207,9 @@ class TwitterGetOwnedListsBlock(Block):
 
         # Complete outputs
         data: list[dict] = SchemaField(description="Complete owned lists data")
-        included: dict = SchemaField(description="Additional data requested via expansions")
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata about the response")
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -218,23 +226,39 @@ class TwitterGetOwnedListsBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "list_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("list_ids", ["84839422"]),
                 ("list_names", ["Official Twitter Accounts"]),
                 ("next_token", None),
-                ("data", {"owned_lists": [{"id": "84839422", "name": "Official Twitter Accounts"}]}),
+                (
+                    "data",
+                    {
+                        "owned_lists": [
+                            {"id": "84839422", "name": "Official Twitter Accounts"}
+                        ]
+                    },
+                ),
                 ("included", {}),
                 ("meta", {}),
-                ("error", "")
+                ("error", ""),
             ],
             test_mock={
-                "get_owned_lists": lambda *args, **kwargs: ({
-                    "owned_lists": [{"id": "84839422", "name": "Official Twitter Accounts"}]
-                }, {}, {}, ["84839422"], ["Official Twitter Accounts"], None)
-            }
+                "get_owned_lists": lambda *args, **kwargs: (
+                    {
+                        "owned_lists": [
+                            {"id": "84839422", "name": "Official Twitter Accounts"}
+                        ]
+                    },
+                    {},
+                    {},
+                    ["84839422"],
+                    ["Official Twitter Accounts"],
+                    None,
+                )
+            },
         )
 
     @staticmethod
@@ -245,7 +269,7 @@ class TwitterGetOwnedListsBlock(Block):
         pagination_token: str,
         expansions: list[ListExpansions],
         user_fields: list[TweetUserFields],
-        list_fields: list[ListFields]
+        list_fields: list[ListFields],
     ):
         try:
             client = tweepy.Client(
@@ -255,21 +279,21 @@ class TwitterGetOwnedListsBlock(Block):
             params = {
                 "id": user_id,
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (ListExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_user_fields(user_fields)
-                    .add_list_fields(list_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_owned_lists(**params)
+            params = (
+                ListExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_user_fields(user_fields)
+                .add_list_fields(list_fields)
+                .build()
             )
 
+            response = cast(Response, client.get_owned_lists(**params))
 
             meta = {}
             list_ids = []
@@ -289,7 +313,6 @@ class TwitterGetOwnedListsBlock(Block):
 
                 return data, included, meta, list_ids, list_names, next_token
 
-
             raise Exception("Lists not found")
 
         except tweepy.TweepyException:
@@ -303,14 +326,16 @@ class TwitterGetOwnedListsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            list_data, included, meta, list_ids, list_names, next_token = self.get_owned_lists(
-                credentials,
-                input_data.user_id,
-                input_data.max_results,
-                input_data.pagination_token,
-                input_data.expansions,
-                input_data.user_fields,
-                input_data.list_fields
+            list_data, included, meta, list_ids, list_names, next_token = (
+                self.get_owned_lists(
+                    credentials,
+                    input_data.user_id,
+                    input_data.max_results,
+                    input_data.pagination_token,
+                    input_data.expansions,
+                    input_data.user_fields,
+                    input_data.list_fields,
+                )
             )
 
             if list_ids:

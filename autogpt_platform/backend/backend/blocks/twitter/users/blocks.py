@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.blocks.twitter._types import TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import UserExpansionsBuilder
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,18 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import UserExpansionsBuilder
+from backend.blocks.twitter._serializer import IncludesSerializer
+from backend.blocks.twitter._types import (
+    TweetFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterUnblockUserBlock(Block):
     """
@@ -29,7 +35,7 @@ class TwitterUnblockUserBlock(Block):
 
         target_user_id: str = SchemaField(
             description="The user ID of the user that you would like to unblock",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
     class Output(BlockSchema):
@@ -45,7 +51,7 @@ class TwitterUnblockUserBlock(Block):
             output_schema=TwitterUnblockUserBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -54,20 +60,13 @@ class TwitterUnblockUserBlock(Block):
         )
 
     @staticmethod
-    def unblock_user(
-        credentials: TwitterCredentials,
-        target_user_id: str
-    ):
+    def unblock_user(credentials: TwitterCredentials, target_user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.unblock(
-                target_user_id=target_user_id,
-                user_auth=False
-            )
-
+            client.unblock(target_user_id=target_user_id, user_auth=False)
 
             return True
 
@@ -82,13 +81,11 @@ class TwitterUnblockUserBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.unblock_user(
-                credentials,
-                input_data.target_user_id
-            )
+            success = self.unblock_user(credentials, input_data.target_user_id)
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetBlockedUsersBlock(Block):
     """
@@ -104,20 +101,22 @@ class TwitterGetBlockedUsersBlock(Block):
             description="Maximum number of results to return (1-1000, default 100)",
             placeholder="Enter max results",
             default=10,
-            advanced=True
+            advanced=True,
         )
 
         pagination_token: str = SchemaField(
             description="Token for retrieving next/previous page of results",
             placeholder="Enter pagination token",
             default="",
-            advanced=True
+            advanced=True,
         )
 
     class Output(BlockSchema):
         user_ids: list[str] = SchemaField(description="List of blocked user IDs")
         usernames_: list[str] = SchemaField(description="List of blocked usernames")
-        included: dict = SchemaField(description="Additional data requested via expansions")
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata including pagination info")
         next_token: str = SchemaField(description="Next token for pagination")
         error: str = SchemaField(description="Error message if the request failed")
@@ -135,7 +134,7 @@ class TwitterGetBlockedUsersBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -143,7 +142,7 @@ class TwitterGetBlockedUsersBlock(Block):
                 ("usernames_", ["testuser1", "testuser2"]),
                 ("included", {}),
                 ("meta", {"next_token": "next_token_value"}),
-                ("next_token", "next_token_value")
+                ("next_token", "next_token_value"),
             ],
         )
 
@@ -163,22 +162,21 @@ class TwitterGetBlockedUsersBlock(Block):
 
             params = {
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_blocked(
-                   **params
-                )
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_blocked(**params))
 
             meta = {}
             user_ids = []
@@ -219,7 +217,7 @@ class TwitterGetBlockedUsersBlock(Block):
                 input_data.pagination_token,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if user_ids:
                 yield "user_ids", user_ids
@@ -234,6 +232,7 @@ class TwitterGetBlockedUsersBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterBlockUserBlock(Block):
     """
     Block a specific user on Twitter
@@ -246,7 +245,7 @@ class TwitterBlockUserBlock(Block):
 
         target_user_id: str = SchemaField(
             description="The user ID of the user that you would like to block",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
     class Output(BlockSchema):
@@ -262,7 +261,7 @@ class TwitterBlockUserBlock(Block):
             output_schema=TwitterBlockUserBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -271,16 +270,13 @@ class TwitterBlockUserBlock(Block):
         )
 
     @staticmethod
-    def block_user(
-        credentials: TwitterCredentials,
-        target_user_id: str
-    ):
+    def block_user(credentials: TwitterCredentials, target_user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.block(target_user_id=target_user_id,user_auth=False)
+            client.block(target_user_id=target_user_id, user_auth=False)
 
             return True
 
@@ -295,10 +291,7 @@ class TwitterBlockUserBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.block_user(
-                credentials,
-                input_data.target_user_id
-            )
+            success = self.block_user(credentials, input_data.target_user_id)
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)

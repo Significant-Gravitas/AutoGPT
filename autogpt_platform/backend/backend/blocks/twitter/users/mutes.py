@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import UserExpansionsBuilder
-from backend.blocks.twitter._types import TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,21 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import UserExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterUnmuteUserBlock(Block):
     """
@@ -29,11 +38,13 @@ class TwitterUnmuteUserBlock(Block):
 
         target_user_id: str = SchemaField(
             description="The user ID of the user that you would like to unmute",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
     class Output(BlockSchema):
-        success: bool = SchemaField(description="Whether the unmute action was successful")
+        success: bool = SchemaField(
+            description="Whether the unmute action was successful"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -45,7 +56,7 @@ class TwitterUnmuteUserBlock(Block):
             output_schema=TwitterUnmuteUserBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -54,16 +65,13 @@ class TwitterUnmuteUserBlock(Block):
         )
 
     @staticmethod
-    def unmute_user(
-        credentials: TwitterCredentials,
-        target_user_id: str
-    ):
+    def unmute_user(credentials: TwitterCredentials, target_user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.unmute(target_user_id=target_user_id,user_auth=False)
+            client.unmute(target_user_id=target_user_id, user_auth=False)
 
             return True
 
@@ -78,14 +86,12 @@ class TwitterUnmuteUserBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.unmute_user(
-                credentials,
-                input_data.target_user_id
-            )
+            success = self.unmute_user(credentials, input_data.target_user_id)
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetMutedUsersBlock(Block):
     """
@@ -101,14 +107,14 @@ class TwitterGetMutedUsersBlock(Block):
             description="The maximum number of results to be returned per page (1-1000). Default is 100.",
             placeholder="Enter max results",
             default=10,
-            advanced=True
+            advanced=True,
         )
 
         pagination_token: str = SchemaField(
             description="Token to request next/previous page of results",
             placeholder="Enter pagination token",
             default="",
-            advanced=True
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -117,7 +123,9 @@ class TwitterGetMutedUsersBlock(Block):
         next_token: str = SchemaField(description="Next token for pagination")
 
         data: list[dict] = SchemaField(description="Complete user data for muted users")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata including pagination info")
 
         error: str = SchemaField(description="Error message if the request failed")
@@ -135,30 +143,36 @@ class TwitterGetMutedUsersBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("ids", ["12345", "67890"]),
                 ("usernames", ["testuser1", "testuser2"]),
-                ("data", [
-                    {"id": "12345", "username": "testuser1"},
-                    {"id": "67890", "username": "testuser2"}
-                ]),
+                (
+                    "data",
+                    [
+                        {"id": "12345", "username": "testuser1"},
+                        {"id": "67890", "username": "testuser2"},
+                    ],
+                ),
                 ("includes", {}),
                 ("meta", {"next_token": "next_token_value"}),
-                ("next_token", "next_token_value")
+                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_muted_users": lambda *args, **kwargs: (
                     ["12345", "67890"],
                     ["testuser1", "testuser2"],
-                    [{"id": "12345", "username": "testuser1"}, {"id": "67890", "username": "testuser2"}],
+                    [
+                        {"id": "12345", "username": "testuser1"},
+                        {"id": "67890", "username": "testuser2"},
+                    ],
                     {},
                     {"next_token": "next_token_value"},
-                    "next_token_value"
+                    "next_token_value",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -177,20 +191,21 @@ class TwitterGetMutedUsersBlock(Block):
 
             params = {
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_muted(**params)
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_muted(**params))
 
             meta = {}
             user_ids = []
@@ -229,7 +244,7 @@ class TwitterGetMutedUsersBlock(Block):
                 input_data.pagination_token,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if ids:
                 yield "ids", ids
@@ -246,6 +261,7 @@ class TwitterGetMutedUsersBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterMuteUserBlock(Block):
     """
     Allows a user to mute another user specified by target user ID
@@ -258,11 +274,13 @@ class TwitterMuteUserBlock(Block):
 
         target_user_id: str = SchemaField(
             description="The user ID of the user that you would like to mute",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
     class Output(BlockSchema):
-        success: bool = SchemaField(description="Whether the mute action was successful")
+        success: bool = SchemaField(
+            description="Whether the mute action was successful"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -274,7 +292,7 @@ class TwitterMuteUserBlock(Block):
             output_schema=TwitterMuteUserBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -283,16 +301,13 @@ class TwitterMuteUserBlock(Block):
         )
 
     @staticmethod
-    def mute_user(
-        credentials: TwitterCredentials,
-        target_user_id: str
-    ):
+    def mute_user(credentials: TwitterCredentials, target_user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.mute(target_user_id=target_user_id,user_auth=False)
+            client.mute(target_user_id=target_user_id, user_auth=False)
 
             return True
 
@@ -307,10 +322,7 @@ class TwitterMuteUserBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.mute_user(
-                credentials,
-                input_data.target_user_id
-            )
+            success = self.mute_user(credentials, input_data.target_user_id)
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)

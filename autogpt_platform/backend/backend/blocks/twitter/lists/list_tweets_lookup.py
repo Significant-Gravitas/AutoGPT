@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.blocks.twitter._builders import TweetExpansionsBuilder
-from backend.blocks.twitter._types import TweetExpansionInputs, TweetExpansions, TweetFields, TweetMediaFields, TweetPlaceFields, TweetPollFields, TweetUserFields
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,24 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import TweetExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetExpansionInputs,
+    TweetExpansions,
+    TweetFields,
+    TweetMediaFields,
+    TweetPlaceFields,
+    TweetPollFields,
+    TweetUserFields,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterGetListTweetsBlock(Block):
     """
@@ -30,7 +42,7 @@ class TwitterGetListTweetsBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List whose Tweets you would like to retrieve",
             placeholder="Enter list ID",
-            required=True
+            required=True,
         )
 
         max_results: int = SchemaField(
@@ -43,7 +55,7 @@ class TwitterGetListTweetsBlock(Block):
         pagination_token: str = SchemaField(
             description="Token for paginating through results",
             placeholder="Enter pagination token",
-            default = "",
+            default="",
             advanced=True,
         )
 
@@ -55,8 +67,12 @@ class TwitterGetListTweetsBlock(Block):
 
         # Complete outputs
         data: list[dict] = SchemaField(description="Complete list tweets data")
-        included: dict = SchemaField(description="Additional data requested via expansions")
-        meta: dict = SchemaField(description="Response metadata including pagination tokens")
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
+        meta: dict = SchemaField(
+            description="Response metadata including pagination tokens"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -76,7 +92,7 @@ class TwitterGetListTweetsBlock(Block):
                 "place_fields": [],
                 "poll_fields": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -86,13 +102,18 @@ class TwitterGetListTweetsBlock(Block):
                 ("data", {"list_tweets": [{"id": "1234567890", "text": "Test tweet"}]}),
                 ("included", {}),
                 ("meta", {}),
-                ("error", "")
+                ("error", ""),
             ],
             test_mock={
-                "get_list_tweets": lambda *args, **kwargs: ({
-                    "list_tweets": [{"id": "1234567890", "text": "Test tweet"}]
-                }, {}, {}, ["1234567890"], ["Test tweet"], None)
-            }
+                "get_list_tweets": lambda *args, **kwargs: (
+                    {"list_tweets": [{"id": "1234567890", "text": "Test tweet"}]},
+                    {},
+                    {},
+                    ["1234567890"],
+                    ["Test tweet"],
+                    None,
+                )
+            },
         )
 
     @staticmethod
@@ -106,7 +127,7 @@ class TwitterGetListTweetsBlock(Block):
         place_fields: list[TweetPlaceFields],
         poll_fields: list[TweetPollFields],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -116,23 +137,24 @@ class TwitterGetListTweetsBlock(Block):
             params = {
                 "id": list_id,
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (TweetExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_media_fields(media_fields)
-                    .add_place_fields(place_fields)
-                    .add_poll_fields(poll_fields)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_list_tweets(**params)
+            params = (
+                TweetExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_media_fields(media_fields)
+                .add_place_fields(place_fields)
+                .add_poll_fields(poll_fields)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_list_tweets(**params))
 
             meta = {}
             tweet_ids = []
@@ -165,17 +187,19 @@ class TwitterGetListTweetsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            list_data, included, meta, tweet_ids, texts, next_token = self.get_list_tweets(
-                credentials,
-                input_data.list_id,
-                input_data.max_results,
-                input_data.pagination_token,
-                input_data.expansions,
-                input_data.media_fields,
-                input_data.place_fields,
-                input_data.poll_fields,
-                input_data.tweet_fields,
-                input_data.user_fields
+            list_data, included, meta, tweet_ids, texts, next_token = (
+                self.get_list_tweets(
+                    credentials,
+                    input_data.list_id,
+                    input_data.max_results,
+                    input_data.pagination_token,
+                    input_data.expansions,
+                    input_data.media_fields,
+                    input_data.place_fields,
+                    input_data.poll_fields,
+                    input_data.tweet_fields,
+                    input_data.user_fields,
+                )
             )
 
             if tweet_ids:
