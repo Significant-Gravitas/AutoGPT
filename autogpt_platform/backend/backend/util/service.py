@@ -120,7 +120,7 @@ class AppService(AppProcess, ABC):
 
     @classmethod
     def get_host(cls) -> str:
-        return os.environ.get(f"{cls.service_name.upper()}_HOST", Config().pyro_host)
+        return os.environ.get(f"{cls.service_name.upper()}_HOST", config.pyro_host)
 
     def run_service(self) -> None:
         while True:
@@ -170,14 +170,13 @@ class AppService(AppProcess, ABC):
 
     @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
-        conf = Config()
         maximum_connection_thread_count = max(
             Pyro5.config.THREADPOOL_SIZE,
-            conf.num_node_workers * conf.num_graph_workers,
+            config.num_node_workers * config.num_graph_workers,
         )
 
         Pyro5.config.THREADPOOL_SIZE = maximum_connection_thread_count  # type: ignore
-        daemon = Pyro5.api.Daemon(host=conf.pyro_host, port=self.get_port())
+        daemon = Pyro5.api.Daemon(host=config.pyro_host, port=self.get_port())
         self.uri = daemon.register(self, objectId=self.service_name)
         logger.info(f"[{self.service_name}] Connected to Pyro; URI = {self.uri}")
         daemon.requestLoop()
@@ -209,7 +208,7 @@ def get_service_client(service_type: Type[AS]) -> AS:
     class DynamicClient(PyroClient):
         @conn_retry("Pyro", f"Connecting to [{service_name}]")
         def __init__(self):
-            host = os.environ.get(f"{service_name.upper()}_HOST", "localhost")
+            host = os.environ.get(f"{service_name.upper()}_HOST", pyro_host)
             uri = f"PYRO:{service_type.service_name}@{host}:{service_type.get_port()}"
             logger.debug(f"Connecting to service [{service_name}]. URI = {uri}")
             self.proxy = Pyro5.api.Proxy(uri)
