@@ -1,25 +1,65 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "./Button";
-import Image from "next/image";
-import { IconPersonFill } from "@/components/ui/icons";
 import { useState } from "react";
-import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/client";
-import { CreatorDetails } from "@/lib/autogpt-server-api/";
-export const AVAILABLE_CATEGORIES = [
-  "Entertainment",
-  "Blog",
-  "Business",
-  "Content creation",
-  "AI Development",
-  "Tech",
-  "Open Source",
-  "Education",
-  "Research",
-] as const;
+
+import Image from "next/image";
+
+import { Button } from "./Button";
+
+import { IconPersonFill } from "@/components/ui/icons";
+
+import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
+import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
+import { createClient } from "@/lib/supabase/client";
 
 export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [profileData, setProfileData] = useState(profile);
+
+  const supabase = createClient();
+
+  const api = new AutoGPTServerAPI(
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+    supabase,
+  );
+
+  const submitForm = async () => {
+    try {
+      setIsSubmitting(true);
+  
+      const updatedProfile = {
+        name: profileData.name,
+        username: profileData.username,
+        description: profileData.description,
+        links: profileData.links,
+        avatar_url: ""
+      };
+
+      if (!isSubmitting) {
+        const returnedProfile = await api.updateStoreProfile(updatedProfile as ProfileDetails);
+        setProfileData(returnedProfile as CreatorDetails);
+      }
+
+    } catch (error) {
+      console.error("Error updating profile:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleImageUpload = async (file: File) => {
+    try {
+      await api.uploadStoreSubmissionMedia(file);
+      // Refresh profile data to show new image
+      const updatedProfile = await api.getStoreProfile("profile");
+      setProfileData(updatedProfile as CreatorDetails);
+    } catch (error) {
+      console.error("Error uploading image:", error);
+    }
+  };
+
   return (
     <div className="w-full p-4 sm:p-8">
       <h1 className="mb-6 font-['Poppins'] text-[28px] font-medium text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
@@ -29,9 +69,9 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
       <div className="mb-8 sm:mb-12">
         <div className="mb-8 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
           <div className="relative h-[130px] w-[130px] rounded-full bg-[#d9d9d9] dark:bg-[#333333]">
-            {profile.avatar_url ? (
+            {profileData.avatar_url ? (
               <Image
-                src={profile.avatar_url}
+                src={profileData.avatar_url}
                 alt="Profile"
                 fill
                 className="rounded-full"
@@ -50,12 +90,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               input.onchange = async (e) => {
                 const file = (e.target as HTMLInputElement).files?.[0];
                 if (file) {
-                  try {
-                    const api = new AutoGPTServerAPIServerSide();
-                    await api.uploadStoreSubmissionMedia(file);
-                  } catch (error) {
-                    console.error("Error uploading image:", error);
-                  }
+                  await handleImageUpload(file);
                 }
               };
               input.click();
@@ -67,28 +102,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
 
         <form
           className="space-y-4 sm:space-y-6"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.currentTarget);
-
-            try {
-              const api = new AutoGPTServerAPIServerSide();
-              await api.updateStoreProfile({
-                name: formData.get("displayName") as string,
-                username: formData.get("handle") as string,
-                description: formData.get("bio") as string,
-                avatar_url: profile.avatar_url || "",
-                links: [1, 2, 3, 4, 5]
-                  .map((num) => formData.get(`link${num}`) as string)
-                  .filter(Boolean),
-                agent_rating: 0,
-                agent_runs: 0,
-                top_categories: [],
-              });
-            } catch (error) {
-              console.error("Error updating profile:", error);
-            }
-          }}
+          onSubmit={submitForm}
         >
           <div className="w-full">
             <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
@@ -98,9 +112,13 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               <input
                 type="text"
                 name="displayName"
-                defaultValue={profile.name}
+                defaultValue={profileData.name}
                 placeholder="Enter your display name"
                 className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                onChange={(e) => {
+                  const newProfileData = {...profileData, name: e.target.value};
+                  setProfileData(newProfileData);
+                }}
               />
             </div>
           </div>
@@ -113,9 +131,13 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               <input
                 type="text"
                 name="handle"
-                defaultValue={profile.username}
+                defaultValue={profileData.username}
                 placeholder="@username"
                 className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                onChange={(e) => {
+                  const newProfileData = {...profileData, username: e.target.value};
+                  setProfileData(newProfileData);
+                }}
               />
             </div>
           </div>
@@ -127,9 +149,13 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4 dark:border-slate-700">
               <textarea
                 name="bio"
-                defaultValue={profile.description}
+                defaultValue={profileData.description}
                 placeholder="Tell us about yourself..."
                 className="h-full w-full resize-none border-none bg-transparent font-['Geist'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                onChange={(e) => {
+                  const newProfileData = {...profileData, description: e.target.value};
+                  setProfileData(newProfileData);
+                }}
               />
             </div>
           </div>
@@ -144,7 +170,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
 
             <div className="space-y-4 sm:space-y-6">
               {[1, 2, 3, 4, 5].map((linkNum) => {
-                const link = profile.links[linkNum - 1];
+                const link = profileData.links[linkNum - 1];
                 return (
                   <div key={linkNum} className="w-full">
                     <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
@@ -157,6 +183,10 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                         placeholder="https://"
                         defaultValue={link || ""}
                         className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                        onChange={(e) => {
+                          const newProfileData = {...profileData, links: profileData.links.map((link, index) => index === linkNum - 1 ? e.target.value : link)};
+                          setProfileData(newProfileData);
+                        }}
                       />
                     </div>
                   </div>
@@ -172,10 +202,8 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               type="button"
               variant="secondary"
               className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 font-['Geist'] text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
-              onClick={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget.closest("form");
-                if (form) form.reset();
+              onClick={() => {
+                setProfileData(profile);
               }}
             >
               Cancel
@@ -183,14 +211,11 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <Button
               type="submit"
               variant="default"
+              disabled={isSubmitting}
               className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-['Geist'] text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
-              onClick={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget.closest("form");
-                if (form) form.submit();
-              }}
+              onClick={submitForm}
             >
-              Save changes
+              {isSubmitting ? 'Saving...' : 'Save changes'}
             </Button>
           </div>
         </form>

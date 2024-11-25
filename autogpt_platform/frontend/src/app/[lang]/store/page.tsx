@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
 import { Metadata } from "next";
 import { createServerClient } from "@/lib/supabase/server";
+
 async function getStoreData() {
   const supabase = createServerClient();
   const {
