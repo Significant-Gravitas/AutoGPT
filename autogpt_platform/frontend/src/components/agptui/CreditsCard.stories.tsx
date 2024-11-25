@@ -1,8 +1,9 @@
-import { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react";
 import CreditsCard from "./CreditsCard";
+import { userEvent, within } from "@storybook/test";
 
 const meta: Meta<typeof CreditsCard> = {
-  title: "AGPT UI/CreditsCard",
+  title: "AGPT UI/Credits Card",
   component: CreditsCard,
   tags: ["autodocs"],
 };
@@ -25,5 +26,18 @@ export const SmallNumber: Story = {
 export const LargeNumber: Story = {
   args: {
     credits: 1000000,
+  },
+};
+
+export const InteractionTest: Story = {
+  args: {
+    credits: 100,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const refreshButton = canvas.getByRole("button", {
+      name: /refresh credits/i,
+    });
+    await userEvent.click(refreshButton);
   },
 };

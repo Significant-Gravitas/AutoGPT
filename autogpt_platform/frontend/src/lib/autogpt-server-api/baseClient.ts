@@ -64,9 +64,9 @@ export default class BaseAutoGPTServerAPI {
     return this._request("POST", "/auth/user", {});
   }
 
-  getUserCredit(): Promise<{ credits: number }> {
+  getUserCredit(page?: string): Promise<{ credits: number }> {
     try {
-      return this._get(`/credits`);
+      return this._get(`/credits`, undefined, page);
     } catch (error) {
       return Promise.resolve({ credits: 0 });
     }
@@ -256,9 +256,11 @@ export default class BaseAutoGPTServerAPI {
   /////////// V2 STORE API /////////////////
   /////////////////////////////////////////
 
-  getStoreProfile(): Promise<ProfileDetails | null> {
+  getStoreProfile(page?: string): Promise<ProfileDetails | null> {
     try {
-      return this._get("/store/profile");
+      console.log("+++ Making API from: ", page);
+      const result = this._get("/store/profile", undefined, page);
+      return result;
     } catch (error) {
       console.error("Error fetching store profile:", error);
       return Promise.resolve(null);
@@ -325,8 +327,8 @@ export default class BaseAutoGPTServerAPI {
   /////////// INTERNAL FUNCTIONS ////////////
   //////////////////////////////??///////////
 
-  private async _get(path: string, query?: Record<string, any>) {
-    return this._request("GET", path, query);
+  private async _get(path: string, query?: Record<string, any>, page?: string) {
+    return this._request("GET", path, query, page);
   }
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
@@ -345,16 +347,44 @@ export default class BaseAutoGPTServerAPI {
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     payload?: Record<string, any>,
+    page?: string,
   ) {
     if (method !== "GET") {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    const token =
-      (await this.supabaseClient?.auth.getSession())?.data.session
-        ?.access_token || "no-token-found";
+    // Get session with retry logic
+    let token = "no-token-found";
+    let retryCount = 0;
+    const maxRetries = 3;
 
-    console.log("Request: ", method, path);
+    while (retryCount < maxRetries) {
+      const {
+        data: { session },
+      } = (await this.supabaseClient?.auth.getSession()) || {
+        data: { session: null },
+      };
+
+      if (session?.access_token) {
+        token = session.access_token;
+        break;
+      }
+
+      retryCount++;
+      if (retryCount < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
+      }
+    }
+    console.log("Request: ", method, path, "from: ", page);
+    if (token === "no-token-found") {
+      console.warn(
+        "No auth token found after retries. This may indicate a session sync issue between client and server.",
+      );
+      console.debug("Last session attempt:", retryCount);
+    } else {
+      console.log("Auth token found");
+    }
+    console.log("--------------------------------");
 
     let url = this.baseUrl + path;
     if (method === "GET" && payload) {

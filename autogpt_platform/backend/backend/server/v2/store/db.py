@@ -420,14 +420,28 @@ async def get_user_profile(
     logger.debug(f"Getting user profile for {user_id}")
 
     try:
-        profile = await prisma.models.Profile.prisma().find_unique(
+        profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}  # type: ignore
         )
 
         if not profile:
             logger.warning(f"Profile not found for user {user_id}")
-            raise backend.server.v2.store.exceptions.ProfileNotFoundError(
-                f"Profile not found for user {user_id}"
+            await prisma.models.Profile.prisma().create(
+                data=prisma.types.ProfileCreateInput(
+                    userId=user_id,
+                    name="No Profile Data",
+                    username="No Profile Data",
+                    description="No Profile Data",
+                    links=[],
+                    avatarUrl="",
+                )
+            )
+            return backend.server.v2.store.model.ProfileDetails(
+                name="No Profile Data",
+                username="No Profile Data",
+                description="No Profile Data",
+                links=[],
+                avatar_url="",
             )
 
         return backend.server.v2.store.model.ProfileDetails(

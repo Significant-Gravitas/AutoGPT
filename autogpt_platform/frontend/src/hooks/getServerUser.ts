@@ -4,6 +4,7 @@ const getServerUser = async () => {
   const supabase = createServerClient();
 
   if (!supabase) {
+    console.log(">>> failed to create supabase client");
     return { user: null, error: "Failed to create Supabase client" };
   }
 

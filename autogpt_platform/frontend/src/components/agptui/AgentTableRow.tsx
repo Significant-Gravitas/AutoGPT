@@ -54,8 +54,8 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
             <Image
               src={imageSrc}
               alt={agentName}
-              layout="fill"
-              objectFit="cover"
+              fill
+              style={{ objectFit: "cover" }}
             />
           </div>
           <div className="flex flex-col">

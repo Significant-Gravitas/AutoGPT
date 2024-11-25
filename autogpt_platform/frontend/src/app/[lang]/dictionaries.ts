@@ -5,5 +5,10 @@ const dictionaries: Record<string, () => Promise<any>> = {
   es: () => import("./dictionaries/es.json").then((module) => module.default),
 };
 
-export const getDictionary = async (locale: string): Promise<any> =>
-  dictionaries[locale]();
+export const getDictionary = async (locale: string): Promise<any> => {
+  const localeKey = locale || "en";
+  if (!dictionaries[localeKey]) {
+    return dictionaries["en"]();
+  }
+  return dictionaries[localeKey]();
+};

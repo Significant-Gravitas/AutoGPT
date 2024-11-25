@@ -40,8 +40,8 @@ interface NavbarProps {
 async function getProfileData(user: User | null) {
   const api = new AutoGPTServerAPIServerSide();
   const [profile, credits] = await Promise.all([
-    api.getStoreProfile(),
-    api.getUserCredit(),
+    api.getStoreProfile("navbar"),
+    api.getUserCredit("navbar"),
   ]);
 
   return {
@@ -66,7 +66,7 @@ export const Navbar = async ({
 
   return (
     <>
-      <nav className="sticky top-0 z-50 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 dark:border-black/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] md:inline-flex">
+      <nav className="sticky top-0 z-50 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-black/50 md:inline-flex">
         <div className="inline-flex h-[60px] items-center justify-start gap-6">
           {links.map((link) => (
             <NavbarLink key={link.name} name={link.name} href={link.href} />

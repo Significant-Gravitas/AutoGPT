@@ -44,7 +44,7 @@ export const HeroSection: React.FC = () => {
                 "Marketing",
                 "Sales",
                 "Content creation",
-                "Lorem ipsum",
+                "Coding",
                 "Lorem ipsum",
               ]}
               onFilterChange={onFilterChange}

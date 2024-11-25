@@ -14,11 +14,21 @@ import {
   FeaturedCreator,
 } from "@/components/agptui/composite/FeaturedCreators";
 import { Separator } from "@/components/ui/separator";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
 import { Metadata } from "next";
-
+import { createServerClient } from "@/lib/supabase/server";
 async function getStoreData() {
-  const api = new AutoGPTServerAPI();
+  const supabase = createServerClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const api = new AutoGPTServerAPIServerSide(
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+    supabase,
+  );
+
   const [featuredAgents, topAgents, featuredCreators] = await Promise.all([
     api.getStoreAgents({ featured: true }),
     api.getStoreAgents({ sorted_by: "runs" }),

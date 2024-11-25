@@ -24,14 +24,12 @@ interface AgentsSectionProps {
   sectionTitle: string;
   agents: Agent[];
   hideAvatars?: boolean;
-  onCardClick: (agentName: string) => void;
 }
 
 export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
   agents: topAgents,
   hideAvatars = false,
-  onCardClick,
 }) => {
   const router = useRouter();
 
@@ -66,7 +64,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
                       rating={agent.rating}
                       avatarSrc={agent.creator_avatar}
                       hideAvatar={hideAvatars}
-                      onClick={() => onCardClick(agent.agent_name)}
+                      onClick={() => handleCardClick(agent.creator, agent.slug)}
                     />
                   </CarouselItem>
                 ))}
@@ -83,7 +81,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
                   rating={agent.rating}
                   avatarSrc={agent.creator_avatar}
                   hideAvatar={hideAvatars}
-                  onClick={() => onCardClick(agent.agent_name)}
+                  onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
               ))}
             </div>

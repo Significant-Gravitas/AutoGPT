@@ -31,8 +31,8 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         <Image
           src={creatorImage}
           alt={creatorName}
-          layout="fill"
-          objectFit="cover"
+          fill
+          style={{ objectFit: "cover" }}
           className="rounded-xl"
         />
       </div>
