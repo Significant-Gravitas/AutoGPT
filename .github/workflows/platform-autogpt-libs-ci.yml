@@ -1,0 +1,76 @@
+name: AutoGPT Platform - AutoGPT Libs CI
+
+on:
+  push:
+    branches: [master, dev, ci-test*]
+    paths:
+      - ".github/workflows/platform-autogpt-libs-ci.yml"
+      - "autogpt_platform/autogpt_libs/**"
+  pull_request:
+    branches: [master, dev, release-*]
+    paths:
+      - ".github/workflows/platform-autogpt-libs-ci.yml"
+      - "autogpt_platform/autogpt_libs/**"
+
+concurrency:
+  group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/autogpt_libs
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/autogpt_libs/poetry.lock') }}
+
+      - name: Install Poetry (Unix)
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - id: lint
+        name: Run Linter
+        run: poetry run lint
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+      RUN_ENV: local
