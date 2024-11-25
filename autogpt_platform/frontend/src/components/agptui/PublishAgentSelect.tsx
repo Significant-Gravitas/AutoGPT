@@ -107,8 +107,8 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         <Image
                           src={agent.imageSrc}
                           alt={agent.name}
-                          layout="fill"
-                          objectFit="cover"
+                          fill
+                          style={{ objectFit: "cover" }}
                         />
                       </div>
                       <div className="p-3">

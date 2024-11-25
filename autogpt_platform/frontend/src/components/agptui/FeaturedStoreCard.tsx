@@ -64,8 +64,8 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
               <Image
                 src={agentImage}
                 alt={`${agentName} preview`}
-                layout="fill"
-                objectFit="cover"
+                fill
+                style={{ objectFit: "cover" }}
                 className="rounded-xl"
               />
               {creatorImage && (

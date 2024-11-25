@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentTableCard } from "./AgentTableCard";
 import { userEvent, within, expect } from "@storybook/test";
+import { type StatusType } from "./Status";
 
 const meta: Meta<typeof AgentTableCard> = {
   title: "AGPT UI/Agent Table Card",
@@ -18,7 +19,7 @@ export const Default: Story = {
     imageSrc:
       "https://ddz4ak4pa3d19.cloudfront.net/cache/53/b2/53b2bc7d7900f0e1e60bf64ebf38032d.jpg",
     dateSubmitted: "2023-05-15",
-    status: "Active",
+    status: "ACTIVE" as StatusType,
     runs: 1500,
     rating: 4.8,
     onEdit: () => console.log("Edit Super Coder"),
@@ -42,7 +43,7 @@ export const NoRuns: Story = {
 export const InactiveAgent: Story = {
   args: {
     ...Default.args,
-    status: "Inactive",
+    status: "INACTIVE" as StatusType,
   },
 };
 
@@ -58,7 +59,7 @@ export const InteractionTest: Story = {
   ...Default,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const editButton = canvas.getByText("Edit");
-    await userEvent.click(editButton);
+    const moreButton = canvas.getByRole("button");
+    await userEvent.click(moreButton);
   },
 };

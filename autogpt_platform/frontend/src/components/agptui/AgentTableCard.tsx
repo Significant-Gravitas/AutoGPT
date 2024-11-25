@@ -32,8 +32,8 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
           <Image
             src={imageSrc}
             alt={agentName}
-            layout="fill"
-            objectFit="cover"
+            fill
+            style={{ objectFit: "cover" }}
           />
         </div>
         <div className="flex-1">

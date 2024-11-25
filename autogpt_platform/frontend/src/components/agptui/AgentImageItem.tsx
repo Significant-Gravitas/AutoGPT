@@ -87,8 +87,9 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
             <Image
               src={image}
               alt="Image"
-              layout="fill"
-              objectFit="cover"
+              fill
+              sizes="100%"
+              style={{ objectFit: "cover" }}
               className="rounded-xl"
             />
           ) : (

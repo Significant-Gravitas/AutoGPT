@@ -21,7 +21,9 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
   return (
     <div
       className={`px-5 py-4 ${
-        activeLink === href ? "rounded-2xl bg-neutral-800 dark:bg-neutral-200" : ""
+        activeLink === href
+          ? "rounded-2xl bg-neutral-800 dark:bg-neutral-200"
+          : ""
       } flex items-center justify-start gap-3`}
     >
       {href === "/store" && (
@@ -42,7 +44,9 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
       <Link href={href}>
         <div
           className={`font-['Poppins'] text-xl font-medium leading-7 ${
-            activeLink === href ? "text-neutral-50 dark:text-neutral-900" : "text-neutral-900 dark:text-neutral-50"
+            activeLink === href
+              ? "text-neutral-50 dark:text-neutral-900"
+              : "text-neutral-900 dark:text-neutral-50"
           }`}
         >
           {name}

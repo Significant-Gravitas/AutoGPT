@@ -1,104 +1,58 @@
 import * as React from "react";
-import { Sidebar } from "@/components/agptui/Sidebar";
 import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
-import { IconType } from "@/components/ui/icons";
-import { Navbar } from "@/components/agptui/Navbar";
+import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
+import { createServerClient } from "@/lib/supabase/server";
 
-interface ProfilePageProps {
-  userName?: string;
-  userEmail?: string;
-  credits?: number;
-  displayName?: string;
-  handle?: string;
-  bio?: string;
-  links?: Array<{ id: number; url: string }>;
-  categories?: Array<{ id: number; name: string }>;
-  menuItemGroups?: Array<{
-    items: Array<{
-      icon: IconType;
-      text: string;
-      href?: string;
-      onClick?: () => void;
-    }>;
-  }>;
-  isLoggedIn?: boolean;
-  avatarSrc?: string;
+async function getProfileData() {
+  // Get the supabase client first
+  const supabase = createServerClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    console.warn("--- No session found in profile page");
+    return { profile: null };
+  }
+
+  // Create API client with the same supabase instance
+  const api = new AutoGPTServerAPIServerSide(
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+    supabase, // Pass the supabase client instance
+  );
+
+  try {
+    const profile = await api.getStoreProfile("profile");
+    return {
+      profile,
+    };
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    return {
+      profile: null,
+    };
+  }
 }
 
-const ProfilePage = ({
-  userName = "",
-  userEmail = "",
-  credits = 0,
-  displayName = "",
-  handle = "",
-  bio = "",
-  links = [],
-  categories = [],
-  menuItemGroups = [],
-  isLoggedIn = true,
-  avatarSrc,
-}: ProfilePageProps) => {
-  const sidebarLinkGroups = [
-    {
-      links: [
-        { text: "Creator Dashboard", href: "/dashboard" },
-        { text: "Agent dashboard", href: "/agent-dashboard" },
-        { text: "Integrations", href: "/integrations" },
-        { text: "Profile", href: "/profile" },
-        { text: "Settings", href: "/settings" },
-      ],
-    },
-  ];
+export default async function Page({
+  params: { lang },
+}: {
+  params: { lang: string };
+}) {
+  const { profile } = await getProfileData();
 
-  const updatedMenuItemGroups = [
-    {
-      items: [
-        { icon: IconType.Edit, text: "Edit profile", href: "/profile/edit" },
-      ],
-    },
-    {
-      items: [
-        {
-          icon: IconType.LayoutDashboard,
-          text: "Creator Dashboard",
-          href: "/dashboard",
-        },
-        {
-          icon: IconType.UploadCloud,
-          text: "Publish an agent",
-          href: "/publish",
-        },
-      ],
-    },
-    {
-      items: [{ icon: IconType.Settings, text: "Settings", href: "/settings" }],
-    },
-    {
-      items: [
-        {
-          icon: IconType.LogOut,
-          text: "Log out",
-          onClick: () => console.log("Logged out"),
-        },
-      ],
-    },
-  ];
-
-  const navLinks = [
-    { name: "Marketplace", href: "/marketplace" },
-    { name: "Library", href: "/library" },
-    { name: "Build", href: "/build" },
-  ];
+  if (!profile) {
+    return (
+      <div className="flex flex-col items-center justify-center p-4">
+        <p>Please log in to view your profile</p>
+      </div>
+    );
+  }
 
   return (
-    <ProfileInfoForm
-      displayName={displayName}
-      handle={handle}
-      bio={bio}
-      links={links}
-      categories={categories}
-    />
+    <div className="flex flex-col items-center justify-center p-4">
+      <ProfileInfoForm profile={profile} />
+    </div>
   );
-};
-
-export default ProfilePage;
+}

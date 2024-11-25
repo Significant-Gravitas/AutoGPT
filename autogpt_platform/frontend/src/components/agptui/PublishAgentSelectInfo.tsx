@@ -110,7 +110,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                 alt="Selected Thumbnail"
                 width={500}
                 height={350}
-                objectFit="cover"
+                style={{ objectFit: "cover" }}
                 className="rounded-md"
               />
             ) : (
@@ -145,7 +145,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       alt={`Thumbnail ${index + 1}`}
                       width={100}
                       height={70}
-                      objectFit="cover"
+                      style={{ objectFit: "cover" }}
                       className="cursor-pointer rounded-md"
                       onClick={() => setSelectedImage(src)}
                     />
