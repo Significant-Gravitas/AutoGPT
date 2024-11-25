@@ -20,8 +20,11 @@ from prisma.models import AgentBlock
 from pydantic import BaseModel
 
 from backend.util import json
+from backend.util.settings import Config
 
 from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
+
+app_config = Config()
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
@@ -34,6 +37,7 @@ class BlockType(Enum):
     INPUT = "Input"
     OUTPUT = "Output"
     NOTE = "Note"
+    WEBHOOK = "Webhook"
     AGENT = "Agent"
 
 
@@ -177,6 +181,41 @@ class EmptySchema(BlockSchema):
     pass
 
 
+# --8<-- [start:BlockWebhookConfig]
+class BlockWebhookConfig(BaseModel):
+    provider: str
+    """The service provider that the webhook connects to"""
+
+    webhook_type: str
+    """
+    Identifier for the webhook type. E.g. GitHub has repo and organization level hooks.
+
+    Only for use in the corresponding `WebhooksManager`.
+    """
+
+    resource_format: str
+    """
+    Template string for the resource that a block instance subscribes to.
+    Fields will be filled from the block's inputs (except `payload`).
+
+    Example: `f"{repo}/pull_requests"` (note: not how it's actually implemented)
+
+    Only for use in the corresponding `WebhooksManager`.
+    """
+
+    event_filter_input: str
+    """Name of the block's event filter input."""
+
+    event_format: str = "{event}"
+    """
+    Template string for the event(s) that a block instance subscribes to.
+    Applied individually to each event selected in the event filter input.
+
+    Example: `"pull_request.{event}"` -> `"pull_request.opened"`
+    """
+    # --8<-- [end:BlockWebhookConfig]
+
+
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def __init__(
         self,
@@ -193,6 +232,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         disabled: bool = False,
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
+        webhook_config: Optional[BlockWebhookConfig] = None,
     ):
         """
         Initialize the block with the given schema.
@@ -223,8 +263,37 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.contributors = contributors or set()
         self.disabled = disabled
         self.static_output = static_output
-        self.block_type = block_type
+        self.block_type = block_type if not webhook_config else BlockType.WEBHOOK
+        self.webhook_config = webhook_config
         self.execution_stats = {}
+
+        if self.webhook_config:
+            # Enforce shape of webhook event filter
+            event_filter_field = self.input_schema.model_fields[
+                self.webhook_config.event_filter_input
+            ]
+            if not (
+                isinstance(event_filter_field.annotation, type)
+                and issubclass(event_filter_field.annotation, BaseModel)
+                and all(
+                    field.annotation is bool
+                    for field in event_filter_field.annotation.model_fields.values()
+                )
+            ):
+                raise NotImplementedError(
+                    f"{self.name} has an invalid webhook event selector: "
+                    "field must be a BaseModel and all its fields must be boolean"
+                )
+
+            # Enforce presence of 'payload' input
+            if "payload" not in self.input_schema.model_fields:
+                raise TypeError(
+                    f"{self.name} is webhook-triggered but has no 'payload' input"
+                )
+
+            # Disable webhook-triggered block if webhook functionality not available
+            if not app_config.platform_base_url:
+                self.disabled = True
 
     @classmethod
     def create(cls: Type["Block"]) -> "Block":

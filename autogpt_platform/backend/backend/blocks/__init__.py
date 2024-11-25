@@ -60,13 +60,6 @@ for block_cls in all_subclasses(Block):
     input_schema = block.input_schema.model_fields
     output_schema = block.output_schema.model_fields
 
-    # Prevent duplicate field name in input_schema and output_schema
-    duplicate_field_names = set(input_schema.keys()) & set(output_schema.keys())
-    if duplicate_field_names:
-        raise ValueError(
-            f"{block.name} has duplicate field names in input_schema and output_schema: {duplicate_field_names}"
-        )
-
     # Make sure `error` field is a string in the output schema
     if "error" in output_schema and output_schema["error"].annotation is not str:
         raise ValueError(
