@@ -6,6 +6,7 @@ from typing import Annotated, Any, List
 import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.utils.settings import Settings
 from fastapi import APIRouter, Depends, HTTPException
 from typing_extensions import Optional, TypedDict
 
@@ -39,7 +40,6 @@ from backend.server.model import (
 )
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
-from backend.util.settings import Settings
 
 
 @thread_cached

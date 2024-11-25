@@ -8,6 +8,7 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.utils.settings import Config
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from sqlalchemy import MetaData, create_engine
@@ -15,7 +16,6 @@ from sqlalchemy import MetaData, create_engine
 from backend.data.block import BlockInput
 from backend.executor.manager import ExecutionManager
 from backend.util.service import AppService, expose, get_service_client
-from backend.util.settings import Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:

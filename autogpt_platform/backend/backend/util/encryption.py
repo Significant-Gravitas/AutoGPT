@@ -1,9 +1,8 @@
 import json
 from typing import Optional
 
+from autogpt_libs.utils.settings import Settings
 from cryptography.fernet import Fernet
-
-from backend.util.settings import Settings
 
 ENCRYPTION_KEY = Settings().secrets.encryption_key
 

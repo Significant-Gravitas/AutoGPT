@@ -14,12 +14,12 @@ if TYPE_CHECKING:
 import anthropic
 import ollama
 import openai
+from autogpt_libs.utils.settings import BehaveAs, Settings
 from groq import Groq
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 from backend.util import json
-from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 

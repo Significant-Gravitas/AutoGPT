@@ -2,6 +2,7 @@ import os
 import subprocess
 
 directory = os.path.dirname(os.path.realpath(__file__))
+target_dirs = ["../backend", "../autogpt_libs"]
 
 
 def run(*command: str) -> None:
@@ -21,7 +22,7 @@ def lint():
 
 
 def format():
-    run("ruff", "check", "--fix", ".")
-    run("isort", "--profile", "black", ".")
-    run("black", ".")
-    run("pyright", ".")
+    run("ruff", "check", "--fix", *target_dirs)
+    run("isort", "--profile", "black", *target_dirs)
+    run("black", *target_dirs)
+    run("pyright", *target_dirs)

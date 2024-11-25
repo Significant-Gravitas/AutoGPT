@@ -4,13 +4,13 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
 
+from autogpt_libs.utils.settings import Config
 from pydantic import BaseModel
 from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
 
 from backend.data import redis
 from backend.data.execution import ExecutionResult
-from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 config = Config()

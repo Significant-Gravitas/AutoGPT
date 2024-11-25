@@ -1,6 +1,8 @@
 from functools import wraps
 from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, cast
 
+from autogpt_libs.utils.settings import Config
+
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
     ExecutionResult,
@@ -23,7 +25,6 @@ from backend.data.user import (
     update_user_metadata,
 )
 from backend.util.service import AppService, expose
-from backend.util.settings import Config
 
 P = ParamSpec("P")
 R = TypeVar("R")

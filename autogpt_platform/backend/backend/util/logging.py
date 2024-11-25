@@ -1,4 +1,4 @@
-from backend.util.settings import AppEnvironment, BehaveAs, Settings
+from autogpt_libs.utils.settings import AppEnvironment, BehaveAs, Settings
 
 settings = Settings()
 
