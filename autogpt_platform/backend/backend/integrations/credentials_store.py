@@ -1,6 +1,8 @@
 import secrets
+import hashlib
+import base64
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import SecretStr
 
@@ -171,6 +173,8 @@ class IntegrationCredentialsStore:
 
     def update_creds(self, user_id: str, updated: Credentials) -> None:
         with self.locked_user_integrations(user_id):
+            print("user_id : ", user_id)
+            print("updated : ", updated)
             current = self.get_creds_by_id(user_id, updated.id)
             if not current:
                 raise ValueError(
@@ -210,18 +214,24 @@ class IntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
-    def store_state_token(self, user_id: str, provider: str, scopes: list[str]) -> str:
+    def store_state_token(self, user_id: str, provider: str, scopes: list[str]) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+        code_verifier = self._generate_code_verifier(128)
+        code_challenge = self._generate_code_challenge(code_verifier)
+        print("login code_verifier: ", code_verifier)
 
         state = OAuthState(
             token=token,
             provider=provider,
+            code_verifier= code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
         )
 
         with self.locked_user_integrations(user_id):
+
             user_integrations = self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
             oauth_states.append(state)
@@ -231,7 +241,24 @@ class IntegrationCredentialsStore:
                 user_id=user_id, data=user_integrations
             )
 
-        return token
+        return token, code_challenge
+
+    def _generate_code_verifier(self, length: int) -> str:
+        """
+        Generate a secure random code verifier of specified length.
+        """
+        return secrets.token_urlsafe(length)
+
+    def _generate_code_challenge(self, code_verifier: str, method: str = "S256") -> str:
+        """
+        Generate code challenge using SHA256 from the code verifier.
+        """
+        if method != "S256":
+            raise ValueError(f"Unsupported code challenge method: {method}")
+
+        sha256_hash = hashlib.sha256(code_verifier.encode('utf-8')).digest()
+        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode('utf-8')
+        return code_challenge.replace('=', '')
 
     def get_any_valid_scopes_from_state_token(
         self, user_id: str, token: str, provider: str
@@ -262,6 +289,26 @@ class IntegrationCredentialsStore:
             return valid_state.scopes
 
         return []
+
+    def _get_code_verifier(self, user_id: str, provider: str, token : str) -> Optional[str]:
+        user_integrations = self._get_user_integrations(user_id)
+        oauth_states = user_integrations.oauth_states
+
+        now = datetime.now(timezone.utc)
+        valid_state = next(
+            (
+                state
+                for state in oauth_states
+                if state.token == token
+                and state.provider == provider
+                and state.expires_at > now.timestamp()
+            ),
+            None,
+        )
+
+        if valid_state:
+            return valid_state.code_verifier
+
 
     def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
         with self.locked_user_integrations(user_id):

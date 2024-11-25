@@ -136,6 +136,7 @@ def SchemaField(
     placeholder: Optional[str] = None,
     advanced: Optional[bool] = False,
     secret: bool = False,
+    is_multi_select: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
     depends_on: list[str] | None = None,
