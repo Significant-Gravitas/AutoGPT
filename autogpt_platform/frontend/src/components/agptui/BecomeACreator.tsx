@@ -4,20 +4,22 @@ import * as React from "react";
 import { Button } from "./Button";
 
 interface BecomeACreatorProps {
-  title: string;
-  heading: string;
-  description: string;
-  buttonText: string;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onButtonClick?: () => void;
+  variant?: 'default' | 'agent';
 }
 
 export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
   title = "Become a creator",
-  heading = "Build AI agents and share your vision",
-  description = "Join a community where your AI creations can inspire, engage,\nand be downloaded by users around the world.",
+  description = "Join a community where your AI creations can inspire, engage, and be downloaded by users around the world.",
   buttonText = "Upload your agent",
+  onButtonClick,
 }) => {
   const handleButtonClick = () => {
-    console.log("Upload agent clicked");
+    onButtonClick?.();
+    console.log("Become A Creator clicked");
   };
 
   return (
@@ -26,27 +28,26 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       <div className="absolute left-0 top-0 h-px w-full bg-gray-200" />
 
       {/* Title */}
-      <div className="font-poppins absolute left-4 top-[26px] text-base font-semibold leading-7 text-neutral-800 md:left-6 md:text-lg lg:left-8">
-        {title}
+      <div className="absolute left-4 md:left-6 lg:left-8 top-[26px] text-base md:text-lg font-normal leading-7 text-neutral-800">
+        {title.toLowerCase()}
       </div>
 
-      {/* Content Container - Centered */}
-      <div className="absolute left-1/2 top-1/2 w-full max-w-[900px] -translate-x-1/2 -translate-y-1/2 px-4 pt-[40px] text-center md:px-6 lg:px-0">
-        {/* Heading with highlighted word */}
-        <h2 className="font-poppins mb-6 text-3xl font-semibold leading-tight text-neutral-950 md:mb-8 md:text-4xl md:leading-[1.2] lg:mb-12 lg:text-5xl lg:leading-[54px]">
-          Build AI agents and share{" "}
-          <span className="text-violet-600">your</span> vision
+      {/* Content Container */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[900px] text-center px-4 md:px-6 lg:px-0 pt-[40px]">
+        <h2 className="text-3xl md:text-4xl lg:text-5xl font-semibold font-poppins leading-tight md:leading-[1.2] lg:leading-[54px] text-neutral-950 mb-6 md:mb-8 lg:mb-12">
+          Build AI agents and share
+          <br />
+          <span className="text-violet-600">your</span>
+          {' '}vision
         </h2>
 
-        {/* Description */}
-        <p className="font-geist mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl">
+        <p className="font-geist text-lg md:text-xl lg:text-2xl font-normal leading-relaxed md:leading-loose text-neutral-700 mb-8 md:mb-10 lg:mb-14 max-w-[90%] mx-auto">
           {description}
         </p>
 
-        {/* Button */}
-        <button
+        <button 
           onClick={handleButtonClick}
-          className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-4 py-3 transition-colors hover:bg-neutral-700 md:h-[56px] md:px-5 md:py-4 lg:h-[68px] lg:px-6 lg:py-5"
+          className="inline-flex h-[48px] md:h-[56px] lg:h-[68px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 md:px-10 lg:px-12 py-3 md:py-4 lg:py-5 hover:bg-neutral-700 transition-colors"
         >
           <span className="font-poppins whitespace-nowrap text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
             {buttonText}

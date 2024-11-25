@@ -10,6 +10,13 @@ import {
 import { useCallback, useState } from "react";
 import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
+
+const BACKGROUND_COLORS = [
+  'bg-violet-200', // #ddd6fe
+  'bg-blue-200',   // #bfdbfe
+  'bg-green-200',  // #bbf7d0
+];
+
 export interface FeaturedAgent {
   slug: string;
   agent_name: string;
@@ -48,44 +55,52 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
     );
   }, [featuredAgents.length]);
 
+  const getBackgroundColor = (index: number) => {
+    return BACKGROUND_COLORS[index % BACKGROUND_COLORS.length];
+  };
+
   return (
-    <div className="flex w-full flex-col items-center justify-center px-4 py-4 md:py-8">
-      <div className="w-full max-w-[1360px]">
-        <h2 className="font-poppins mb-6 text-lg font-semibold leading-7 text-neutral-800">
+    <div className="flex w-full flex-col items-center justify-center">
+      <div className="w-full">
+        <h2 className="font-poppins mb-8 text-2xl font-semibold leading-7 text-neutral-800">
           Featured agents
         </h2>
 
-        <Carousel
-          opts={{
-            loop: true,
-            startIndex: currentSlide,
-            duration: 500,
-          }}
-          className="w-full"
-        >
-          <CarouselContent className="ml-0 transition-transform duration-500">
-            {/* Add transition */}
-            {featuredAgents.map((agent, index) => (
-              <CarouselItem
-                key={index}
-                className="ml-0 min-w-64 max-w-68 basis-auto"
-              >
-                <FeaturedStoreCard
-                  agentName={agent.agent_name}
-                  subHeading={agent.sub_heading}
-                  agentImage={agent.agent_image}
-                  creatorName={agent.creator}
-                  description={agent.description}
-                  runs={agent.runs}
-                  rating={agent.rating}
-                  onClick={() => handleCardClick(agent.creator, agent.slug)}
-                />
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-        </Carousel>
+        <div>
+          <Carousel
+            opts={{
+              loop: true,
+              startIndex: currentSlide,
+              duration: 500,
+              align: "start",
+              containScroll: "trimSnaps",
+            }}
+            className="w-full overflow-x-hidden"
+          >
+            <CarouselContent className="transition-transform duration-500">
+              {featuredAgents.map((agent, index) => (
+                <CarouselItem
+                  key={index}
+                  className="max-w-[460px] flex-[0_0_auto] pr-8"
+                >
+                  <FeaturedStoreCard
+                    agentName={agent.agent_name}
+                    subHeading={agent.sub_heading}
+                    agentImage={agent.agent_image}
+                    creatorName={agent.creator}
+                    description={agent.description}
+                    runs={agent.runs}
+                    rating={agent.rating}
+                    backgroundColor={getBackgroundColor(index)}
+                    onClick={() => handleCardClick(agent.creator, agent.slug)}
+                  />
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+          </Carousel>
+        </div>
 
-        <div className="flex w-full items-center justify-between md:mt-4">
+        <div className="flex w-full items-center justify-between mt-8">
           <div className="flex h-3 items-center gap-2">
             {featuredAgents.map((_, index) => (
               <div

@@ -150,10 +150,11 @@ export const AgentPage: React.FC<AgentPageProps> = ({
           sectionTitle="Similar agents"
         />
         <BecomeACreator
+          variant="agent"
           title="Want to contribute?"
-          heading="We're always looking for more Creators!"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
+          onButtonClick={handleBecomeCreator}
         />
       </main>
     </div>
