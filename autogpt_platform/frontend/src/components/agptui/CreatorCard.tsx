@@ -1,6 +1,12 @@
 import * as React from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
+
+const BACKGROUND_COLORS = [
+  'bg-amber-100',  // #fef3c7
+  'bg-violet-100', // #ede9fe
+  'bg-green-100',  // #dcfce7
+  'bg-blue-100',   // #dbeafe
+];
 
 interface CreatorCardProps {
   creatorName: string;
@@ -8,7 +14,7 @@ interface CreatorCardProps {
   bio: string;
   agentsUploaded: number;
   onClick: () => void;
-  avatarSrc: string;
+  index: number;
 }
 
 export const CreatorCard: React.FC<CreatorCardProps> = ({
@@ -17,41 +23,40 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
   bio,
   agentsUploaded,
   onClick,
-  avatarSrc,
+  index,
 }) => {
-  const avatarSizeClasses = "h-16 w-16";
+  const backgroundColor = BACKGROUND_COLORS[index % BACKGROUND_COLORS.length];
 
   return (
     <div
-      className="flex h-96 w-[13.125rem] flex-col rounded-xl transition-shadow duration-300 hover:shadow-lg"
+      className={`w-full h-[264px] px-[18px] pt-6 pb-5 ${backgroundColor} rounded-[26px] flex-col justify-start items-start gap-3.5 inline-flex cursor-pointer hover:brightness-95 transition-all duration-200`}
       onClick={onClick}
       data-testid="creator-card"
     >
-      <div className="relative aspect-[210/238] w-full">
-        <Image
-          src={creatorImage}
-          alt={creatorName}
-          fill
-          style={{ objectFit: "cover" }}
-          className="rounded-xl"
-        />
+      <div className="relative w-[64px] h-[64px]">
+        <div className="absolute inset-0 rounded-full overflow-hidden">
+          <Image
+            src={creatorImage}
+            alt={creatorName}
+            width={64}
+            height={64}
+            className="object-cover w-full h-full"
+            priority
+          />
+        </div>
       </div>
-      <div className="relative -mt-20 ml-4">
-        <Avatar className={avatarSizeClasses}>
-          <AvatarImage src={avatarSrc} alt={`${creatorName}'s avatar`} />
-          <AvatarFallback className={avatarSizeClasses}>
-            {creatorName.charAt(0)}
-          </AvatarFallback>
-        </Avatar>
+
+      <div className="self-stretch flex-1 flex-col justify-start items-start flex">
+        <div className="self-stretch text-neutral-800 text-2xl font-semibold font-['Poppins'] leading-loose mb-1">
+          {creatorName}
+        </div>
+        <div className="self-stretch text-neutral-800 text-base font-normal font-['Geist'] leading-normal line-clamp-2">
+          {bio}
+        </div>
       </div>
-      <div className="mt-8 font-neue text-xl font-bold tracking-tight text-[#272727]">
-        {creatorName}
-      </div>
-      <div className="mt-2 line-clamp-3 w-full font-neue text-base font-normal leading-[21px] tracking-tight text-[#282828]">
-        {bio}
-      </div>
-      <div className="mt-auto font-neue text-base font-medium tracking-tight text-[#272727]">
-        {agentsUploaded} agents uploaded
+
+      <div className="self-stretch text-neutral-800 text-lg font-semibold font-['Geist'] leading-7">
+        {agentsUploaded} agents
       </div>
     </div>
   );

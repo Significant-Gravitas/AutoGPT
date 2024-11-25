@@ -12,6 +12,7 @@ interface FeaturedStoreCardProps {
   runs: number;
   rating: number;
   onClick: () => void;
+  backgroundColor: string;
 }
 
 export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
@@ -24,87 +25,67 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
   runs,
   rating,
   onClick,
+  backgroundColor,
 }) => {
   return (
     <div
-      className="group flex h-[90%] w-[90%] cursor-pointer flex-col items-start justify-start gap-3 rounded-[26px] bg-neutral-200 px-[22px] pb-5 pt-[30px] font-neue text-sm tracking-tight transition-shadow duration-300 hover:shadow-lg md:max-h-[705px] md:gap-5 lg:w-[440px]"
+      className={`group w-[440px] h-[755px] px-[22px] pt-[30px] pb-5 ${backgroundColor} hover:brightness-95 rounded-[26px] flex-col justify-start items-start gap-7 inline-flex transition-all duration-200`}
       onClick={onClick}
       data-testid="featured-store-card"
     >
-      <div
-        className={`flex h-[216px] flex-col items-start justify-start gap-3 self-stretch md:h-[188px]`}
-      >
-        <div
-          className={`self-stretch font-['Poppins'] text-[35px] font-medium leading-10 text-neutral-900`}
-        >
+      <div className="self-stretch h-[188px] flex-col justify-start items-start gap-3 flex">
+        <div className="self-stretch text-neutral-900 text-[35px] font-medium font-['Poppins'] leading-10">
           {agentName}
         </div>
-        <div
-          className={`self-stretch font-['Geist'] text-xl font-normal leading-7 text-neutral-800`}
-        >
+        <div className="self-stretch text-neutral-800 text-xl font-normal font-['Geist'] leading-7">
           {subHeading}
         </div>
       </div>
 
-      <div
-        className={`flex h-[489px] flex-col items-start justify-start gap-[18px] self-stretch`}
-      >
-        <div
-          className={`self-stretch font-['Geist'] text-xl font-normal leading-7 text-neutral-800`}
-        >
+      <div className="self-stretch h-[489px] flex-col justify-start items-start gap-[18px] flex">
+        <div className="self-stretch text-neutral-800 text-xl font-normal font-['Geist'] leading-7">
           by {creatorName}
         </div>
-
-        <div className="relative h-[397px] w-full">
-          {/* Image Container */}
-          <div className={` ${"group-hover:hidden"} relative h-full w-full`}>
-            <div
-              className={`relative h-[397px] w-[346px] md:h-[397px] md:w-[396px] lg:h-[397px] lg:w-[456px]`}
-            >
-              <Image
-                src={agentImage}
-                alt={`${agentName} preview`}
-                fill
-                style={{ objectFit: "cover" }}
-                className="rounded-xl"
-              />
-              {creatorImage && (
-                <Image
-                  src={creatorImage}
-                  alt={`${creatorName} image`}
-                  width={74}
-                  height={74}
-                  className={`absolute left-[8.74px] top-[313px] h-[74px] w-[74px] rounded-full md:left-[10px] lg:left-[11.52px]`}
-                />
-              )}
+        
+        <div className="relative self-stretch h-[397px]">
+          <Image
+            src={agentImage}
+            alt={`${agentName} preview`}
+            layout="fill"
+            objectFit="cover"
+            className="rounded-xl group-hover:opacity-0 transition-opacity duration-200"
+          />
+          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl bg-white p-4 overflow-y-auto">
+            <div className="text-neutral-800 text-base font-normal font-['Geist'] leading-normal">
+              {description}
             </div>
           </div>
-
-          {/* Description Container */}
-          <div
-            className={` ${"hidden group-hover:flex"} absolute inset-0 flex flex-col overflow-y-auto rounded-xl bg-white bg-opacity-90 p-4`}
-          >
-            <p
-              className={`font-['Geist'] text-lg font-normal leading-7 text-neutral-800`}
-            >
-              {description}
-            </p>
-          </div>
+          {creatorImage && (
+            <div className="absolute left-[8.74px] top-[313px] w-[74px] h-[74px] overflow-hidden rounded-full group-hover:opacity-0 transition-opacity duration-200">
+              <Image
+                src={creatorImage}
+                alt={`${creatorName} image`}
+                layout="fill"
+                className="object-cover"
+                priority
+              />
+            </div>
+          )}
         </div>
 
-        <div className={`flex items-center justify-between self-stretch`}>
-          <div
-            className={`font-['Inter'] text-lg font-semibold leading-7 text-neutral-800`}
-          >
+        <div className="self-stretch justify-between items-center inline-flex">
+          <div className="text-neutral-800 text-lg font-semibold font-['Inter'] leading-7">
             {runs.toLocaleString()} runs
           </div>
-          <div className={`flex items-center gap-[5px]`}>
-            <div
-              className={`font-['Inter'] text-lg font-semibold leading-7 text-neutral-800`}
-            >
+          <div className="justify-start items-center gap-[5px] flex">
+            <div className="text-neutral-800 text-lg font-semibold font-['Inter'] leading-7">
               {rating.toFixed(1)}
             </div>
-            <div className={`relative h-4 w-[84px]`}>
+            <div 
+              className="inline-flex items-center justify-start gap-px"
+              role="img"
+              aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
+            >
               {StarRatingIcons(rating)}
             </div>
           </div>
