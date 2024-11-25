@@ -38,6 +38,7 @@ pytest-asyncio = "^0.24.0"
 python-dotenv = "^1.0.1"
 redis = "^5.2.0"
 sentry-sdk = "2.18.0"
+strenum = "^0.4.9"
 supabase = "^2.10.0"
 tenacity = "^9.0.0"
 uvicorn = { extras = ["standard"], version = "^0.32.0" }
