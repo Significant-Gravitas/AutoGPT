@@ -76,6 +76,12 @@ class CreatorDetails(pydantic.BaseModel):
     agent_runs: int
     top_categories: list[str]
 
+class Profile(pydantic.BaseModel):
+    name: str
+    username: str
+    description: str
+    links: list[str]
+    avatar_url: str
 
 class StoreSubmission(pydantic.BaseModel):
     name: str

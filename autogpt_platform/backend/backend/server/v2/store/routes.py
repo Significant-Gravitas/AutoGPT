@@ -43,7 +43,7 @@ async def get_profile(
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
 )
 async def update_or_create_profile(
-    profile: backend.server.v2.store.model.CreatorDetails,
+    profile: backend.server.v2.store.model.Profile,
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
@@ -52,7 +52,7 @@ async def update_or_create_profile(
     Update the store profile for the authenticated user.
 
     Args:
-        profile (CreatorDetails): The updated profile details
+        profile (Profile): The updated profile details
         user_id (str): ID of the authenticated user
 
     Returns:

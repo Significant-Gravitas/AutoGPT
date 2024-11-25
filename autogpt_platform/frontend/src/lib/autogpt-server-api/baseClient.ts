@@ -313,8 +313,8 @@ export default class BaseAutoGPTServerAPI {
     return this._request("POST", "/store/submissions/media", formData);
   }
 
-  updateStoreProfile(profile: CreatorDetails): Promise<CreatorDetails> {
-    return this._request("PUT", "/store/profile", profile);
+  updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
+    return this._request("POST", "/store/profile", profile);
   }
 
   ///////////////////////////////////////////

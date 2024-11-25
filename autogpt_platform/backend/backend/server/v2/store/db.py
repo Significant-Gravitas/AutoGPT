@@ -463,7 +463,7 @@ async def get_user_profile(
 
 
 async def update_or_create_profile(
-    user_id: str, profile: backend.server.v2.store.model.CreatorDetails
+    user_id: str, profile: backend.server.v2.store.model.Profile
 ) -> backend.server.v2.store.model.CreatorDetails:
     """
     Update the store profile for a user. Creates a new profile if one doesn't exist.
@@ -518,6 +518,7 @@ async def update_or_create_profile(
             updated_profile = await prisma.models.Profile.prisma().update(
                 where={"id": existing_profile.id},
                 data=prisma.types.ProfileUpdateInput(
+                    name=profile.name,
                     username=profile.username,
                     description=profile.description,
                     links=profile.links,
