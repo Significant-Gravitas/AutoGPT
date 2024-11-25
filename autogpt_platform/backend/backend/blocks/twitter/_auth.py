@@ -1,10 +1,10 @@
 from typing import Literal
 
 from autogpt_libs.supabase_integration_credentials_store.types import OAuth2Credentials
-from backend.integrations.oauth.twitter import TwitterOAuthHandler
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput
+from backend.integrations.oauth.twitter import TwitterOAuthHandler
 from backend.util.settings import Secrets
 
 # --8<-- [start:TwitterOAuthIsConfigured]

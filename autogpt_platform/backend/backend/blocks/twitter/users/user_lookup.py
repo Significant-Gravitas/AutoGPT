@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import UserExpansionsBuilder
-from backend.blocks.twitter._types import TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,21 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import UserExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterGetUserBlock(Block):
     """
@@ -27,18 +36,18 @@ class TwitterGetUserBlock(Block):
             ["users.read", "offline.access"]
         )
 
-        user_id: str  = SchemaField(
+        user_id: str = SchemaField(
             description="The ID of the user to lookup",
             placeholder="Enter user ID",
             default="",
-            advanced=False
+            advanced=False,
         )
 
         username: str = SchemaField(
             description="The Twitter username (handle) of the user",
             placeholder="Enter username",
             default="",
-            advanced=False
+            advanced=False,
         )
 
     class Output(BlockSchema):
@@ -49,7 +58,9 @@ class TwitterGetUserBlock(Block):
 
         # Complete outputs
         data: dict = SchemaField(description="Complete user data")
-        included: dict = SchemaField(description="Additional data requested via expansions")
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -65,16 +76,25 @@ class TwitterGetUserBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("id", "783214"),
                 ("username_", "twitter"),
                 ("name_", "Twitter"),
-                ("data", {"user": {"id": "783214", "username": "twitter", "name": "Twitter"}}),
+                (
+                    "data",
+                    {
+                        "user": {
+                            "id": "783214",
+                            "username": "twitter",
+                            "name": "Twitter",
+                        }
+                    },
+                ),
                 ("included", {}),
-                ("error", None)
+                ("error", None),
             ],
         )
 
@@ -85,7 +105,7 @@ class TwitterGetUserBlock(Block):
         username: str,
         expansions: list[UserExpansions],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -98,18 +118,17 @@ class TwitterGetUserBlock(Block):
                 "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
+            )
 
             print("params : ", params)
 
-            response = cast(
-                Response,
-                client.get_user(**params)
-            )
+            response = cast(Response, client.get_user(**params))
 
             username = ""
             id = ""
@@ -145,7 +164,7 @@ class TwitterGetUserBlock(Block):
                 input_data.username,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if id:
                 yield "id", id
@@ -159,6 +178,7 @@ class TwitterGetUserBlock(Block):
                 yield "included", included
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetUsersBlock(Block):
     """
@@ -174,14 +194,14 @@ class TwitterGetUsersBlock(Block):
             description="List of user IDs to lookup (max 100)",
             placeholder="Enter user IDs",
             default=[],
-            advanced=False
+            advanced=False,
         )
 
         usernames: list[str] = SchemaField(
             description="List of Twitter usernames/handles to lookup (max 100)",
             placeholder="Enter usernames",
             default=[],
-            advanced=False
+            advanced=False,
         )
 
     class Output(BlockSchema):
@@ -192,7 +212,9 @@ class TwitterGetUsersBlock(Block):
 
         # Complete outputs
         data: list[dict] = SchemaField(description="Complete users data")
-        included: dict = SchemaField(description="Additional data requested via expansions")
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -208,19 +230,28 @@ class TwitterGetUsersBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("ids", ["783214", "2244994945"]),
                 ("usernames_", ["twitter", "twitterdev"]),
                 ("names_", ["Twitter", "Twitter Dev"]),
-                ("data", {"users": [
-                    {"id": "783214", "username": "twitter", "name": "Twitter"},
-                    {"id": "2244994945", "username": "twitterdev", "name": "Twitter Dev"}
-                ]}),
+                (
+                    "data",
+                    {
+                        "users": [
+                            {"id": "783214", "username": "twitter", "name": "Twitter"},
+                            {
+                                "id": "2244994945",
+                                "username": "twitterdev",
+                                "name": "Twitter Dev",
+                            },
+                        ]
+                    },
+                ),
                 ("included", {}),
-                ("error", None)
+                ("error", None),
             ],
         )
 
@@ -231,7 +262,7 @@ class TwitterGetUsersBlock(Block):
         usernames: list[str],
         expansions: list[UserExpansions],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -241,19 +272,18 @@ class TwitterGetUsersBlock(Block):
             params = {
                 "ids": None if not user_ids else user_ids,
                 "usernames": None if not usernames else usernames,
-                "user_auth": False
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_users(**params)
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_users(**params))
 
             usernames = []
             ids = []
@@ -290,7 +320,7 @@ class TwitterGetUsersBlock(Block):
                 input_data.usernames,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if ids:
                 yield "ids", ids

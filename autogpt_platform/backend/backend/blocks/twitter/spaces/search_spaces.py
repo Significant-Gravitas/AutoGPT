@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import SpaceExpansionsBuilder
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.blocks.twitter._types import TweetUserFields, SpaceExpansionInputs, SpaceExpansions, SpaceFields, SpaceStates
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,14 +10,31 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import SpaceExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    SpaceExpansionInputs,
+    SpaceExpansions,
+    SpaceFields,
+    SpaceStates,
+    TweetUserFields,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterSearchSpacesBlock(Block):
     """
     Returns live or scheduled Spaces matching specified search terms [for a week only]
     """
+
     class Input(SpaceExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read","users.read","tweet.read", "offline.access"]
+            ["spaces.read", "users.read", "tweet.read", "offline.access"]
         )
 
         query: str = SchemaField(
@@ -35,7 +46,7 @@ class TwitterSearchSpacesBlock(Block):
             description="Maximum number of results to return (1-100)",
             placeholder="Enter max results",
             default=10,
-            advanced=True
+            advanced=True,
         )
 
         state: SpaceStates = SchemaField(
@@ -43,7 +54,6 @@ class TwitterSearchSpacesBlock(Block):
             placeholder="Enter state filter",
             default=SpaceStates.ALL,
         )
-
 
     class Output(BlockSchema):
         # Common outputs that user commonly uses
@@ -54,7 +64,9 @@ class TwitterSearchSpacesBlock(Block):
 
         # Complete outputs for advanced use
         data: dict = SchemaField(description="Complete space data")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata including pagination info")
 
         error: str = SchemaField(description="Error message if the request failed")
@@ -74,7 +86,7 @@ class TwitterSearchSpacesBlock(Block):
                 "pagination": "",
                 "expansions": [],
                 "space_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -82,20 +94,31 @@ class TwitterSearchSpacesBlock(Block):
                 ("titles", ["Tech Talk"]),
                 ("host_ids", ["5678"]),
                 ("next_token", "next_token_value"),
-                ("data", {"spaces": [{"id": "1234", "title": "Tech Talk", "host_id": "5678"}]}),
+                (
+                    "data",
+                    {
+                        "spaces": [
+                            {"id": "1234", "title": "Tech Talk", "host_id": "5678"}
+                        ]
+                    },
+                ),
                 ("includes", {}),
                 ("meta", {"next_token": "next_token_value"}),
-                ("error", "")
+                ("error", ""),
             ],
             test_mock={
                 "search_spaces": lambda *args, **kwargs: (
-                    {"spaces": [{"id": "1234", "title": "Tech Talk", "host_id": "5678"}]},
+                    {
+                        "spaces": [
+                            {"id": "1234", "title": "Tech Talk", "host_id": "5678"}
+                        ]
+                    },
                     {},
                     {"next_token": "next_token_value"},
                     "next_token_value",
-                    ""
+                    "",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -106,29 +129,24 @@ class TwitterSearchSpacesBlock(Block):
         state: SpaceStates,
         expansions: list[SpaceExpansions],
         space_fields: list[SpaceFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            params = {
-                "query": query,
-                "max_results": max_results,
-                "state": state.value
-            }
+            params = {"query": query, "max_results": max_results, "state": state.value}
 
-            params = (SpaceExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_space_fields(space_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.search_spaces(**params)
+            params = (
+                SpaceExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_space_fields(space_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.search_spaces(**params))
 
             meta = {}
             next_token = ""
@@ -160,14 +178,16 @@ class TwitterSearchSpacesBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            data, included, meta, ids, titles, host_ids, next_token = self.search_spaces(
-                credentials,
-                input_data.query,
-                input_data.max_results,
-                input_data.state,
-                input_data.expansions,
-                input_data.space_fields,
-                input_data.user_fields
+            data, included, meta, ids, titles, host_ids, next_token = (
+                self.search_spaces(
+                    credentials,
+                    input_data.query,
+                    input_data.max_results,
+                    input_data.state,
+                    input_data.expansions,
+                    input_data.space_fields,
+                    input_data.user_fields,
+                )
             )
 
             if ids:

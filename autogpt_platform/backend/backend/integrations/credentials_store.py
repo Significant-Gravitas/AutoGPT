@@ -173,8 +173,6 @@ class IntegrationCredentialsStore:
 
     def update_creds(self, user_id: str, updated: Credentials) -> None:
         with self.locked_user_integrations(user_id):
-            print("user_id : ", user_id)
-            print("updated : ", updated)
             current = self.get_creds_by_id(user_id, updated.id)
             if not current:
                 raise ValueError(

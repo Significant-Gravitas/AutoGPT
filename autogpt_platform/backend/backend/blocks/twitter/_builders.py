@@ -1,48 +1,73 @@
 from typing import Any, Dict
 
+from backend.blocks.twitter._mappers import (
+    get_backend_expansion,
+    get_backend_field,
+    get_backend_list_expansion,
+    get_backend_list_field,
+    get_backend_media_field,
+    get_backend_place_field,
+    get_backend_poll_field,
+    get_backend_space_expansion,
+    get_backend_space_field,
+    get_backend_user_field,
+)
 from backend.blocks.twitter._types import TweetExpansions, TweetReplySettings
-from backend.blocks.twitter._mappers import get_backend_expansion, get_backend_field, get_backend_list_expansion, get_backend_list_field, get_backend_media_field, get_backend_place_field, get_backend_poll_field, get_backend_space_expansion, get_backend_space_field, get_backend_user_field
+
 
 # Common Builder
 class TweetExpansionsBuilder:
-    def __init__(self, param : Dict[str, Any]):
+    def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: list[TweetExpansions]):
         if expansions:
-            self.params["expansions"] = ",".join([get_backend_expansion(exp.name) for exp in expansions])
+            self.params["expansions"] = ",".join(
+                [get_backend_expansion(exp.name) for exp in expansions]
+            )
         return self
 
     def add_media_fields(self, media_fields: list):
         if media_fields:
-            self.params["media.fields"] = ",".join([get_backend_media_field(field.name) for field in media_fields])
+            self.params["media.fields"] = ",".join(
+                [get_backend_media_field(field.name) for field in media_fields]
+            )
         return self
 
     def add_place_fields(self, place_fields: list):
         if place_fields:
-            self.params["place.fields"] = ",".join([get_backend_place_field(field.name) for field in place_fields])
+            self.params["place.fields"] = ",".join(
+                [get_backend_place_field(field.name) for field in place_fields]
+            )
         return self
 
     def add_poll_fields(self, poll_fields: list):
         if poll_fields:
-            self.params["poll.fields"] = ",".join([get_backend_poll_field(field.name) for field in poll_fields])
+            self.params["poll.fields"] = ",".join(
+                [get_backend_poll_field(field.name) for field in poll_fields]
+            )
         return self
 
     def add_tweet_fields(self, tweet_fields: list):
         if tweet_fields:
-            self.params["tweet.fields"] = ",".join([get_backend_field(field.name) for field in tweet_fields])
+            self.params["tweet.fields"] = ",".join(
+                [get_backend_field(field.name) for field in tweet_fields]
+            )
         return self
 
     def add_user_fields(self, user_fields: list):
         if user_fields:
-            self.params["user.fields"] = ",".join([get_backend_user_field(field.name) for field in user_fields])
+            self.params["user.fields"] = ",".join(
+                [get_backend_user_field(field.name) for field in user_fields]
+            )
         return self
 
     def build(self):
         return self.params
 
+
 class UserExpansionsBuilder:
-    def __init__(self, param : Dict[str, Any]):
+    def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: list):
@@ -52,63 +77,82 @@ class UserExpansionsBuilder:
 
     def add_tweet_fields(self, tweet_fields: list):
         if tweet_fields:
-            self.params["tweet.fields"] = ",".join([get_backend_field(field.name) for field in tweet_fields])
+            self.params["tweet.fields"] = ",".join(
+                [get_backend_field(field.name) for field in tweet_fields]
+            )
         return self
 
     def add_user_fields(self, user_fields: list):
         if user_fields:
-            self.params["user.fields"] = ",".join([get_backend_user_field(field.name) for field in user_fields])
+            self.params["user.fields"] = ",".join(
+                [get_backend_user_field(field.name) for field in user_fields]
+            )
         return self
 
     def build(self):
         return self.params
 
+
 class ListExpansionsBuilder:
-    def __init__(self, param : Dict[str, Any]):
+    def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: list):
         if expansions:
-            self.params["expansions"] = ",".join([get_backend_list_expansion(exp.name) for exp in expansions])
+            self.params["expansions"] = ",".join(
+                [get_backend_list_expansion(exp.name) for exp in expansions]
+            )
         return self
 
     def add_list_fields(self, list_fields: list):
         if list_fields:
-            self.params["list.fields"] = ",".join([get_backend_list_field(field.name) for field in list_fields])
+            self.params["list.fields"] = ",".join(
+                [get_backend_list_field(field.name) for field in list_fields]
+            )
         return self
 
     def add_user_fields(self, user_fields: list):
         if user_fields:
-            self.params["user.fields"] = ",".join([get_backend_user_field(field.name) for field in user_fields])
+            self.params["user.fields"] = ",".join(
+                [get_backend_user_field(field.name) for field in user_fields]
+            )
         return self
 
     def build(self):
         return self.params
 
+
 class SpaceExpansionsBuilder:
-    def __init__(self, param : Dict[str, Any]):
+    def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: list):
         if expansions:
-            self.params["expansions"] = ",".join([get_backend_space_expansion(exp.name) for exp in expansions])
+            self.params["expansions"] = ",".join(
+                [get_backend_space_expansion(exp.name) for exp in expansions]
+            )
         return self
 
     def add_space_fields(self, space_fields: list):
         if space_fields:
-            self.params["space.fields"] = ",".join([get_backend_space_field(field.name) for field in space_fields])
+            self.params["space.fields"] = ",".join(
+                [get_backend_space_field(field.name) for field in space_fields]
+            )
         return self
 
     def add_user_fields(self, user_fields: list):
         if user_fields:
-            self.params["user.fields"] = ",".join([get_backend_user_field(field.name) for field in user_fields])
+            self.params["user.fields"] = ",".join(
+                [get_backend_user_field(field.name) for field in user_fields]
+            )
         return self
 
     def build(self):
         return self.params
 
+
 class TweetDurationBuilder:
-    def __init__(self, param : Dict[str, Any]):
+    def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
     def add_start_time(self, start_time: str):
@@ -139,8 +183,9 @@ class TweetDurationBuilder:
     def build(self):
         return self.params
 
+
 class DMExpansionsBuilder:
-    def __init__(self, param : Dict[str, Any]):
+    def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: list):
@@ -150,22 +195,30 @@ class DMExpansionsBuilder:
 
     def add_event_types(self, event_types: list):
         if event_types:
-            self.params["event_types"] = ",".join([field.value for field in event_types])
+            self.params["event_types"] = ",".join(
+                [field.value for field in event_types]
+            )
         return self
 
     def add_media_fields(self, media_fields: list):
         if media_fields:
-            self.params["media.fields"] = ",".join([field.value for field in media_fields])
+            self.params["media.fields"] = ",".join(
+                [field.value for field in media_fields]
+            )
         return self
 
     def add_tweet_fields(self, tweet_fields: list):
         if tweet_fields:
-            self.params["tweet.fields"] = ",".join([field.value for field in tweet_fields])
+            self.params["tweet.fields"] = ",".join(
+                [field.value for field in tweet_fields]
+            )
         return self
 
     def add_user_fields(self, user_fields: list):
         if user_fields:
-            self.params["user.fields"] = ",".join([field.value for field in user_fields])
+            self.params["user.fields"] = ",".join(
+                [field.value for field in user_fields]
+            )
         return self
 
     def build(self):
@@ -191,6 +244,7 @@ class TweetSearchBuilder:
 
     def build(self):
         return self.params
+
 
 class TweetPostBuilder:
     def __init__(self):
@@ -228,7 +282,7 @@ class TweetPostBuilder:
             self.params["poll_options"] = poll_options
         return self
 
-    def add_poll_duration(self, poll_duration_minutes: int ):
+    def add_poll_duration(self, poll_duration_minutes: int):
         if poll_duration_minutes:
             self.params["poll_duration_minutes"] = poll_duration_minutes
         return self
@@ -238,7 +292,9 @@ class TweetPostBuilder:
             self.params["quote_tweet_id"] = quote_id
         return self
 
-    def add_reply_settings(self, exclude_user_ids: list, reply_to_id: str, settings: TweetReplySettings):
+    def add_reply_settings(
+        self, exclude_user_ids: list, reply_to_id: str, settings: TweetReplySettings
+    ):
         if exclude_user_ids:
             self.params["exclude_reply_user_ids"] = exclude_user_ids
         if reply_to_id:
@@ -251,6 +307,7 @@ class TweetPostBuilder:
 
     def build(self):
         return self.params
+
 
 class TweetGetsBuilder:
     def __init__(self):

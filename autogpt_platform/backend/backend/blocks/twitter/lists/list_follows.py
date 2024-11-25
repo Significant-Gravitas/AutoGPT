@@ -1,12 +1,6 @@
 # from typing import cast
 import tweepy
-# from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-# from backend.blocks.twitter._builders import UserExpansionsBuilder
-# from backend.blocks.twitter._types import TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -14,6 +8,15 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+
+# from backend.blocks.twitter._builders import UserExpansionsBuilder
+# from backend.blocks.twitter._types import TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
+# from tweepy.client import Response
+
 
 class TwitterUnfollowListBlock(Block):
     """
@@ -41,10 +44,7 @@ class TwitterUnfollowListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnfollowListBlock.Input,
             output_schema=TwitterUnfollowListBlock.Output,
-            test_input={
-                "list_id": "123456789",
-                "credentials": TEST_CREDENTIALS_INPUT
-            },
+            test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("success", True),
@@ -52,16 +52,13 @@ class TwitterUnfollowListBlock(Block):
         )
 
     @staticmethod
-    def unfollow_list(
-        credentials: TwitterCredentials,
-        list_id: str
-    ):
+    def unfollow_list(credentials: TwitterCredentials, list_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.unfollow_list(list_id=list_id,user_auth=False)
+            client.unfollow_list(list_id=list_id, user_auth=False)
 
             return True
 
@@ -76,13 +73,11 @@ class TwitterUnfollowListBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.unfollow_list(
-                credentials,
-                input_data.list_id
-            )
+            success = self.unfollow_list(credentials, input_data.list_id)
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterFollowListBlock(Block):
     """
@@ -91,7 +86,7 @@ class TwitterFollowListBlock(Block):
 
     class Input(BlockSchema):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["tweet.read","users.read","list.write", "offline.access"]
+            ["tweet.read", "users.read", "list.write", "offline.access"]
         )
 
         list_id: str = SchemaField(
@@ -110,28 +105,19 @@ class TwitterFollowListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterFollowListBlock.Input,
             output_schema=TwitterFollowListBlock.Output,
-            test_input={
-                "list_id": "123456789",
-                "credentials": TEST_CREDENTIALS_INPUT
-            },
+            test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True),
-                ("error", None)
-            ],
+            test_output=[("success", True), ("error", None)],
         )
 
     @staticmethod
-    def follow_list(
-        credentials: TwitterCredentials,
-        list_id: str
-    ):
+    def follow_list(credentials: TwitterCredentials, list_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.follow_list(list_id=list_id,user_auth=False)
+            client.follow_list(list_id=list_id, user_auth=False)
 
             return True
 
@@ -146,13 +132,11 @@ class TwitterFollowListBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.follow_list(
-                credentials,
-                input_data.list_id
-            )
+            success = self.follow_list(credentials, input_data.list_id)
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 # Enterprise Level [Need to do Manual testing]
 

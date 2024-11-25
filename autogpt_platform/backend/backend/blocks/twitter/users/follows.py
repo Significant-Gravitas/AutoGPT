@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import UserExpansionsBuilder
-from backend.blocks.twitter._types import TweetUserFields, TweetFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,21 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import UserExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterUnfollowUserBlock(Block):
     """
@@ -24,16 +33,18 @@ class TwitterUnfollowUserBlock(Block):
 
     class Input(BlockSchema):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write","follows.write", "offline.access"]
+            ["users.read", "users.write", "follows.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(
             description="The user ID of the user that you would like to unfollow",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
     class Output(BlockSchema):
-        success: bool = SchemaField(description="Whether the unfollow action was successful")
+        success: bool = SchemaField(
+            description="Whether the unfollow action was successful"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -45,7 +56,7 @@ class TwitterUnfollowUserBlock(Block):
             output_schema=TwitterUnfollowUserBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -54,16 +65,13 @@ class TwitterUnfollowUserBlock(Block):
         )
 
     @staticmethod
-    def unfollow_user(
-        credentials: TwitterCredentials,
-        target_user_id: str
-    ):
+    def unfollow_user(credentials: TwitterCredentials, target_user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.unfollow_user(target_user_id=target_user_id,user_auth=False)
+            client.unfollow_user(target_user_id=target_user_id, user_auth=False)
 
             return True
 
@@ -78,14 +86,12 @@ class TwitterUnfollowUserBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.unfollow_user(
-                credentials,
-                input_data.target_user_id
-            )
+            success = self.unfollow_user(credentials, input_data.target_user_id)
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterFollowUserBlock(Block):
     """
@@ -94,16 +100,18 @@ class TwitterFollowUserBlock(Block):
 
     class Input(BlockSchema):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write","follows.write", "offline.access"]
+            ["users.read", "users.write", "follows.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(
             description="The user ID of the user that you would like to follow",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
     class Output(BlockSchema):
-        success: bool = SchemaField(description="Whether the follow action was successful")
+        success: bool = SchemaField(
+            description="Whether the follow action was successful"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -115,26 +123,20 @@ class TwitterFollowUserBlock(Block):
             output_schema=TwitterFollowUserBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True),
-                ("error", "")
-            ],
+            test_output=[("success", True), ("error", "")],
         )
 
     @staticmethod
-    def follow_user(
-        credentials: TwitterCredentials,
-        target_user_id: str
-    ):
+    def follow_user(credentials: TwitterCredentials, target_user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.follow_user(target_user_id=target_user_id,user_auth=False)
+            client.follow_user(target_user_id=target_user_id, user_auth=False)
 
             return True
 
@@ -149,14 +151,12 @@ class TwitterFollowUserBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.follow_user(
-                credentials,
-                input_data.target_user_id
-            )
+            success = self.follow_user(credentials, input_data.target_user_id)
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetFollowersBlock(Block):
     """
@@ -165,26 +165,26 @@ class TwitterGetFollowersBlock(Block):
 
     class Input(UserExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "offline.access","follows.read"]
+            ["users.read", "offline.access", "follows.read"]
         )
 
         target_user_id: str = SchemaField(
             description="The user ID whose followers you would like to retrieve",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
         max_results: int = SchemaField(
             description="Maximum number of results to return (1-1000, default 100)",
             placeholder="Enter max results",
             default=10,
-            advanced=True
+            advanced=True,
         )
 
         pagination_token: str = SchemaField(
             description="Token for retrieving next/previous page of results",
             placeholder="Enter pagination token",
             default="",
-            advanced=True
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -193,7 +193,9 @@ class TwitterGetFollowersBlock(Block):
         next_token: str = SchemaField(description="Next token for pagination")
 
         data: list[dict] = SchemaField(description="Complete user data for followers")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata including pagination info")
 
         error: str = SchemaField(description="Error message if the request failed")
@@ -212,7 +214,7 @@ class TwitterGetFollowersBlock(Block):
                 "expansions": [],
                 "tweet_fields": [],
                 "user_fields": [],
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -221,7 +223,7 @@ class TwitterGetFollowersBlock(Block):
                 ("data", [{"id": "1234567890", "username": "testuser"}]),
                 ("includes", {}),
                 ("meta", {"result_count": 1}),
-                ("next_token", "next_token_value")
+                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_followers": lambda *args, **kwargs: (
@@ -230,9 +232,9 @@ class TwitterGetFollowersBlock(Block):
                     [{"id": "1234567890", "username": "testuser"}],
                     {},
                     {"result_count": 1},
-                    "next_token_value"
+                    "next_token_value",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -253,22 +255,21 @@ class TwitterGetFollowersBlock(Block):
             params = {
                 "id": target_user_id,
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_users_followers(
-                    **params
-                )
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_users_followers(**params))
 
             meta = {}
             follower_ids = []
@@ -286,7 +287,14 @@ class TwitterGetFollowersBlock(Block):
                 follower_ids = [str(user.id) for user in response.data]
                 follower_usernames = [user.username for user in response.data]
 
-                return follower_ids, follower_usernames, data, included, meta, next_token
+                return (
+                    follower_ids,
+                    follower_usernames,
+                    data,
+                    included,
+                    meta,
+                    next_token,
+                )
 
             raise Exception("Followers not found")
 
@@ -308,7 +316,7 @@ class TwitterGetFollowersBlock(Block):
                 input_data.pagination_token,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if ids:
                 yield "ids", ids
@@ -325,6 +333,7 @@ class TwitterGetFollowersBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetFollowingBlock(Block):
     """
     Retrieves a list of users that a specified Twitter user ID is following
@@ -332,26 +341,26 @@ class TwitterGetFollowingBlock(Block):
 
     class Input(UserExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "offline.access","follows.read"]
+            ["users.read", "offline.access", "follows.read"]
         )
 
         target_user_id: str = SchemaField(
             description="The user ID whose following you would like to retrieve",
-            placeholder="Enter target user ID"
+            placeholder="Enter target user ID",
         )
 
         max_results: int = SchemaField(
             description="Maximum number of results to return (1-1000, default 100)",
             placeholder="Enter max results",
             default=10,
-            advanced=True
+            advanced=True,
         )
 
         pagination_token: str = SchemaField(
             description="Token for retrieving next/previous page of results",
             placeholder="Enter pagination token",
             default="",
-            advanced=True
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -360,7 +369,9 @@ class TwitterGetFollowingBlock(Block):
         next_token: str = SchemaField(description="Next token for pagination")
 
         data: list[dict] = SchemaField(description="Complete user data for following")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata including pagination info")
 
         error: str = SchemaField(description="Error message if the request failed")
@@ -379,7 +390,7 @@ class TwitterGetFollowingBlock(Block):
                 "expansions": [],
                 "tweet_fields": [],
                 "user_fields": [],
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -388,7 +399,7 @@ class TwitterGetFollowingBlock(Block):
                 ("data", [{"id": "1234567890", "username": "testuser"}]),
                 ("includes", {}),
                 ("meta", {"result_count": 1}),
-                ("next_token", "next_token_value")
+                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_following": lambda *args, **kwargs: (
@@ -397,9 +408,9 @@ class TwitterGetFollowingBlock(Block):
                     [{"id": "1234567890", "username": "testuser"}],
                     {},
                     {"result_count": 1},
-                    "next_token_value"
+                    "next_token_value",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -420,22 +431,21 @@ class TwitterGetFollowingBlock(Block):
             params = {
                 "id": target_user_id,
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_users_following(
-                    **params
-                )
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_users_following(**params))
 
             meta = {}
             following_ids = []
@@ -453,7 +463,14 @@ class TwitterGetFollowingBlock(Block):
                 following_ids = [str(user.id) for user in response.data]
                 following_usernames = [user.username for user in response.data]
 
-                return following_ids, following_usernames, data, included, meta, next_token
+                return (
+                    following_ids,
+                    following_usernames,
+                    data,
+                    included,
+                    meta,
+                    next_token,
+                )
 
             raise Exception("Following not found")
 
@@ -475,7 +492,7 @@ class TwitterGetFollowingBlock(Block):
                 input_data.pagination_token,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if ids:
                 yield "ids", ids

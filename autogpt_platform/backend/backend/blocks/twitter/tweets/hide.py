@@ -1,7 +1,5 @@
 import tweepy
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -9,6 +7,9 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class TwitterHideReplyBlock(Block):
@@ -79,6 +80,7 @@ class TwitterHideReplyBlock(Block):
             yield "success", success
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterUnhideReplyBlock(Block):
     """

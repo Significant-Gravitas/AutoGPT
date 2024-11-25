@@ -4,6 +4,7 @@ from typing import ClassVar, Optional
 
 import requests
 from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+
 from backend.integrations.oauth.base import BaseOAuthHandler
 
 
@@ -27,7 +28,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
         "block.read",
         "block.write",
         "bookmark.read",
-        "bookmark.write"
+        "bookmark.write",
     ]
 
     AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize"
@@ -121,7 +122,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = requests.post(self.TOKEN_URL, headers=header, data=data, auth = auth)
+        response = requests.post(self.TOKEN_URL, headers=header, data=data, auth=auth)
 
         try:
             response.raise_for_status()
@@ -146,7 +147,6 @@ class TwitterOAuthHandler(BaseOAuthHandler):
             refresh_token_expires_at=None,
         )
 
-
     def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         """Revoke the access token"""
 
@@ -154,12 +154,12 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         data = {
             "token": credentials.access_token.get_secret_value(),
-            "token_type_hint": "access_token"
+            "token_type_hint": "access_token",
         }
 
         auth = (self.client_id, self.client_secret)
 
-        response = requests.post(self.REVOKE_URL,headers=header, data=data, auth=auth)
+        response = requests.post(self.REVOKE_URL, headers=header, data=data, auth=auth)
 
         try:
             response.raise_for_status()

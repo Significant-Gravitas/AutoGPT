@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import TweetExpansionsBuilder, UserExpansionsBuilder
-from backend.blocks.twitter._types import TweetExpansionInputs, TweetExpansions, TweetFields, TweetMediaFields, TweetPlaceFields, TweetPollFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,29 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import (
+    TweetExpansionsBuilder,
+    UserExpansionsBuilder,
+)
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetExpansionInputs,
+    TweetExpansions,
+    TweetFields,
+    TweetMediaFields,
+    TweetPlaceFields,
+    TweetPollFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterLikeTweetBlock(Block):
     """
@@ -86,6 +103,7 @@ class TwitterLikeTweetBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetLikingUsersBlock(Block):
     """
     Gets information about users who liked a one of your tweet
@@ -93,7 +111,7 @@ class TwitterGetLikingUsersBlock(Block):
 
     class Input(UserExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["tweet.read", "users.read","like.read", "offline.access"]
+            ["tweet.read", "users.read", "like.read", "offline.access"]
         )
 
         tweet_id: str = SchemaField(
@@ -115,14 +133,20 @@ class TwitterGetLikingUsersBlock(Block):
 
     class Output(BlockSchema):
         # Common Outputs that user commonly uses
-        id : list[str] = SchemaField(description="All User IDs who liked the tweet")
-        username : list[str] = SchemaField(description="All User usernames who liked the tweet")
-        next_token : str = SchemaField(description="Next token for pagination")
+        id: list[str] = SchemaField(description="All User IDs who liked the tweet")
+        username: list[str] = SchemaField(
+            description="All User usernames who liked the tweet"
+        )
+        next_token: str = SchemaField(description="Next token for pagination")
 
         # Complete Outputs for advanced use
-        data : list[dict] = SchemaField(description="Complete Tweet data")
-        included : dict = SchemaField(description="Additional data that you have requested (Optional) via Expansions field")
-        meta : dict = SchemaField(description="Provides metadata such as pagination info (next_token) or result counts")
+        data: list[dict] = SchemaField(description="Complete Tweet data")
+        included: dict = SchemaField(
+            description="Additional data that you have requested (Optional) via Expansions field"
+        )
+        meta: dict = SchemaField(
+            description="Provides metadata such as pagination info (next_token) or result counts"
+        )
 
         # error
         error: str = SchemaField(description="Error message if the request failed")
@@ -141,39 +165,36 @@ class TwitterGetLikingUsersBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("id", ["12345", "67890"]),
                 ("username", ["user1", "user2"]),
-                ("data", [
-                    {
-                        "id": "12345",
-                        "username": "user1"
-                    },
-                    {
-                        "id": "67890",
-                        "username": "user2"
-                    }
-                ]),
+                (
+                    "data",
+                    [
+                        {"id": "12345", "username": "user1"},
+                        {"id": "67890", "username": "user2"},
+                    ],
+                ),
                 ("included", {}),
-                ("meta", {
-                    "result_count": 2,
-                    "next_token": "next_token_value"
-                }),
-                ("next_token", "next_token_value")
+                ("meta", {"result_count": 2, "next_token": "next_token_value"}),
+                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_liking_users": lambda *args, **kwargs: (
                     ["12345", "67890"],
                     ["user1", "user2"],
-                    [{"id": "12345", "username": "user1"}, {"id": "67890", "username": "user2"}],
+                    [
+                        {"id": "12345", "username": "user1"},
+                        {"id": "67890", "username": "user2"},
+                    ],
                     {},
                     {"result_count": 2, "next_token": "next_token_value"},
-                    "next_token_value"
+                    "next_token_value",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -184,7 +205,7 @@ class TwitterGetLikingUsersBlock(Block):
         pagination_token: str,
         expansions: list[UserExpansions],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -194,20 +215,21 @@ class TwitterGetLikingUsersBlock(Block):
             params = {
                 "id": tweet_id,
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
+            params = (
+                UserExpansionsBuilder(params)
                 .add_expansions(expansions)
                 .add_tweet_fields(tweet_fields)
                 .add_user_fields(user_fields)
-                .build())
-
-            response = cast(
-                Response,
-                client.get_liking_users(**params)
+                .build()
             )
+
+            response = cast(Response, client.get_liking_users(**params))
 
             if not response.data and not response.meta:
                 raise Exception("No liking users found")
@@ -250,7 +272,7 @@ class TwitterGetLikingUsersBlock(Block):
                 input_data.pagination_token,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if ids:
                 yield "id", ids
@@ -267,6 +289,7 @@ class TwitterGetLikingUsersBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetLikedTweetsBlock(Block):
     """
     Gets information about tweets liked by you
@@ -274,7 +297,7 @@ class TwitterGetLikedTweetsBlock(Block):
 
     class Input(TweetExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["tweet.read", "users.read","like.read", "offline.access"]
+            ["tweet.read", "users.read", "like.read", "offline.access"]
         )
 
         user_id: str = SchemaField(
@@ -285,7 +308,7 @@ class TwitterGetLikedTweetsBlock(Block):
             description="Maximum number of results to return (5-100)",
             placeholder="100",
             default=10,
-            advanced=True
+            advanced=True,
         )
         pagination_token: str = SchemaField(
             description="Token for getting next/previous page of results",
@@ -296,16 +319,24 @@ class TwitterGetLikedTweetsBlock(Block):
 
     class Output(BlockSchema):
         # Common Outputs that user commonly uses
-        ids : list[str] = SchemaField(description="All Tweet IDs")
-        texts : list[str] = SchemaField(description="All Tweet texts")
-        userIds: list[str] = SchemaField(description="List of user ids that authored the tweets")
-        userNames: list[str] = SchemaField(description="List of user names that authored the tweets")
-        next_token : str = SchemaField(description="Next token for pagination")
+        ids: list[str] = SchemaField(description="All Tweet IDs")
+        texts: list[str] = SchemaField(description="All Tweet texts")
+        userIds: list[str] = SchemaField(
+            description="List of user ids that authored the tweets"
+        )
+        userNames: list[str] = SchemaField(
+            description="List of user names that authored the tweets"
+        )
+        next_token: str = SchemaField(description="Next token for pagination")
 
         # Complete Outputs for advanced use
-        data : list[dict] = SchemaField(description="Complete Tweet data")
-        included : dict = SchemaField(description="Additional data that you have requested (Optional) via Expansions field")
-        meta : dict = SchemaField(description="Provides metadata such as pagination info (next_token) or result counts")
+        data: list[dict] = SchemaField(description="Complete Tweet data")
+        included: dict = SchemaField(
+            description="Additional data that you have requested (Optional) via Expansions field"
+        )
+        meta: dict = SchemaField(
+            description="Provides metadata such as pagination info (next_token) or result counts"
+        )
 
         # error
         error: str = SchemaField(description="Error message if the request failed")
@@ -327,7 +358,7 @@ class TwitterGetLikedTweetsBlock(Block):
                 "place_fields": [],
                 "poll_fields": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -335,27 +366,24 @@ class TwitterGetLikedTweetsBlock(Block):
                 ("texts", ["Tweet 1", "Tweet 2"]),
                 ("userIds", ["67890", "67891"]),
                 ("userNames", ["testuser1", "testuser2"]),
-                ("data", [
+                (
+                    "data",
+                    [
+                        {"id": "12345", "text": "Tweet 1"},
+                        {"id": "67890", "text": "Tweet 2"},
+                    ],
+                ),
+                (
+                    "included",
                     {
-                        "id": "12345",
-                        "text": "Tweet 1"
+                        "users": [
+                            {"id": "67890", "username": "testuser1"},
+                            {"id": "67891", "username": "testuser2"},
+                        ]
                     },
-                    {
-                        "id": "67890",
-                        "text": "Tweet 2"
-                    }
-                ]),
-                ("included", {
-                    "users": [
-                        {"id": "67890", "username": "testuser1"},
-                        {"id": "67891", "username": "testuser2"}
-                    ]
-                }),
-                ("meta", {
-                    "result_count": 2,
-                    "next_token": "next_token_value"
-                }),
-                ("next_token", "next_token_value")
+                ),
+                ("meta", {"result_count": 2, "next_token": "next_token_value"}),
+                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_liked_tweets": lambda *args, **kwargs: (
@@ -363,12 +391,20 @@ class TwitterGetLikedTweetsBlock(Block):
                     ["Tweet 1", "Tweet 2"],
                     ["67890", "67891"],
                     ["testuser1", "testuser2"],
-                    [{"id": "12345", "text": "Tweet 1"}, {"id": "67890", "text": "Tweet 2"}],
-                    {"users": [{"id": "67890", "username": "testuser1"}, {"id": "67891", "username": "testuser2"}]},
+                    [
+                        {"id": "12345", "text": "Tweet 1"},
+                        {"id": "67890", "text": "Tweet 2"},
+                    ],
+                    {
+                        "users": [
+                            {"id": "67890", "username": "testuser1"},
+                            {"id": "67891", "username": "testuser2"},
+                        ]
+                    },
                     {"result_count": 2, "next_token": "next_token_value"},
-                    "next_token_value"
+                    "next_token_value",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -382,7 +418,7 @@ class TwitterGetLikedTweetsBlock(Block):
         place_fields: list[TweetPlaceFields],
         poll_fields: list[TweetPollFields],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -392,23 +428,24 @@ class TwitterGetLikedTweetsBlock(Block):
             params = {
                 "id": user_id,
                 "max_results": max_results,
-                "pagination_token":None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (TweetExpansionsBuilder(params)
+            params = (
+                TweetExpansionsBuilder(params)
                 .add_expansions(expansions)
                 .add_media_fields(media_fields)
                 .add_place_fields(place_fields)
                 .add_poll_fields(poll_fields)
                 .add_tweet_fields(tweet_fields)
                 .add_user_fields(user_fields)
-                .build())
-
-            response = cast(
-                Response,
-                client.get_liked_tweets(**params)
+                .build()
             )
+
+            response = cast(Response, client.get_liked_tweets(**params))
 
             if not response.data and not response.meta:
                 raise Exception("No liked tweets found")
@@ -433,9 +470,20 @@ class TwitterGetLikedTweetsBlock(Block):
 
                 if "users" in response.includes:
                     user_ids = [str(user["id"]) for user in response.includes["users"]]
-                    user_names = [user["username"] for user in response.includes["users"]]
+                    user_names = [
+                        user["username"] for user in response.includes["users"]
+                    ]
 
-                return tweet_ids, tweet_texts, user_ids, user_names, data, included, meta, next_token
+                return (
+                    tweet_ids,
+                    tweet_texts,
+                    user_ids,
+                    user_names,
+                    data,
+                    included,
+                    meta,
+                    next_token,
+                )
 
             raise Exception("No liked tweets found")
 
@@ -450,17 +498,19 @@ class TwitterGetLikedTweetsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            ids, texts, user_ids, user_names, data, included, meta, next_token = self.get_liked_tweets(
-                credentials,
-                input_data.user_id,
-                input_data.max_results,
-                input_data.pagination_token,
-                input_data.expansions,
-                input_data.media_fields,
-                input_data.place_fields,
-                input_data.poll_fields,
-                input_data.tweet_fields,
-                input_data.user_fields
+            ids, texts, user_ids, user_names, data, included, meta, next_token = (
+                self.get_liked_tweets(
+                    credentials,
+                    input_data.user_id,
+                    input_data.max_results,
+                    input_data.pagination_token,
+                    input_data.expansions,
+                    input_data.media_fields,
+                    input_data.place_fields,
+                    input_data.poll_fields,
+                    input_data.tweet_fields,
+                    input_data.user_fields,
+                )
             )
             if ids:
                 yield "ids", ids
@@ -480,6 +530,7 @@ class TwitterGetLikedTweetsBlock(Block):
                 yield "meta", meta
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterUnlikeTweetBlock(Block):
     """

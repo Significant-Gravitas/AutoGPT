@@ -91,8 +91,9 @@ def callback(
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
     handler = _get_provider_oauth_handler(request, provider)
-    code_verifier = creds_manager.store._get_code_verifier(user_id, provider,state_token)
-
+    code_verifier = creds_manager.store._get_code_verifier(
+        user_id, provider, state_token
+    )
 
     # Verify the state token
     if not creds_manager.store.verify_state_token(user_id, state_token, provider):

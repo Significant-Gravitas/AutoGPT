@@ -1,14 +1,7 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
-
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._types import TweetExpansions, TweetMediaFields, TweetPlaceFields, TweetPollFields, TweetFields, TweetUserFields, TweetExpansionInputs
-from backend.blocks.twitter._builders import TweetExpansionsBuilder
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
@@ -17,6 +10,24 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import TweetExpansionsBuilder
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetExpansionInputs,
+    TweetExpansions,
+    TweetFields,
+    TweetMediaFields,
+    TweetPlaceFields,
+    TweetPollFields,
+    TweetUserFields,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterGetTweetBlock(Block):
     """
@@ -30,19 +41,21 @@ class TwitterGetTweetBlock(Block):
 
         tweet_id: str = SchemaField(
             description="Unique identifier of the Tweet to request (ex: 1460323737035677698)",
-            placeholder="Enter tweet ID"
+            placeholder="Enter tweet ID",
         )
 
     class Output(BlockSchema):
         # Common Outputs that user commonly uses
-        id : str = SchemaField(description="Tweet ID")
-        text : str = SchemaField(description="Tweet text")
+        id: str = SchemaField(description="Tweet ID")
+        text: str = SchemaField(description="Tweet text")
         userId: str = SchemaField(description="ID of the tweet author")
         userName: str = SchemaField(description="Username of the tweet author")
 
         # Complete Outputs for advanced use
         data: dict = SchemaField(description="Tweet data")
-        included: dict = SchemaField(description="Additional data that you have requested (Optional) via Expansions field")
+        included: dict = SchemaField(
+            description="Additional data that you have requested (Optional) via Expansions field"
+        )
         meta: dict = SchemaField(description="Metadata about the tweet")
 
         error: str = SchemaField(description="Error message if the request failed")
@@ -62,7 +75,7 @@ class TwitterGetTweetBlock(Block):
                 "place_fields": [],
                 "poll_fields": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -75,11 +88,11 @@ class TwitterGetTweetBlock(Block):
                 ("meta", {"result_count": 1}),
             ],
             test_mock={
-                "get_tweet": lambda *args, **kwargs: ({
-                    "id": "1460323737035677698",
-                    "text": "Test tweet content"
-                }, {})
-            }
+                "get_tweet": lambda *args, **kwargs: (
+                    {"id": "1460323737035677698", "text": "Test tweet content"},
+                    {},
+                )
+            },
         )
 
     @staticmethod
@@ -91,23 +104,25 @@ class TwitterGetTweetBlock(Block):
         place_fields: list[TweetPlaceFields],
         poll_fields: list[TweetPollFields],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
-            params = {"id": tweet_id,"user_auth": False}
+            params = {"id": tweet_id, "user_auth": False}
 
             # Adding expansions to params If required by the user
-            params = (TweetExpansionsBuilder(params)
+            params = (
+                TweetExpansionsBuilder(params)
                 .add_expansions(expansions)
                 .add_media_fields(media_fields)
                 .add_place_fields(place_fields)
                 .add_poll_fields(poll_fields)
                 .add_tweet_fields(tweet_fields)
                 .add_user_fields(user_fields)
-                .build())
+                .build()
+            )
 
             response = cast(Response, client.get_tweet(**params))
 
@@ -142,8 +157,6 @@ class TwitterGetTweetBlock(Block):
     ) -> BlockOutput:
         try:
 
-
-
             tweet_data, included, meta, user_id, user_name = self.get_tweet(
                 credentials,
                 input_data.tweet_id,
@@ -152,7 +165,7 @@ class TwitterGetTweetBlock(Block):
                 input_data.place_fields,
                 input_data.poll_fields,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
 
             yield "id", str(tweet_data["id"])
@@ -170,6 +183,7 @@ class TwitterGetTweetBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetTweetsBlock(Block):
     """
     Returns information about multiple Tweets specified by the requested IDs
@@ -182,19 +196,25 @@ class TwitterGetTweetsBlock(Block):
 
         tweet_ids: list[str] = SchemaField(
             description="List of Tweet IDs to request (up to 100)",
-            placeholder="Enter tweet IDs"
+            placeholder="Enter tweet IDs",
         )
 
     class Output(BlockSchema):
         # Common Outputs that user commonly uses
-        ids : list[str] = SchemaField(description="All Tweet IDs")
-        texts : list[str] = SchemaField(description="All Tweet texts")
-        userIds: list[str] = SchemaField(description="List of user ids that authored the tweets")
-        userNames: list[str] = SchemaField(description="List of user names that authored the tweets")
+        ids: list[str] = SchemaField(description="All Tweet IDs")
+        texts: list[str] = SchemaField(description="All Tweet texts")
+        userIds: list[str] = SchemaField(
+            description="List of user ids that authored the tweets"
+        )
+        userNames: list[str] = SchemaField(
+            description="List of user names that authored the tweets"
+        )
 
         # Complete Outputs for advanced use
         data: list[dict] = SchemaField(description="Complete Tweet data")
-        included: dict = SchemaField(description="Additional data that you have requested (Optional) via Expansions field")
+        included: dict = SchemaField(
+            description="Additional data that you have requested (Optional) via Expansions field"
+        )
         meta: dict = SchemaField(description="Metadata about the tweets")
 
         error: str = SchemaField(description="Error message if the request failed")
@@ -214,7 +234,7 @@ class TwitterGetTweetsBlock(Block):
                 "place_fields": [],
                 "poll_fields": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -224,14 +244,14 @@ class TwitterGetTweetsBlock(Block):
                 ("userNames", ["testuser1"]),
                 ("data", [{"id": "1460323737035677698", "text": "Test tweet content"}]),
                 ("included", {"users": [{"id": "67890", "username": "testuser1"}]}),
-                ("meta", {"result_count": 1})
+                ("meta", {"result_count": 1}),
             ],
             test_mock={
-                "get_tweets": lambda *args, **kwargs: ({
-                    "id": "1460323737035677698",
-                    "text": "Test tweet content"
-                }, {})
-            }
+                "get_tweets": lambda *args, **kwargs: (
+                    {"id": "1460323737035677698", "text": "Test tweet content"},
+                    {},
+                )
+            },
         )
 
     @staticmethod
@@ -243,23 +263,25 @@ class TwitterGetTweetsBlock(Block):
         place_fields: list[TweetPlaceFields],
         poll_fields: list[TweetPollFields],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
-            params = {"ids": tweet_ids,"user_auth": False}
+            params = {"ids": tweet_ids, "user_auth": False}
 
             # Adding expansions to params If required by the user
-            params = (TweetExpansionsBuilder(params)
+            params = (
+                TweetExpansionsBuilder(params)
                 .add_expansions(expansions)
                 .add_media_fields(media_fields)
                 .add_place_fields(place_fields)
                 .add_poll_fields(poll_fields)
                 .add_tweet_fields(tweet_fields)
                 .add_user_fields(user_fields)
-                .build())
+                .build()
+            )
 
             response = cast(Response, client.get_tweets(**params))
 
@@ -308,7 +330,7 @@ class TwitterGetTweetsBlock(Block):
                 input_data.place_fields,
                 input_data.poll_fields,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if ids:
                 yield "ids", ids
