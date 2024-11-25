@@ -356,6 +356,7 @@ To create a webhook-triggered block, follow these additional steps on top of the
     </details>
 
 2. **Define event filter input** in your block's Input schema.
+    This allows the user to select which specific types of events will trigger the block in their agent.
 
     <details>
     <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
@@ -368,7 +369,7 @@ To create a webhook-triggered block, follow these additional steps on top of the
     - The name of the input field (`events` in this case) must match `webhook_config.event_filter_input`.
     - The event filter itself must be a Pydantic model with only boolean fields.
 
-3. **Include payload field** in your block's Input schema.
+4. **Include payload field** in your block's Input schema.
 
     <details>
     <summary>Example: <code>GitHubTriggerBase</code></summary>
@@ -378,11 +379,11 @@ To create a webhook-triggered block, follow these additional steps on top of the
     ```
     </details>
 
-4. **Define `credentials` input** in your block's Input schema.
+5. **Define `credentials` input** in your block's Input schema.
     - Its scopes must be sufficient to manage a user's webhooks through the provider's API
     - See [Blocks with authentication](#blocks-with-authentication) for further details
 
-5. **Process webhook payload** and output relevant parts of it in your block's `run` method.
+6. **Process webhook payload** and output relevant parts of it in your block's `run` method.
 
     <details>
     <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
