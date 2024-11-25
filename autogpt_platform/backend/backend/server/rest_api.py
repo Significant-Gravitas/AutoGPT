@@ -9,6 +9,7 @@ import uvicorn
 
 import backend.data.block
 import backend.data.db
+import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
 import backend.util.service
@@ -23,6 +24,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
+    await backend.data.graph.fix_llm_provider_credentials()
     yield
     await backend.data.db.disconnect()
 
@@ -89,9 +91,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_graph(
         graph_id: str, node_input: dict[typing.Any, typing.Any], user_id: str
     ):
-        return await backend.server.routers.v1.execute_graph(
-            graph_id, node_input, user_id
-        )
+        return backend.server.routers.v1.execute_graph(graph_id, node_input, user_id)
 
     @staticmethod
     async def test_create_graph(
