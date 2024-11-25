@@ -180,7 +180,7 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of autogpt_server/data/graph.py:ExecutionMeta */
+/* Mirror of backend/data/graph.py:ExecutionMeta */
 export type ExecutionMeta = {
   execution_id: string;
   started_at: number;

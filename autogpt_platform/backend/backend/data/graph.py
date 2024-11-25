@@ -353,38 +353,46 @@ async def get_node(node_id: str) -> Node:
 async def get_graphs(
     user_id: str,
     include_executions: bool = False,
-    filter_by: Literal["active", "template"] | None = "active",
+    filter_by: Literal["all", "active", "template"] | None = "active",
 ) -> list[Graph]:
     """
     Retrieves graph metadata objects.
     Default behaviour is to get all currently active graphs.
+    When filter_by="all", retrieves all versions of graphs.
 
     Args:
         include_executions: Whether to include executions in the graph metadata.
-        filter_by: An optional filter to either select templates or active graphs.
+        filter_by: An optional filter to either select all versions,
+            templates or active graphs. Defaults to "active".
         user_id: The ID of the user that owns the graph.
 
     Returns:
         list[Graph]: A list of objects representing the retrieved graph metadata.
     """
-    where_clause: AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    where_clause["userId"] = user_id
-
     graph_include = AGENT_GRAPH_INCLUDE
     graph_include["AgentGraphExecution"] = include_executions
 
-    graphs = await AgentGraph.prisma().find_many(
-        where=where_clause,
-        distinct=["id"],
-        order={"version": "desc"},
-        include=graph_include,
-    )
+    # For "all" return all versions
+    if filter_by == "all":
+        graphs = await AgentGraph.prisma().find_many(
+            where=where_clause,
+            order={"version": "desc"},
+            include=graph_include,
+        )
+    else:
+        graphs = await AgentGraph.prisma().find_many(
+            where=where_clause,
+            distinct=["id"],
+            order={"version": "desc"},
+            include=graph_include,
+        )
 
     return [Graph.from_db(graph) for graph in graphs]
 

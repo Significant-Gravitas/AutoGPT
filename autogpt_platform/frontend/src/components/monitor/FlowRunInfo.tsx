@@ -98,7 +98,7 @@ export const FlowRunInfo: React.FC<
         <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
           <div>
             <CardTitle>
-              {flow.name} <span className="font-light">v{flow.version}</span>
+              {flow.name} <span className="font-light">v{flowRun.graphVersion}</span>
             </CardTitle>
             <p className="mt-2">
               Agent ID: <code>{flow.id}</code>

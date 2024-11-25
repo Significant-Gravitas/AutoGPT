@@ -70,7 +70,7 @@ export default class BaseAutoGPTServerAPI {
   }
 
   async listGraphsWithRuns(): Promise<GraphMetaWithRuns[]> {
-    let graphs = await this._get(`/graphs?with_runs=true`);
+    let graphs = await this._get(`/graphs?with_runs=true&filter_by=all`);
     return graphs.map(parseGraphMetaWithRuns);
   }
 

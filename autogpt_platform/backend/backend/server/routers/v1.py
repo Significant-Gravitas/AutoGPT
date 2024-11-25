@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Annotated, Any, List
+from typing import Annotated, Any, List, Literal
 
 import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
@@ -141,9 +141,10 @@ class DeleteGraphResponse(TypedDict):
 async def get_graphs(
     user_id: Annotated[str, Depends(get_user_id)],
     with_runs: bool = False,
+    filter_by: Literal["all", "active", "template"] | None = "active",
 ) -> list[graph_db.Graph]:
     return await graph_db.get_graphs(
-        include_executions=with_runs, filter_by="active", user_id=user_id
+        include_executions=with_runs, filter_by=filter_by, user_id=user_id
     )
 
 
