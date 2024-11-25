@@ -13,18 +13,21 @@ EXPANSION_FRONTEND_TO_BACKEND_MAPPING = {
     "referenced_tweets_id_author_id": "referenced_tweets.id.author_id",
 }
 
+
 def get_backend_expansion(frontend_key: str) -> str:
     result = EXPANSION_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
     if result is None:
         raise KeyError(f"Invalid expansion key: {frontend_key}")
     return result
 
+
 # TweetReplySettings
 REPLY_SETTINGS_FRONTEND_TO_BACKEND_MAPPING = {
     "mentioned_users": "mentionedUsers",
     "following": "following",
-    "all_users": "all"
+    "all_users": "all",
 }
+
 
 # TweetUserFields
 def get_backend_reply_setting(frontend_key: str) -> str:
@@ -32,6 +35,7 @@ def get_backend_reply_setting(frontend_key: str) -> str:
     if result is None:
         raise KeyError(f"Invalid reply setting key: {frontend_key}")
     return result
+
 
 USER_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "created_at": "created_at",
@@ -49,14 +53,16 @@ USER_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "username": "username",
     "verified": "verified",
     "verified_type": "verified_type",
-    "withheld": "withheld"
+    "withheld": "withheld",
 }
+
 
 def get_backend_user_field(frontend_key: str) -> str:
     result = USER_FIELDS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
     if result is None:
         raise KeyError(f"Invalid user field key: {frontend_key}")
     return result
+
 
 # TweetFields
 FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
@@ -77,8 +83,9 @@ FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "reply_settings": "reply_settings",
     "source": "source",
     "text": "text",
-    "withheld": "withheld"
+    "withheld": "withheld",
 }
+
 
 def get_backend_field(frontend_key: str) -> str:
     result = FIELDS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
@@ -86,20 +93,23 @@ def get_backend_field(frontend_key: str) -> str:
         raise KeyError(f"Invalid field key: {frontend_key}")
     return result
 
+
 # TweetPollFields
 POLL_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "duration_minutes": "duration_minutes",
     "end_datetime": "end_datetime",
     "id": "id",
     "options": "options",
-    "voting_status": "voting_status"
+    "voting_status": "voting_status",
 }
+
 
 def get_backend_poll_field(frontend_key: str) -> str:
     result = POLL_FIELDS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
     if result is None:
         raise KeyError(f"Invalid poll field key: {frontend_key}")
     return result
+
 
 PLACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "contained_within": "contained_within",
@@ -109,14 +119,16 @@ PLACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "geo": "geo",
     "id": "id",
     "place_name": "name",
-    "place_type": "place_type"
+    "place_type": "place_type",
 }
+
 
 def get_backend_place_field(frontend_key: str) -> str:
     result = PLACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
     if result is None:
         raise KeyError(f"Invalid place field key: {frontend_key}")
     return result
+
 
 # TweetMediaFields
 MEDIA_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
@@ -132,14 +144,16 @@ MEDIA_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "organic_metrics": "organic_metrics",
     "promoted_metrics": "promoted_metrics",
     "alt_text": "alt_text",
-    "variants": "variants"
+    "variants": "variants",
 }
+
 
 def get_backend_media_field(frontend_key: str) -> str:
     result = MEDIA_FIELDS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
     if result is None:
         raise KeyError(f"Invalid media field key: {frontend_key}")
     return result
+
 
 # -------------- Spaces -----------------
 
@@ -149,14 +163,16 @@ EXPANSION_FRONTEND_TO_BACKEND_MAPPING_SPACE = {
     "speaker_ids": "speaker_ids",
     "creator_id": "creator_id",
     "host_ids": "host_ids",
-    "topic_ids": "topic_ids"
+    "topic_ids": "topic_ids",
 }
+
 
 def get_backend_space_expansion(frontend_key: str) -> str:
     result = EXPANSION_FRONTEND_TO_BACKEND_MAPPING_SPACE.get(frontend_key)
     if result is None:
         raise KeyError(f"Invalid expansion key: {frontend_key}")
     return result
+
 
 # SpaceFields
 SPACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
@@ -175,8 +191,9 @@ SPACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "started_at": "started_at",
     "title_": "title",
     "topic_ids": "topic_ids",
-    "updated_at": "updated_at"
+    "updated_at": "updated_at",
 }
+
 
 def get_backend_space_field(frontend_key: str) -> str:
     result = SPACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
@@ -184,18 +201,19 @@ def get_backend_space_field(frontend_key: str) -> str:
         raise KeyError(f"Invalid space field key: {frontend_key}")
     return result
 
+
 # -------------- List Expansions -----------------
 
 # ListExpansions
-LIST_EXPANSION_FRONTEND_TO_BACKEND_MAPPING = {
-    "owner_id": "owner_id"
-}
+LIST_EXPANSION_FRONTEND_TO_BACKEND_MAPPING = {"owner_id": "owner_id"}
+
 
 def get_backend_list_expansion(frontend_key: str) -> str:
     result = LIST_EXPANSION_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
     if result is None:
         raise KeyError(f"Invalid list expansion key: {frontend_key}")
     return result
+
 
 LIST_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "id": "id",
@@ -205,8 +223,9 @@ LIST_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "follower_count": "follower_count",
     "member_count": "member_count",
     "private": "private",
-    "owner_id": "owner_id"
+    "owner_id": "owner_id",
 }
+
 
 def get_backend_list_field(frontend_key: str) -> str:
     result = LIST_FIELDS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)

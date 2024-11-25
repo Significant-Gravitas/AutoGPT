@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import ListExpansionsBuilder, UserExpansionsBuilder
-from backend.blocks.twitter._types import ListExpansionInputs, ListExpansions, ListFields, TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,26 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import (
+    ListExpansionsBuilder,
+    UserExpansionsBuilder,
+)
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    ListExpansionInputs,
+    ListExpansions,
+    ListFields,
+    TweetFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class TwitterRemoveListMemberBlock(Block):
@@ -25,28 +39,26 @@ class TwitterRemoveListMemberBlock(Block):
 
     class Input(BlockSchema):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["list.write","users.read","tweet.read", "offline.access"]
+            ["list.write", "users.read", "tweet.read", "offline.access"]
         )
 
         list_id: str = SchemaField(
             description="The ID of the List to remove the member from",
             placeholder="Enter list ID",
-            required=True
+            required=True,
         )
 
         user_id: str = SchemaField(
             description="The ID of the user to remove from the List",
             placeholder="Enter user ID to remove",
-            required=True
+            required=True,
         )
 
     class Output(BlockSchema):
         success: bool = SchemaField(
             description="Whether the member was successfully removed"
         )
-        error: str = SchemaField(
-            description="Error message if the removal failed"
-        )
+        error: str = SchemaField(description="Error message if the removal failed")
 
     def __init__(self):
         super().__init__(
@@ -58,30 +70,20 @@ class TwitterRemoveListMemberBlock(Block):
             test_input={
                 "list_id": "123456789",
                 "user_id": "987654321",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={
-                "remove_list_member": lambda *args, **kwargs: True
-            },
+            test_mock={"remove_list_member": lambda *args, **kwargs: True},
         )
 
     @staticmethod
-    def remove_list_member(
-        credentials: TwitterCredentials,
-        list_id: str,
-        user_id: str
-    ):
+    def remove_list_member(credentials: TwitterCredentials, list_id: str, user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
-            client.remove_list_member(
-                id=list_id,
-                user_id=user_id,
-                user_auth=False
-            )
+            client.remove_list_member(id=list_id, user_id=user_id, user_auth=False)
             return True
         except tweepy.TweepyException:
             raise
@@ -98,14 +100,13 @@ class TwitterRemoveListMemberBlock(Block):
     ) -> BlockOutput:
         try:
             success = self.remove_list_member(
-                credentials,
-                input_data.list_id,
-                input_data.user_id
+                credentials, input_data.list_id, input_data.user_id
             )
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterAddListMemberBlock(Block):
     """
@@ -120,22 +121,20 @@ class TwitterAddListMemberBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to add the member to",
             placeholder="Enter list ID",
-            required=True
+            required=True,
         )
 
         user_id: str = SchemaField(
             description="The ID of the user to add to the List",
             placeholder="Enter user ID to add",
-            required=True
+            required=True,
         )
 
     class Output(BlockSchema):
         success: bool = SchemaField(
             description="Whether the member was successfully added"
         )
-        error: str = SchemaField(
-            description="Error message if the addition failed"
-        )
+        error: str = SchemaField(description="Error message if the addition failed")
 
     def __init__(self):
         super().__init__(
@@ -147,30 +146,20 @@ class TwitterAddListMemberBlock(Block):
             test_input={
                 "list_id": "123456789",
                 "user_id": "987654321",
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={
-                "add_list_member": lambda *args, **kwargs: True
-            },
+            test_mock={"add_list_member": lambda *args, **kwargs: True},
         )
 
     @staticmethod
-    def add_list_member(
-        credentials: TwitterCredentials,
-        list_id: str,
-        user_id: str
-    ):
+    def add_list_member(credentials: TwitterCredentials, list_id: str, user_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
-            client.add_list_member(
-                id=list_id,
-                user_id=user_id,
-                user_auth=False
-            )
+            client.add_list_member(id=list_id, user_id=user_id, user_auth=False)
             return True
         except tweepy.TweepyException:
             raise
@@ -187,14 +176,13 @@ class TwitterAddListMemberBlock(Block):
     ) -> BlockOutput:
         try:
             success = self.add_list_member(
-                credentials,
-                input_data.list_id,
-                input_data.user_id
+                credentials, input_data.list_id, input_data.user_id
             )
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetListMembersBlock(Block):
     """
@@ -209,21 +197,21 @@ class TwitterGetListMembersBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to get members from",
             placeholder="Enter list ID",
-            required=True
+            required=True,
         )
 
         max_results: int = SchemaField(
             description="Maximum number of results per page (1-100)",
             placeholder="Enter max results",
             default=10,
-            advanced=True
+            advanced=True,
         )
 
         pagination_token: str = SchemaField(
             description="Token for pagination of results",
             placeholder="Enter pagination token",
             default="",
-            advanced=True
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -231,8 +219,12 @@ class TwitterGetListMembersBlock(Block):
         usernames: list[str] = SchemaField(description="List of member usernames")
         next_token: str = SchemaField(description="Next token for pagination")
 
-        data: list[dict] = SchemaField(description="Complete user data for list members")
-        included: dict = SchemaField(description="Additional data requested via expansions")
+        data: list[dict] = SchemaField(
+            description="Complete user data for list members"
+        )
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata including pagination info")
 
         error: str = SchemaField(description="Error message if the request failed")
@@ -251,30 +243,36 @@ class TwitterGetListMembersBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("ids", ["12345", "67890"]),
                 ("usernames", ["testuser1", "testuser2"]),
-                ("data", [
-                    {"id": "12345", "username": "testuser1"},
-                    {"id": "67890", "username": "testuser2"}
-                ]),
+                (
+                    "data",
+                    [
+                        {"id": "12345", "username": "testuser1"},
+                        {"id": "67890", "username": "testuser2"},
+                    ],
+                ),
                 ("included", {}),
                 ("meta", {"next_token": "next_token_value"}),
-                ("next_token", "next_token_value")
+                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_list_members": lambda *args, **kwargs: (
                     ["12345", "67890"],
                     ["testuser1", "testuser2"],
-                    [{"id": "12345", "username": "testuser1"}, {"id": "67890", "username": "testuser2"}],
+                    [
+                        {"id": "12345", "username": "testuser1"},
+                        {"id": "67890", "username": "testuser2"},
+                    ],
                     {},
                     {"next_token": "next_token_value"},
-                    "next_token_value"
+                    "next_token_value",
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -295,20 +293,21 @@ class TwitterGetListMembersBlock(Block):
             params = {
                 "id": list_id,
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_list_members(**params)
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_list_members(**params))
 
             meta = {}
             next_token = None
@@ -347,7 +346,7 @@ class TwitterGetListMembersBlock(Block):
                 input_data.pagination_token,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
 
             if ids:
@@ -366,6 +365,7 @@ class TwitterGetListMembersBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetListMembershipsBlock(Block):
     """
     Gets all Lists that a specified user is a member of
@@ -379,7 +379,7 @@ class TwitterGetListMembershipsBlock(Block):
         user_id: str = SchemaField(
             description="The ID of the user whose List memberships to retrieve",
             placeholder="Enter user ID",
-            required=True
+            required=True,
         )
 
         max_results: int = SchemaField(
@@ -389,11 +389,11 @@ class TwitterGetListMembershipsBlock(Block):
             default=10,
         )
 
-        pagination_token: str  = SchemaField(
+        pagination_token: str = SchemaField(
             description="Token for pagination of results",
             placeholder="Enter pagination token",
             advanced=True,
-            default=""
+            default="",
         )
 
     class Output(BlockSchema):
@@ -401,7 +401,9 @@ class TwitterGetListMembershipsBlock(Block):
         next_token: str = SchemaField(description="Next token for pagination")
 
         data: list[dict] = SchemaField(description="List membership data")
-        included: dict = SchemaField(description="Additional data requested via expansions")
+        included: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Metadata about pagination")
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -419,7 +421,7 @@ class TwitterGetListMembershipsBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "list_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -427,7 +429,7 @@ class TwitterGetListMembershipsBlock(Block):
                 ("data", {"lists": [{"id": "84839422"}]}),
                 ("included", {}),
                 ("meta", {"next_token": None}),
-                ("next_token", None)
+                ("next_token", None),
             ],
             test_mock={
                 "get_list_memberships": lambda *args, **kwargs: (
@@ -435,9 +437,9 @@ class TwitterGetListMembershipsBlock(Block):
                     {},
                     {"next_token": None},
                     ["84839422"],
-                    None
+                    None,
                 )
-            }
+            },
         )
 
     @staticmethod
@@ -448,7 +450,7 @@ class TwitterGetListMembershipsBlock(Block):
         pagination_token: str,
         expansions: list[ListExpansions],
         user_fields: list[TweetUserFields],
-        list_fields: list[ListFields]
+        list_fields: list[ListFields],
     ):
         try:
             client = tweepy.Client(
@@ -458,20 +460,21 @@ class TwitterGetListMembershipsBlock(Block):
             params = {
                 "id": user_id,
                 "max_results": max_results,
-                "pagination_token": None if pagination_token == "" else pagination_token,
-                "user_auth": False
+                "pagination_token": (
+                    None if pagination_token == "" else pagination_token
+                ),
+                "user_auth": False,
             }
 
-            params = (ListExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_user_fields(user_fields)
-                    .add_list_fields(list_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_list_memberships(**params)
+            params = (
+                ListExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_user_fields(user_fields)
+                .add_list_fields(list_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_list_memberships(**params))
 
             meta = {}
             next_token = None
@@ -510,7 +513,7 @@ class TwitterGetListMembershipsBlock(Block):
                 input_data.pagination_token,
                 input_data.expansions,
                 input_data.user_fields,
-                input_data.list_fields
+                input_data.list_fields,
             )
 
             if list_ids:

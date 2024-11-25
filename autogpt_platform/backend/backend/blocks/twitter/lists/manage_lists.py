@@ -3,9 +3,6 @@ from typing import cast
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -13,6 +10,9 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class TwitterDeleteListBlock(Block):
@@ -28,7 +28,7 @@ class TwitterDeleteListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to be deleted",
             placeholder="Enter list ID",
-            required=True
+            required=True,
         )
 
     class Output(BlockSchema):
@@ -42,31 +42,20 @@ class TwitterDeleteListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterDeleteListBlock.Input,
             output_schema=TwitterDeleteListBlock.Output,
-            test_input={
-                "list_id": "1234567890",
-                "credentials": TEST_CREDENTIALS_INPUT
-            },
+            test_input={"list_id": "1234567890", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={
-                "delete_list": lambda *args, **kwargs: True
-            },
+            test_mock={"delete_list": lambda *args, **kwargs: True},
         )
 
     @staticmethod
-    def delete_list(
-        credentials: TwitterCredentials,
-        list_id: str
-    ):
+    def delete_list(credentials: TwitterCredentials, list_id: str):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            client.delete_list(
-                id=list_id,
-                user_auth=False
-            )
+            client.delete_list(id=list_id, user_auth=False)
             return True
 
         except tweepy.TweepyException:
@@ -83,14 +72,12 @@ class TwitterDeleteListBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.delete_list(
-                credentials,
-                input_data.list_id
-            )
+            success = self.delete_list(credentials, input_data.list_id)
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterUpdateListBlock(Block):
     """
@@ -107,7 +94,6 @@ class TwitterUpdateListBlock(Block):
             placeholder="Enter list ID",
             advanced=False,
         )
-
 
         name: str = SchemaField(
             description="New name for the List",
@@ -139,21 +125,16 @@ class TwitterUpdateListBlock(Block):
                 "name": "Updated List Name",
                 "description": "Updated List Description",
                 "private": True,
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={
-                "update_list": lambda *args, **kwargs: True
-            },
+            test_mock={"update_list": lambda *args, **kwargs: True},
         )
 
     @staticmethod
     def update_list(
-        credentials: TwitterCredentials,
-        list_id: str,
-        name: str ,
-        description: str
+        credentials: TwitterCredentials, list_id: str, name: str, description: str
     ):
         try:
             client = tweepy.Client(
@@ -164,7 +145,7 @@ class TwitterUpdateListBlock(Block):
                 id=list_id,
                 name=None if name == "" else name,
                 description=None if description == "" else description,
-                user_auth=False
+                user_auth=False,
             )
             return True
 
@@ -193,6 +174,7 @@ class TwitterUpdateListBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterCreateListBlock(Block):
     """
     Creates a Twitter List owned by the authenticated user
@@ -214,13 +196,13 @@ class TwitterCreateListBlock(Block):
             description="Description of the List",
             placeholder="Enter list description",
             advanced=False,
-            default=""
+            default="",
         )
 
         private: bool = SchemaField(
             description="Whether the List should be private",
             advanced=False,
-            default=False
+            default=False,
         )
 
     class Output(BlockSchema):
@@ -239,33 +221,38 @@ class TwitterCreateListBlock(Block):
                 "name": "New List Name",
                 "description": "New List Description",
                 "private": True,
-                "credentials": TEST_CREDENTIALS_INPUT
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("list_id", "1234567890"), ("url", "https://twitter.com/i/lists/1234567890")],
+            test_output=[
+                ("list_id", "1234567890"),
+                ("url", "https://twitter.com/i/lists/1234567890"),
+            ],
             test_mock={
-                "create_list": lambda *args, **kwargs: cast(Response, {"data": {"id": "1234567890"}})
+                "create_list": lambda *args, **kwargs: cast(
+                    Response, {"data": {"id": "1234567890"}}
+                )
             },
         )
 
     @staticmethod
     def create_list(
-        credentials: TwitterCredentials,
-        name: str,
-        description: str,
-        private: bool
+        credentials: TwitterCredentials, name: str, description: str, private: bool
     ):
         try:
             client = tweepy.Client(
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            response = cast(Response, client.create_list(
-                name=None if name == "" else name,
-                description=None if description == "" else description,
-                private=private,
-                user_auth=False
-            ))
+            response = cast(
+                Response,
+                client.create_list(
+                    name=None if name == "" else name,
+                    description=None if description == "" else description,
+                    private=private,
+                    user_auth=False,
+                ),
+            )
             return response
 
         except tweepy.TweepyException:
@@ -283,10 +270,7 @@ class TwitterCreateListBlock(Block):
     ) -> BlockOutput:
         try:
             response = self.create_list(
-                credentials,
-                input_data.name,
-                input_data.description,
-                input_data.private
+                credentials, input_data.name, input_data.description, input_data.private
             )
             list_id = str(response.data["id"])
             yield "list_id", list_id

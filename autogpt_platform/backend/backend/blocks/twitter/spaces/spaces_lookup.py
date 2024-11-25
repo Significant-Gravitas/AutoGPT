@@ -1,14 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import SpaceExpansionsBuilder, TweetExpansionsBuilder, UserExpansionsBuilder
-from backend.blocks.twitter._types import SpaceExpansionInputs, SpaceExpansions, SpaceFields, TweetExpansionInputs, TweetExpansions, TweetFields, TweetMediaFields, TweetPlaceFields, TweetPollFields, TweetUserFields, UserExpansionInputs, UserExpansions
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,6 +10,33 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import (
+    SpaceExpansionsBuilder,
+    TweetExpansionsBuilder,
+    UserExpansionsBuilder,
+)
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    SpaceExpansionInputs,
+    SpaceExpansions,
+    SpaceFields,
+    TweetExpansionInputs,
+    TweetExpansions,
+    TweetFields,
+    TweetMediaFields,
+    TweetPlaceFields,
+    TweetPollFields,
+    TweetUserFields,
+    UserExpansionInputs,
+    UserExpansions,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
+
 
 class TwitterGetSpacesBlock(Block):
     """
@@ -31,16 +52,15 @@ class TwitterGetSpacesBlock(Block):
             description="List of Space IDs to lookup (up to 100)",
             placeholder="Enter Space IDs",
             default=[],
-            advanced=False
+            advanced=False,
         )
 
-        user_ids: list[str]  = SchemaField(
+        user_ids: list[str] = SchemaField(
             description="List of user IDs to lookup their Spaces (up to 100)",
             placeholder="Enter user IDs",
             default=[],
-            advanced=False
+            advanced=False,
         )
-
 
     class Output(BlockSchema):
         # Common outputs
@@ -49,7 +69,9 @@ class TwitterGetSpacesBlock(Block):
 
         # Complete outputs for advanced use
         data: list[dict] = SchemaField(description="Complete space data")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -65,15 +87,26 @@ class TwitterGetSpacesBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "space_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("ids", ["1DXxyRYNejbKM"]),
                 ("titles", ["Test Space"]),
                 ("host_ids", ["1234567"]),
-                ("data", {"spaces": [{"id": "1DXxyRYNejbKM", "title": "Test Space", "host_id": "1234567"}]}),
-                ("includes", {})
+                (
+                    "data",
+                    {
+                        "spaces": [
+                            {
+                                "id": "1DXxyRYNejbKM",
+                                "title": "Test Space",
+                                "host_id": "1234567",
+                            }
+                        ]
+                    },
+                ),
+                ("includes", {}),
             ],
         )
 
@@ -93,22 +126,20 @@ class TwitterGetSpacesBlock(Block):
 
             params = {
                 "ids": None if space_ids == [] else space_ids,
-                "user_ids": None if user_ids == [] else user_ids
+                "user_ids": None if user_ids == [] else user_ids,
             }
 
-            params = (SpaceExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_space_fields(space_fields)
-                    .add_user_fields(user_fields)
-                    .build())
+            params = (
+                SpaceExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_space_fields(space_fields)
+                .add_user_fields(user_fields)
+                .build()
+            )
 
             print(" before space response")
 
-            response = cast(
-                Response,
-                client.get_spaces(**params)
-            )
-
+            response = cast(Response, client.get_spaces(**params))
 
             ids = []
             titles = []
@@ -157,6 +188,7 @@ class TwitterGetSpacesBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetSpaceByIdBlock(Block):
     """
     Gets information about a single Twitter Space specified by Space ID
@@ -170,9 +202,8 @@ class TwitterGetSpaceByIdBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup",
             placeholder="Enter Space ID",
-            required=True
+            required=True,
         )
-
 
     class Output(BlockSchema):
         # Common outputs
@@ -182,7 +213,9 @@ class TwitterGetSpaceByIdBlock(Block):
 
         # Complete outputs for advanced use
         data: dict = SchemaField(description="Complete space data")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -197,16 +230,23 @@ class TwitterGetSpaceByIdBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "space_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("id", "1DXxyRYNejbKM"),
                 ("title", "Test Space"),
                 ("host_id", "1234567"),
-                ("data", {"id": "1DXxyRYNejbKM", "title": "Test Space", "host_id": "1234567"}),
+                (
+                    "data",
+                    {
+                        "id": "1DXxyRYNejbKM",
+                        "title": "Test Space",
+                        "host_id": "1234567",
+                    },
+                ),
                 ("includes", {}),
-                ("error", None)
+                ("error", None),
             ],
         )
 
@@ -227,41 +267,39 @@ class TwitterGetSpaceByIdBlock(Block):
                 "id": space_id,
             }
 
-            params = (SpaceExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_space_fields(space_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_space(**params)
+            params = (
+                SpaceExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_space_fields(space_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_space(**params))
 
             includes = {}
             if response.includes:
                 for key, value in response.includes.items():
                     if isinstance(value, list):
                         includes[key] = [
-                            item.data if hasattr(item, 'data') else item
+                            item.data if hasattr(item, "data") else item
                             for item in value
                         ]
                     else:
-                        includes[key] = value.data if hasattr(value, 'data') else value
+                        includes[key] = value.data if hasattr(value, "data") else value
 
             data = {}
             if response.data:
                 for key, value in response.data.items():
                     if isinstance(value, list):
                         data[key] = [
-                            item.data if hasattr(item, 'data') else item
+                            item.data if hasattr(item, "data") else item
                             for item in value
                         ]
                     else:
-                        data[key] = value.data if hasattr(value, 'data') else value
+                        data[key] = value.data if hasattr(value, "data") else value
 
                 return data, includes
-
 
             raise Exception("Space not found")
 
@@ -291,12 +329,13 @@ class TwitterGetSpaceByIdBlock(Block):
                 yield "host_ids", space_data.get("host_ids")
 
             if space_data:
-                    yield "data", space_data
+                yield "data", space_data
             if includes:
-                    yield "includes", includes
+                yield "includes", includes
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 # Not tested yet, might have some problem
 class TwitterGetSpaceBuyersBlock(Block):
@@ -312,7 +351,7 @@ class TwitterGetSpaceBuyersBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup buyers for",
             placeholder="Enter Space ID",
-            required=True
+            required=True,
         )
 
     class Output(BlockSchema):
@@ -322,7 +361,9 @@ class TwitterGetSpaceBuyersBlock(Block):
 
         # Complete outputs for advanced use
         data: list[dict] = SchemaField(description="Complete space buyers data")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -336,15 +377,18 @@ class TwitterGetSpaceBuyersBlock(Block):
                 "space_id": "1DXxyRYNejbKM",
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("buyer_ids", ["2244994945"]),
                 ("usernames", ["testuser"]),
-                ("data", {"id": "2244994945", "username": "testuser", "name": "Test User"}),
+                (
+                    "data",
+                    {"id": "2244994945", "username": "testuser", "name": "Test User"},
+                ),
                 ("includes", {}),
-                ("error", None)
+                ("error", None),
             ],
         )
 
@@ -364,15 +408,14 @@ class TwitterGetSpaceBuyersBlock(Block):
                 "id": space_id,
             }
 
-            params = (UserExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_space_buyers(**params)
+            params = (
+                UserExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_space_buyers(**params))
 
             included = IncludesSerializer.serialize(response.includes)
 
@@ -400,7 +443,7 @@ class TwitterGetSpaceBuyersBlock(Block):
                 credentials,
                 input_data.space_id,
                 input_data.expansions,
-                input_data.user_fields
+                input_data.user_fields,
             )
 
             if buyer_ids:
@@ -416,6 +459,7 @@ class TwitterGetSpaceBuyersBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetSpaceTweetsBlock(Block):
     """
     Gets list of Tweets shared in the requested Space
@@ -429,7 +473,7 @@ class TwitterGetSpaceTweetsBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup tweets for",
             placeholder="Enter Space ID",
-            required=True
+            required=True,
         )
 
     class Output(BlockSchema):
@@ -439,7 +483,9 @@ class TwitterGetSpaceTweetsBlock(Block):
 
         # Complete outputs for advanced use
         data: list[dict] = SchemaField(description="Complete space tweets data")
-        includes: dict = SchemaField(description="Additional data requested via expansions")
+        includes: dict = SchemaField(
+            description="Additional data requested via expansions"
+        )
         meta: dict = SchemaField(description="Response metadata")
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -458,7 +504,7 @@ class TwitterGetSpaceTweetsBlock(Block):
                 "place_fields": [],
                 "poll_fields": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -467,7 +513,7 @@ class TwitterGetSpaceTweetsBlock(Block):
                 ("data", {"tweets": [{"id": "1234567890", "text": "Test tweet"}]}),
                 ("includes", {}),
                 ("meta", {}),
-                ("error", None)
+                ("error", None),
             ],
         )
 
@@ -480,7 +526,7 @@ class TwitterGetSpaceTweetsBlock(Block):
         place_fields: list[TweetPlaceFields],
         poll_fields: list[TweetPollFields],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -491,19 +537,18 @@ class TwitterGetSpaceTweetsBlock(Block):
                 "id": space_id,
             }
 
-            params = (TweetExpansionsBuilder(params)
-                    .add_expansions(expansions)
-                    .add_media_fields(media_fields)
-                    .add_place_fields(place_fields)
-                    .add_poll_fields(poll_fields)
-                    .add_tweet_fields(tweet_fields)
-                    .add_user_fields(user_fields)
-                    .build())
-
-            response = cast(
-                Response,
-                client.get_space_tweets(**params)
+            params = (
+                TweetExpansionsBuilder(params)
+                .add_expansions(expansions)
+                .add_media_fields(media_fields)
+                .add_place_fields(place_fields)
+                .add_poll_fields(poll_fields)
+                .add_tweet_fields(tweet_fields)
+                .add_user_fields(user_fields)
+                .build()
             )
+
+            response = cast(Response, client.get_space_tweets(**params))
 
             included = IncludesSerializer.serialize(response.includes)
 
@@ -537,7 +582,7 @@ class TwitterGetSpaceTweetsBlock(Block):
                 input_data.place_fields,
                 input_data.poll_fields,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
 
             if tweet_ids:

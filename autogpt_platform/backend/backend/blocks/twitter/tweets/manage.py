@@ -1,15 +1,8 @@
 from typing import cast
 
-from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
 import tweepy
 from tweepy.client import Response
 
-from backend.blocks.twitter._types import TweetExpansionInputs, TweetTimeWindowInputs
-from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.blocks.twitter._builders import  TweetExpansionsBuilder,TweetDurationBuilder, TweetPostBuilder, TweetSearchBuilder
-from backend.blocks.twitter._types import TweetExpansions, TweetMediaFields, TweetPlaceFields, TweetPollFields, TweetReplySettings, TweetFields, TweetUserFields
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -17,11 +10,35 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsField,
     TwitterCredentialsInput,
 )
+from backend.blocks.twitter._builders import (
+    TweetDurationBuilder,
+    TweetExpansionsBuilder,
+    TweetPostBuilder,
+    TweetSearchBuilder,
+)
+from backend.blocks.twitter._serializer import (
+    IncludesSerializer,
+    ResponseDataSerializer,
+)
+from backend.blocks.twitter._types import (
+    TweetExpansionInputs,
+    TweetExpansions,
+    TweetFields,
+    TweetMediaFields,
+    TweetPlaceFields,
+    TweetPollFields,
+    TweetReplySettings,
+    TweetTimeWindowInputs,
+    TweetUserFields,
+)
+from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class TwitterPostTweetBlock(Block):
     """
-    Create a tweet on Twitter with the option to include one additional element such as a media, quote, or deep link except poll.
+    Create a tweet on Twitter with the option to include one additional element such as a media, quote, or deep link.
     """
 
     class Input(BlockSchema):
@@ -29,11 +46,11 @@ class TwitterPostTweetBlock(Block):
             ["tweet.read", "tweet.write", "users.read", "offline.access"]
         )
 
-        tweet_text: str  = SchemaField(
+        tweet_text: str = SchemaField(
             description="Text of the tweet to post [It's Optional if you want to add media, quote, or deep link]",
             placeholder="Enter your tweet",
             advanced=False,
-            default=""
+            default="",
         )
 
         media_ids: list = SchemaField(
@@ -60,7 +77,7 @@ class TwitterPostTweetBlock(Block):
             default=[],
         )
 
-        poll_duration_minutes: int  = SchemaField(
+        poll_duration_minutes: int = SchemaField(
             description="Duration of the poll in minutes",
             placeholder="Enter poll duration in minutes",
             default=0,
@@ -82,7 +99,7 @@ class TwitterPostTweetBlock(Block):
             description="Link to the Tweet being quoted, [ex- 1455953449422516226]",
             advanced=True,
             placeholder="Enter quote tweet ID",
-            default=""
+            default="",
         )
 
         exclude_reply_user_ids: list = SchemaField(
@@ -92,11 +109,11 @@ class TwitterPostTweetBlock(Block):
             default=[],
         )
 
-        in_reply_to_tweet_id: str  = SchemaField(
+        in_reply_to_tweet_id: str = SchemaField(
             description="Tweet ID being replied to. Please note that in_reply_to_tweet_id needs to be in the request if exclude_reply_user_ids is present",
             default="",
             placeholder="Enter in reply to tweet ID",
-            advanced=True
+            advanced=True,
         )
 
         reply_settings: TweetReplySettings = SchemaField(
@@ -149,17 +166,17 @@ class TwitterPostTweetBlock(Block):
     @staticmethod
     def post_tweet(
         credentials: TwitterCredentials,
-        input_txt: str ,
+        input_txt: str,
         media_ids: list,
         media_tagged_user_ids: list,
-        direct_message_deep_link: str ,
-        for_super_followers_only: bool ,
-        place_id: str ,
+        direct_message_deep_link: str,
+        for_super_followers_only: bool,
+        place_id: str,
         poll_options: list,
         poll_duration_minutes: int,
-        quote_tweet_id: str ,
-        exclude_reply_user_ids: list ,
-        in_reply_to_tweet_id: str ,
+        quote_tweet_id: str,
+        exclude_reply_user_ids: list,
+        in_reply_to_tweet_id: str,
         reply_settings: TweetReplySettings,
     ):
         try:
@@ -167,7 +184,8 @@ class TwitterPostTweetBlock(Block):
                 bearer_token=credentials.access_token.get_secret_value()
             )
 
-            params = (TweetPostBuilder()
+            params = (
+                TweetPostBuilder()
                 .add_text(input_txt)
                 .add_media(media_ids, media_tagged_user_ids)
                 .add_deep_link(direct_message_deep_link)
@@ -176,13 +194,13 @@ class TwitterPostTweetBlock(Block):
                 .add_poll_duration(poll_duration_minutes)
                 .add_place(place_id)
                 .add_quote(quote_tweet_id)
-                .add_reply_settings(exclude_reply_user_ids, in_reply_to_tweet_id, reply_settings)
-                .build())
-
-            tweet = cast(
-                Response,
-                client.create_tweet(**params)
+                .add_reply_settings(
+                    exclude_reply_user_ids, in_reply_to_tweet_id, reply_settings
+                )
+                .build()
             )
+
+            tweet = cast(Response, client.create_tweet(**params))
 
             if not tweet.data:
                 raise Exception("Failed to create tweet")
@@ -226,6 +244,7 @@ class TwitterPostTweetBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterDeleteTweetBlock(Block):
     """
     Deletes a tweet on Twitter using twitter Id
@@ -262,9 +281,7 @@ class TwitterDeleteTweetBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
-            test_mock={
-                "delete_tweet": lambda *args, **kwargs: True
-            },
+            test_mock={"delete_tweet": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -298,6 +315,7 @@ class TwitterDeleteTweetBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterSearchRecentTweetsBlock(Block):
     """
     Searches all public Tweets in Twitter history
@@ -329,14 +347,18 @@ class TwitterSearchRecentTweetsBlock(Block):
 
     class Output(BlockSchema):
         # Common Outputs that user commonly uses
-        tweet_ids : list[str] = SchemaField(description="All Tweet IDs")
-        tweet_texts : list[str] = SchemaField(description="All Tweet texts")
-        next_token : str = SchemaField(description="Next token for pagination")
+        tweet_ids: list[str] = SchemaField(description="All Tweet IDs")
+        tweet_texts: list[str] = SchemaField(description="All Tweet texts")
+        next_token: str = SchemaField(description="Next token for pagination")
 
         # Complete Outputs for advanced use
-        data : list[dict] = SchemaField(description="Complete Tweet data")
-        included : dict = SchemaField(description="Additional data that you have requested (Optional) via Expansions field")
-        meta : dict = SchemaField(description="Provides metadata such as pagination info (next_token) or result counts")
+        data: list[dict] = SchemaField(description="Complete Tweet data")
+        included: dict = SchemaField(
+            description="Additional data that you have requested (Optional) via Expansions field"
+        )
+        meta: dict = SchemaField(
+            description="Provides metadata such as pagination info (next_token) or result counts"
+        )
 
         # error
         error: str = SchemaField(description="Error message if the request failed")
@@ -363,53 +385,66 @@ class TwitterSearchRecentTweetsBlock(Block):
                 "place_fields": [],
                 "poll_fields": [],
                 "tweet_fields": [],
-                "user_fields": []
+                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("tweet_ids", ["1373001119480344583", "1372627771717869568"]),
-                ("tweet_texts", ["Looking to get started with the Twitter API but new to APIs in general?",
-                         "Thanks to everyone who joined and made today a great session!"]),
-                ("data", [
-                    {
-                        "id": "1373001119480344583",
-                        "text": "Looking to get started with the Twitter API but new to APIs in general?"
-                    },
-                    {
-                        "id": "1372627771717869568",
-                        "text": "Thanks to everyone who joined and made today a great session!"
-                    }
-                ]),
+                (
+                    "tweet_texts",
+                    [
+                        "Looking to get started with the Twitter API but new to APIs in general?",
+                        "Thanks to everyone who joined and made today a great session!",
+                    ],
+                ),
+                (
+                    "data",
+                    [
+                        {
+                            "id": "1373001119480344583",
+                            "text": "Looking to get started with the Twitter API but new to APIs in general?",
+                        },
+                        {
+                            "id": "1372627771717869568",
+                            "text": "Thanks to everyone who joined and made today a great session!",
+                        },
+                    ],
+                ),
                 ("included", {}),
-                ("meta", {
-                    "newest_id": "1373001119480344583",
-                    "oldest_id": "1372627771717869568",
-                    "next_token": "next_token_value"
-                }),
-                ("next_token", "next_token_value")
+                (
+                    "meta",
+                    {
+                        "newest_id": "1373001119480344583",
+                        "oldest_id": "1372627771717869568",
+                        "next_token": "next_token_value",
+                    },
+                ),
+                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "search_tweets": lambda *args, **kwargs: (
                     ["1373001119480344583", "1372627771717869568"],
-                    ["Looking to get started with the Twitter API but new to APIs in general?",
-                     "Thanks to everyone who joined and made today a great session!"],
+                    [
+                        "Looking to get started with the Twitter API but new to APIs in general?",
+                        "Thanks to everyone who joined and made today a great session!",
+                    ],
                     [
                         {
                             "id": "1373001119480344583",
-                            "text": "Looking to get started with the Twitter API but new to APIs in general?"
+                            "text": "Looking to get started with the Twitter API but new to APIs in general?",
                         },
                         {
                             "id": "1372627771717869568",
-                            "text": "Thanks to everyone who joined and made today a great session!"
-                        }
+                            "text": "Thanks to everyone who joined and made today a great session!",
+                        },
                     ],
                     {},
                     {
                         "newest_id": "1373001119480344583",
                         "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value"
+                        "next_token": "next_token_value",
                     },
-                    "next_token_value"
+                    "next_token_value",
                 )
             },
         )
@@ -430,7 +465,7 @@ class TwitterSearchRecentTweetsBlock(Block):
         place_fields: list[TweetPlaceFields],
         poll_fields: list[TweetPollFields],
         tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields]
+        user_fields: list[TweetUserFields],
     ):
         try:
             client = tweepy.Client(
@@ -438,34 +473,37 @@ class TwitterSearchRecentTweetsBlock(Block):
             )
 
             # Building common params
-            params = (TweetSearchBuilder()
+            params = (
+                TweetSearchBuilder()
                 .add_query(query)
                 .add_pagination(max_results, pagination)
-                .build())
+                .build()
+            )
 
             # Adding expansions to params If required by the user
-            params = (TweetExpansionsBuilder(params)
+            params = (
+                TweetExpansionsBuilder(params)
                 .add_expansions(expansions)
                 .add_media_fields(media_fields)
                 .add_place_fields(place_fields)
                 .add_poll_fields(poll_fields)
                 .add_tweet_fields(tweet_fields)
                 .add_user_fields(user_fields)
-                .build())
+                .build()
+            )
 
             # Adding time window to params If required by the user
-            params = (TweetDurationBuilder(params)
+            params = (
+                TweetDurationBuilder(params)
                 .add_start_time(start_time)
                 .add_end_time(end_time)
                 .add_since_id(since_id)
                 .add_until_id(until_id)
                 .add_sort_order(sort_order)
-                .build())
-
-            response = cast(
-                Response,
-                client.search_recent_tweets(**params)
+                .build()
             )
+
+            response = cast(Response, client.search_recent_tweets(**params))
 
             if not response.data and not response.meta:
                 raise Exception("No tweets found")
@@ -516,7 +554,7 @@ class TwitterSearchRecentTweetsBlock(Block):
                 input_data.place_fields,
                 input_data.poll_fields,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if ids:
                 yield "tweet_ids", ids
