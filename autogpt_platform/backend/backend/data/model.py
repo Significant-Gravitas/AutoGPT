@@ -122,6 +122,7 @@ def SchemaField(
     placeholder: Optional[str] = None,
     advanced: Optional[bool] = False,
     secret: bool = False,
+    is_multi_select: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
     **kwargs,
@@ -133,6 +134,7 @@ def SchemaField(
             "secret": secret,
             "advanced": advanced,
             "hidden": hidden,
+            "isMultiSelect": is_multi_select,
         }.items()
         if v is not None
     }

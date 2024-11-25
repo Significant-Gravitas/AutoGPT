@@ -8,7 +8,14 @@ import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
-import { FaDiscord, FaGithub, FaGoogle, FaMedium, FaKey } from "react-icons/fa";
+import {
+  FaDiscord,
+  FaGithub,
+  FaTwitter,
+  FaGoogle,
+  FaMedium,
+  FaKey,
+} from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
 import {
   CredentialsMetaInput,
@@ -71,6 +78,7 @@ export const providerIcons: Record<
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
   hubspot: fallbackIcon,
+  twitter: FaTwitter,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

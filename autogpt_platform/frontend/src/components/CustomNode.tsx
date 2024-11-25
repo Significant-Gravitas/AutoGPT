@@ -270,6 +270,9 @@ export function CustomNode({
     const newValues = JSON.parse(JSON.stringify(data.hardcodedValues));
     let current = newValues;
 
+    console.log("Keys: ", keys);
+    console.log("Value: ", newValues);
+
     for (let i = 0; i < keys.length - 1; i++) {
       const { key: currentKey, index } = keys[i];
       if (index !== undefined) {

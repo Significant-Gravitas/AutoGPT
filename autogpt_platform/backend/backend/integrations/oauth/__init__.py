@@ -2,6 +2,7 @@ from .base import BaseOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler
+from .twitter import TwitterOAuthHandler
 
 # --8<-- [start:HANDLERS_BY_NAMEExample]
 HANDLERS_BY_NAME: dict[str, type[BaseOAuthHandler]] = {
@@ -10,6 +11,7 @@ HANDLERS_BY_NAME: dict[str, type[BaseOAuthHandler]] = {
         GitHubOAuthHandler,
         GoogleOAuthHandler,
         NotionOAuthHandler,
+        TwitterOAuthHandler,
     ]
 }
 # --8<-- [end:HANDLERS_BY_NAMEExample]
