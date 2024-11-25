@@ -1,5 +1,6 @@
 import AutoGPTServerAPI, {
   APIKeyCredentials,
+  CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
   CredentialsProviderName,
@@ -59,7 +60,12 @@ export type CredentialsProviderData = {
   createAPIKeyCredentials: (
     credentials: APIKeyCredentialsCreatable,
   ) => Promise<CredentialsMetaResponse>;
-  deleteCredentials: (id: string) => Promise<CredentialsDeleteResponse>;
+  deleteCredentials: (
+    id: string,
+    force?: boolean,
+  ) => Promise<
+    CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
+  >;
 };
 
 export type CredentialsProvidersContextType = {
@@ -144,8 +150,14 @@ export default function CredentialsProvider({
     async (
       provider: CredentialsProviderName,
       id: string,
-    ): Promise<CredentialsDeleteResponse> => {
-      const result = await api.deleteCredentials(provider, id);
+      force: boolean = false,
+    ): Promise<
+      CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
+    > => {
+      const result = await api.deleteCredentials(provider, id, force);
+      if (!result.deleted) {
+        return result;
+      }
       setProviders((prev) => {
         if (!prev || !prev[provider]) return prev;
 
@@ -202,8 +214,8 @@ export default function CredentialsProvider({
                 createAPIKeyCredentials: (
                   credentials: APIKeyCredentialsCreatable,
                 ) => createAPIKeyCredentials(provider, credentials),
-                deleteCredentials: (id: string) =>
-                  deleteCredentials(provider, id),
+                deleteCredentials: (id: string, force: boolean = false) =>
+                  deleteCredentials(provider, id, force),
               },
             }));
           });
