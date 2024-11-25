@@ -8,7 +8,6 @@ interface BecomeACreatorProps {
   description?: string;
   buttonText?: string;
   onButtonClick?: () => void;
-  variant?: 'default' | 'agent';
 }
 
 export const BecomeACreator: React.FC<BecomeACreatorProps> = ({

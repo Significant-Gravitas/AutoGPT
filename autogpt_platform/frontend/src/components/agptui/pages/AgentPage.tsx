@@ -150,7 +150,6 @@ export const AgentPage: React.FC<AgentPageProps> = ({
           sectionTitle="Similar agents"
         />
         <BecomeACreator
-          variant="agent"
           title="Want to contribute?"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"

@@ -109,7 +109,6 @@ export const Page: React.FC<PageProps> = ({
         />
         <Separator />
         <BecomeACreator
-          variant="default"
           title="Become a creator"
           description="Join a community where your AI creations can inspire, engage, and be downloaded by users around the world."
           buttonText="Upload your agent"
