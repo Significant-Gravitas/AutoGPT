@@ -413,6 +413,12 @@ To add support for a new webhook provider, you'll need to create a WebhooksManag
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager5"
 ```
 
+And add a reference to your `WebhooksManager` class in `WEBHOOK_MANAGERS_BY_NAME`:
+
+```python title="backend/integrations/webhooks/__init__.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/__init__.py:WEBHOOK_MANAGERS_BY_NAME"
+```
+
 #### Example: GitHub Webhook Integration
 
 <details>
