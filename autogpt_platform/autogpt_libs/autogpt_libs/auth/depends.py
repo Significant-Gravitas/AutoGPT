@@ -1,8 +1,8 @@
 import fastapi
 
-from .middleware import auth_middleware
-from .models import User, DEFAULT_USER_ID, DEFAULT_EMAIL
 from .config import Settings
+from .middleware import auth_middleware
+from .models import DEFAULT_USER_ID, User
 
 
 def requires_user(payload: dict = fastapi.Depends(auth_middleware)) -> User:

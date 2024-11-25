@@ -30,3 +30,7 @@ line-length = 88
 
 [tool.ruff.lint]
 extend-select = ["I"]  # sort dependencies
+
+[tool.poetry.scripts]
+format = "scripts:format"
+lint = "scripts:lint"
