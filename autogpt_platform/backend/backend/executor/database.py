@@ -27,6 +27,7 @@ from backend.util.settings import Config
 
 P = ParamSpec("P")
 R = TypeVar("R")
+config = Config()
 
 
 class DatabaseManager(AppService):
@@ -38,7 +39,7 @@ class DatabaseManager(AppService):
 
     @classmethod
     def get_port(cls) -> int:
-        return Config().database_api_port
+        return config.database_api_port
 
     @expose
     def send_execution_update(self, execution_result: ExecutionResult):

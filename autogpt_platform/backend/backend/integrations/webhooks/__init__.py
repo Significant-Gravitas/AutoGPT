@@ -1,8 +1,6 @@
 from typing import TYPE_CHECKING
 
-from backend.integrations.webhooks.simple_webhook_manager import CompassWebhookManager, SimpleWebhooksManager
-from pyparsing import C
-
+from .simple_webhook_manager import CompassWebhookManager, SimpleWebhooksManager
 from .github import GithubWebhooksManager
 
 if TYPE_CHECKING:
