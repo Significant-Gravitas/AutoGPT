@@ -45,7 +45,7 @@ export default async function Page({
 
     return (
       <>
-        <div className="w-full px-4 py-4 sm:px-6 sm:py-6 md:px-10 md:py-8">
+        <div className="w-full min-w-[1372px] px-4 py-2">
           <BreadCrumbs
             items={[
               { name: "Store", link: "/store" },
