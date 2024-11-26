@@ -4,6 +4,7 @@ from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, ca
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
     ExecutionResult,
+    RedisExecutionEventBus,
     create_graph_execution,
     get_execution_results,
     get_incomplete_executions,
@@ -15,18 +16,18 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.graph import get_graph, get_node
-from backend.data.queue import RedisExecutionEventBus
 from backend.data.user import (
     get_user_integrations,
     get_user_metadata,
     update_user_integrations,
     update_user_metadata,
 )
-from backend.util.service import AppService, expose
+from backend.util.service import AppService, expose, register_pydantic_serializers
 from backend.util.settings import Config
 
 P = ParamSpec("P")
 R = TypeVar("R")
+config = Config()
 
 
 class DatabaseManager(AppService):
@@ -38,7 +39,7 @@ class DatabaseManager(AppService):
 
     @classmethod
     def get_port(cls) -> int:
-        return Config().database_api_port
+        return config.database_api_port
 
     @expose
     def send_execution_update(self, execution_result: ExecutionResult):
@@ -54,6 +55,9 @@ class DatabaseManager(AppService):
             coroutine = f(*args, **kwargs)
             res = self.run_and_wait(coroutine)
             return res
+
+        # Register serializers for annotations on bare function
+        register_pydantic_serializers(f)
 
         return wrapper
 
