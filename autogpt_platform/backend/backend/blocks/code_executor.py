@@ -69,7 +69,11 @@ class CodeExecutionBlock(Block):
         )
 
         template_id: str = SchemaField(
-            description="Create a pre Customized sandbox template. and Enter the template id here, Check more about it in here - https://e2b.dev/docs/sandbox-template",
+            description=(
+                "You can use an E2B sandbox template by entering its ID here. "
+                "Check out the E2B docs for more details: "
+                "[E2B - Sandbox template](https://e2b.dev/docs/sandbox-template)"
+           	),
             default="",
             advanced=True,
         )
