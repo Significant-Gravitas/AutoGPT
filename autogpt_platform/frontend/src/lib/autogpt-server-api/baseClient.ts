@@ -310,7 +310,7 @@ export default class BaseAutoGPTServerAPI {
   uploadStoreSubmissionMedia(file: File): Promise<string> {
     const formData = new FormData();
     formData.append("file", file);
-    return this._request("POST", "/store/submissions/media", formData);
+    return this._uploadFile("/store/submissions/media", file);
   }
 
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
@@ -335,6 +335,51 @@ export default class BaseAutoGPTServerAPI {
 
   async listSchedules(): Promise<Schedule[]> {
     return this._get(`/schedules`);
+  }
+
+  private async _uploadFile(path: string, file: File): Promise<string> {
+    // Get session with retry logic
+    let token = "no-token-found";
+    let retryCount = 0;
+    const maxRetries = 3;
+  
+    while (retryCount < maxRetries) {
+      const {
+        data: { session },
+      } = (await this.supabaseClient?.auth.getSession()) || {
+        data: { session: null },
+      };
+  
+      if (session?.access_token) {
+        token = session.access_token;
+        break;
+      }
+  
+      retryCount++;
+      if (retryCount < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
+      }
+    }
+  
+    // Create a FormData object and append the file
+    const formData = new FormData();
+    formData.append('file', file);
+  
+    const response = await fetch(this.baseUrl + path, {
+      method: "POST",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    });
+  
+    if (!response.ok) {
+      throw new Error(`Error uploading file: ${response.statusText}`);
+    }
+  
+    // Parse the response appropriately
+    const media_url = await response.text();
+    return media_url;
   }
 
   private async _request(
@@ -521,11 +566,11 @@ export default class BaseAutoGPTServerAPI {
         callCount == 0
           ? this.sendWebSocketMessage(method, data, callCount + 1)
           : setTimeout(
-              () => {
-                this.sendWebSocketMessage(method, data, callCount + 1);
-              },
-              2 ** (callCount - 1) * 1000,
-            );
+            () => {
+              this.sendWebSocketMessage(method, data, callCount + 1);
+            },
+            2 ** (callCount - 1) * 1000,
+          );
       });
     }
   }
@@ -550,12 +595,12 @@ export default class BaseAutoGPTServerAPI {
 
 type GraphCreateRequestBody =
   | {
-      template_id: string;
-      template_version: number;
-    }
+    template_id: string;
+    template_version: number;
+  }
   | {
-      graph: GraphCreatable;
-    };
+    graph: GraphCreatable;
+  };
 
 type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };

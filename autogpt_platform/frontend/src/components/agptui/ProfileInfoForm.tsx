@@ -28,13 +28,13 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   const submitForm = async () => {
     try {
       setIsSubmitting(true);
-  
+
       const updatedProfile = {
         name: profileData.name,
         username: profileData.username,
         description: profileData.description,
         links: profileData.links,
-        avatar_url: ""
+        avatar_url: profileData.avatar_url
       };
 
       if (!isSubmitting) {
@@ -51,17 +51,55 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
 
   const handleImageUpload = async (file: File) => {
     try {
-      await api.uploadStoreSubmissionMedia(file);
-      // Refresh profile data to show new image
-      const updatedProfile = await api.getStoreProfile("profile");
-      setProfileData(updatedProfile as CreatorDetails);
+      // Create FormData and append file
+      const formData = new FormData();
+      formData.append('file', file);
+
+      console.log(formData);
+
+      // Get auth token
+      if (!supabase) {
+        throw new Error('Supabase client not initialized');
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      // Make upload request
+      const response = await fetch(`${process.env.NEXT_PUBLIC_AGPT_SERVER_URL}/store/submissions/media`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      // Get media URL from response
+      const mediaUrl = await response.json()
+
+      // Update profile with new avatar URL
+      const updatedProfile = {
+        ...profileData,
+        avatar_url: mediaUrl
+      };
+
+      const returnedProfile = await api.updateStoreProfile(updatedProfile as ProfileDetails);
+      setProfileData(returnedProfile as CreatorDetails);
     } catch (error) {
       console.error("Error uploading image:", error);
     }
   };
 
   return (
-    <div className="w-full p-4 sm:p-8">
+    <div className="w-full min-w-[600px] p-4 sm:p-8">
       <h1 className="mb-6 font-['Poppins'] text-[28px] font-medium text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
         Profile
       </h1>
@@ -80,24 +118,22 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               <IconPersonFill className="absolute left-[30px] top-[24px] h-[77.80px] w-[70.63px] text-[#7e7e7e] dark:text-[#999999]" />
             )}
           </div>
-          <Button
-            variant="default"
-            className="mt-11 h-[43px] rounded-[22px] border border-slate-900 bg-slate-900 px-4 py-2 font-['Inter'] text-sm font-medium text-slate-50 transition-colors hover:bg-white hover:text-slate-900 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-            onClick={() => {
-              const input = document.createElement("input");
-              input.type = "file";
-              input.accept = "image/*";
-              input.onchange = async (e) => {
-                const file = (e.target as HTMLInputElement).files?.[0];
+          <label
+            className="mt-11 h-[43px] rounded-[22px] inline-flex justify-center items-center border border-slate-900 bg-slate-900 px-4 py-2 font-['Geist'] leading-normal text-sm font-medium text-slate-50 transition-colors hover:bg-white hover:text-slate-900 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          >
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
                 if (file) {
                   await handleImageUpload(file);
                 }
-              };
-              input.click();
-            }}
-          >
+              }}
+            />
             Edit photo
-          </Button>
+          </label>
         </div>
 
         <form
@@ -116,7 +152,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 placeholder="Enter your display name"
                 className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                 onChange={(e) => {
-                  const newProfileData = {...profileData, name: e.target.value};
+                  const newProfileData = { ...profileData, name: e.target.value };
                   setProfileData(newProfileData);
                 }}
               />
@@ -135,7 +171,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 placeholder="@username"
                 className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                 onChange={(e) => {
-                  const newProfileData = {...profileData, username: e.target.value};
+                  const newProfileData = { ...profileData, username: e.target.value };
                   setProfileData(newProfileData);
                 }}
               />
@@ -153,7 +189,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 placeholder="Tell us about yourself..."
                 className="h-full w-full resize-none border-none bg-transparent font-['Geist'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                 onChange={(e) => {
-                  const newProfileData = {...profileData, description: e.target.value};
+                  const newProfileData = { ...profileData, description: e.target.value };
                   setProfileData(newProfileData);
                 }}
               />
@@ -184,7 +220,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                         defaultValue={link || ""}
                         className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                         onChange={(e) => {
-                          const newProfileData = {...profileData, links: profileData.links.map((link, index) => index === linkNum - 1 ? e.target.value : link)};
+                          const newProfileData = { ...profileData, links: profileData.links.map((link, index) => index === linkNum - 1 ? e.target.value : link) };
                           setProfileData(newProfileData);
                         }}
                       />
