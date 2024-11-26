@@ -518,7 +518,6 @@ def get_execution_schedules(
 )
 @feature_flag(
     "api-keys-enabled",
-    default=False,
     unauthorized_response={"message": "API keys are not available"},
 )
 async def create_api_key(
@@ -546,7 +545,6 @@ async def create_api_key(
 )
 @feature_flag(
     "api-keys-enabled",
-    default=False,
     unauthorized_response={"message": "API keys are not available"},
 )
 async def get_api_keys(
@@ -568,7 +566,6 @@ async def get_api_keys(
 )
 @feature_flag(
     "api-keys-enabled",
-    default=False,
     unauthorized_response={"message": "API keys are not available"},
 )
 async def get_api_key(
@@ -593,7 +590,6 @@ async def get_api_key(
 )
 @feature_flag(
     "api-keys-enabled",
-    default=False,
     unauthorized_response={"message": "API keys are not available"},
 )
 async def delete_api_key(
@@ -619,7 +615,6 @@ async def delete_api_key(
 )
 @feature_flag(
     "api-keys-enabled",
-    default=False,
     unauthorized_response={"message": "API keys are not available"},
 )
 async def suspend_key(
@@ -645,7 +640,6 @@ async def suspend_key(
 )
 @feature_flag(
     "api-keys-enabled",
-    default=False,
     unauthorized_response={"message": "API keys are not available"},
 )
 async def update_permissions(

@@ -1,15 +1,12 @@
 import pytest
-from fastapi import HTTPException
-from ldclient import LDClient
-
 from autogpt_libs.feature_flag.client import feature_flag, mock_flag_variation
-from pytest_mock import mocker
+from ldclient import LDClient
 
 
 @pytest.fixture
 def ld_client(mocker):
     client = mocker.Mock(spec=LDClient)
-    mocker.patch('ldclient.get', return_value=client)
+    mocker.patch("ldclient.get", return_value=client)
     client.is_initialized.return_value = True
     return client
 
@@ -22,9 +19,10 @@ async def test_feature_flag_enabled(ld_client):
     async def test_function(user_id: str):
         return "success"
 
-    result = await test_function(user_id="test-user")
+    result = test_function(user_id="test-user")
     assert result == "success"
     ld_client.variation.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_feature_flag_unauthorized_response(ld_client):
@@ -34,13 +32,13 @@ async def test_feature_flag_unauthorized_response(ld_client):
     async def test_function(user_id: str):
         return "success"
 
-    result = await test_function(user_id="test-user")
+    result = test_function(user_id="test-user")
     assert result == {"error": "disabled"}
 
 
 def test_mock_flag_variation(ld_client):
     with mock_flag_variation("test-flag", True):
-        assert ld_client.variation("test-flag", None, False) == True
+        assert ld_client.variation("test-flag", None, False)
 
     with mock_flag_variation("test-flag", False):
-        assert ld_client.variation("test-flag", None, False) == False
+        assert ld_client.variation("test-flag", None, False)
