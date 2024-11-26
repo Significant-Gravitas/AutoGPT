@@ -75,6 +75,7 @@ export const providerIcons: Record<
   replicate: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
+  twitter: FaTwitter,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
   hubspot: fallbackIcon,
