@@ -260,6 +260,7 @@ export type NodeExecutionResult = {
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
+  provider: CredentialsProviderName;
   type: CredentialsType;
   title?: string;
   scopes?: Array<string>;
@@ -292,7 +293,7 @@ type BaseCredentials = {
   id: string;
   type: CredentialsType;
   title?: string;
-  provider: string;
+  provider: CredentialsProviderName;
 };
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
