@@ -101,6 +101,7 @@ export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
   D_ID: "d_id",
   DISCORD: "discord",
+  E2B_SANDBOX: "e2b_sandbox",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
@@ -117,7 +118,6 @@ export const PROVIDER_NAMES = {
   REPLICATE: "replicate",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
-  E2B_SANDBOX: "e2b_sandbox",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
