@@ -65,6 +65,7 @@ export const providerIcons: Record<
   replicate: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  e2b_sandbox: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

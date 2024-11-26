@@ -117,6 +117,7 @@ export const PROVIDER_NAMES = {
   REPLICATE: "replicate",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  E2B_SANDBOX: "e2b_sandbox",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
