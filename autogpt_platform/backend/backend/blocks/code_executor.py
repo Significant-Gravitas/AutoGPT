@@ -36,7 +36,7 @@ class CodeExecutionBlock(Block):
     # Currently, You can customized the CPU and Memory, only by creating a pre customized sandbox template
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
-            Literal["e2b_sandbox"], Literal["api_key"]
+            Literal["e2b"], Literal["api_key"]
         ] = CredentialsField(
             provider="e2b",
             supported_credential_types={"api_key"},

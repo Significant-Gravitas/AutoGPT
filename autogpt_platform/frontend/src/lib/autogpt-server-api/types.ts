@@ -101,7 +101,7 @@ export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
   D_ID: "d_id",
   DISCORD: "discord",
-  E2B_SANDBOX: "e2b_sandbox",
+  E2B: "e2b",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
