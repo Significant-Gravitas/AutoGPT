@@ -2,6 +2,7 @@ import * as React from "react";
 import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
 import { createServerClient } from "@/lib/supabase/server";
+import { CreatorDetails } from "@/lib/autogpt-server-api/types";
 
 async function getProfileData() {
   // Get the supabase client first
@@ -52,7 +53,7 @@ export default async function Page({
 
   return (
     <div className="flex flex-col items-center justify-center p-4">
-      <ProfileInfoForm profile={profile} />
+      <ProfileInfoForm profile={profile as CreatorDetails} />
     </div>
   );
 }

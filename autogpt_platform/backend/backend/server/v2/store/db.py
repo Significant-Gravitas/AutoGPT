@@ -273,6 +273,7 @@ async def get_store_submissions(
         submission_models = [
             backend.server.v2.store.model.StoreSubmission(
                 name=sub.name,
+                slug=sub.slug,
                 description=sub.description,
                 image_urls=sub.image_urls or [],
                 date_submitted=sub.date_submitted,
@@ -394,6 +395,7 @@ async def create_store_submission(
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
             name=name,
+            slug=slug,
             description=description,
             image_urls=image_urls,
             date_submitted=listing.createdAt,

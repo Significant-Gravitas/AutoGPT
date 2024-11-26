@@ -12,8 +12,7 @@ export interface AgentTableRowProps {
   status: StatusType;
   runs?: number;
   rating?: number;
-  onEdit: () => void;
-  id: string;
+  id: number;
 }
 
 export const AgentTableRow: React.FC<AgentTableRowProps> = ({
@@ -24,11 +23,14 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   status,
   runs,
   rating,
-  onEdit,
   id,
 }) => {
   // Create a unique ID for the checkbox
   const checkboxId = `agent-${id}-checkbox`;
+
+  const onEdit = () => {
+    console.log("Edit agent", id);
+  };
 
   return (
     <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 md:flex">

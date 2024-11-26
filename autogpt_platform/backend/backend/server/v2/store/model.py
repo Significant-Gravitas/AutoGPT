@@ -85,6 +85,7 @@ class Profile(pydantic.BaseModel):
 
 class StoreSubmission(pydantic.BaseModel):
     name: str
+    slug: str
     description: str
     image_urls: list[str]
     date_submitted: datetime.datetime

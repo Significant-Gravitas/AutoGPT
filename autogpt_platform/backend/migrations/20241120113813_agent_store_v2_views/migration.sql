@@ -91,6 +91,7 @@ CREATE VIEW "StoreSubmission" AS
 SELECT
     sl.id as listing_id,
     sl."owningUserId" as user_id,
+    slv.slug,
     slv.name,
     slv.description,
     slv."imageUrls" as image_urls,
@@ -108,7 +109,7 @@ LEFT JOIN (
     GROUP BY "agentGraphId"
 ) ar ON ar."agentGraphId" = sl."agentId"
 WHERE sl."isDeleted" = FALSE
-GROUP BY sl.id, sl."owningUserId", slv.name, slv.description, slv."imageUrls",
+GROUP BY sl.id, sl."owningUserId", slv.slug, slv.name, slv.description, slv."imageUrls",
          sls."createdAt", sls."Status", ar.run_count;
 
 COMMIT;

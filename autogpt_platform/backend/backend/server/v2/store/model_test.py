@@ -129,6 +129,7 @@ def test_creator_details():
 def test_store_submission():
     submission = backend.server.v2.store.model.StoreSubmission(
         name="Test Agent",
+        slug="test-agent",
         description="Test description",
         image_urls=["image1.jpg", "image2.jpg"],
         date_submitted=datetime.datetime(2023, 1, 1),
@@ -146,6 +147,7 @@ def test_store_submissions_response():
         submissions=[
             backend.server.v2.store.model.StoreSubmission(
                 name="Test Agent",
+                slug="test-agent",
                 description="Test description",
                 image_urls=["image1.jpg"],
                 date_submitted=datetime.datetime(2023, 1, 1),
