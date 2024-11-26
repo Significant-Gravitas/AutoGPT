@@ -23,6 +23,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   anthropic: "Anthropic",
   discord: "Discord",
   d_id: "D-ID",
+  e2b_sandbox: "E2B Sandbox",
   github: "GitHub",
   google: "Google",
   google_maps: "Google Maps",
@@ -39,7 +40,6 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   replicate: "Replicate",
   revid: "Rev.ID",
   unreal_speech: "Unreal Speech",
-  e2b_sandbox: "E2B Sandbox",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
 
