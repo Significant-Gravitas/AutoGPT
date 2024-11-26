@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, Generic, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
 
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
@@ -9,15 +9,14 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
-from prisma.types import (
-    AgentGraphExecutionInclude,
-    AgentGraphExecutionWhereInput,
-    AgentNodeExecutionInclude,
-)
+from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
+from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
+from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.util import json, mock
+from backend.util.settings import Config
 
 
 class GraphExecution(BaseModel):
@@ -67,6 +66,7 @@ class ExecutionResult(BaseModel):
     graph_exec_id: str
     node_exec_id: str
     node_id: str
+    block_id: str
     status: ExecutionStatus
     input_data: BlockInput
     output_data: CompletedBlockOutput
@@ -76,10 +76,30 @@ class ExecutionResult(BaseModel):
     end_time: datetime | None
 
     @staticmethod
+    def from_graph(graph: AgentGraphExecution):
+        return ExecutionResult(
+            graph_id=graph.agentGraphId,
+            graph_version=graph.agentGraphVersion,
+            graph_exec_id=graph.id,
+            node_exec_id="",
+            node_id="",
+            block_id="",
+            status=graph.executionStatus,
+            # TODO: Populate input_data & output_data from AgentNodeExecutions
+            #       Input & Output comes AgentInputBlock & AgentOutputBlock.
+            input_data={},
+            output_data={},
+            add_time=graph.createdAt,
+            queue_time=graph.createdAt,
+            start_time=graph.startedAt,
+            end_time=graph.updatedAt,
+        )
+
+    @staticmethod
     def from_db(execution: AgentNodeExecution):
         if execution.executionData:
             # Execution that has been queued for execution will persist its data.
-            input_data = json.loads(execution.executionData)
+            input_data = json.loads(execution.executionData, target_type=dict[str, Any])
         else:
             # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
@@ -96,9 +116,10 @@ class ExecutionResult(BaseModel):
             graph_id=graph_execution.agentGraphId if graph_execution else "",
             graph_version=graph_execution.agentGraphVersion if graph_execution else 0,
             graph_exec_id=execution.agentGraphExecutionId,
+            block_id=execution.AgentNode.agentBlockId if execution.AgentNode else "",
             node_exec_id=execution.id,
             node_id=execution.agentNodeId,
-            status=ExecutionStatus(execution.executionStatus),
+            status=execution.executionStatus,
             input_data=input_data,
             output_data=output_data,
             add_time=execution.addedTime,
@@ -109,24 +130,6 @@ class ExecutionResult(BaseModel):
 
 
 # --------------------- Model functions --------------------- #
-
-EXECUTION_RESULT_INCLUDE: AgentNodeExecutionInclude = {
-    "Input": True,
-    "Output": True,
-    "AgentNode": True,
-    "AgentGraphExecution": True,
-}
-
-GRAPH_EXECUTION_INCLUDE: AgentGraphExecutionInclude = {
-    "AgentNodeExecutions": {
-        "include": {
-            "Input": True,
-            "Output": True,
-            "AgentNode": True,
-            "AgentGraphExecution": True,
-        }
-    }
-}
 
 
 async def create_graph_execution(
@@ -268,28 +271,20 @@ async def update_graph_execution_start_time(graph_exec_id: str):
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
-    error: Exception | None,
-    wall_time: float,
-    cpu_time: float,
-    node_count: int,
-):
-    status = ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED
-    stats = (
-        {
-            "walltime": wall_time,
-            "cputime": cpu_time,
-            "nodecount": node_count,
-            "error": str(error) if error else None,
-        },
-    )
-
-    await AgentGraphExecution.prisma().update(
+    stats: dict[str, Any],
+) -> ExecutionResult:
+    status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
+    res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
             "executionStatus": status,
             "stats": json.dumps(stats),
         },
     )
+    if not res:
+        raise ValueError(f"Execution {graph_exec_id} not found.")
+
+    return ExecutionResult.from_graph(res)
 
 
 async def update_node_execution_stats(node_exec_id: str, stats: dict[str, Any]):
@@ -477,3 +472,42 @@ async def get_incomplete_executions(
         include=EXECUTION_RESULT_INCLUDE,
     )
     return [ExecutionResult.from_db(execution) for execution in executions]
+
+
+# --------------------- Event Bus --------------------- #
+
+config = Config()
+
+
+class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
+    Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
+
+    def publish(self, res: ExecutionResult):
+        self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+
+    def listen(
+        self, graph_id: str = "*", graph_exec_id: str = "*"
+    ) -> Generator[ExecutionResult, None, None]:
+        for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield execution_result
+
+
+class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
+    Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
+
+    async def publish(self, res: ExecutionResult):
+        await self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+
+    async def listen(
+        self, graph_id: str = "*", graph_exec_id: str = "*"
+    ) -> AsyncGenerator[ExecutionResult, None]:
+        async for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield execution_result

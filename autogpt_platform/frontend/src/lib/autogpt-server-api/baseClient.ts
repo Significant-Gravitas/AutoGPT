@@ -1,20 +1,23 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
-  AnalyticsMetrics,
   AnalyticsDetails,
+  AnalyticsMetrics,
   APIKeyCredentials,
   Block,
+  CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
+  ExecutionMeta,
   Graph,
   GraphCreatable,
-  GraphUpdateable,
+  GraphExecuteResponse,
   GraphMeta,
   GraphMetaWithRuns,
-  GraphExecuteResponse,
-  ExecutionMeta,
+  GraphUpdateable,
   NodeExecutionResult,
   OAuth2Credentials,
+  Schedule,
+  ScheduleCreatable,
   User,
 } from "./types";
 
@@ -25,10 +28,14 @@ export default class BaseAutoGPTServerAPI {
   private wsConnecting: Promise<void> | null = null;
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private supabaseClient: SupabaseClient | null = null;
+  heartbeatInterval: number | null = null;
+  readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
+  readonly HEARTBEAT_TIMEOUT = 10000; // 10 seconds
+  heartbeatTimeoutId: number | null = null;
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-      "http://localhost:8006/api",
+      "http://localhost:8006/api/v1",
     wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
       "ws://localhost:8001/ws",
     supabaseClient: SupabaseClient | null = null,
@@ -219,10 +226,14 @@ export default class BaseAutoGPTServerAPI {
   deleteCredentials(
     provider: string,
     id: string,
-  ): Promise<CredentialsDeleteResponse> {
+    force: boolean = true,
+  ): Promise<
+    CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
+  > {
     return this._request(
       "DELETE",
       `/integrations/${provider}/credentials/${id}`,
+      force ? { force: true } : undefined,
     );
   }
 
@@ -236,6 +247,18 @@ export default class BaseAutoGPTServerAPI {
 
   private async _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
+  }
+
+  async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
+    return this._request("POST", `/schedules`, schedule);
+  }
+
+  async deleteSchedule(scheduleId: string): Promise<Schedule> {
+    return this._request("DELETE", `/schedules/${scheduleId}`);
+  }
+
+  async listSchedules(): Promise<Schedule[]> {
+    return this._get(`/schedules`);
   }
 
   private async _request(
@@ -252,13 +275,14 @@ export default class BaseAutoGPTServerAPI {
         ?.access_token || "";
 
     let url = this.baseUrl + path;
-    if (method === "GET" && payload) {
+    const payloadAsQuery = ["GET", "DELETE"].includes(method);
+    if (payloadAsQuery && payload) {
       // For GET requests, use payload as query
       const queryParams = new URLSearchParams(payload);
       url += `?${queryParams.toString()}`;
     }
 
-    const hasRequestBody = method !== "GET" && payload !== undefined;
+    const hasRequestBody = !payloadAsQuery && payload !== undefined;
     const response = await fetch(url, {
       method,
       headers: {
@@ -287,7 +311,7 @@ export default class BaseAutoGPTServerAPI {
         errorDetail = response.statusText;
       }
 
-      throw new Error(`HTTP error ${response.status}! ${errorDetail}`);
+      throw new Error(errorDetail);
     }
 
     // Handle responses with no content (like DELETE requests)
@@ -309,34 +333,84 @@ export default class BaseAutoGPTServerAPI {
     }
   }
 
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatInterval = window.setInterval(() => {
+      if (this.webSocket?.readyState === WebSocket.OPEN) {
+        this.webSocket.send(
+          JSON.stringify({
+            method: "heartbeat",
+            data: "ping",
+            success: true,
+          }),
+        );
+
+        this.heartbeatTimeoutId = window.setTimeout(() => {
+          console.log("Heartbeat timeout - reconnecting");
+          this.webSocket?.close();
+          this.connectWebSocket();
+        }, this.HEARTBEAT_TIMEOUT);
+      }
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.heartbeatTimeoutId) {
+      clearTimeout(this.heartbeatTimeoutId);
+      this.heartbeatTimeoutId = null;
+    }
+  }
+
+  handleHeartbeatResponse() {
+    if (this.heartbeatTimeoutId) {
+      clearTimeout(this.heartbeatTimeoutId);
+      this.heartbeatTimeoutId = null;
+    }
+  }
+
   async connectWebSocket(): Promise<void> {
     this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         const token =
           (await this.supabaseClient?.auth.getSession())?.data.session
             ?.access_token || "";
-
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
 
         this.webSocket.onopen = () => {
-          console.debug("WebSocket connection established");
+          console.log("WebSocket connection established");
+          this.startHeartbeat(); // Start heartbeat when connection opens
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.debug("WebSocket connection closed", event);
+          console.log("WebSocket connection closed", event);
+          this.stopHeartbeat(); // Stop heartbeat when connection closes
           this.webSocket = null;
+          // Attempt to reconnect after a delay
+          setTimeout(() => this.connectWebSocket(), 1000);
         };
 
         this.webSocket.onerror = (error) => {
           console.error("WebSocket error:", error);
+          this.stopHeartbeat(); // Stop heartbeat on error
           reject(error);
         };
 
         this.webSocket.onmessage = (event) => {
           const message: WebsocketMessage = JSON.parse(event.data);
-          if (message.method == "execution_event") {
+
+          // Handle heartbeat response
+          if (message.method === "heartbeat" && message.data === "pong") {
+            this.handleHeartbeatResponse();
+            return;
+          }
+
+          if (message.method === "execution_event") {
             message.data = parseNodeExecutionResultTimestamps(message.data);
           }
           this.wsMessageHandlers[message.method]?.forEach((handler) =>
@@ -352,6 +426,7 @@ export default class BaseAutoGPTServerAPI {
   }
 
   disconnectWebSocket() {
+    this.stopHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
     }
@@ -408,6 +483,7 @@ type GraphCreateRequestBody =
 type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
   execution_event: NodeExecutionResult;
+  heartbeat: "ping" | "pong";
 };
 
 type WebsocketMessage = {

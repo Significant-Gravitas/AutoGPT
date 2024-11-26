@@ -25,7 +25,9 @@ export type Block = {
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
   uiType: BlockUIType;
+  uiKey?: string;
   costs: BlockCost[];
+  hardcodedValues: { [key: string]: any } | null;
 };
 
 export type BlockIORootSchema = {
@@ -54,6 +56,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  hidden?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
@@ -95,12 +98,40 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
 export type CredentialsType = "api_key" | "oauth2";
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
+export const PROVIDER_NAMES = {
+  ANTHROPIC: "anthropic",
+  D_ID: "d_id",
+  DISCORD: "discord",
+  GITHUB: "github",
+  GOOGLE: "google",
+  GOOGLE_MAPS: "google_maps",
+  GROQ: "groq",
+  IDEOGRAM: "ideogram",
+  JINA: "jina",
+  MEDIUM: "medium",
+  NOTION: "notion",
+  OLLAMA: "ollama",
+  OPENAI: "openai",
+  OPENWEATHERMAP: "openweathermap",
+  OPEN_ROUTER: "open_router",
+  PINECONE: "pinecone",
+  REPLICATE: "replicate",
+  REVID: "revid",
+  UNREAL_SPEECH: "unreal_speech",
+} as const;
+// --8<-- [end:BlockIOCredentialsSubSchema]
+
+export type CredentialsProviderName =
+  (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
+
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  credentials_provider: "github" | "google" | "notion" | "jina" | "pinecone";
+  /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
+  credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
+  discriminator?: string;
+  discriminator_mapping?: { [key: string]: CredentialsProviderName };
 };
-// --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
@@ -168,6 +199,8 @@ export type GraphMeta = {
   is_template: boolean;
   name: string;
   description: string;
+  input_schema: BlockIOObjectSubSchema;
+  output_schema: BlockIOObjectSubSchema;
 };
 
 export type GraphMetaWithRuns = GraphMeta & {
@@ -182,12 +215,19 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  "version" | "is_active" | "is_template" | "links"
+  | "version"
+  | "is_active"
+  | "is_template"
+  | "links"
+  | "input_schema"
+  | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;
   is_template?: boolean;
   links: Array<LinkCreatable>;
+  input_schema?: BlockIOObjectSubSchema;
+  output_schema?: BlockIOObjectSubSchema;
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
@@ -202,11 +242,12 @@ export type GraphExecuteResponse = {
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
-  graph_exec_id: string;
-  node_exec_id: string;
   graph_id: string;
   graph_version: number;
+  graph_exec_id: string;
+  node_exec_id: string;
   node_id: string;
+  block_id: string;
   status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
   input_data: { [key: string]: any };
   output_data: { [key: string]: Array<any> };
@@ -229,6 +270,13 @@ export type CredentialsMetaResponse = {
 export type CredentialsDeleteResponse = {
   deleted: true;
   revoked: boolean | null;
+};
+
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+export type CredentialsDeleteNeedConfirmationResponse = {
+  deleted: false;
+  need_confirmation: true;
+  message: string;
 };
 
 /* Mirror of backend/data/model.py:CredentialsMetaInput */
@@ -277,6 +325,14 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  WEBHOOK = "Webhook",
+  AGENT = "Agent",
+}
+
+export enum SpecialBlockID {
+  AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  INPUT = "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+  OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
 export type AnalyticsMetrics = {
@@ -289,4 +345,21 @@ export type AnalyticsDetails = {
   type: string;
   data: { [key: string]: any };
   index: string;
+};
+
+export type Schedule = {
+  id: string;
+  name: string;
+  cron: string;
+  user_id: string;
+  graph_id: string;
+  graph_version: number;
+  input_data: { [key: string]: any };
+  next_run_time: string;
+};
+
+export type ScheduleCreatable = {
+  cron: string;
+  graph_id: string;
+  input_data: { [key: string]: any };
 };

@@ -70,6 +70,7 @@ class GetRedditPostsBlock(Block):
 
     def __init__(self):
         super().__init__(
+            disabled=True,
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             description="This block fetches Reddit posts from a defined subreddit name.",
             categories={BlockCategory.SOCIAL},
@@ -114,7 +115,7 @@ class GetRedditPostsBlock(Block):
     def get_posts(input_data: Input) -> Iterator[praw.reddit.Submission]:
         client = get_praw(input_data.creds)
         subreddit = client.subreddit(input_data.subreddit)
-        return subreddit.new(limit=input_data.post_limit)
+        return subreddit.new(limit=input_data.post_limit or 10)
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         current_time = datetime.now(tz=timezone.utc)
@@ -164,8 +165,10 @@ class PostRedditCommentBlock(Block):
     def reply_post(creds: RedditCredentials, comment: RedditComment) -> str:
         client = get_praw(creds)
         submission = client.submission(id=comment.post_id)
-        comment = submission.reply(comment.comment)
-        return comment.id  # type: ignore
+        new_comment = submission.reply(comment.comment)
+        if not new_comment:
+            raise ValueError("Failed to post comment.")
+        return new_comment.id
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "comment_id", self.reply_post(input_data.creds, input_data.data)

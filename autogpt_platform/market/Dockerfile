@@ -1,4 +1,4 @@
-FROM python:3.11-slim-buster AS builder
+FROM python:3.11.10-slim-bookworm AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
@@ -35,7 +35,7 @@ COPY autogpt_platform/market /app/autogpt_platform/market
 RUN poetry config virtualenvs.create false \
     && poetry run prisma generate
 
-FROM python:3.11-slim-buster AS server_dependencies
+FROM python:3.11.10-slim-bookworm AS server_dependencies
 
 WORKDIR /app
 

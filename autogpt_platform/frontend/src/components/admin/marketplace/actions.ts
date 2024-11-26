@@ -3,6 +3,9 @@ import MarketplaceAPI from "@/lib/marketplace-api";
 import ServerSideMarketplaceAPI from "@/lib/marketplace-api/server-client";
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
+import { checkAuth, createServerClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export async function approveAgent(
   agentId: string,
@@ -13,6 +16,8 @@ export async function approveAgent(
     "approveAgent",
     {},
     async () => {
+      await checkAuth();
+
       const api = new ServerSideMarketplaceAPI();
       await api.approveAgentSubmission(agentId, version, comment);
       console.debug(`Approving agent ${agentId}`);
@@ -30,6 +35,7 @@ export async function rejectAgent(
     "rejectAgent",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       await api.rejectAgentSubmission(agentId, version, comment);
       console.debug(`Rejecting agent ${agentId}`);
@@ -43,6 +49,7 @@ export async function getReviewableAgents() {
     "getReviewableAgents",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       return api.getAgentSubmissions();
     },
@@ -57,6 +64,7 @@ export async function getFeaturedAgents(
     "getFeaturedAgents",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       const featured = await api.getFeaturedAgents(page, pageSize);
       console.debug(`Getting featured agents ${featured.items.length}`);
@@ -70,6 +78,7 @@ export async function getFeaturedAgent(agentId: string) {
     "getFeaturedAgent",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       const featured = await api.getFeaturedAgent(agentId);
       console.debug(`Getting featured agent ${featured.agentId}`);
@@ -86,6 +95,7 @@ export async function addFeaturedAgent(
     "addFeaturedAgent",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       await api.addFeaturedAgent(agentId, categories);
       console.debug(`Adding featured agent ${agentId}`);
@@ -102,6 +112,7 @@ export async function removeFeaturedAgent(
     "removeFeaturedAgent",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       await api.removeFeaturedAgent(agentId, categories);
       console.debug(`Removing featured agent ${agentId}`);
@@ -115,6 +126,7 @@ export async function getCategories() {
     "getCategories",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       const categories = await api.getCategories();
       console.debug(
@@ -133,6 +145,7 @@ export async function getNotFeaturedAgents(
     "getNotFeaturedAgents",
     {},
     async () => {
+      await checkAuth();
       const api = new ServerSideMarketplaceAPI();
       const agents = await api.getNotFeaturedAgents(page, pageSize);
       console.debug(`Getting not featured agents ${agents.items.length}`);

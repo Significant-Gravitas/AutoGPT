@@ -79,12 +79,32 @@ class GmailReadBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "result",
+                    "email",
+                    {
+                        "id": "1",
+                        "subject": "Test Email",
+                        "snippet": "This is a test email",
+                        "from_": "test@example.com",
+                        "to": "recipient@example.com",
+                        "date": "2024-01-01",
+                        "body": "This is a test email",
+                        "sizeEstimate": 100,
+                        "attachments": [],
+                    },
+                ),
+                (
+                    "emails",
                     [
                         {
                             "id": "1",
                             "subject": "Test Email",
                             "snippet": "This is a test email",
+                            "from_": "test@example.com",
+                            "to": "recipient@example.com",
+                            "date": "2024-01-01",
+                            "body": "This is a test email",
+                            "sizeEstimate": 100,
+                            "attachments": [],
                         }
                     ],
                 ),
@@ -95,6 +115,12 @@ class GmailReadBlock(Block):
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
+                        "from_": "test@example.com",
+                        "to": "recipient@example.com",
+                        "date": "2024-01-01",
+                        "body": "This is a test email",
+                        "sizeEstimate": 100,
+                        "attachments": [],
                     }
                 ],
                 "_send_email": lambda *args, **kwargs: {"id": "1", "status": "sent"},

@@ -12,20 +12,22 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id        String   @id // This should match the Supabase user ID
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  metadata  Json?
+  id           String   @id // This should match the Supabase user ID
+  email        String   @unique
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  metadata     Json     @default("{}")
+  integrations String   @default("")
 
   // Relations
   AgentGraphs                  AgentGraph[]
   AgentGraphExecutions         AgentGraphExecution[]
-  AgentGraphExecutionSchedules AgentGraphExecutionSchedule[]
+  IntegrationWebhooks          IntegrationWebhook[]
   AnalyticsDetails             AnalyticsDetails[]
   AnalyticsMetrics             AnalyticsMetrics[]
   UserBlockCredit              UserBlockCredit[]
+  APIKeys                      APIKey[]
 
   @@index([id])
   @@index([email])
@@ -49,12 +51,6 @@ model AgentGraph {
 
   AgentNodes                  AgentNode[]
   AgentGraphExecution         AgentGraphExecution[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
-
-  // All sub-graphs are defined within this 1-level depth list (even if it's a nested graph).
-  AgentSubGraphs     AgentGraph[] @relation("AgentSubGraph")
-  agentGraphParentId String?
-  AgentGraphParent   AgentGraph?  @relation("AgentSubGraph", fields: [agentGraphParentId, version], references: [id, version], onDelete: Cascade)
 
   @@id(name: "graphVersionId", [id, version])
 }
@@ -78,6 +74,10 @@ model AgentNode {
 
   // JSON serialized dict[str, str] containing predefined input values.
   constantInput String @default("{}")
+
+  // For webhook-triggered blocks: reference to the webhook that triggers the node
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
   // JSON serialized dict[str, str] containing the node metadata.
   metadata String @default("{}")
@@ -191,28 +191,26 @@ model AgentNodeExecutionInputOutput {
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
 }
 
-// This model describes the recurring execution schedule of an Agent.
-model AgentGraphExecutionSchedule {
-  id        String    @id
+// Webhook that is registered with a provider and propagates to one or more nodes
+model IntegrationWebhook {
+  id        String    @id @default(uuid())
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
-
-  schedule  String // cron expression
-  isEnabled Boolean @default(true)
-  inputData String // JSON serialized object
-
-  // default and set the value on each update, lastUpdated field has no time zone.
-  lastUpdated DateTime @updatedAt
-
-  // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict) // Webhooks must be deregistered before deleting
 
-  @@index([isEnabled])
+  provider      String // e.g. 'github'
+  credentialsId String // relation to the credentials that the webhook was created with
+  webhookType   String // e.g. 'repo'
+  resource      String // e.g. 'Significant-Gravitas/AutoGPT'
+  events        String[] // e.g. ['created', 'updated']
+  config        Json
+  secret        String // crypto string, used to verify payload authenticity
+
+  providerWebhookId String // Webhook ID assigned by the provider
+
+  AgentNodes AgentNode[]
 }
 
 model AnalyticsDetails {
@@ -280,4 +278,43 @@ model UserBlockCredit {
   metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+}
+
+enum APIKeyPermission {
+  EXECUTE_GRAPH // Can execute agent graphs
+  READ_GRAPH // Can get graph versions and details
+  EXECUTE_BLOCK // Can execute individual blocks
+  READ_BLOCK // Can get block information
+}
+
+model APIKey {
+  id          String             @id @default(uuid())
+  name        String
+  prefix      String             // First 8 chars for identification
+  postfix     String
+  key         String             @unique // Hashed key
+  status      APIKeyStatus       @default(ACTIVE)
+  permissions APIKeyPermission[]
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  description String?
+
+  // Relation to user
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([key])
+  @@index([prefix])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+enum APIKeyStatus {
+  ACTIVE
+  REVOKED
+  SUSPENDED
 }

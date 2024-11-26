@@ -1,18 +1,21 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "./ui/button";
-import { LogOut } from "lucide-react";
+import { Clock, LogOut, ChevronLeft } from "lucide-react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { FaSpinner } from "react-icons/fa";
 
 interface PrimaryActionBarProps {
   onClickAgentOutputs: () => void;
   onClickRunAgent: () => void;
+  onClickScheduleButton: () => void;
   isRunning: boolean;
   isDisabled: boolean;
+  isScheduling: boolean;
   requestStopRun: () => void;
   runAgentTooltip: string;
 }
@@ -20,8 +23,10 @@ interface PrimaryActionBarProps {
 const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   onClickAgentOutputs,
   onClickRunAgent,
+  onClickScheduleButton,
   isRunning,
   isDisabled,
+  isScheduling,
   requestStopRun,
   runAgentTooltip,
 }) => {
@@ -32,7 +37,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   const runButtonOnClick = !isRunning ? onClickRunAgent : requestStopRun;
 
   return (
-    <div className="absolute bottom-0 left-1/2 z-50 flex w-fit -translate-x-1/2 transform items-center justify-center p-4">
+    <div className="absolute bottom-0 left-1/2 z-50 flex w-fit -translate-x-1/2 transform select-none items-center justify-center p-4">
       <div className={`flex gap-4`}>
         <Tooltip key="ViewOutputs" delayDuration={500}>
           <TooltipTrigger asChild>
@@ -72,6 +77,30 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
           </TooltipTrigger>
           <TooltipContent>
             <p>{runAgentTooltip}</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip key="ScheduleAgent" delayDuration={500}>
+          <TooltipTrigger asChild>
+            <Button
+              className="flex items-center gap-2"
+              onClick={onClickScheduleButton}
+              size="primary"
+              disabled={isScheduling}
+              variant="outline"
+              data-id="primary-action-schedule-agent"
+            >
+              {isScheduling ? (
+                <FaSpinner className="animate-spin" />
+              ) : (
+                <Clock className="hidden h-5 w-5 md:flex" />
+              )}
+              <span className="text-sm font-medium md:text-lg">
+                Schedule Run
+              </span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Schedule this Agent</p>
           </TooltipContent>
         </Tooltip>
       </div>

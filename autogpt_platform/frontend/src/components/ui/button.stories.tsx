@@ -88,7 +88,7 @@ export const Variants: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const buttons = canvas.getAllByRole("button");
-    expect(buttons).toHaveLength(6);
+    await expect(buttons).toHaveLength(6);
     for (const button of buttons) {
       await userEvent.hover(button);
       await expect(button).toHaveAttribute(
@@ -122,7 +122,7 @@ export const Sizes: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const buttons = canvas.getAllByRole("button");
-    expect(buttons).toHaveLength(5);
+    await expect(buttons).toHaveLength(5);
     const sizes = ["sm", "default", "lg", "primary", "icon"];
     const sizeClasses = [
       "h-8 rounded-md px-3 text-xs",
@@ -131,8 +131,8 @@ export const Sizes: Story = {
       "md:h-14 md:w-44 rounded-2xl h-10 w-28",
       "h-9 w-9",
     ];
-    buttons.forEach((button, index) => {
-      expect(button).toHaveAttribute(
+    buttons.forEach(async (button, index) => {
+      await expect(button).toHaveAttribute(
         "class",
         expect.stringContaining(sizeClasses[index]),
       );
@@ -212,7 +212,7 @@ export const LoadingState: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: /Loading.../i });
-    expect(button).toBeDisabled();
+    await expect(button).toBeDisabled();
     const spinner = button.querySelector("svg");
     await expect(spinner).toHaveClass("animate-spin");
   },

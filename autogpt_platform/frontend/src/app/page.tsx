@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
   GraphMetaWithRuns,
   ExecutionMeta,
+  Schedule,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
@@ -15,16 +16,32 @@ import {
   FlowRunsList,
   FlowRunsStats,
 } from "@/components/monitor";
+import { SchedulesTable } from "@/components/monitor/scheduleTable";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<GraphMetaWithRuns[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<GraphMetaWithRuns | null>(
     null,
   );
   const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
+  const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
+
+  const fetchSchedules = useCallback(async () => {
+    setSchedules(await api.listSchedules());
+  }, [api]);
+
+  const removeSchedule = useCallback(
+    async (scheduleId: string) => {
+      const removedSchedule = await api.deleteSchedule(scheduleId);
+      setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
+    },
+    [schedules, api],
+  );
 
   const fetchAgents = useCallback(() => {
     api.listGraphsWithRuns().then((agent) => {
@@ -42,7 +59,11 @@ const Monitor = () => {
 
   useEffect(() => {
     fetchAgents();
-  }, [api, fetchAgents]);
+  }, [fetchAgents]);
+
+  useEffect(() => {
+    fetchSchedules();
+  }, [fetchSchedules]);
 
   useEffect(() => {
     const intervalId = setInterval(() => fetchAgents(), 5000);
@@ -50,8 +71,17 @@ const Monitor = () => {
   }, [fetchAgents, flows]);
 
   const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
-  const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3 space-y-4";
+  const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3";
   const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
+
+  const handleSort = (column: keyof Schedule) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10">
@@ -101,6 +131,16 @@ const Monitor = () => {
             <FlowRunsStats flows={flows} flowRuns={flowRuns} />
           </Card>
         )}
+      <div className="col-span-full xl:col-span-6">
+        <SchedulesTable
+          schedules={schedules} // all schedules
+          agents={flows} // for filtering purpose
+          onRemoveSchedule={removeSchedule}
+          sortColumn={sortColumn}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+        />
+      </div>
     </div>
   );
 };
