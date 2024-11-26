@@ -25,7 +25,7 @@ def get_client() -> LDClient:
 
 
 def initialize_launchdarkly() -> None:
-    sdk_key = SETTINGS.LAUNCH_DARKLY_SDK_KEY
+    sdk_key = SETTINGS.launch_darkly_sdk_key
     logger.debug(
         f"Initializing LaunchDarkly with SDK key: {'present' if sdk_key else 'missing'}"
     )
