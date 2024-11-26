@@ -19,6 +19,7 @@ test.describe("Profile", () => {
     testUser,
   }) => {
     await profilePage.navbar.clickProfileLink();
+    // workaround for #8788
     // sleep for 10 seconds to allow page to load due to bug in our system
     await page.waitForTimeout(10000);
     await page.reload();
@@ -34,6 +35,7 @@ test.describe("Profile", () => {
   test("profile navigation is accessible from navbar", async ({ page }) => {
     await profilePage.navbar.clickProfileLink();
     await test.expect(page).toHaveURL(new RegExp("/profile"));
+    // workaround for #8788
     await page.reload();
     await page.reload();
     await test.expect(profilePage.isLoaded()).resolves.toBeTruthy();
