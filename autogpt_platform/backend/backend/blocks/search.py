@@ -163,4 +163,3 @@ class GetWeatherInformationBlock(Block, GetRequest):
             yield "condition", weather_data["weather"][0]["description"]
         else:
             raise RuntimeError(f"Expected keys not found in response: {weather_data}")
-
