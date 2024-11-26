@@ -38,7 +38,7 @@ class CodeExecutionBlock(Block):
         credentials: CredentialsMetaInput[
             Literal["e2b_sandbox"], Literal["api_key"]
         ] = CredentialsField(
-            provider="e2b_sandbox",
+            provider="e2b",
             supported_credential_types={"api_key"},
             description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
         )
