@@ -450,6 +450,7 @@ view StoreAgent {
 view StoreSubmission {
   listing_id     String           @id
   user_id        String
+  slug           String
   name           String
   description    String
   image_urls     String[]

@@ -12,7 +12,6 @@ export interface AgentTableCardProps {
   status: StatusType;
   runs?: number;
   rating?: number;
-  onEdit: () => void;
 }
 
 export const AgentTableCard: React.FC<AgentTableCardProps> = ({
@@ -23,8 +22,11 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
   status,
   runs,
   rating,
-  onEdit,
 }) => {
+  const onEdit = () => {
+    console.log("Edit agent", agentName);
+  };
+
   return (
     <div className="border-b border-neutral-300 p-4">
       <div className="flex gap-4">
