@@ -12,6 +12,7 @@ from redis.lock import Lock as RedisLock
 
 from backend.data import redis
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
+from backend.util.exceptions import MissingConfigError
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -156,12 +157,14 @@ def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
     client_id = getattr(settings.secrets, f"{provider_name}_client_id")
     client_secret = getattr(settings.secrets, f"{provider_name}_client_secret")
     if not (client_id and client_secret):
-        raise Exception(  # TODO: ConfigError
+        raise MissingConfigError(
             f"Integration with provider '{provider_name}' is not configured",
         )
 
     handler_class = HANDLERS_BY_NAME[provider_name]
-    frontend_base_url = settings.config.frontend_base_url
+    frontend_base_url = (
+        settings.config.frontend_base_url or settings.config.platform_base_url
+    )
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,
