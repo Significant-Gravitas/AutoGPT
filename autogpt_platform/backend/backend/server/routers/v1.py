@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Annotated, Any, Dict, List, Union
+from typing import Annotated, Any, List
 
 import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
@@ -512,14 +512,11 @@ def get_execution_schedules(
 
 @v1_router.post(
     "/api-keys",
-    response_model=Union[List[CreateAPIKeyResponse], Dict[str, str]],
+    response_model=list[CreateAPIKeyResponse] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag(
-    "api-keys-enabled",
-    unauthorized_response={"message": "API keys are not available"},
-)
+@feature_flag("api-keys-enabled")
 async def create_api_key(
     request: CreateAPIKeyRequest, user_id: Annotated[str, Depends(get_user_id)]
 ) -> CreateAPIKeyResponse:
@@ -539,14 +536,11 @@ async def create_api_key(
 
 @v1_router.get(
     "/api-keys",
-    response_model=Union[List[APIKeyWithoutHash], Dict[str, str]],
+    response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag(
-    "api-keys-enabled",
-    unauthorized_response={"message": "API keys are not available"},
-)
+@feature_flag("api-keys-enabled")
 async def get_api_keys(
     user_id: Annotated[str, Depends(get_user_id)]
 ) -> List[APIKeyWithoutHash]:
@@ -560,14 +554,11 @@ async def get_api_keys(
 
 @v1_router.get(
     "/api-keys/{key_id}",
-    response_model=Union[List[APIKeyWithoutHash], Dict[str, str]],
+    response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag(
-    "api-keys-enabled",
-    unauthorized_response={"message": "API keys are not available"},
-)
+@feature_flag("api-keys-enabled")
 async def get_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> APIKeyWithoutHash:
@@ -584,14 +575,11 @@ async def get_api_key(
 
 @v1_router.delete(
     "/api-keys/{key_id}",
-    response_model=Union[List[APIKeyWithoutHash], Dict[str, str]],
+    response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag(
-    "api-keys-enabled",
-    unauthorized_response={"message": "API keys are not available"},
-)
+@feature_flag("api-keys-enabled")
 async def delete_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
@@ -609,14 +597,11 @@ async def delete_api_key(
 
 @v1_router.post(
     "/api-keys/{key_id}/suspend",
-    response_model=Union[List[APIKeyWithoutHash], Dict[str, str]],
+    response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag(
-    "api-keys-enabled",
-    unauthorized_response={"message": "API keys are not available"},
-)
+@feature_flag("api-keys-enabled")
 async def suspend_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Optional[APIKeyWithoutHash]:
@@ -634,14 +619,11 @@ async def suspend_key(
 
 @v1_router.put(
     "/api-keys/{key_id}/permissions",
-    response_model=Union[List[APIKeyWithoutHash], Dict[str, str]],
+    response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag(
-    "api-keys-enabled",
-    unauthorized_response={"message": "API keys are not available"},
-)
+@feature_flag("api-keys-enabled")
 async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,

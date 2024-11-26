@@ -64,7 +64,6 @@ def create_context(
 def feature_flag(
     flag_key: str,
     default: bool = False,
-    unauthorized_response: Any = None,
 ) -> Callable[
     [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
 ]:
@@ -92,8 +91,6 @@ def feature_flag(
                     is_enabled = get_client().variation(flag_key, context, default)
 
                 if not is_enabled:
-                    if unauthorized_response is not None:
-                        return cast(T, unauthorized_response)
                     raise HTTPException(status_code=404, detail="Feature not available")
 
                 result = func(*args, **kwargs)
@@ -121,8 +118,6 @@ def feature_flag(
                     is_enabled = get_client().variation(flag_key, context, default)
 
                 if not is_enabled:
-                    if unauthorized_response is not None:
-                        return cast(T, unauthorized_response)
                     raise HTTPException(status_code=404, detail="Feature not available")
 
                 return cast(T, func(*args, **kwargs))
@@ -141,12 +136,11 @@ def feature_flag(
 def percentage_rollout(
     flag_key: str,
     default: bool = False,
-    unauthorized_response: Any = None,
 ) -> Callable[
     [Callable[P, Union[T, Awaitable[T]]]], Callable[P, Union[T, Awaitable[T]]]
 ]:
     """Decorator for percentage-based rollouts."""
-    return feature_flag(flag_key, default, unauthorized_response)
+    return feature_flag(flag_key, default)
 
 
 def beta_feature(
@@ -157,7 +151,7 @@ def beta_feature(
 ]:
     """Decorator for beta features."""
     actual_key = f"beta-{flag_key}" if flag_key else "beta"
-    return feature_flag(actual_key, False, unauthorized_response)
+    return feature_flag(actual_key, False)
 
 
 @contextlib.contextmanager

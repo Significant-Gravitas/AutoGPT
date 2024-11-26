@@ -28,7 +28,7 @@ async def test_feature_flag_enabled(ld_client):
 async def test_feature_flag_unauthorized_response(ld_client):
     ld_client.variation.return_value = False
 
-    @feature_flag("test-flag", unauthorized_response={"error": "disabled"})
+    @feature_flag("test-flag")
     async def test_function(user_id: str):
         return "success"
 
