@@ -37,7 +37,9 @@ export class NavBar {
 
   async isLoggedIn(): Promise<boolean> {
     try {
-      await (await this.getUserMenuButton()).waitFor({
+      await (
+        await this.getUserMenuButton()
+      ).waitFor({
         state: "visible",
         timeout: 5000,
       });

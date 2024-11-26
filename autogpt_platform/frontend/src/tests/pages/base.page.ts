@@ -1,7 +1,6 @@
 import { Page } from "@playwright/test";
 import { NavBar } from "./navbar.page";
 
-
 export class BasePage {
   readonly navbar: NavBar;
 

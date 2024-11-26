@@ -41,11 +41,11 @@ export default function PrivatePage() {
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
     | {
-      open: true;
-      message: string;
-      onConfirm: () => void;
-      onReject: () => void;
-    }
+        open: true;
+        message: string;
+        onConfirm: () => void;
+        onReject: () => void;
+      }
     | { open: false }
   >({ open: false });
 

@@ -7,7 +7,6 @@ import path from "path";
 import { TestUser } from "./test-user.fixture";
 import { LoginPage } from "../pages/login.page";
 
-
 // Extend both worker state and test-specific fixtures
 type WorkerFixtures = {
   workerAuth: TestUser;
