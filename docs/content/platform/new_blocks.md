@@ -253,10 +253,10 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/__init__.py:HANDLERS_BY_NAMEExample"
 ```
 
-- Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` under [`util/settings.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/util/settings.py)
+- Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` under [`util/settings.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/autogpt_libs/autogpt_libs/utils/settings.py)
 
 ```python title="backend/util/settings.py"
---8<-- "autogpt_platform/backend/backend/util/settings.py:OAuthServerCredentialsExample"
+--8<-- "autogpt_platform/autogpt_libs/autogpt_libs/utils/settings.py:OAuthServerCredentialsExample"
 ```
 
 [OAuth2 handlers]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/integrations/oauth
