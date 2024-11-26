@@ -92,17 +92,20 @@ class CodeExecutionBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "commands": ["print('test')", "print('test2')"],
+                "code": "print('Hello World')",
+                "language": ProgrammingLanguage.PYTHON.value,
+                "commands": [],
                 "timeout": 300,
+                "template_id": ""
             },
             test_output=[
-                ("response", "None"),
-                ("stdout_logs", "test\ntest2\n"),
-            ],
+                ("response", "Hello World"),
+                ("stdout_logs", "Hello World\n"),
+                ],
             test_mock={
-                "execute_code": lambda commands, timeout, api_key: (
-                    "None",
-                    "test\ntest2\n",
+                "execute_code": lambda code, language, commands, timeout, api_key, template_id: (
+                    "Hello World",
+                    "Hello World\n",
                     "",
                 ),
             },
@@ -115,12 +118,14 @@ class CodeExecutionBlock(Block):
         commands: list[str],
         timeout: int,
         api_key: str,
-        template_id : str,
+        template_id: str,
     ):
         try:
             sandbox = None
             if template_id:
-                sandbox = Sandbox(template=template_id, api_key=api_key, timeout=timeout)
+                sandbox = Sandbox(
+                    template=template_id, api_key=api_key, timeout=timeout
+                )
             else:
                 sandbox = Sandbox(api_key=api_key, timeout=timeout)
 
@@ -133,8 +138,9 @@ class CodeExecutionBlock(Block):
 
             # Executing the code
             execution = sandbox.run_code(
-                code, language=language.value,
-                on_error=lambda e: sandbox.kill() # Kill the sandbox if there is an error
+                code,
+                language=language.value,
+                on_error=lambda e: sandbox.kill(),  # Kill the sandbox if there is an error
             )
 
             if execution.error:
@@ -159,7 +165,7 @@ class CodeExecutionBlock(Block):
                 input_data.commands,
                 input_data.timeout,
                 credentials.api_key.get_secret_value(),
-                input_data.template_id
+                input_data.template_id,
             )
 
             if response:
