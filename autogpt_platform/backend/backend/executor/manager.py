@@ -30,7 +30,7 @@ from backend.data.execution import (
     merge_execution_input,
     parse_execution_output,
 )
-from backend.data.graph import Graph, Link, Node
+from backend.data.graph import GraphModel, Link, Node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
@@ -186,7 +186,7 @@ def execute_node(
             input_data, **extra_exec_kwargs
         ):
             output_size += len(json.dumps(output_data))
-            log_metadata.info("Node produced output", output_name=output_data)
+            log_metadata.info("Node produced output", **{output_name: output_data})
             db_client.upsert_execution_output(node_exec_id, output_name, output_data)
 
             for execution in _enqueue_next_nodes(
@@ -253,7 +253,6 @@ def _enqueue_next_nodes(
     graph_id: str,
     log_metadata: LogMetadata,
 ) -> list[NodeExecution]:
-
     def add_enqueued_execution(
         node_exec_id: str, node_id: str, data: BlockInput
     ) -> NodeExecution:
@@ -713,7 +712,6 @@ class Executor:
 
 
 class ExecutionManager(AppService):
-
     def __init__(self):
         super().__init__()
         self.use_redis = True
@@ -775,7 +773,7 @@ class ExecutionManager(AppService):
         user_id: str,
         graph_version: int | None = None,
     ) -> GraphExecution:
-        graph: Graph | None = self.db_client.get_graph(
+        graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
         if not graph:
@@ -798,6 +796,15 @@ class ExecutionManager(AppService):
                 name = node.input_default.get("name")
                 if name and name in data:
                     input_data = {"value": data[name]}
+
+            # Extract webhook payload, and assign it to the input pin
+            webhook_payload_key = f"webhook_{node.webhook_id}_payload"
+            if (
+                block.block_type == BlockType.WEBHOOK
+                and node.webhook_id
+                and webhook_payload_key in data
+            ):
+                input_data = {"payload": data[webhook_payload_key]}
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
@@ -876,7 +883,7 @@ class ExecutionManager(AppService):
                 )
                 self.db_client.send_execution_update(exec_update)
 
-    def _validate_node_input_credentials(self, graph: Graph, user_id: str):
+    def _validate_node_input_credentials(self, graph: GraphModel, user_id: str):
         """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:
