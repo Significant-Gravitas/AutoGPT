@@ -42,6 +42,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   replicate: "Replicate",
   fal: "FAL",
   revid: "Rev.ID",
+  twitter: "Twitter",
   unreal_speech: "Unreal Speech",
   exa: "Exa",
   hubspot: "Hubspot",
