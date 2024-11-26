@@ -3,9 +3,12 @@ import os
 import uuid
 
 import fastapi
-import supabase
+from google.cloud import storage
+import dotenv
 
 import backend.server.v2.store.exceptions
+
+dotenv.load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +18,12 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
-    try:
-        supabase_url = os.environ["SUPABASE_URL"]
-        supabase_key = os.environ["SUPABASE_KEY"]
-    except KeyError as e:
-        logger.error(f"Missing required environment variable: {str(e)}")
+    # Check required environment variables first before doing any file processing
+    if not os.environ.get("MEDIA_GCS_BUCKET_NAME"):
+        logger.error("Missing required GCS environment variables")
         raise backend.server.v2.store.exceptions.StorageConfigError(
             "Missing storage configuration"
-        ) from e
+        )
 
     try:
         # Validate file type
@@ -66,27 +67,27 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
 
         # Construct storage path
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
-        storage_path = f"store/{user_id}/{media_type}/{unique_filename}"
+        storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
 
         try:
-            supabase_client = supabase.create_client(supabase_url, supabase_key)
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(os.environ["MEDIA_GCS_BUCKET_NAME"])
+            blob = bucket.blob(storage_path)
+            blob.content_type = content_type
 
             file_bytes = await file.read()
-            supabase_client.storage.from_("media").upload(
-                path=storage_path,
-                file=file_bytes,
-                file_options={"content-type": content_type},
+            blob.upload_from_string(
+                file_bytes,
+                content_type=content_type
             )
 
-            public_url = supabase_client.storage.from_("media").get_public_url(
-                storage_path
-            )
+            public_url = blob.public_url
 
             logger.info(f"Successfully uploaded file to: {storage_path}")
             return public_url
 
         except Exception as e:
-            logger.error(f"Supabase storage error: {str(e)}")
+            logger.error(f"GCS storage error: {str(e)}")
             raise backend.server.v2.store.exceptions.StorageUploadError(
                 "Failed to upload file to storage"
             ) from e
