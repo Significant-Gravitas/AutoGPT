@@ -50,6 +50,7 @@ cryptography = "^43.0.3"
 python-multipart = "^0.0.17"
 sqlalchemy = "^2.0.36"
 psycopg2-binary = "^2.9.10"
+google-cloud-storage = "^2.18.2"
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.30.0"
 httpx = "^0.27.0"
