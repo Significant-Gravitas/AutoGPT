@@ -49,6 +49,7 @@ class TwitterUnfollowListBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"unfollow_list": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -107,7 +108,10 @@ class TwitterFollowListBlock(Block):
             output_schema=TwitterFollowListBlock.Output,
             test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("success", True), ("error", None)],
+            test_output=[
+                ("success", True),
+            ],
+            test_mock={"follow_list": lambda *args, **kwargs: True},
         )
 
     @staticmethod

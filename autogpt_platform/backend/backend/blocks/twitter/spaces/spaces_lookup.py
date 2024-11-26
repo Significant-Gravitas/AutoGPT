@@ -83,7 +83,7 @@ class TwitterGetSpacesBlock(Block):
             output_schema=TwitterGetSpacesBlock.Output,
             test_input={
                 "space_ids": ["1DXxyRYNejbKM"],
-                "user_ids": None,
+                "user_ids": [],
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "space_fields": [],
@@ -93,21 +93,31 @@ class TwitterGetSpacesBlock(Block):
             test_output=[
                 ("ids", ["1DXxyRYNejbKM"]),
                 ("titles", ["Test Space"]),
-                ("host_ids", ["1234567"]),
                 (
                     "data",
-                    {
-                        "spaces": [
-                            {
-                                "id": "1DXxyRYNejbKM",
-                                "title": "Test Space",
-                                "host_id": "1234567",
-                            }
-                        ]
-                    },
+                    [
+                        {
+                            "id": "1DXxyRYNejbKM",
+                            "title": "Test Space",
+                            "host_id": "1234567",
+                        }
+                    ],
                 ),
-                ("includes", {}),
             ],
+            test_mock={
+                "get_spaces": lambda *args, **kwargs: (
+                    [
+                        {
+                            "id": "1DXxyRYNejbKM",
+                            "title": "Test Space",
+                            "host_id": "1234567",
+                        }
+                    ],
+                    {},
+                    ["1DXxyRYNejbKM"],
+                    ["Test Space"],
+                )
+            },
         )
 
     @staticmethod
@@ -236,18 +246,26 @@ class TwitterGetSpaceByIdBlock(Block):
             test_output=[
                 ("id", "1DXxyRYNejbKM"),
                 ("title", "Test Space"),
-                ("host_id", "1234567"),
+                ("host_ids", ["1234567"]),
                 (
                     "data",
                     {
                         "id": "1DXxyRYNejbKM",
                         "title": "Test Space",
-                        "host_id": "1234567",
+                        "host_ids": ["1234567"],
                     },
                 ),
-                ("includes", {}),
-                ("error", None),
             ],
+            test_mock={
+                "get_space": lambda *args, **kwargs: (
+                    {
+                        "id": "1DXxyRYNejbKM",
+                        "title": "Test Space",
+                        "host_ids": ["1234567"],
+                    },
+                    {},
+                )
+            },
         )
 
     @staticmethod
@@ -385,11 +403,17 @@ class TwitterGetSpaceBuyersBlock(Block):
                 ("usernames", ["testuser"]),
                 (
                     "data",
-                    {"id": "2244994945", "username": "testuser", "name": "Test User"},
+                    [{"id": "2244994945", "username": "testuser", "name": "Test User"}],
                 ),
-                ("includes", {}),
-                ("error", None),
             ],
+            test_mock={
+                "get_space_buyers": lambda *args, **kwargs: (
+                    [{"id": "2244994945", "username": "testuser", "name": "Test User"}],
+                    {},
+                    ["2244994945"],
+                    ["testuser"],
+                )
+            },
         )
 
     @staticmethod
@@ -510,11 +534,17 @@ class TwitterGetSpaceTweetsBlock(Block):
             test_output=[
                 ("tweet_ids", ["1234567890"]),
                 ("texts", ["Test tweet"]),
-                ("data", {"tweets": [{"id": "1234567890", "text": "Test tweet"}]}),
-                ("includes", {}),
-                ("meta", {}),
-                ("error", None),
+                ("data", [{"id": "1234567890", "text": "Test tweet"}]),
             ],
+            test_mock={
+                "get_space_tweets": lambda *args, **kwargs: (
+                    [{"id": "1234567890", "text": "Test tweet"}],  # data
+                    {},
+                    ["1234567890"],
+                    ["Test tweet"],
+                    {},
+                )
+            },
         )
 
     @staticmethod

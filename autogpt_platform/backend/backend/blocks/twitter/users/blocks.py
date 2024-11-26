@@ -57,6 +57,7 @@ class TwitterUnblockUserBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"unblock_user": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -140,10 +141,16 @@ class TwitterGetBlockedUsersBlock(Block):
             test_output=[
                 ("user_ids", ["12345", "67890"]),
                 ("usernames_", ["testuser1", "testuser2"]),
-                ("included", {}),
-                ("meta", {"next_token": "next_token_value"}),
-                ("next_token", "next_token_value"),
             ],
+            test_mock={
+                "get_blocked_users": lambda *args, **kwargs: (
+                    {},  # included
+                    {},  # meta
+                    ["12345", "67890"],  # user_ids
+                    ["testuser1", "testuser2"],  # usernames
+                    None,  # next_token
+                )
+            },
         )
 
     @staticmethod
@@ -267,6 +274,7 @@ class TwitterBlockUserBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"block_user": lambda *args, **kwargs: True},
         )
 
     @staticmethod

@@ -198,16 +198,11 @@ class TwitterGetPinnedListsBlock(Block):
             test_output=[
                 ("list_ids", ["84839422"]),
                 ("list_names", ["Twitter List"]),
-                (
-                    "data",
-                    {"pinned_lists": [{"id": "84839422", "name": "Twitter List"}]},
-                ),
-                ("included", {}),
-                ("meta", {}),
+                ("data", [{"id": "84839422", "name": "Twitter List"}]),
             ],
             test_mock={
                 "get_pinned_lists": lambda *args, **kwargs: (
-                    {"pinned_lists": [{"id": "84839422", "name": "Twitter List"}]},
+                    [{"id": "84839422", "name": "Twitter List"}],
                     {},
                     {},
                     ["84839422"],

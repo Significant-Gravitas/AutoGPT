@@ -78,14 +78,14 @@ class TwitterGetListBlock(Block):
                 ("owner_id", "2244994945"),
                 ("owner_username", "TwitterAPI"),
                 ("data", {"id": "84839422", "name": "Official Twitter Accounts"}),
-                ("included", {}),
-                ("meta", {}),
-                ("error", ""),
             ],
             test_mock={
                 "get_list": lambda *args, **kwargs: (
                     {"id": "84839422", "name": "Official Twitter Accounts"},
                     {},
+                    {},
+                    "2244994945",
+                    "TwitterAPI",
                 )
             },
         )
@@ -232,26 +232,11 @@ class TwitterGetOwnedListsBlock(Block):
             test_output=[
                 ("list_ids", ["84839422"]),
                 ("list_names", ["Official Twitter Accounts"]),
-                ("next_token", None),
-                (
-                    "data",
-                    {
-                        "owned_lists": [
-                            {"id": "84839422", "name": "Official Twitter Accounts"}
-                        ]
-                    },
-                ),
-                ("included", {}),
-                ("meta", {}),
-                ("error", ""),
+                ("data", [{"id": "84839422", "name": "Official Twitter Accounts"}]),
             ],
             test_mock={
                 "get_owned_lists": lambda *args, **kwargs: (
-                    {
-                        "owned_lists": [
-                            {"id": "84839422", "name": "Official Twitter Accounts"}
-                        ]
-                    },
+                    [{"id": "84839422", "name": "Official Twitter Accounts"}],
                     {},
                     {},
                     ["84839422"],

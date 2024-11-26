@@ -71,7 +71,7 @@ class TwitterGetUserBlock(Block):
             input_schema=TwitterGetUserBlock.Input,
             output_schema=TwitterGetUserBlock.Output,
             test_input={
-                "user_id": None,
+                "user_id": "",
                 "username": "twitter",
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
@@ -93,9 +93,22 @@ class TwitterGetUserBlock(Block):
                         }
                     },
                 ),
-                ("included", {}),
-                ("error", None),
             ],
+            test_mock={
+                "get_user": lambda *args, **kwargs: (
+                    {
+                        "user": {
+                            "id": "783214",
+                            "username": "twitter",
+                            "name": "Twitter",
+                        }
+                    },
+                    {},
+                    "twitter",
+                    "783214",
+                    "Twitter",
+                )
+            },
         )
 
     @staticmethod
@@ -239,20 +252,32 @@ class TwitterGetUsersBlock(Block):
                 ("names_", ["Twitter", "Twitter Dev"]),
                 (
                     "data",
-                    {
-                        "users": [
-                            {"id": "783214", "username": "twitter", "name": "Twitter"},
-                            {
-                                "id": "2244994945",
-                                "username": "twitterdev",
-                                "name": "Twitter Dev",
-                            },
-                        ]
-                    },
+                    [
+                        {"id": "783214", "username": "twitter", "name": "Twitter"},
+                        {
+                            "id": "2244994945",
+                            "username": "twitterdev",
+                            "name": "Twitter Dev",
+                        },
+                    ],
                 ),
-                ("included", {}),
-                ("error", None),
             ],
+            test_mock={
+                "get_users": lambda *args, **kwargs: (
+                    [
+                        {"id": "783214", "username": "twitter", "name": "Twitter"},
+                        {
+                            "id": "2244994945",
+                            "username": "twitterdev",
+                            "name": "Twitter Dev",
+                        },
+                    ],
+                    {},
+                    ["twitter", "twitterdev"],
+                    ["783214", "2244994945"],
+                    ["Twitter", "Twitter Dev"],
+                )
+            },
         )
 
     @staticmethod
