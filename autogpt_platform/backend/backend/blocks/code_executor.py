@@ -65,7 +65,7 @@ class CodeExecutionBlock(Block):
         )
 
         timeout: int = SchemaField(
-            description="Sandbox timeout in seconds", default=300
+            description="Execution timeout in seconds", default=300
         )
 
         template_id: str = SchemaField(
