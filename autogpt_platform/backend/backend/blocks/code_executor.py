@@ -96,12 +96,12 @@ class CodeExecutionBlock(Block):
                 "language": ProgrammingLanguage.PYTHON.value,
                 "commands": [],
                 "timeout": 300,
-                "template_id": ""
+                "template_id": "",
             },
             test_output=[
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
-                ],
+            ],
             test_mock={
                 "execute_code": lambda code, language, commands, timeout, api_key, template_id: (
                     "Hello World",
