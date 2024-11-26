@@ -549,3 +549,55 @@ async def update_or_create_profile(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update profile"
         ) from e
+
+
+async def get_my_agents(
+    user_id: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> backend.server.v2.store.model.MyAgentsResponse:
+    logger.debug(f"Getting my agents for user {user_id}, page={page}")
+
+    try:
+        agents_with_max_version = await prisma.models.AgentGraph.prisma().find_many(
+            where=prisma.types.AgentGraphWhereInput(userId=user_id),
+            order=[{"version": "desc"}],
+            distinct=["id"],
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+
+        total = len(await prisma.models.AgentGraph.prisma().find_many(
+            where=prisma.types.AgentGraphWhereInput(userId=user_id),
+            order=[{"version": "desc"}],
+            distinct=["id"],
+        ))
+
+        total_pages = (total + page_size - 1) // page_size
+
+        agents = agents_with_max_version
+
+        my_agents = [
+            backend.server.v2.store.model.MyAgent(
+                agent_id=agent.id,
+                agent_version=agent.version,
+                agent_name=agent.name or "",
+                last_edited=agent.updatedAt or agent.createdAt,
+            )
+            for agent in agents
+        ]
+
+        return backend.server.v2.store.model.MyAgentsResponse(
+            agents=my_agents,
+            pagination=backend.server.v2.store.model.Pagination(
+                current_page=page,
+                total_items=total,
+                total_pages=total_pages,
+                page_size=page_size,
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error getting my agents: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch my agents"
+        ) from e

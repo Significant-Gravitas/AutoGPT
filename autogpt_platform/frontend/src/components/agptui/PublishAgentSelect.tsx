@@ -1,17 +1,21 @@
+"use client";
+
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
 import { IconClose } from "../ui/icons";
 
-interface Agent {
+export interface Agent {
   name: string;
+  id: string;
+  version: number;
   lastEdited: string;
   imageSrc: string;
 }
 
 interface PublishAgentSelectProps {
   agents: Agent[];
-  onSelect: (agentName: string) => void;
+  onSelect: (agentId: string, agentVersion: number) => void;
   onCancel: () => void;
   onNext: () => void;
   onClose: () => void;
@@ -28,9 +32,9 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
 }) => {
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
 
-  const handleAgentClick = (agentName: string) => {
+  const handleAgentClick = (agentName: string, agentId: string, agentVersion: number) => {
     setSelectedAgent(agentName);
-    onSelect(agentName);
+    onSelect(agentId, agentVersion);
   };
 
   return (
@@ -92,11 +96,11 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                           ? "shadow-lg ring-4 ring-violet-600"
                           : "hover:shadow-md"
                       }`}
-                      onClick={() => handleAgentClick(agent.name)}
+                      onClick={() => handleAgentClick(agent.name, agent.id, agent.version)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          handleAgentClick(agent.name);
+                          handleAgentClick(agent.name, agent.id, agent.version);
                         }
                       }}
                       tabIndex={0}
