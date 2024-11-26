@@ -6,40 +6,41 @@ import { useEffect, useState } from "react";
 
 export function withFeatureFlag<P extends object>(
   WrappedComponent: React.ComponentType<P>,
-  flagKey: string,
+  flagKey: string
 ) {
   return function FeatureFlaggedComponent(props: P) {
     const flags = useFlags();
     const router = useRouter();
-    const [isInitialized, setIsInitialized] = useState(false);
-    const isEnabled = flags[flagKey];
+    const [hasFlagLoaded, setHasFlagLoaded] = useState(false);
 
     useEffect(() => {
-      const timer = setTimeout(() => {
-        setIsInitialized(true);
-      }, 100);
-
-      return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
-      if (isInitialized && !isEnabled) {
-        router.push("/404");
+      // Only proceed if flags received
+      if (flags && flagKey in flags) {
+        setHasFlagLoaded(true);
       }
-    }, [isInitialized, isEnabled, router]);
+    }, [flags, flagKey]);
 
-    if (!isInitialized) {
+    useEffect(() => {
+      if (hasFlagLoaded && !flags[flagKey]) {
+        router.push('/404');
+      }
+    }, [hasFlagLoaded, flags, flagKey, router]);
+
+    // Show loading state until flags loaded
+    if (!hasFlagLoaded) {
       return (
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center justify-center min-h-screen">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       );
     }
 
-    if (!isEnabled) {
+    // If flag is loaded but false, return null (will redirect)
+    if (!flags[flagKey]) {
       return null;
     }
 
+    // Flag is loaded and true, show component
     return <WrappedComponent {...props} />;
   };
 }

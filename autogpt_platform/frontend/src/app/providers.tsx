@@ -6,16 +6,16 @@ import { ThemeProviderProps } from "next-themes/dist/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SupabaseProvider from "@/components/SupabaseProvider";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
-import { LDProvider } from "launchdarkly-react-client-sdk";
+import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-provider";
 
 export function Providers({ children, ...props }: ThemeProviderProps) {
   return (
     <NextThemesProvider {...props}>
       <SupabaseProvider>
         <CredentialsProvider>
-          <LDProvider clientSideID="client-side-id">
+          <LaunchDarklyProvider >
             <TooltipProvider>{children}</TooltipProvider>
-          </LDProvider>
+          </LaunchDarklyProvider>
         </CredentialsProvider>
       </SupabaseProvider>
     </NextThemesProvider>
