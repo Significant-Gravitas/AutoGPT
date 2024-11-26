@@ -20,6 +20,7 @@ export class ProfilePage extends BasePage {
       await this.waitForPageToLoad();
       return true;
     } catch (error) {
+      console.error("Error loading profile page", error);
       return false;
     }
   }
