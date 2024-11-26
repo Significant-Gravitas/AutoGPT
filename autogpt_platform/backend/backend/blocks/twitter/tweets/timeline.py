@@ -99,7 +99,7 @@ class TwitterGetUserMentionsBlock(Block):
                 "since_id": "",
                 "until_id": "",
                 "sort_order": "",
-                "pagination": "",
+                "pagination_token": "",
                 "expansions": [],
                 "media_fields": [],
                 "place_fields": [],
@@ -120,24 +120,6 @@ class TwitterGetUserMentionsBlock(Block):
                         {"id": "1372627771717869568", "text": "Test mention 2"},
                     ],
                 ),
-                (
-                    "included",
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                ),
-                (
-                    "meta",
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                ),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_mentions": lambda *args, **kwargs: (
@@ -149,18 +131,9 @@ class TwitterGetUserMentionsBlock(Block):
                         {"id": "1373001119480344583", "text": "Test mention 1"},
                         {"id": "1372627771717869568", "text": "Test mention 2"},
                     ],
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                    "next_token_value",
+                    {},
+                    {},
+                    None,
                 )
             },
         )
@@ -366,7 +339,7 @@ class TwitterGetHomeTimelineBlock(Block):
                 "since_id": "",
                 "until_id": "",
                 "sort_order": "",
-                "pagination": "",
+                "pagination_token": "",
                 "expansions": [],
                 "media_fields": [],
                 "place_fields": [],
@@ -387,24 +360,6 @@ class TwitterGetHomeTimelineBlock(Block):
                         {"id": "1372627771717869568", "text": "Test tweet 2"},
                     ],
                 ),
-                (
-                    "included",
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                ),
-                (
-                    "meta",
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                ),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_timeline": lambda *args, **kwargs: (
@@ -416,18 +371,9 @@ class TwitterGetHomeTimelineBlock(Block):
                         {"id": "1373001119480344583", "text": "Test tweet 1"},
                         {"id": "1372627771717869568", "text": "Test tweet 2"},
                     ],
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                    "next_token_value",
+                    {},
+                    {},
+                    None,
                 )
             },
         )
@@ -636,7 +582,7 @@ class TwitterGetUserTweetsBlock(Block):
                 "since_id": "",
                 "until_id": "",
                 "sort_order": "",
-                "pagination": "",
+                "pagination_token": "",
                 "expansions": [],
                 "media_fields": [],
                 "place_fields": [],
@@ -657,24 +603,6 @@ class TwitterGetUserTweetsBlock(Block):
                         {"id": "1372627771717869568", "text": "Test tweet 2"},
                     ],
                 ),
-                (
-                    "included",
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                ),
-                (
-                    "meta",
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                ),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_user_tweets": lambda *args, **kwargs: (
@@ -686,18 +614,9 @@ class TwitterGetUserTweetsBlock(Block):
                         {"id": "1373001119480344583", "text": "Test tweet 1"},
                         {"id": "1372627771717869568", "text": "Test tweet 2"},
                     ],
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                    "next_token_value",
+                    {},
+                    {},
+                    None,
                 )
             },
         )

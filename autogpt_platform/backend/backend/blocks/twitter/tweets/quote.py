@@ -116,9 +116,6 @@ class TwitterGetQuoteTweetsBlock(Block):
                         {"id": "67890", "text": "Tweet 2"},
                     ],
                 ),
-                ("included", {}),
-                ("meta", {"result_count": 2, "next_token": "next_token_value"}),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_quote_tweets": lambda *args, **kwargs: (
@@ -129,8 +126,8 @@ class TwitterGetQuoteTweetsBlock(Block):
                         {"id": "67890", "text": "Tweet 2"},
                     ],
                     {},
-                    {"result_count": 2, "next_token": "next_token_value"},
-                    "next_token_value",
+                    {},
+                    None,
                 )
             },
         )

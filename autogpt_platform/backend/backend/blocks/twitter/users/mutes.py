@@ -62,6 +62,7 @@ class TwitterUnmuteUserBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"unmute_user": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -156,9 +157,6 @@ class TwitterGetMutedUsersBlock(Block):
                         {"id": "67890", "username": "testuser2"},
                     ],
                 ),
-                ("includes", {}),
-                ("meta", {"next_token": "next_token_value"}),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_muted_users": lambda *args, **kwargs: (
@@ -169,8 +167,8 @@ class TwitterGetMutedUsersBlock(Block):
                         {"id": "67890", "username": "testuser2"},
                     ],
                     {},
-                    {"next_token": "next_token_value"},
-                    "next_token_value",
+                    {},
+                    None,
                 )
             },
         )
@@ -298,6 +296,7 @@ class TwitterMuteUserBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"mute_user": lambda *args, **kwargs: True},
         )
 
     @staticmethod

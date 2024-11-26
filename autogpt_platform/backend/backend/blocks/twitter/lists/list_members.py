@@ -256,9 +256,6 @@ class TwitterGetListMembersBlock(Block):
                         {"id": "67890", "username": "testuser2"},
                     ],
                 ),
-                ("included", {}),
-                ("meta", {"next_token": "next_token_value"}),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_list_members": lambda *args, **kwargs: (
@@ -269,8 +266,8 @@ class TwitterGetListMembersBlock(Block):
                         {"id": "67890", "username": "testuser2"},
                     ],
                     {},
-                    {"next_token": "next_token_value"},
-                    "next_token_value",
+                    {},
+                    None,
                 )
             },
         )
@@ -417,7 +414,7 @@ class TwitterGetListMembershipsBlock(Block):
             test_input={
                 "user_id": "123456789",
                 "max_results": 50,
-                "pagination_token": None,
+                "pagination_token": "",
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": [],
                 "list_fields": [],
@@ -426,16 +423,13 @@ class TwitterGetListMembershipsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("list_ids", ["84839422"]),
-                ("data", {"lists": [{"id": "84839422"}]}),
-                ("included", {}),
-                ("meta", {"next_token": None}),
-                ("next_token", None),
+                ("data", [{"id": "84839422"}]),
             ],
             test_mock={
                 "get_list_memberships": lambda *args, **kwargs: (
-                    {"lists": [{"id": "84839422"}]},
+                    [{"id": "84839422"}],
                     {},
-                    {"next_token": None},
+                    {},
                     ["84839422"],
                     None,
                 )

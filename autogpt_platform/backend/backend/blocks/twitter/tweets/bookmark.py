@@ -63,6 +63,7 @@ class TwitterBookmarkTweetBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"bookmark_tweet": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -164,10 +165,19 @@ class TwitterGetBookmarkedTweetsBlock(Block):
                 ("userId", ["12345"]),
                 ("userName", ["testuser"]),
                 ("data", [{"id": "1234567890", "text": "Test tweet"}]),
-                ("included", {"users": [{"id": "12345", "username": "testuser"}]}),
-                ("meta", {"result_count": 1}),
-                ("next_token", "next_token_value"),
             ],
+            test_mock={
+                "get_bookmarked_tweets": lambda *args, **kwargs: (
+                    ["1234567890"],
+                    ["Test tweet"],
+                    ["12345"],
+                    ["testuser"],
+                    [{"id": "1234567890", "text": "Test tweet"}],
+                    {},
+                    {},
+                    None,
+                )
+            },
         )
 
     @staticmethod

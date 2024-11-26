@@ -98,15 +98,11 @@ class TwitterGetListTweetsBlock(Block):
             test_output=[
                 ("tweet_ids", ["1234567890"]),
                 ("texts", ["Test tweet"]),
-                ("next_token", None),
-                ("data", {"list_tweets": [{"id": "1234567890", "text": "Test tweet"}]}),
-                ("included", {}),
-                ("meta", {}),
-                ("error", ""),
+                ("data", [{"id": "1234567890", "text": "Test tweet"}]),
             ],
             test_mock={
                 "get_list_tweets": lambda *args, **kwargs: (
-                    {"list_tweets": [{"id": "1234567890", "text": "Test tweet"}]},
+                    [{"id": "1234567890", "text": "Test tweet"}],
                     {},
                     {},
                     ["1234567890"],

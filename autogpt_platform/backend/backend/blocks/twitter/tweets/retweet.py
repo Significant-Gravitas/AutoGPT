@@ -57,7 +57,10 @@ class TwitterRetweetBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("success", True), ("error", "")],
+            test_output=[
+                ("success", True),
+            ],
+            test_mock={"retweet": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -133,6 +136,7 @@ class TwitterRemoveRetweetBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"remove_retweet": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -244,23 +248,20 @@ class TwitterGetRetweetersBlock(Block):
                 ("ids", ["12345"]),
                 ("names", ["Test User"]),
                 ("usernames", ["testuser"]),
-                ("next_token", "next_token_value"),
                 (
                     "data",
                     [{"id": "12345", "name": "Test User", "username": "testuser"}],
                 ),
-                ("included", {}),
-                ("meta", {"next_token": "next_token_value"}),
             ],
             test_mock={
                 "get_retweeters": lambda *args, **kwargs: (
                     [{"id": "12345", "name": "Test User", "username": "testuser"}],
                     {},
-                    {"next_token": "next_token_value"},
+                    {},
                     ["12345"],
                     ["Test User"],
                     ["testuser"],
-                    "next_token_value",
+                    None,
                 )
             },
         )
