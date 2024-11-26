@@ -27,7 +27,7 @@ class WordCharacterCountBlock(Block):
             input_schema=WordCharacterCountBlock.Input,
             output_schema=WordCharacterCountBlock.Output,
             test_input={"text": "Hello, how are you?"},
-            test_output=[("word_count", 4), ("character_count", 18)],
+            test_output=[("word_count", 4), ("character_count", 19)],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
