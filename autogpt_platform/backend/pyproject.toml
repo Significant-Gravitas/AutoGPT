@@ -42,6 +42,7 @@ sentry-sdk = "2.19.0"
 strenum = "^0.4.9"
 supabase = "^2.10.0"
 tenacity = "^9.0.0"
+tweepy = "^4.14.0"
 uvicorn = { extras = ["standard"], version = "^0.32.1" }
 websockets = "^13.1"
 youtube-transcript-api = "^0.6.2"
