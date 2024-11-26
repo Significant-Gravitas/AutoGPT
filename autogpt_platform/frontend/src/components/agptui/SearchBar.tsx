@@ -11,6 +11,7 @@ interface SearchBarProps {
   iconColor?: string;
   textColor?: string;
   placeholderColor?: string;
+  width?: string;
 }
 
 /** SearchBar component for user input and search functionality. */
@@ -20,6 +21,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   iconColor = "text-[#646464]",
   textColor = "text-[#707070]",
   placeholderColor = "text-[#707070]",
+  width = "w-9/10 lg:w-[56.25rem]",
 }) => {
   const router = useRouter();
 
@@ -39,7 +41,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   return (
     <form
       onSubmit={handleSubmit}
-      className="w-9/10 lg:w-[56.25rem]"
+      className={width}
       data-testid="store-search-bar"
     >
       <div
