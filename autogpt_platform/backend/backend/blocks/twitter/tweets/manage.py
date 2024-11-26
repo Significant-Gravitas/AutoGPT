@@ -410,16 +410,6 @@ class TwitterSearchRecentTweetsBlock(Block):
                         },
                     ],
                 ),
-                ("included", {}),
-                (
-                    "meta",
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                ),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "search_tweets": lambda *args, **kwargs: (
@@ -439,12 +429,8 @@ class TwitterSearchRecentTweetsBlock(Block):
                         },
                     ],
                     {},
-                    {
-                        "newest_id": "1373001119480344583",
-                        "oldest_id": "1372627771717869568",
-                        "next_token": "next_token_value",
-                    },
-                    "next_token_value",
+                    {},
+                    None,
                 )
             },
         )

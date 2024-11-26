@@ -46,6 +46,7 @@ class TwitterHideReplyBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"hide_reply": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -116,6 +117,7 @@ class TwitterUnhideReplyBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"unhide_reply": lambda *args, **kwargs: True},
         )
 
     @staticmethod

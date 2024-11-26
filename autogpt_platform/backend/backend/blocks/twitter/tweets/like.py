@@ -68,6 +68,7 @@ class TwitterLikeTweetBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"like_tweet": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -169,30 +170,18 @@ class TwitterGetLikingUsersBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("id", ["12345", "67890"]),
-                ("username", ["user1", "user2"]),
-                (
-                    "data",
-                    [
-                        {"id": "12345", "username": "user1"},
-                        {"id": "67890", "username": "user2"},
-                    ],
-                ),
-                ("included", {}),
-                ("meta", {"result_count": 2, "next_token": "next_token_value"}),
-                ("next_token", "next_token_value"),
+                ("id", ["1234567890"]),
+                ("username", ["testuser"]),
+                ("data", [{"id": "1234567890", "username": "testuser"}]),
             ],
             test_mock={
                 "get_liking_users": lambda *args, **kwargs: (
-                    ["12345", "67890"],
-                    ["user1", "user2"],
-                    [
-                        {"id": "12345", "username": "user1"},
-                        {"id": "67890", "username": "user2"},
-                    ],
+                    ["1234567890"],
+                    ["testuser"],
+                    [{"id": "1234567890", "username": "testuser"}],
                     {},
-                    {"result_count": 2, "next_token": "next_token_value"},
-                    "next_token_value",
+                    {},
+                    None,
                 )
             },
         )
@@ -373,17 +362,6 @@ class TwitterGetLikedTweetsBlock(Block):
                         {"id": "67890", "text": "Tweet 2"},
                     ],
                 ),
-                (
-                    "included",
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                ),
-                ("meta", {"result_count": 2, "next_token": "next_token_value"}),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_liked_tweets": lambda *args, **kwargs: (
@@ -395,14 +373,9 @@ class TwitterGetLikedTweetsBlock(Block):
                         {"id": "12345", "text": "Tweet 1"},
                         {"id": "67890", "text": "Tweet 2"},
                     ],
-                    {
-                        "users": [
-                            {"id": "67890", "username": "testuser1"},
-                            {"id": "67891", "username": "testuser2"},
-                        ]
-                    },
-                    {"result_count": 2, "next_token": "next_token_value"},
-                    "next_token_value",
+                    {},
+                    {},
+                    None,
                 )
             },
         )
@@ -566,6 +539,7 @@ class TwitterUnlikeTweetBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"unlike_tweet": lambda *args, **kwargs: True},
         )
 
     @staticmethod

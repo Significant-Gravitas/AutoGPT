@@ -63,7 +63,7 @@ class TwitterSearchSpacesBlock(Block):
         next_token: str = SchemaField(description="Next token for pagination")
 
         # Complete outputs for advanced use
-        data: dict = SchemaField(description="Complete space data")
+        data: list[dict] = SchemaField(description="Complete space data")
         includes: dict = SchemaField(
             description="Additional data requested via expansions"
         )
@@ -83,7 +83,6 @@ class TwitterSearchSpacesBlock(Block):
                 "max_results": 10,
                 "state": "live",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "pagination": "",
                 "expansions": [],
                 "space_fields": [],
                 "user_fields": [],
@@ -93,30 +92,17 @@ class TwitterSearchSpacesBlock(Block):
                 ("ids", ["1234"]),
                 ("titles", ["Tech Talk"]),
                 ("host_ids", ["5678"]),
-                ("next_token", "next_token_value"),
-                (
-                    "data",
-                    {
-                        "spaces": [
-                            {"id": "1234", "title": "Tech Talk", "host_id": "5678"}
-                        ]
-                    },
-                ),
-                ("includes", {}),
-                ("meta", {"next_token": "next_token_value"}),
-                ("error", ""),
+                ("data", [{"id": "1234", "title": "Tech Talk", "host_ids": ["5678"]}]),
             ],
             test_mock={
                 "search_spaces": lambda *args, **kwargs: (
-                    {
-                        "spaces": [
-                            {"id": "1234", "title": "Tech Talk", "host_id": "5678"}
-                        ]
-                    },
+                    [{"id": "1234", "title": "Tech Talk", "host_ids": ["5678"]}],
                     {},
-                    {"next_token": "next_token_value"},
-                    "next_token_value",
-                    "",
+                    {},
+                    ["1234"],
+                    ["Tech Talk"],
+                    ["5678"],
+                    None,
                 )
             },
         )

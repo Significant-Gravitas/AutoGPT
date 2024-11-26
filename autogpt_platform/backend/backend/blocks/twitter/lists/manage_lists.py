@@ -228,11 +228,7 @@ class TwitterCreateListBlock(Block):
                 ("list_id", "1234567890"),
                 ("url", "https://twitter.com/i/lists/1234567890"),
             ],
-            test_mock={
-                "create_list": lambda *args, **kwargs: cast(
-                    Response, {"data": {"id": "1234567890"}}
-                )
-            },
+            test_mock={"create_list": lambda *args, **kwargs: ("1234567890")},
         )
 
     @staticmethod
@@ -253,7 +249,10 @@ class TwitterCreateListBlock(Block):
                     user_auth=False,
                 ),
             )
-            return response
+
+            list_id = str(response.data["id"])
+
+            return list_id
 
         except tweepy.TweepyException:
             raise
@@ -269,10 +268,9 @@ class TwitterCreateListBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            response = self.create_list(
+            list_id = self.create_list(
                 credentials, input_data.name, input_data.description, input_data.private
             )
-            list_id = str(response.data["id"])
             yield "list_id", list_id
             yield "url", f"https://twitter.com/i/lists/{list_id}"
 

@@ -90,7 +90,10 @@ class TwitterGetTweetBlock(Block):
             test_mock={
                 "get_tweet": lambda *args, **kwargs: (
                     {"id": "1460323737035677698", "text": "Test tweet content"},
-                    {},
+                    {"users": [{"id": "12345", "username": "testuser"}]},
+                    {"result_count": 1},
+                    "12345",
+                    "testuser",
                 )
             },
         )
@@ -248,8 +251,15 @@ class TwitterGetTweetsBlock(Block):
             ],
             test_mock={
                 "get_tweets": lambda *args, **kwargs: (
-                    {"id": "1460323737035677698", "text": "Test tweet content"},
-                    {},
+                    ["1460323737035677698"],  # ids
+                    ["Test tweet content"],  # texts
+                    ["67890"],  # user_ids
+                    ["testuser1"],  # user_names
+                    [
+                        {"id": "1460323737035677698", "text": "Test tweet content"}
+                    ],  # data
+                    {"users": [{"id": "67890", "username": "testuser1"}]},  # included
+                    {"result_count": 1},  # meta
                 )
             },
         )

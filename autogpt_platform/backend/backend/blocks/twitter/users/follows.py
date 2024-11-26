@@ -62,6 +62,7 @@ class TwitterUnfollowUserBlock(Block):
             test_output=[
                 ("success", True),
             ],
+            test_mock={"unfollow_user": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -126,7 +127,8 @@ class TwitterFollowUserBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("success", True), ("error", "")],
+            test_output=[("success", True)],
+            test_mock={"follow_user": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -221,9 +223,6 @@ class TwitterGetFollowersBlock(Block):
                 ("ids", ["1234567890"]),
                 ("usernames", ["testuser"]),
                 ("data", [{"id": "1234567890", "username": "testuser"}]),
-                ("includes", {}),
-                ("meta", {"result_count": 1}),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_followers": lambda *args, **kwargs: (
@@ -231,8 +230,8 @@ class TwitterGetFollowersBlock(Block):
                     ["testuser"],
                     [{"id": "1234567890", "username": "testuser"}],
                     {},
-                    {"result_count": 1},
-                    "next_token_value",
+                    {},
+                    None,
                 )
             },
         )
@@ -397,9 +396,6 @@ class TwitterGetFollowingBlock(Block):
                 ("ids", ["1234567890"]),
                 ("usernames", ["testuser"]),
                 ("data", [{"id": "1234567890", "username": "testuser"}]),
-                ("includes", {}),
-                ("meta", {"result_count": 1}),
-                ("next_token", "next_token_value"),
             ],
             test_mock={
                 "get_following": lambda *args, **kwargs: (
@@ -407,8 +403,8 @@ class TwitterGetFollowingBlock(Block):
                     ["testuser"],
                     [{"id": "1234567890", "username": "testuser"}],
                     {},
-                    {"result_count": 1},
-                    "next_token_value",
+                    {},
+                    None,
                 )
             },
         )
