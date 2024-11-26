@@ -7,7 +7,6 @@ import getServerUser from "@/hooks/getServerUser";
 import ProfileDropdown from "./ProfileDropdown";
 import { IconCircleUser, IconMenu } from "@/components/ui/icons";
 import CreditButton from "@/components/nav/CreditButton";
-
 import { NavBarButtons } from "./nav/NavBarButtons";
 
 export async function NavBar() {
@@ -17,7 +16,7 @@ export async function NavBar() {
   );
   const { user } = await getServerUser();
 
-  return (
+  return user ? (
     <header className="sticky top-0 z-50 mx-4 flex h-16 select-none items-center gap-4 border border-gray-300 bg-background p-3 md:rounded-b-2xl md:px-6 md:shadow">
       <div className="flex flex-1 items-center gap-4">
         <Sheet>
@@ -67,5 +66,19 @@ export async function NavBar() {
         {isAvailable && user && <ProfileDropdown />}
       </div>
     </header>
+  ) : (
+    <nav className="flex w-full items-center p-2 pt-8">
+      <div className="flex h-10 w-20 flex-1 flex-row items-center justify-center gap-2">
+        <a href="https://agpt.co/">
+          <Image
+            src="/AUTOgpt_Logo_dark.png"
+            alt="AutoGPT Logo"
+            width={100}
+            height={40}
+            priority
+          />
+        </a>
+      </div>
+    </nav>
   );
 }
