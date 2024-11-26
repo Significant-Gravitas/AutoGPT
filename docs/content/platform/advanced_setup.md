@@ -55,7 +55,7 @@ This will generate the Prisma client for PostgreSQL. You will also need to run t
 
 ```bash
 cd autogpt_platform/
-docker compose up -d
+docker compose up -d --build
 ```
 
 You can then run the migrations from the `backend` directory.
