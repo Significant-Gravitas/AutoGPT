@@ -234,9 +234,12 @@ class GithubReadIssueBlock(Block):
             credentials,
             input_data.issue_url,
         )
-        yield "title", title
-        yield "body", body
-        yield "user", user
+        if title:
+            yield "title", title
+        if body:
+            yield "body", body
+        if user:
+            yield "user", user
 
 
 class GithubListIssuesBlock(Block):
