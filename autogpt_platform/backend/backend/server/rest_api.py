@@ -30,21 +30,6 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.disconnect()
 
 
-def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
-    def handler(request: fastapi.Request, exc: Exception):
-        if log_error:
-            logger.exception(f"{request.method} {request.url.path} failed: {exc}")
-        return fastapi.responses.JSONResponse(
-            content={
-                "message": f"{request.method} {request.url.path} failed",
-                "detail": str(exc),
-            },
-            status_code=status_code,
-        )
-
-    return handler
-
-
 docs_url = (
     "/docs"
     if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL
@@ -63,13 +48,28 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
 )
 
+
+def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
+    def handler(request: fastapi.Request, exc: Exception):
+        if log_error:
+            logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+        return fastapi.responses.JSONResponse(
+            content={
+                "message": f"{request.method} {request.url.path} failed",
+                "detail": str(exc),
+            },
+            status_code=status_code,
+        )
+
+    return handler
+
+
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
-app.add_exception_handler(500, handle_internal_http_error(500))
+app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
 )
-
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():

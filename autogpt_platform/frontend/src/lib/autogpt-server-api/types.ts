@@ -56,6 +56,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  hidden?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
@@ -271,6 +272,13 @@ export type CredentialsDeleteResponse = {
   revoked: boolean | null;
 };
 
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+export type CredentialsDeleteNeedConfirmationResponse = {
+  deleted: false;
+  need_confirmation: true;
+  message: string;
+};
+
 /* Mirror of backend/data/model.py:CredentialsMetaInput */
 export type CredentialsMetaInput = {
   id: string;
@@ -317,6 +325,7 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  WEBHOOK = "Webhook",
   AGENT = "Agent",
 }
 
