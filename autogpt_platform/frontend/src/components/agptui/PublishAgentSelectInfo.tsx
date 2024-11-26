@@ -1,11 +1,22 @@
+"use client";
+
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import { createClient } from "@/lib/supabase/client";
 
 interface PublishAgentInfoProps {
   onBack: () => void;
-  onSubmit: () => void;
+  onSubmit: (
+    name: string,
+    subHeading: string, 
+    description: string,
+    imageUrls: string[],
+    videoUrl: string,
+    categories: string[]
+  ) => void;
   onClose: () => void;
   initialData?: {
     title: string;
@@ -34,21 +45,65 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   const [selectedImage, setSelectedImage] = React.useState<string | null>(
     initialData?.thumbnailSrc || null,
   );
+  const [title, setTitle] = React.useState(initialData?.title || '');
+  const [subheader, setSubheader] = React.useState(initialData?.subheader || '');
+  const [youtubeLink, setYoutubeLink] = React.useState(initialData?.youtubeLink || '');
+  const [category, setCategory] = React.useState(initialData?.category || '');
+  const [description, setDescription] = React.useState(initialData?.description || '');
+
   const thumbnailsContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const handleRemoveImage = (indexToRemove: number) => {
-    console.log(`Remove image at index: ${indexToRemove}`);
-    // Placeholder function for removing an image
+    setImages(prev => prev.filter((_, index) => index !== indexToRemove));
+    if (images[indexToRemove] === selectedImage) {
+      setSelectedImage(images[0] || null);
+    }
   };
 
-  const handleAddImage = () => {
-    console.log("Add image button clicked");
-    // Placeholder function for adding an image
+  const handleAddImage = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const api = new AutoGPTServerAPI(
+          process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+          process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+          createClient()
+        );
+
+        const imageUrl = await api.uploadStoreSubmissionMedia(file);
+        setImages(prev => [...prev, imageUrl]);
+        if (!selectedImage) {
+          setSelectedImage(imageUrl);
+        }
+      } catch (error) {
+        console.error("Error uploading image:", error);
+      }
+    };
+
+    input.click();
+  };
+
+  const handleSubmit = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    onSubmit(
+      title,
+      subheader,
+      description,
+      images,
+      youtubeLink,
+      [category]
+    );
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[670px] flex-col rounded-3xl border border-slate-200 bg-white shadow-lg">
-      <div className="relative border-b border-slate-200 p-6">
+    <div className="mx-auto flex w-full flex-col rounded-3xl">
+      <div className="relative p-6">
         <div className="absolute right-4 top-2">
           <button
             onClick={onClose}
@@ -78,7 +133,8 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             id="title"
             type="text"
             placeholder="Agent name"
-            defaultValue={initialData?.title}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
             className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           />
         </div>
@@ -94,7 +150,8 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             id="subheader"
             type="text"
             placeholder="A tagline for your agent"
-            defaultValue={initialData?.subheader}
+            value={subheader}
+            onChange={(e) => setSubheader(e.target.value)}
             className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           />
         </div>
@@ -130,10 +187,19 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                   variant="ghost"
                   className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300"
                 >
-                  <IconPlus size="lg" className="text-neutral-600" />
-                  <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600">
-                    Add image
-                  </span>
+                  <label htmlFor="image-upload" className="cursor-pointer">
+                    <input
+                      id="image-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAddImage}
+                      className="hidden"
+                    />
+                    <IconPlus size="lg" className="text-neutral-600" />
+                    <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600">
+                      Add image
+                    </span>
+                  </label>
                 </Button>
               </div>
             ) : (
@@ -202,7 +268,8 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             id="youtube"
             type="text"
             placeholder="Paste a video link here"
-            defaultValue={initialData?.youtubeLink}
+            value={youtubeLink}
+            onChange={(e) => setYoutubeLink(e.target.value)}
             className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           />
         </div>
@@ -216,7 +283,8 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           </label>
           <select
             id="category"
-            defaultValue={initialData?.category}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
             className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           >
             <option value="">Select a category for your agent</option>
@@ -235,7 +303,8 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           <textarea
             id="description"
             placeholder="Describe your agent and what it does"
-            defaultValue={initialData?.description}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
             className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-900"
           ></textarea>
         </div>
@@ -251,7 +320,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           Back
         </Button>
         <Button
-          onClick={onSubmit}
+          onClick={handleSubmit}
           variant="default"
           size="default"
           className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"

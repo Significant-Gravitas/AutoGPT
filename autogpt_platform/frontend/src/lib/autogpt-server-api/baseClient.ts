@@ -15,6 +15,7 @@ import {
   GraphMetaWithRuns,
   GraphUpdateable,
   NodeExecutionResult,
+  MyAgentsResponse,
   OAuth2Credentials,
   ProfileDetails,
   User,
@@ -328,6 +329,13 @@ export default class BaseAutoGPTServerAPI {
     return this._request("POST", "/store/profile", profile);
   }
 
+  getMyAgents(params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<MyAgentsResponse> {
+    return this._get("/store/myagents", params);
+  }
+  
   ///////////////////////////////////////////
   /////////// INTERNAL FUNCTIONS ////////////
   //////////////////////////////??///////////

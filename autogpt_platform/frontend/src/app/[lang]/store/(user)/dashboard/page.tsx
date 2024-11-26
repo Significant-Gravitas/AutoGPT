@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
 import { createServerClient } from "@/lib/supabase/server";
 import { StatusType } from "@/components/agptui/Status";
+import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
 
 async function getDashboardData() {
   // Get the supabase client first
@@ -59,9 +60,14 @@ export default async function Page({
             your local machine.
           </p>
         </div>
-        <Button variant="default" size="lg">
-          Create New Agent
-        </Button>
+        <PublishAgentPopout
+          trigger={
+            <Button variant="default" size="lg">
+              Create New Agent
+            </Button>
+          }
+          agents={[]}
+        />
       </div>
 
       <Separator className="mb-8" />

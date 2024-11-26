@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { IconClose } from "../ui/icons";
 import Image from "next/image";
@@ -26,11 +28,11 @@ export const PublishAgentAwaitingReview: React.FC<
 }) => {
   return (
     <div
-      className="inline-flex min-h-screen w-full flex-col rounded-none border border-slate-200 bg-white shadow sm:h-auto sm:min-h-[824px] sm:max-w-[670px] sm:rounded-3xl"
+      className="inline-flex min-h-screen w-full items-center justify-center flex-col rounded-none sm:h-auto sm:min-h-[824px] sm:rounded-3xl"
       role="dialog"
       aria-labelledby="modal-title"
     >
-      <div className="relative h-[180px] w-full rounded-none border-b border-slate-200 sm:h-[140px] sm:rounded-t-3xl">
+      <div className="relative h-[180px] w-full rounded-none sm:h-[140px] sm:rounded-t-3xl">
         <div className="absolute left-0 top-[40px] flex w-full flex-col items-center justify-start px-6 sm:top-[40px]">
           <div
             id="modal-title"

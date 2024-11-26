@@ -462,3 +462,15 @@ export type ScheduleCreatable = {
   graph_id: string;
   input_data: { [key: string]: any };
 };
+
+export type MyAgent = {
+  agent_id: string;
+  agent_version: number;
+  agent_name: string;
+  last_edited: string;
+};
+
+export type MyAgentsResponse = {
+  agents: MyAgent[];
+  pagination: Pagination;
+};
