@@ -12,6 +12,7 @@ interface PublishAgentInfoProps {
   onSubmit: (
     name: string,
     subHeading: string, 
+    slug: string,
     description: string,
     imageUrls: string[],
     videoUrl: string,
@@ -21,6 +22,7 @@ interface PublishAgentInfoProps {
   initialData?: {
     title: string;
     subheader: string;
+    slug: string;
     thumbnailSrc: string;
     youtubeLink: string;
     category: string;
@@ -50,7 +52,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   const [youtubeLink, setYoutubeLink] = React.useState(initialData?.youtubeLink || '');
   const [category, setCategory] = React.useState(initialData?.category || '');
   const [description, setDescription] = React.useState(initialData?.description || '');
-
+  const [slug, setSlug] = React.useState(initialData?.slug || '');
   const thumbnailsContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const handleRemoveImage = (indexToRemove: number) => {
@@ -114,6 +116,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     onSubmit(
       title,
       subheader,
+      slug,
       description,
       images,
       youtubeLink,
@@ -172,6 +175,23 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="A tagline for your agent"
             value={subheader}
             onChange={(e) => setSubheader(e.target.value)}
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label
+            htmlFor="slug"
+            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950"
+          >
+            Slug
+          </label>
+          <input
+            id="slug"
+            type="text"
+            placeholder="URL-friendly name for your agent"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
             className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500"
           />
         </div>
