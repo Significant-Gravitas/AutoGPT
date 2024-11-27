@@ -37,6 +37,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   openweathermap: "OpenWeatherMap",
   open_router: "Open Router",
   pinecone: "Pinecone",
+  slant3d: "Slant3D",
   replicate: "Replicate",
   revid: "Rev.ID",
   unreal_speech: "Unreal Speech",
