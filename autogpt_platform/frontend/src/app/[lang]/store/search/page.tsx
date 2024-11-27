@@ -58,7 +58,7 @@ export default async function Page({
             </div>
 
             {agentsCount > 0 && (
-              <div className="mt-6">
+              <div className="mt-8">
                 <h2 className="text-neutral-800 text-lg font-semibold font-['Poppins'] mb-4">Agents</h2>
                 <AgentsSection agents={agents} sectionTitle="Search Results" />
               </div>
@@ -67,7 +67,7 @@ export default async function Page({
             {agentsCount > 0 && creatorsCount > 0 && <Separator className="my-6" />}
             
             {creatorsCount > 0 && (
-              <div className="mb-8">
+              <div className="mt-8">
                 <h2 className="text-neutral-800 text-lg font-semibold font-['Poppins'] mb-4">Creators</h2>
                 <FeaturedCreators featuredCreators={creators} />
               </div>
