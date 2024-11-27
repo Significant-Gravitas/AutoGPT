@@ -305,5 +305,5 @@ class SupabaseIntegrationCredentialsStore:
         return integrations
 
     def locked_user_integrations(self, user_id: str):
-        key = (self.db_manager, f"user:{user_id}", "integrations")
+        key = (f"user:{user_id}", "integrations")
         return self.locks.locked(key)
