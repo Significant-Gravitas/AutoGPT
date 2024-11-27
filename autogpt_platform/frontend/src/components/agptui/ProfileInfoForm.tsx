@@ -99,7 +99,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   };
 
   return (
-    <div className="w-full min-w-[600px] p-4 sm:p-8">
+    <div className="w-full min-w-[600px] px-4 sm:px-8">
       <h1 className="mb-6 font-['Poppins'] text-[28px] font-medium text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
         Profile
       </h1>

@@ -37,8 +37,15 @@ const statusConfig: Record<
 };
 
 export const Status: React.FC<StatusProps> = ({ status }) => {
-  if (!status || !statusConfig[status]) {
-    return null;
+  /**
+   * Status component displays a badge with a colored dot and text indicating the agent's status
+   * @param status - The current status of the agent
+   *                 Valid values: 'draft', 'awaiting_review', 'approved', 'rejected'
+   */
+  if (!status) {
+    return <Status status="awaiting_review" />;
+  } else if (!statusConfig[status]) {
+    return <Status status="awaiting_review" />;
   }
 
   const config = statusConfig[status];

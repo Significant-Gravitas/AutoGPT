@@ -84,7 +84,6 @@ export default async function Page({
           imageSrc: submission.image_urls[0] || '',
           dateSubmitted: new Date(submission.date_submitted).toLocaleDateString(),
           status: submission.status.toLowerCase() as StatusType,
-          onEdit: () => {},
         })) || []} />
       </div>
     </main>

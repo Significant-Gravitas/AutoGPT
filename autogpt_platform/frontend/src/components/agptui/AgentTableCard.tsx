@@ -1,4 +1,5 @@
-// AgentCard.tsx
+"use client";
+
 import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
