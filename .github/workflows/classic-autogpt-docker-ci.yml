@@ -47,7 +47,7 @@ jobs:
 
       - id: build
         name: Build image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: classic/
           file: classic/Dockerfile.autogpt
@@ -117,7 +117,7 @@ jobs:
 
       - id: build
         name: Build image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: classic/
           file: classic/Dockerfile.autogpt
