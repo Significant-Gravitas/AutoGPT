@@ -32,8 +32,8 @@ export default async function Page({
   return (
     <div className="w-full bg-white">
       <div className="px-10 max-w-[1440px] mx-auto">
-        <div className="flex items-center justify-between mt-8">
-          <div className="flex flex-col">
+        <div className="flex items-center mt-8">
+          <div className="w-[910px]">
             <h2 className="font-['Geist'] text-base font-medium text-neutral-800">
               Results for:
             </h2>
@@ -41,31 +41,44 @@ export default async function Page({
               {search_term}
             </h1>
           </div>
-          <div>
+          <div className="ml-auto">
             <SearchBar width="w-[439px]" />
           </div>
         </div>
 
-        <div className="mt-8 flex justify-between items-center">
-          <SearchFilterChips 
-            totalCount={totalCount}
-            agentsCount={agentsCount}
-            creatorsCount={creatorsCount}
-          />
-          <SortDropdown />
-        </div>
+        {totalCount > 0 ? (
+          <>
+            <div className="mt-8 flex justify-between items-center">
+              <SearchFilterChips 
+                totalCount={totalCount}
+                agentsCount={agentsCount}
+                creatorsCount={creatorsCount}
+              />
+              <SortDropdown />
+            </div>
 
-        <div className="mt-6">
-          <h2 className="text-neutral-800 text-lg font-semibold font-['Poppins'] mb-4">Agents</h2>
-          <AgentsSection agents={agents} sectionTitle="Search Results" />
-        </div>
-        
-        <Separator className="my-6" />
-        
-        <div className="mb-8">
-          <h2 className="text-neutral-800 text-lg font-semibold font-['Poppins'] mb-4">Creators</h2>
-          <FeaturedCreators featuredCreators={creators} />
-        </div>
+            {agentsCount > 0 && (
+              <div className="mt-6">
+                <h2 className="text-neutral-800 text-lg font-semibold font-['Poppins'] mb-4">Agents</h2>
+                <AgentsSection agents={agents} sectionTitle="Search Results" />
+              </div>
+            )}
+            
+            {agentsCount > 0 && creatorsCount > 0 && <Separator className="my-6" />}
+            
+            {creatorsCount > 0 && (
+              <div className="mb-8">
+                <h2 className="text-neutral-800 text-lg font-semibold font-['Poppins'] mb-4">Creators</h2>
+                <FeaturedCreators featuredCreators={creators} />
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center mt-20">
+            <h3 className="text-xl font-medium text-neutral-600 mb-2">No results found</h3>
+            <p className="text-neutral-500">Try adjusting your search terms or filters</p>
+          </div>
+        )}
       </div>
     </div>
   );
