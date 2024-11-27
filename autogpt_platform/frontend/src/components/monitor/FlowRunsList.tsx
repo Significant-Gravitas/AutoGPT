@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
+import { TextRenderer } from "../ui/render";
 
 export const FlowRunsList: React.FC<{
   flows: GraphMeta[];
@@ -43,7 +44,10 @@ export const FlowRunsList: React.FC<{
               data-state={selectedRun?.id == run.id ? "selected" : null}
             >
               <TableCell>
-                {flows.find((f) => f.id == run.graphID)!.name}
+                <TextRenderer
+                  value={flows.find((f) => f.id == run.graphID)!.name}
+                  truncateLengthLimit={30}
+                />
               </TableCell>
               <TableCell>{moment(run.startTime).format("HH:mm")}</TableCell>
               <TableCell>
