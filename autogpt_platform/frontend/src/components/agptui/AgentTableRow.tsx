@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "./Button";
@@ -80,7 +82,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
 
         {/* Runs column */}
         <div className="text-right text-sm text-neutral-600">
-          {runs?.toLocaleString() ?? "—"}
+          {runs?.toLocaleString() ?? "0"}
         </div>
 
         {/* Reviews column */}
@@ -93,7 +95,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
               <IconStarFilled className="h-4 w-4 text-neutral-800" />
             </div>
           ) : (
-            <span className="text-sm text-neutral-600">—</span>
+            <span className="text-sm text-neutral-600">No reviews</span>
           )}
         </div>
 
