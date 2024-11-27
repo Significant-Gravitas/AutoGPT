@@ -22,6 +22,7 @@ const NodeHandle: FC<HandleProps> = ({
   const typeName: Record<string, string> = {
     string: "text",
     number: "number",
+    integer: "integer",
     boolean: "true/false",
     object: "object",
     array: "list",
