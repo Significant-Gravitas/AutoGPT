@@ -36,11 +36,11 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     const [publishData, setPublishData] = React.useState<StoreSubmissionRequest>({
         name: "",
         sub_heading: "",
+        slug: "",
         description: "",
         image_urls: [],
         agent_id: "",
         agent_version: 0,
-        slug: "",
         categories: [],
     });
     const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null);
@@ -102,6 +102,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     const handleNextFromInfo = async (
         name: string,
         subHeading: string,
+        slug: string,
         description: string,
         imageUrls: string[],
         videoUrl: string,
@@ -121,7 +122,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
             video_url: videoUrl,
             agent_id: selectedAgentId || "",
             agent_version: selectedAgentVersion || 0,
-            slug: name.toLowerCase().replace(/\s+/g, '-'),
+            slug,
             categories
         });
 
@@ -135,7 +136,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                 video_url: videoUrl,
                 agent_id: selectedAgentId || "",
                 agent_version: selectedAgentVersion || 0,
-                slug: name.toLowerCase().replace(/\s+/g, '-'),
+                slug: slug.replace(/\s+/g, '-'),
                 categories: categories
             });
             console.log("Store submission created:", submission);
