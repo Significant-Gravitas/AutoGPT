@@ -131,6 +131,50 @@ export class BuildPage extends BasePage {
     }
   }
 
+  async getBlockOutputs(blockId: string): Promise<string[]> {
+    throw new Error("Not implemented");
+    // try {
+    //   const node = await this.page
+    //     .locator(`[data-blockid="${blockId}"]`)
+    //     .first();
+    //   const outputsData = await node.getAttribute("data-outputs");
+    //   return outputsData ? JSON.parse(outputsData) : [];
+    // } catch (error) {
+    //   console.error("Error getting block outputs:", error);
+    //   return [];
+    // }
+  }
+
+  async fillBlockInputByPlaceholder(
+    blockId: string,
+    placeholder: string,
+    value: string,
+  ): Promise<void> {
+    const block = await this.page.locator(`[data-blockid="${blockId}"]`);
+    const input = await block.getByPlaceholder(placeholder);
+    await input.fill(value);
+  }
+
+  async fillBlockInputByLabel(
+    blockId: string,
+    label: string,
+    value: string,
+  ): Promise<void> {
+    throw new Error("Not implemented");
+    // const block = await this.page.locator(`[data-blockid="${blockId}"]`);
+    // const input = await block.getByLabel(label);
+    // await input.fill(value);
+  }
+
+  async connectBlockOutputToBlockInput(
+    blockOutputId: string,
+    blockOutputName: string,
+    blockInputId: string,
+    blockInputName: string,
+  ): Promise<void> {
+    throw new Error("Not implemented");
+  }
+
   async isLoaded(): Promise<boolean> {
     try {
       await this.page.waitForLoadState("networkidle", { timeout: 10_000 });

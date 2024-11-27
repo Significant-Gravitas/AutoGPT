@@ -48,10 +48,21 @@ test.describe("Build", () => {
     for (const block of blocks) {
       await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
     }
+    // fill in the input for the agent input block
+    await buildPage.fillBlockInputByPlaceholder(
+      blocks.find((b) => b.name === "Agent Input")?.id ?? "",
+      "Enter Name",
+      "Agent Input Field",
+    );
+    await buildPage.fillBlockInputByPlaceholder(
+      blocks.find((b) => b.name === "Agent Output")?.id ?? "",
+      "Enter Name",
+      "Agent Output Field",
+    );
     // check that we can save the agent with all the blocks
     await buildPage.saveAgent("all blocks test", "all blocks test");
     // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    // await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
   });
 
   test("build navigation is accessible from navbar", async ({ page }) => {
