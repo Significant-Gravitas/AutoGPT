@@ -18,7 +18,7 @@ class HubSpotCompanyBlock(Block):
             description="Company data for create/update operations", default={}
         )
         domain: str = SchemaField(
-            description="Company domain for get/update operations", default={}
+            description="Company domain for get/update operations", default=""
         )
 
     class Output(BlockSchema):
