@@ -143,7 +143,9 @@ export default function PrivatePage() {
   return (
     <div className="mx-auto max-w-3xl md:py-8">
       <div className="flex items-center justify-between">
-        <p>Hello {user.email}</p>
+        <p>
+          Hello <span data-testid="profile-email">{user.email}</span>
+        </p>
         <Button onClick={() => supabase.auth.signOut()}>
           <LogOutIcon className="mr-1.5 size-4" />
           Log out
