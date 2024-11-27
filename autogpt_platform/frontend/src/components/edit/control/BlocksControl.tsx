@@ -215,7 +215,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                           truncateLengthLimit={45}
                         />
                       </span>
-                      <span 
+                      <span
                         className="block break-all text-xs font-normal text-gray-500"
                         data-testid={`block-description-${block.id}`}
                       >
