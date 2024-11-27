@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel
 from backend.blocks.exa._auth import (
     ExaCredentials,
@@ -12,15 +12,15 @@ from backend.util.request import requests
 
 
 class ContentSettings(BaseModel):
-    text: Optional[dict] = SchemaField(
+    text: dict = SchemaField(
         description="Text content settings",
         default={"maxCharacters": 1000, "includeHtmlTags": False},
     )
-    highlights: Optional[dict] = SchemaField(
+    highlights: dict = SchemaField(
         description="Highlight settings",
         default={"numSentences": 3, "highlightsPerUrl": 3},
     )
-    summary: Optional[dict] = SchemaField(
+    summary: dict = SchemaField(
         description="Summary settings",
         default={"query": ""},
     )
@@ -34,49 +34,49 @@ class ExaSearchBlock(Block):
             description="Whether to use autoprompt",
             default=True,
         )
-        type: Optional[str] = SchemaField(
+        type: str = SchemaField(
             description="Type of search",
-            optional=True,
+            default="",
         )
-        category: Optional[str] = SchemaField(
+        category: str = SchemaField(
             description="Category to search within",
-            optional=True,
+            default="",
         )
         numResults: int = SchemaField(
             description="Number of results to return",
             default=10,
         )
-        includeDomains: Optional[List[str]] = SchemaField(
+        includeDomains: List[str] = SchemaField(
             description="Domains to include in search",
-            optional=True,
+            default=[],
         )
-        excludeDomains: Optional[List[str]] = SchemaField(
+        excludeDomains: List[str] = SchemaField(
             description="Domains to exclude from search",
-            optional=True,
+            default=[],
         )
-        startCrawlDate: Optional[datetime] = SchemaField(
+        startCrawlDate: datetime = SchemaField(
             description="Start date for crawled content",
-            optional=True,
+            default=None,
         )
-        endCrawlDate: Optional[datetime] = SchemaField(
+        endCrawlDate: datetime = SchemaField(
             description="End date for crawled content",
-            optional=True,
+            default=None,
         )
-        startPublishedDate: Optional[datetime] = SchemaField(
+        startPublishedDate: datetime = SchemaField(
             description="Start date for published content",
-            optional=True,
+            default=None,
         )
-        endPublishedDate: Optional[datetime] = SchemaField(
+        endPublishedDate: datetime = SchemaField(
             description="End date for published content",
-            optional=True,
+            default=None,
         )
-        includeText: Optional[List[str]] = SchemaField(
+        includeText: List[str] = SchemaField(
             description="Text patterns to include",
-            optional=True,
+            default=[],
         )
-        excludeText: Optional[List[str]] = SchemaField(
+        excludeText: List[str] = SchemaField(
             description="Text patterns to exclude",
-            optional=True,
+            default=[],
         )
         contents: ContentSettings = SchemaField(
             description="Content retrieval settings",
@@ -87,7 +87,7 @@ class ExaSearchBlock(Block):
         results: list = SchemaField(description="Search results from Exa")
         error: str = SchemaField(
             description="Error message if the search fails",
-            optional=True,
+            default="",
         )
 
     def __init__(self):
@@ -122,7 +122,7 @@ class ExaSearchBlock(Block):
 
         for field in optional_fields:
             value = getattr(input_data, field)
-            if value is not None:
+            if value:  # Only add non-empty values
                 if isinstance(value, datetime):
                     payload[field] = value.isoformat() + "Z"
                 else:
