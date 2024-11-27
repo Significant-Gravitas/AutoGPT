@@ -118,6 +118,7 @@ export const PROVIDER_NAMES = {
   REPLICATE: "replicate",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  EXA_API: "exa_api",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
