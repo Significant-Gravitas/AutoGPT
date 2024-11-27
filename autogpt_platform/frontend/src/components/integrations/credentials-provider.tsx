@@ -208,15 +208,16 @@ export default function CredentialsProvider({
 
         setProviders((prev) => ({
           ...prev,
-          ...Object.entries(credentialsByProvider).reduce(
-            (acc, [provider, { apiKeys, oauthCreds }]) => ({
-              ...acc,
-              [provider]: {
+          ...Object.fromEntries(
+            CREDENTIALS_PROVIDER_NAMES.map((provider) => [
+              provider,
+              {
                 provider,
                 providerName:
                   providerDisplayNames[provider as CredentialsProviderName],
-                savedApiKeys: apiKeys,
-                savedOAuthCredentials: oauthCreds,
+                savedApiKeys: credentialsByProvider[provider]?.apiKeys ?? [],
+                savedOAuthCredentials:
+                  credentialsByProvider[provider]?.oauthCreds ?? [],
                 oAuthCallback: (code: string, state_token: string) =>
                   oAuthCallback(
                     provider as CredentialsProviderName,
@@ -237,8 +238,7 @@ export default function CredentialsProvider({
                     force,
                   ),
               },
-            }),
-            {},
+            ]),
           ),
         }));
       });
