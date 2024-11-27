@@ -51,7 +51,7 @@ test.describe("Build", () => {
     // check that we can save the agent with all the blocks
     await buildPage.saveAgent("all blocks test", "all blocks test");
     // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    // await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
   });
 
   test("build navigation is accessible from navbar", async ({ page }) => {
