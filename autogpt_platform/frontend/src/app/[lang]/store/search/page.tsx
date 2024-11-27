@@ -33,7 +33,7 @@ export default async function Page({
     <div className="w-full bg-white">
       <div className="px-10 max-w-[1440px] mx-auto">
         <div className="flex items-center mt-8">
-          <div className="w-[910px]">
+          <div className="flex-1 min-w-[910px]">
             <h2 className="font-['Geist'] text-base font-medium text-neutral-800">
               Results for:
             </h2>
@@ -41,7 +41,7 @@ export default async function Page({
               {search_term}
             </h1>
           </div>
-          <div className="ml-auto">
+          <div className="flex-none ml-auto">
             <SearchBar width="w-[439px]" />
           </div>
         </div>
@@ -50,6 +50,7 @@ export default async function Page({
           <>
             <div className="mt-8 flex justify-between items-center">
               <SearchFilterChips 
+              
                 totalCount={totalCount}
                 agentsCount={agentsCount}
                 creatorsCount={creatorsCount}
