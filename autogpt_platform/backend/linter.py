@@ -23,6 +23,6 @@ def lint():
 
 def format():
     run("ruff", "check", "--fix", *target_dirs)
-    run("isort", "--profile", "black", *target_dirs)
-    run("black", *target_dirs)
+    run("isort", "--profile", "black")
+    run("black")
     run("pyright", *target_dirs)
