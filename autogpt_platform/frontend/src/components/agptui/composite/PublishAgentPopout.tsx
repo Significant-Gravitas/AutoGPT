@@ -43,6 +43,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         slug: "",
         categories: [],
     });
+    const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null);
+    const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<number | null>(null);
     const [open, setOpen] = React.useState(false);
 
     const popupId = React.useId();
@@ -91,8 +93,10 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         setSelectedAgent(agentName);
     };
 
-    const handleNextFromSelect = () => {
+    const handleNextFromSelect = (agentId: string, agentVersion: number) => {
         setStep("info");
+        setSelectedAgentId(agentId);
+        setSelectedAgentVersion(agentVersion);
     };
 
     const handleNextFromInfo = async (
@@ -103,7 +107,6 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         videoUrl: string,
         categories: string[]
     ) => {
-        const selectedAgentData = myAgents?.agents.find(a => a.agent_name === selectedAgent);
 
         if (!name || !subHeading || !description || !imageUrls.length || !categories.length) {
             console.error("Missing required fields");
@@ -116,8 +119,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
             description,
             image_urls: imageUrls,
             video_url: videoUrl,
-            agent_id: selectedAgentData?.agent_id || "",
-            agent_version: selectedAgentData?.agent_version || 0,
+            agent_id: selectedAgentId || "",
+            agent_version: selectedAgentVersion || 0,
             slug: name.toLowerCase().replace(/\s+/g, '-'),
             categories
         });
@@ -130,8 +133,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                 description: description,
                 image_urls: imageUrls,
                 video_url: videoUrl,
-                agent_id: selectedAgentData?.agent_id || "",
-                agent_version: selectedAgentData?.agent_version || 0,
+                agent_id: selectedAgentId || "",
+                agent_version: selectedAgentVersion || 0,
                 slug: name.toLowerCase().replace(/\s+/g, '-'),
                 categories: categories
             });
@@ -170,7 +173,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                                     onCancel={handleClose}
                                     onNext={handleNextFromSelect}
                                     onClose={handleClose}
-                                    onOpenBuilder={onOpenBuilder || (() => router.push(`/build?flowID=${myAgents?.agents.find(a => a.agent_name === selectedAgent)?.agent_id}`))}
+                                    onOpenBuilder={onOpenBuilder || (() => router.push('/build'))}
                                 />
                             </div>
                         </div>

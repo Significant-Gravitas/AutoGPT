@@ -54,9 +54,16 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   const thumbnailsContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const handleRemoveImage = (indexToRemove: number) => {
-    setImages(prev => prev.filter((_, index) => index !== indexToRemove));
-    if (images[indexToRemove] === selectedImage) {
-      setSelectedImage(images[0] || null);
+    const newImages = [...images];
+    newImages.splice(indexToRemove, 1);
+    setImages(newImages);
+    if (newImages[indexToRemove] === selectedImage) {
+      setSelectedImage(newImages[0] || null);
+    }
+    if (newImages.length === 0) {
+      setSelectedImage(null);
+    } else {
+      console.log("images", newImages);
     }
   };
 
@@ -65,28 +72,41 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     input.type = 'file';
     input.accept = 'image/*';
     
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+    // Create a promise that resolves when file is selected
+    const fileSelected = new Promise<File | null>((resolve) => {
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        resolve(file || null);
+      };
+    });
 
-      try {
-        const api = new AutoGPTServerAPI(
-          process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-          process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-          createClient()
-        );
-
-        const imageUrl = await api.uploadStoreSubmissionMedia(file);
-        setImages(prev => [...prev, imageUrl]);
-        if (!selectedImage) {
-          setSelectedImage(imageUrl);
-        }
-      } catch (error) {
-        console.error("Error uploading image:", error);
-      }
-    };
-
+    // Trigger file selection
     input.click();
+
+    // Wait for file selection
+    const file = await fileSelected;
+    if (!file) return;
+
+    try {
+      const api = new AutoGPTServerAPI(
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+        createClient()
+      );
+
+      const imageUrl = (await api.uploadStoreSubmissionMedia(file)).replace(/^"(.*)"$/, '$1');
+    
+      setImages(prev => {
+        const newImages = [...prev, imageUrl];
+        console.log("Added image. Images now:", newImages);
+        return newImages;
+      });
+      if (!selectedImage) {
+        setSelectedImage(imageUrl);
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+    }
   };
 
   const handleSubmit = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -161,7 +181,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             Thumbnail images
           </label>
           <div className="flex h-[350px] items-center justify-center overflow-hidden rounded-[20px] border border-neutral-300 p-2.5">
-            {selectedImage ? (
+            {selectedImage !== null && selectedImage !== undefined ? (
               <Image
                 src={selectedImage}
                 alt="Selected Thumbnail"

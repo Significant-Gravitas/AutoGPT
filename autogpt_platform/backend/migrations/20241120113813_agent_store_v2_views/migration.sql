@@ -95,8 +95,8 @@ SELECT
     slv.name,
     slv.description,
     slv."imageUrls" as image_urls,
-    sls."createdAt" as date_submitted,
-    sls."Status" as status,
+    slv."createdAt" as date_submitted,
+    COALESCE(sls."Status", 'PENDING') as status,
     COALESCE(ar.run_count, 0) as runs,
     CAST(COALESCE(AVG(CAST(sr.score AS DECIMAL)), 0.0) AS DOUBLE PRECISION) as rating
 FROM "StoreListing" sl
@@ -109,7 +109,7 @@ LEFT JOIN (
     GROUP BY "agentGraphId"
 ) ar ON ar."agentGraphId" = sl."agentId"
 WHERE sl."isDeleted" = FALSE
-GROUP BY sl.id, sl."owningUserId", slv.slug, slv.name, slv.description, slv."imageUrls",
+GROUP BY sl.id, sl."owningUserId", slv."createdAt", slv.slug, slv.name, slv.description, slv."imageUrls",
          sls."createdAt", sls."Status", ar.run_count;
 
 COMMIT;
