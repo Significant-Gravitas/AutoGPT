@@ -130,7 +130,6 @@ class IntegrationCredentialsManager:
 
     def _acquire_lock(self, user_id: str, credentials_id: str, *args: str) -> RedisLock:
         key = (
-            self.store.db_manager,
             f"user:{user_id}",
             f"credentials:{credentials_id}",
             *args,
