@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.data import redis
-from backend.data.queue import AsyncRedisExecutionEventBus
+from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
