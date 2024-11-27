@@ -118,6 +118,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               variant="ghost"
               size="icon"
               data-id="blocks-control-popover-trigger"
+              data-testid="blocks-control-blocks-button"
+              name="Blocks"
             >
               <IconToyBrick />
             </Button>
@@ -139,6 +141,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                 htmlFor="search-blocks"
                 className="whitespace-nowrap text-base font-bold text-black 2xl:text-xl"
                 data-id="blocks-control-label"
+                data-testid="blocks-control-blocks-label"
               >
                 Blocks
               </Label>
@@ -201,10 +204,14 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                       <span
                         className="block truncate pb-1 text-sm font-semibold"
                         data-id={`block-name-${block.id}`}
+                        data-testid={`block-name-${block.id}`}
                       >
                         {beautifyString(block.name).replace(/ Block$/, "")}
                       </span>
-                      <span className="block break-words text-xs font-normal text-gray-500">
+                      <span
+                        className="block break-words text-xs font-normal text-gray-500"
+                        data-testid={`block-description-${block.id}`}
+                      >
                         {/* Cap description at 100 characters max */}
                         {block.description?.length > 100
                           ? block.description.slice(0, 100) + "..."
@@ -214,6 +221,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                     <div
                       className="flex flex-shrink-0 items-center gap-1"
                       data-id={`block-tooltip-${block.id}`}
+                      data-testid={`block-add`}
                     >
                       <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1" />
                     </div>
