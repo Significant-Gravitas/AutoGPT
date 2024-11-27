@@ -118,6 +118,7 @@ export const SaveControl = ({
                 onChange={(e) => onNameChange(e.target.value)}
                 data-id="save-control-name-input"
                 data-testid="save-control-name-input"
+                maxLength={100}
               />
               <Label htmlFor="description">Description</Label>
               <Input
@@ -128,6 +129,7 @@ export const SaveControl = ({
                 onChange={(e) => onDescriptionChange(e.target.value)}
                 data-id="save-control-description-input"
                 data-testid="save-control-description-input"
+                maxLength={500}
               />
               {agentMeta?.version && (
                 <>
