@@ -1,6 +1,8 @@
 from typing import Literal
+
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
+
 from backend.data.model import CredentialsField, CredentialsMetaInput
 
 ExaCredentials = APIKeyCredentials
@@ -23,6 +25,7 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.title,
 }
+
 
 def ExaCredentialsField() -> ExaCredentialsInput:
     """Creates an Exa credentials input on a block."""

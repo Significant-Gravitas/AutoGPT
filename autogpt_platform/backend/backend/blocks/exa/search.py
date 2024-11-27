@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import List
+
 from pydantic import BaseModel
+
 from backend.blocks.exa._auth import (
     ExaCredentials,
     ExaCredentialsField,
@@ -56,19 +58,15 @@ class ExaSearchBlock(Block):
         )
         startCrawlDate: datetime = SchemaField(
             description="Start date for crawled content",
-            default=None,
         )
         endCrawlDate: datetime = SchemaField(
             description="End date for crawled content",
-            default=None,
         )
         startPublishedDate: datetime = SchemaField(
             description="Start date for published content",
-            default=None,
         )
         endPublishedDate: datetime = SchemaField(
             description="End date for published content",
-            default=None,
         )
         includeText: List[str] = SchemaField(
             description="Text patterns to include",
@@ -100,7 +98,7 @@ class ExaSearchBlock(Block):
         )
 
     def run(
-            self, input_data: Input, *, credentials: ExaCredentials, **kwargs
+        self, input_data: Input, *, credentials: ExaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/search"
         headers = {
@@ -115,9 +113,16 @@ class ExaSearchBlock(Block):
         }
 
         optional_fields = [
-            "type", "category", "includeDomains", "excludeDomains",
-            "startCrawlDate", "endCrawlDate", "startPublishedDate",
-            "endPublishedDate", "includeText", "excludeText",
+            "type",
+            "category",
+            "includeDomains",
+            "excludeDomains",
+            "startCrawlDate",
+            "endCrawlDate",
+            "startPublishedDate",
+            "endPublishedDate",
+            "includeText",
+            "excludeText",
         ]
 
         for field in optional_fields:

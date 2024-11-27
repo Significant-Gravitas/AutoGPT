@@ -66,7 +66,7 @@ export const providerIcons: Record<
   replicate: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
-  exa_api: fallbackIcon,
+  exa: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
