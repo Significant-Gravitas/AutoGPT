@@ -8,6 +8,8 @@ import prisma.types
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
 
+from datetime import datetime   
+
 logger = logging.getLogger(__name__)
 
 
@@ -276,7 +278,7 @@ async def get_store_submissions(
                 slug=sub.slug,
                 description=sub.description,
                 image_urls=sub.image_urls or [],
-                date_submitted=sub.date_submitted,
+                date_submitted=sub.date_submitted or datetime.now(),
                 status=sub.status,
                 runs=sub.runs or 0,
                 rating=sub.rating or 0.0,
@@ -355,7 +357,7 @@ async def create_store_submission(
                 f"Agent not found for user {user_id}: {agent_id} v{agent_version}"
             )
             raise backend.server.v2.store.exceptions.AgentNotFoundError(
-                "Agent not found for this user"
+                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
             )
 
         listing = await prisma.models.StoreListing.prisma().find_first(
@@ -375,6 +377,7 @@ async def create_store_submission(
                 "agentId": agent_id,
                 "agentVersion": agent_version,
                 "owningUserId": user_id,
+                "createdAt": datetime.now(),
                 "StoreListingVersions": {
                     "create": {
                         "agentId": agent_id,
@@ -386,7 +389,7 @@ async def create_store_submission(
                         "description": description,
                         "categories": categories,
                         "subHeading": sub_heading,
-                    }
+                    }   
                 },
             }
         )

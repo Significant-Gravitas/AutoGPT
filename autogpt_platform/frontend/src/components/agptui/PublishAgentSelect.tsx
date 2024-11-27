@@ -17,7 +17,7 @@ interface PublishAgentSelectProps {
   agents: Agent[];
   onSelect: (agentId: string, agentVersion: number) => void;
   onCancel: () => void;
-  onNext: () => void;
+  onNext:  (agentId: string, agentVersion: number) => void;
   onClose: () => void;
   onOpenBuilder: () => void;
 }
@@ -31,9 +31,13 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   onOpenBuilder,
 }) => {
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null);  
+  const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<number | null>(null);
 
   const handleAgentClick = (agentName: string, agentId: string, agentVersion: number) => {
     setSelectedAgent(agentName);
+    setSelectedAgentId(agentId);
+    setSelectedAgentVersion(agentVersion);
     onSelect(agentId, agentVersion);
   };
 
@@ -140,8 +144,12 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
               Back
             </Button>
             <Button
-              onClick={onNext}
-              disabled={!selectedAgent}
+              onClick={() => {
+                if (selectedAgentId && selectedAgentVersion) {
+                  onNext(selectedAgentId, selectedAgentVersion);
+                }
+              }}
+              disabled={!selectedAgentId || !selectedAgentVersion}
               variant="default"
               size="default"
               className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
