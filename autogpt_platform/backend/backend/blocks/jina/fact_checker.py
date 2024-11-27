@@ -28,7 +28,7 @@ class FactCheckerBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id="d38b6c5e-9968-4271-8423-6cfe60d6e7e6",
             description="This block checks the factuality of a given statement using Jina AI's Grounding API.",
             categories={BlockCategory.SEARCH},
             input_schema=FactCheckerBlock.Input,
