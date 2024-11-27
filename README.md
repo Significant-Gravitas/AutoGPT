@@ -35,7 +35,7 @@ The AutoGPT frontend is where users interact with our powerful AI automation pla
 
    **Monitoring and Analytics:** Keep track of your agents' performance and gain insights to continually improve your automation processes.
 
-[Read this guide](https://docs.agpt.co/server/new_blocks/) to learn how to build your own custom blocks.
+[Read this guide](https://docs.agpt.co/platform/new_blocks/) to learn how to build your own custom blocks.
 
 ### 💽 AutoGPT Server
 
