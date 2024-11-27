@@ -1,13 +1,16 @@
-from typing import NamedTuple
-import secrets
 import hashlib
+import secrets
+from typing import NamedTuple
+
 
 class APIKeyContainer(NamedTuple):
     """Container for API key parts."""
+
     raw: str
     prefix: str
     postfix: str
     hash: str
+
 
 class APIKeyManager:
     PREFIX: str = "agpt_"
@@ -19,9 +22,9 @@ class APIKeyManager:
         raw_key = f"{self.PREFIX}{secrets.token_urlsafe(32)}"
         return APIKeyContainer(
             raw=raw_key,
-            prefix=raw_key[:self.PREFIX_LENGTH],
-            postfix=raw_key[-self.POSTFIX_LENGTH:],
-            hash=hashlib.sha256(raw_key.encode()).hexdigest()
+            prefix=raw_key[: self.PREFIX_LENGTH],
+            postfix=raw_key[-self.POSTFIX_LENGTH :],
+            hash=hashlib.sha256(raw_key.encode()).hexdigest(),
         )
 
     def verify_api_key(self, provided_key: str, stored_hash: str) -> bool:
