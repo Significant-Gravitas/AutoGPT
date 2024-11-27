@@ -15,10 +15,10 @@ class HubSpotCompanyBlock(Block):
             description="Operation to perform (create, update, get)", default="get"
         )
         company_data: dict = SchemaField(
-            description="Company data for create/update operations", optional=True
+            description="Company data for create/update operations", default={}
         )
         domain: str = SchemaField(
-            description="Company domain for get/update operations", optional=True
+            description="Company domain for get/update operations", default={}
         )
 
     class Output(BlockSchema):
