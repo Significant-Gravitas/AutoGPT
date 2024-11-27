@@ -526,7 +526,7 @@ class AIStructuredResponseGeneratorBlock(Block):
 class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str = SchemaField(
-            description="The prompt to send to the language model.",
+            description="The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces.",
             placeholder="Enter your prompt here...",
         )
         model: LlmModel = SchemaField(
