@@ -19,7 +19,7 @@ supabase = "^2.10.0"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.0"
-ruff = "^0.7.4"
+ruff = "^0.8.0"
 
 [build-system]
 requires = ["poetry-core"]
