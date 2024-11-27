@@ -9,8 +9,9 @@ if TYPE_CHECKING:
     from redis import Redis
 
 from autogpt_libs.utils.cache import thread_cached
-from autogpt_libs.utils.settings import Settings
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
+
+from backend.util.settings import Settings
 
 from .types import (
     APIKeyCredentials,

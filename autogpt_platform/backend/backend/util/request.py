@@ -4,7 +4,8 @@ from typing import Callable
 from urllib.parse import urlparse
 
 import requests as req
-from autogpt_libs.utils.settings import Config
+
+from backend.util.settings import Config
 
 # List of IP networks to block
 BLOCKED_IP_NETWORKS = [

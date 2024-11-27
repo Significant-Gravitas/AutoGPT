@@ -1,7 +1,8 @@
 from autogpt_libs.auth.depends import requires_user
 from autogpt_libs.auth.models import User
-from autogpt_libs.utils.settings import Settings
 from fastapi import Depends
+
+from backend.util.settings import Settings
 
 settings = Settings()
 

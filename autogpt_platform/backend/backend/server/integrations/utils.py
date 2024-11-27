@@ -1,5 +1,6 @@
-from autogpt_libs.utils.settings import Settings
 from supabase import Client, create_client
+
+from backend.util.settings import Settings
 
 settings = Settings()
 

@@ -2,7 +2,6 @@ import contextlib
 import logging
 import typing
 
-import autogpt_libs.utils.settings
 import fastapi
 import fastapi.responses
 import starlette.middleware.cors
@@ -14,8 +13,9 @@ import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
 import backend.util.service
+import backend.util.settings
 
-settings = autogpt_libs.utils.settings.Settings()
+settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +31,7 @@ async def lifespan_context(app: fastapi.FastAPI):
 
 docs_url = (
     "/docs"
-    if settings.config.app_env == autogpt_libs.utils.settings.AppEnvironment.LOCAL
+    if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL
     else None
 )
 
@@ -84,8 +84,8 @@ class AgentServer(backend.util.service.AppProcess):
         )
         uvicorn.run(
             server_app,
-            host=autogpt_libs.utils.settings.Config().agent_api_host,
-            port=autogpt_libs.utils.settings.Config().agent_api_port,
+            host=backend.util.settings.Config().agent_api_host,
+            port=backend.util.settings.Config().agent_api_port,
         )
 
     @staticmethod

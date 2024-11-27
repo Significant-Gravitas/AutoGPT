@@ -5,12 +5,12 @@ from typing import ClassVar, Generic, TypeVar
 from uuid import uuid4
 
 from autogpt_libs.supabase_integration_credentials_store import Credentials
-from autogpt_libs.utils.settings import Config
 from fastapi import Request
 from strenum import StrEnum
 
 from backend.data import integrations
 from backend.util.exceptions import MissingConfigError
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 app_config = Config()

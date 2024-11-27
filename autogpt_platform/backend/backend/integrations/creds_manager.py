@@ -6,13 +6,13 @@ from autogpt_libs.supabase_integration_credentials_store import (
     Credentials,
     SupabaseIntegrationCredentialsStore,
 )
-from autogpt_libs.utils.settings import Settings
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
 
 from backend.data import redis
 from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
 from backend.util.exceptions import MissingConfigError
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()

@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from multiprocessing import Manager
 from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
 
-from autogpt_libs.utils.settings import Config
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -17,6 +16,7 @@ from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.util import json, mock
+from backend.util.settings import Config
 
 
 class GraphExecution(BaseModel):

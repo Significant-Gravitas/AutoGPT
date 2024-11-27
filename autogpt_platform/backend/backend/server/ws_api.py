@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
-from autogpt_libs.utils.settings import AppEnvironment, Config, Settings
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -14,6 +13,7 @@ from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
 from backend.util.service import AppProcess
+from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()

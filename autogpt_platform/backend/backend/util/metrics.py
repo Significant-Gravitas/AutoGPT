@@ -1,5 +1,6 @@
 import sentry_sdk
-from autogpt_libs.utils.settings import Settings
+
+from backend.util.settings import Settings
 
 
 def sentry_init():

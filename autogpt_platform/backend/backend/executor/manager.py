@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from backend.executor import DatabaseManager
 
 from autogpt_libs.utils.cache import thread_cached
-from autogpt_libs.utils.settings import Settings
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
@@ -44,6 +43,7 @@ from backend.util.service import (
     expose,
     get_service_client,
 )
+from backend.util.settings import Settings
 from backend.util.type import convert
 
 logger = logging.getLogger(__name__)

@@ -4,10 +4,10 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
     APIKeyCredentials,
     OAuth2Credentials,
 )
-from autogpt_libs.utils.settings import Secrets
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput
+from backend.util.settings import Secrets
 
 secrets = Secrets()
 GITHUB_OAUTH_IS_CONFIGURED = bool(

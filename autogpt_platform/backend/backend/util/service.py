@@ -29,7 +29,6 @@ from typing import (
 )
 
 import Pyro5.api
-from autogpt_libs.utils.settings import Config, Secrets
 from pydantic import BaseModel
 from Pyro5 import api as pyro
 from Pyro5 import config as pyro_config
@@ -37,6 +36,7 @@ from Pyro5 import config as pyro_config
 from backend.data import db, redis
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
+from backend.util.settings import Config, Secrets
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")

@@ -4,7 +4,6 @@ import logging
 from typing import Any, Callable, ClassVar, Generic, Optional, TypeVar
 
 from autogpt_libs.supabase_integration_credentials_store.types import CredentialsType
-from autogpt_libs.utils.settings import Secrets
 from pydantic import BaseModel, Field, GetCoreSchemaHandler
 from pydantic_core import (
     CoreSchema,
@@ -12,6 +11,8 @@ from pydantic_core import (
     PydanticUndefinedType,
     core_schema,
 )
+
+from backend.util.settings import Secrets
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
