@@ -34,14 +34,15 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
         username: profileData.username,
         description: profileData.description,
         links: profileData.links,
-        avatar_url: profileData.avatar_url
+        avatar_url: profileData.avatar_url,
       };
 
       if (!isSubmitting) {
-        const returnedProfile = await api.updateStoreProfile(updatedProfile as ProfileDetails);
+        const returnedProfile = await api.updateStoreProfile(
+          updatedProfile as ProfileDetails,
+        );
         setProfileData(returnedProfile as CreatorDetails);
       }
-
     } catch (error) {
       console.error("Error updating profile:", error);
     } finally {
@@ -53,45 +54,52 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
     try {
       // Create FormData and append file
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
 
       console.log(formData);
 
       // Get auth token
       if (!supabase) {
-        throw new Error('Supabase client not initialized');
+        throw new Error("Supabase client not initialized");
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const token = session?.access_token;
 
       if (!token) {
-        throw new Error('No authentication token found');
+        throw new Error("No authentication token found");
       }
 
       // Make upload request
-      const response = await fetch(`${process.env.NEXT_PUBLIC_AGPT_SERVER_URL}/store/submissions/media`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_AGPT_SERVER_URL}/store/submissions/media`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
         },
-        body: formData
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`Upload failed: ${response.statusText}`);
       }
 
       // Get media URL from response
-      const mediaUrl = await response.json()
+      const mediaUrl = await response.json();
 
       // Update profile with new avatar URL
       const updatedProfile = {
         ...profileData,
-        avatar_url: mediaUrl
+        avatar_url: mediaUrl,
       };
 
-      const returnedProfile = await api.updateStoreProfile(updatedProfile as ProfileDetails);
+      const returnedProfile = await api.updateStoreProfile(
+        updatedProfile as ProfileDetails,
+      );
       setProfileData(returnedProfile as CreatorDetails);
     } catch (error) {
       console.error("Error uploading image:", error);
@@ -118,9 +126,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               <IconPersonFill className="absolute left-[30px] top-[24px] h-[77.80px] w-[70.63px] text-[#7e7e7e] dark:text-[#999999]" />
             )}
           </div>
-          <label
-            className="mt-11 h-[43px] rounded-[22px] inline-flex justify-center items-center border border-slate-900 bg-slate-900 px-4 py-2 font-['Geist'] leading-normal text-sm font-medium text-slate-50 transition-colors hover:bg-white hover:text-slate-900 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          >
+          <label className="mt-11 inline-flex h-[43px] items-center justify-center rounded-[22px] border border-slate-900 bg-slate-900 px-4 py-2 font-['Geist'] text-sm font-medium leading-normal text-slate-50 transition-colors hover:bg-white hover:text-slate-900 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100">
             <input
               type="file"
               accept="image/*"
@@ -136,10 +142,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
           </label>
         </div>
 
-        <form
-          className="space-y-4 sm:space-y-6"
-          onSubmit={submitForm}
-        >
+        <form className="space-y-4 sm:space-y-6" onSubmit={submitForm}>
           <div className="w-full">
             <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
               Display name
@@ -152,7 +155,10 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 placeholder="Enter your display name"
                 className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                 onChange={(e) => {
-                  const newProfileData = { ...profileData, name: e.target.value };
+                  const newProfileData = {
+                    ...profileData,
+                    name: e.target.value,
+                  };
                   setProfileData(newProfileData);
                 }}
               />
@@ -171,7 +177,10 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 placeholder="@username"
                 className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                 onChange={(e) => {
-                  const newProfileData = { ...profileData, username: e.target.value };
+                  const newProfileData = {
+                    ...profileData,
+                    username: e.target.value,
+                  };
                   setProfileData(newProfileData);
                 }}
               />
@@ -189,7 +198,10 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 placeholder="Tell us about yourself..."
                 className="h-full w-full resize-none border-none bg-transparent font-['Geist'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                 onChange={(e) => {
-                  const newProfileData = { ...profileData, description: e.target.value };
+                  const newProfileData = {
+                    ...profileData,
+                    description: e.target.value,
+                  };
                   setProfileData(newProfileData);
                 }}
               />
@@ -220,7 +232,12 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                         defaultValue={link || ""}
                         className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
                         onChange={(e) => {
-                          const newProfileData = { ...profileData, links: profileData.links.map((link, index) => index === linkNum - 1 ? e.target.value : link) };
+                          const newProfileData = {
+                            ...profileData,
+                            links: profileData.links.map((link, index) =>
+                              index === linkNum - 1 ? e.target.value : link,
+                            ),
+                          };
                           setProfileData(newProfileData);
                         }}
                       />
@@ -251,7 +268,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-['Geist'] text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
               onClick={submitForm}
             >
-              {isSubmitting ? 'Saving...' : 'Save changes'}
+              {isSubmitting ? "Saving..." : "Save changes"}
             </Button>
           </div>
         </form>

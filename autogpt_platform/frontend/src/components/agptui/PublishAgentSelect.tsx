@@ -17,7 +17,7 @@ interface PublishAgentSelectProps {
   agents: Agent[];
   onSelect: (agentId: string, agentVersion: number) => void;
   onCancel: () => void;
-  onNext:  (agentId: string, agentVersion: number) => void;
+  onNext: (agentId: string, agentVersion: number) => void;
   onClose: () => void;
   onOpenBuilder: () => void;
 }
@@ -31,10 +31,18 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   onOpenBuilder,
 }) => {
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
-  const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null);  
-  const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<number | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
+    null,
+  );
+  const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<
+    number | null
+  >(null);
 
-  const handleAgentClick = (agentName: string, agentId: string, agentVersion: number) => {
+  const handleAgentClick = (
+    agentName: string,
+    agentId: string,
+    agentVersion: number,
+  ) => {
     setSelectedAgent(agentName);
     setSelectedAgentId(agentId);
     setSelectedAgentVersion(agentVersion);
@@ -100,7 +108,9 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                           ? "shadow-lg ring-4 ring-violet-600"
                           : "hover:shadow-md"
                       }`}
-                      onClick={() => handleAgentClick(agent.name, agent.id, agent.version)}
+                      onClick={() =>
+                        handleAgentClick(agent.name, agent.id, agent.version)
+                      }
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();

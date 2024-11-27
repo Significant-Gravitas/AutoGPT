@@ -32,7 +32,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="w-full max-w-[434px] rounded-[26px] flex-col justify-start items-start gap-2.5 inline-flex cursor-pointer hover:shadow-lg transition-all duration-300"
+      className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] transition-all duration-300 hover:shadow-lg"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -45,7 +45,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       }}
     >
       {/* Header Image Section with Avatar */}
-      <div className="relative w-full h-[200px] rounded-[20px] overflow-hidden">
+      <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
         <Image
           src={agentImage}
           alt={`${agentName} preview image`}
@@ -54,10 +54,10 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           priority
         />
         {!hideAvatar && (
-          <div className="absolute left-4 bottom-4">
+          <div className="absolute bottom-4 left-4">
             <Avatar className="h-16 w-16 border-2 border-white">
-              <AvatarImage 
-                src={avatarSrc} 
+              <AvatarImage
+                src={avatarSrc}
                 alt={`${creatorName || agentName} creator avatar`}
               />
               <AvatarFallback>
@@ -71,30 +71,30 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       {/* Content Section */}
       <div className="w-full px-1 py-4">
         {/* Title and Creator */}
-        <h3 className="text-[#272727] text-2xl font-semibold font-['Poppins'] leading-tight mb-2">
+        <h3 className="mb-2 font-['Poppins'] text-2xl font-semibold leading-tight text-[#272727]">
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (
-          <p className="text-neutral-600 text-base font-normal font-['Geist'] mb-4">
+          <p className="mb-4 font-['Geist'] text-base font-normal text-neutral-600">
             by {creatorName}
           </p>
         )}
 
         {/* Description */}
-        <p className="text-neutral-600 text-base font-normal font-['Geist'] leading-normal line-clamp-3 mb-4">
+        <p className="mb-4 line-clamp-3 font-['Geist'] text-base font-normal leading-normal text-neutral-600">
           {description}
         </p>
 
         {/* Stats Row */}
-        <div className="flex justify-between items-center">
-          <div className="text-neutral-800 text-lg font-semibold font-['Geist']">
+        <div className="flex items-center justify-between">
+          <div className="font-['Geist'] text-lg font-semibold text-neutral-800">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-neutral-800 text-lg font-semibold font-['Geist']">
+            <span className="font-['Geist'] text-lg font-semibold text-neutral-800">
               {rating.toFixed(1)}
             </span>
-            <div 
+            <div
               className="inline-flex items-center"
               role="img"
               aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}

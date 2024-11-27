@@ -26,14 +26,14 @@ const mockAgents = [
   },
   {
     name: "Sales Bot",
-    lastEdited: "5 days ago", 
+    lastEdited: "5 days ago",
     imageSrc: "https://picsum.photos/seed/sales/300/200",
   },
   {
     name: "Content Writer",
     lastEdited: "1 week ago",
     imageSrc: "https://picsum.photos/seed/content/300/200",
-  }
+  },
 ];
 
 export const Default: Story = {
@@ -66,7 +66,7 @@ export const WithBuilderCallback: Story = {
     const canvas = within(canvasElement);
     const publishButton = canvas.getByText("Publish Agent");
     await userEvent.click(publishButton);
-    
+
     const builderButton = canvas.getByText("Create new agent");
     await userEvent.click(builderButton);
   },
@@ -78,15 +78,15 @@ export const SelectAndPublishFlow: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    
+
     // Open popout
     const publishButton = canvas.getByText("Publish Agent");
     await userEvent.click(publishButton);
-    
+
     // Select an agent
     const agentCard = canvas.getByText("Marketing Assistant");
     await userEvent.click(agentCard);
-    
+
     // Click next
     const nextButton = canvas.getByText("Next");
     await userEvent.click(nextButton);

@@ -44,7 +44,6 @@ export default async function Page({
 }: {
   params: { lang: string };
 }) {
-
   const { submissions } = await getDashboardData();
 
   return (
@@ -74,17 +73,21 @@ export default async function Page({
 
       {/* Agents Section */}
       <div>
-        <h2 className="mb-4 text-xl font-bold text-neutral-900">
-          Your Agents
-        </h2>
-        <AgentTable agents={submissions?.submissions.map((submission, index) => ({
-          id: index,
-          agentName: submission.name,
-          description: submission.description,
-          imageSrc: submission.image_urls[0] || '',
-          dateSubmitted: new Date(submission.date_submitted).toLocaleDateString(),
-          status: submission.status.toLowerCase() as StatusType,
-        })) || []} />
+        <h2 className="mb-4 text-xl font-bold text-neutral-900">Your Agents</h2>
+        <AgentTable
+          agents={
+            submissions?.submissions.map((submission, index) => ({
+              id: index,
+              agentName: submission.name,
+              description: submission.description,
+              imageSrc: submission.image_urls[0] || "",
+              dateSubmitted: new Date(
+                submission.date_submitted,
+              ).toLocaleDateString(),
+              status: submission.status.toLowerCase() as StatusType,
+            })) || []
+          }
+        />
       </div>
     </main>
   );

@@ -11,12 +11,12 @@ interface PublishAgentInfoProps {
   onBack: () => void;
   onSubmit: (
     name: string,
-    subHeading: string, 
+    subHeading: string,
     slug: string,
     description: string,
     imageUrls: string[],
     videoUrl: string,
-    categories: string[]
+    categories: string[],
   ) => void;
   onClose: () => void;
   initialData?: {
@@ -47,12 +47,18 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   const [selectedImage, setSelectedImage] = React.useState<string | null>(
     initialData?.thumbnailSrc || null,
   );
-  const [title, setTitle] = React.useState(initialData?.title || '');
-  const [subheader, setSubheader] = React.useState(initialData?.subheader || '');
-  const [youtubeLink, setYoutubeLink] = React.useState(initialData?.youtubeLink || '');
-  const [category, setCategory] = React.useState(initialData?.category || '');
-  const [description, setDescription] = React.useState(initialData?.description || '');
-  const [slug, setSlug] = React.useState(initialData?.slug || '');
+  const [title, setTitle] = React.useState(initialData?.title || "");
+  const [subheader, setSubheader] = React.useState(
+    initialData?.subheader || "",
+  );
+  const [youtubeLink, setYoutubeLink] = React.useState(
+    initialData?.youtubeLink || "",
+  );
+  const [category, setCategory] = React.useState(initialData?.category || "");
+  const [description, setDescription] = React.useState(
+    initialData?.description || "",
+  );
+  const [slug, setSlug] = React.useState(initialData?.slug || "");
   const thumbnailsContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const handleRemoveImage = (indexToRemove: number) => {
@@ -70,10 +76,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   };
 
   const handleAddImage = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+
     // Create a promise that resolves when file is selected
     const fileSelected = new Promise<File | null>((resolve) => {
       input.onchange = (e) => {
@@ -93,12 +99,15 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       const api = new AutoGPTServerAPI(
         process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
         process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-        createClient()
+        createClient(),
       );
 
-      const imageUrl = (await api.uploadStoreSubmissionMedia(file)).replace(/^"(.*)"$/, '$1');
-    
-      setImages(prev => {
+      const imageUrl = (await api.uploadStoreSubmissionMedia(file)).replace(
+        /^"(.*)"$/,
+        "$1",
+      );
+
+      setImages((prev) => {
         const newImages = [...prev, imageUrl];
         console.log("Added image. Images now:", newImages);
         return newImages;
@@ -113,15 +122,9 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
 
   const handleSubmit = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    onSubmit(
-      title,
-      subheader,
-      slug,
-      description,
-      images,
-      youtubeLink,
-      [category]
-    );
+    onSubmit(title, subheader, slug, description, images, youtubeLink, [
+      category,
+    ]);
   };
 
   return (

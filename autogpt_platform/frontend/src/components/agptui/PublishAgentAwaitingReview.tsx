@@ -28,7 +28,7 @@ export const PublishAgentAwaitingReview: React.FC<
 }) => {
   return (
     <div
-      className="inline-flex min-h-screen w-full items-center justify-center flex-col rounded-none sm:h-auto sm:min-h-[824px] sm:rounded-3xl"
+      className="inline-flex min-h-screen w-full flex-col items-center justify-center rounded-none sm:h-auto sm:min-h-[824px] sm:rounded-3xl"
       role="dialog"
       aria-labelledby="modal-title"
     >
