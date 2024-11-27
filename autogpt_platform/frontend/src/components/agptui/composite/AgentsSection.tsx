@@ -33,7 +33,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   hideAvatars = false,
 }) => {
   const router = useRouter();
-  
+
   // Take only the first 9 agents
   const displayedAgents = allAgents.slice(0, 9);
 
@@ -77,7 +77,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
               </CarouselContent>
             </Carousel>
 
-            <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 place-items-center">
+            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
               {displayedAgents.map((agent, index) => (
                 <StoreCard
                   key={index}

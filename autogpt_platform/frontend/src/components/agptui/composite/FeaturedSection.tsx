@@ -12,9 +12,9 @@ import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 
 const BACKGROUND_COLORS = [
-  'bg-violet-200', // #ddd6fe
-  'bg-blue-200',   // #bfdbfe
-  'bg-green-200',  // #bbf7d0
+  "bg-violet-200", // #ddd6fe
+  "bg-blue-200", // #bfdbfe
+  "bg-green-200", // #bbf7d0
 ];
 
 export interface FeaturedAgent {
@@ -100,7 +100,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           </Carousel>
         </div>
 
-        <div className="flex w-full items-center justify-between mt-8">
+        <div className="mt-8 flex w-full items-center justify-between">
           <div className="flex h-3 items-center gap-2">
             {featuredAgents.map((_, index) => (
               <div

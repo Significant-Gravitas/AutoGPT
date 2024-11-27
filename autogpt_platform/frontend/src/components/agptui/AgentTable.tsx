@@ -38,9 +38,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
             <div className="text-sm font-medium text-neutral-800">
               Date submitted
             </div>
-            <div className="text-sm font-medium text-neutral-800">
-              Status
-            </div>
+            <div className="text-sm font-medium text-neutral-800">Status</div>
             <div className="text-right text-sm font-medium text-neutral-800">
               Runs
             </div>

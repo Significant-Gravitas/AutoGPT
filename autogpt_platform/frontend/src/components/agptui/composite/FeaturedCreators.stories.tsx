@@ -26,29 +26,37 @@ const defaultCreators = [
   {
     name: "AI Innovator",
     username: "ai_innovator",
-    description: "Pushing the boundaries of AI technology with cutting-edge solutions and innovative approaches to machine learning.",
-    avatar_url: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    description:
+      "Pushing the boundaries of AI technology with cutting-edge solutions and innovative approaches to machine learning.",
+    avatar_url:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     num_agents: 15,
   },
   {
     name: "Code Wizard",
     username: "code_wizard",
-    description: "Crafting elegant solutions with AI and helping others learn the magic of coding.",
-    avatar_url: "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+    description:
+      "Crafting elegant solutions with AI and helping others learn the magic of coding.",
+    avatar_url:
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     num_agents: 8,
   },
   {
     name: "Data Alchemist",
     username: "data_alchemist",
-    description: "Transforming raw data into AI gold. Specializing in data processing and analytics.",
-    avatar_url: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    description:
+      "Transforming raw data into AI gold. Specializing in data processing and analytics.",
+    avatar_url:
+      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     num_agents: 12,
   },
   {
     name: "ML Master",
     username: "ml_master",
-    description: "Specializing in machine learning algorithms and neural network architectures.",
-    avatar_url: "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+    description:
+      "Specializing in machine learning algorithms and neural network architectures.",
+    avatar_url:
+      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     num_agents: 20,
   },
 ];
@@ -74,15 +82,19 @@ export const ManyCreators: Story = {
       {
         name: "NLP Ninja",
         username: "nlp_ninja",
-        description: "Expert in natural language processing and text analysis systems.",
-        avatar_url: "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+        description:
+          "Expert in natural language processing and text analysis systems.",
+        avatar_url:
+          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
         num_agents: 18,
       },
       {
         name: "AI Explorer",
         username: "ai_explorer",
-        description: "Discovering new frontiers in artificial intelligence and autonomous systems.",
-        avatar_url: "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
+        description:
+          "Discovering new frontiers in artificial intelligence and autonomous systems.",
+        avatar_url:
+          "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
         num_agents: 25,
       },
     ],
