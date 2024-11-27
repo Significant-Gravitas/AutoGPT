@@ -1,24 +1,24 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
-  AnalyticsMetrics,
   AnalyticsDetails,
+  AnalyticsMetrics,
   APIKeyCredentials,
   Block,
+  CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
+  ExecutionMeta,
   Graph,
   GraphCreatable,
-  GraphUpdateable,
+  GraphExecuteResponse,
   GraphMeta,
   GraphMetaWithRuns,
-  GraphExecuteResponse,
-  ExecutionMeta,
+  GraphUpdateable,
   NodeExecutionResult,
   OAuth2Credentials,
-  User,
-  ScheduleCreatable,
-  ScheduleUpdateable,
   Schedule,
+  ScheduleCreatable,
+  User,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -212,8 +212,12 @@ export default class BaseAutoGPTServerAPI {
     );
   }
 
-  listCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
-    return this._get(`/integrations/${provider}/credentials`);
+  listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
+    return this._get(
+      provider
+        ? `/integrations/${provider}/credentials`
+        : "/integrations/credentials",
+    );
   }
 
   getCredentials(
@@ -226,10 +230,14 @@ export default class BaseAutoGPTServerAPI {
   deleteCredentials(
     provider: string,
     id: string,
-  ): Promise<CredentialsDeleteResponse> {
+    force: boolean = true,
+  ): Promise<
+    CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
+  > {
     return this._request(
       "DELETE",
       `/integrations/${provider}/credentials/${id}`,
+      force ? { force: true } : undefined,
     );
   }
 
@@ -271,13 +279,14 @@ export default class BaseAutoGPTServerAPI {
         ?.access_token || "";
 
     let url = this.baseUrl + path;
-    if (method === "GET" && payload) {
+    const payloadAsQuery = ["GET", "DELETE"].includes(method);
+    if (payloadAsQuery && payload) {
       // For GET requests, use payload as query
       const queryParams = new URLSearchParams(payload);
       url += `?${queryParams.toString()}`;
     }
 
-    const hasRequestBody = method !== "GET" && payload !== undefined;
+    const hasRequestBody = !payloadAsQuery && payload !== undefined;
     const response = await fetch(url, {
       method,
       headers: {

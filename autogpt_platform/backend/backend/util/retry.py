@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from functools import wraps
 from uuid import uuid4
 
@@ -16,7 +17,7 @@ def _log_prefix(resource_name: str, conn_id: str):
     This needs to be called on the fly to get the current process ID & service name,
     not the parent process ID & service name.
     """
-    return f"[PID-{os.getpid()}|{get_service_name()}|{resource_name}-{conn_id}]"
+    return f"[PID-{os.getpid()}|THREAD-{threading.get_native_id()}|{get_service_name()}|{resource_name}-{conn_id}]"
 
 
 def conn_retry(resource_name: str, action_name: str, max_retry: int = 5):
@@ -25,7 +26,7 @@ def conn_retry(resource_name: str, action_name: str, max_retry: int = 5):
     def on_retry(retry_state):
         prefix = _log_prefix(resource_name, conn_id)
         exception = retry_state.outcome.exception()
-        logger.info(f"{prefix} {action_name} failed: {exception}. Retrying now...")
+        logger.error(f"{prefix} {action_name} failed: {exception}. Retrying now...")
 
     def decorator(func):
         @wraps(func)
