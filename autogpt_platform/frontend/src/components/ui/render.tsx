@@ -76,15 +76,14 @@ const AudioRenderer: React.FC<{ audioUrl: string }> = ({ audioUrl }) => (
   </div>
 );
 
-const TextRenderer: React.FC<{ value: any; truncateLongData?: boolean }> = ({
-  value,
-  truncateLongData,
-}) => {
-  const maxChars = 100;
+export const TextRenderer: React.FC<{
+  value: any;
+  truncateLengthLimit?: number;
+}> = ({ value, truncateLengthLimit }) => {
   const text =
     typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
-  return truncateLongData && text.length > maxChars
-    ? text.slice(0, maxChars) + "..."
+  return truncateLengthLimit && text.length > truncateLengthLimit
+    ? text.slice(0, truncateLengthLimit) + "..."
     : text;
 };
 
@@ -101,5 +100,10 @@ export const ContentRenderer: React.FC<{
       return <AudioRenderer audioUrl={value} />;
     }
   }
-  return <TextRenderer value={value} truncateLongData={truncateLongData} />;
+  return (
+    <TextRenderer
+      value={value}
+      truncateLengthLimit={truncateLongData ? 100 : undefined}
+    />
+  );
 };

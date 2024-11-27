@@ -67,7 +67,7 @@ class AIMusicGeneratorBlock(Block):
             placeholder="e.g., 'An upbeat electronic dance track with heavy bass'",
             title="Prompt",
         )
-        model_version: MusicGenModelVersion = SchemaField(
+        music_gen_model_version: MusicGenModelVersion = SchemaField(
             description="Model to use for generation",
             default=MusicGenModelVersion.STEREO_LARGE,
             title="Model Version",
@@ -122,7 +122,7 @@ class AIMusicGeneratorBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "prompt": "An upbeat electronic dance track with heavy bass",
-                "model_version": MusicGenModelVersion.STEREO_LARGE,
+                "music_gen_model_version": MusicGenModelVersion.STEREO_LARGE,
                 "duration": 8,
                 "temperature": 1.0,
                 "top_k": 250,
@@ -138,7 +138,7 @@ class AIMusicGeneratorBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_version, prompt, duration, temperature, top_k, top_p, classifier_free_guidance, output_format, normalization_strategy: "https://replicate.com/output/generated-audio-url.wav",
+                "run_model": lambda api_key, music_gen_model_version, prompt, duration, temperature, top_k, top_p, classifier_free_guidance, output_format, normalization_strategy: "https://replicate.com/output/generated-audio-url.wav",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -157,7 +157,7 @@ class AIMusicGeneratorBlock(Block):
                 )
                 result = self.run_model(
                     api_key=credentials.api_key,
-                    model_version=input_data.model_version,
+                    music_gen_model_version=input_data.music_gen_model_version,
                     prompt=input_data.prompt,
                     duration=input_data.duration,
                     temperature=input_data.temperature,
@@ -186,7 +186,7 @@ class AIMusicGeneratorBlock(Block):
     def run_model(
         self,
         api_key: SecretStr,
-        model_version: MusicGenModelVersion,
+        music_gen_model_version: MusicGenModelVersion,
         prompt: str,
         duration: int,
         temperature: float,
@@ -204,7 +204,7 @@ class AIMusicGeneratorBlock(Block):
             "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
             input={
                 "prompt": prompt,
-                "model_version": model_version,
+                "music_gen_model_version": music_gen_model_version,
                 "duration": duration,
                 "temperature": temperature,
                 "top_k": top_k,
