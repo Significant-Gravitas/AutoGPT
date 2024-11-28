@@ -72,7 +72,9 @@ export default async function Page({
 
       {/* Agents Section */}
       <div>
-        <h2 className="mb-4 text-xl font-bold text-neutral-900 dark:text-neutral-100">Your Agents</h2>
+        <h2 className="mb-4 text-xl font-bold text-neutral-900 dark:text-neutral-100">
+          Your Agents
+        </h2>
         <AgentTable
           agents={
             submissions?.submissions.map((submission, index) => ({

@@ -66,7 +66,7 @@ export const Navbar = async ({
 
   return (
     <>
-      <nav className="sticky top-0 z-50 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 dark:bg-gray-900 dark:border-gray-700 py-3 pl-6 pr-3 backdrop-blur-[26px] md:inline-flex">
+      <nav className="sticky top-0 z-50 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
         <div className="flex items-center space-x-10">
           {links.map((link) => (
             <NavbarLink key={link.name} name={link.name} href={link.href} />

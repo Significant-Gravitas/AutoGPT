@@ -73,7 +73,9 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
         </div>
 
         {/* Date column */}
-        <div className="pl-14 text-sm text-neutral-600 dark:text-neutral-400">{dateSubmitted}</div>
+        <div className="pl-14 text-sm text-neutral-600 dark:text-neutral-400">
+          {dateSubmitted}
+        </div>
 
         {/* Status column */}
         <div>
@@ -95,7 +97,9 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
               <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
             </div>
           ) : (
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">No reviews</span>
+            <span className="text-sm text-neutral-600 dark:text-neutral-400">
+              No reviews
+            </span>
           )}
         </div>
 

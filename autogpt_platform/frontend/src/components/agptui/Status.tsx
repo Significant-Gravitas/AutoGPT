@@ -64,7 +64,9 @@ export const Status: React.FC<StatusProps> = ({ status }) => {
     <div
       className={`px-2.5 py-1 ${config.bgColor} ${config.darkBgColor} flex items-center gap-1.5 rounded-[26px]`}
     >
-      <div className={`h-3 w-3 ${config.dotColor} ${config.darkDotColor} rounded-full`} />
+      <div
+        className={`h-3 w-3 ${config.dotColor} ${config.darkDotColor} rounded-full`}
+      />
       <div className="font-['Geist'] text-sm font-normal leading-tight text-neutral-600 dark:text-neutral-300">
         {config.text}
       </div>

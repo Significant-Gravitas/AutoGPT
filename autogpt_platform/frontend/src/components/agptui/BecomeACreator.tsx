@@ -26,7 +26,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       <div className="absolute left-0 top-0 h-px w-full bg-gray-200 dark:bg-gray-700" />
 
       {/* Title */}
-      <div className="absolute left-4 top-[26px] text-base font-semibold leading-7 font-['Poppins'] text-neutral-800 dark:text-neutral-200 md:left-6 md:text-lg lg:left-8">
+      <div className="absolute left-4 top-[26px] font-['Poppins'] text-base font-semibold leading-7 text-neutral-800 dark:text-neutral-200 md:left-6 md:text-lg lg:left-8">
         {title}
       </div>
 
@@ -35,7 +35,10 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
         <h2 className="font-poppins mb-6 text-3xl font-semibold leading-tight text-neutral-950 dark:text-neutral-50 md:mb-8 md:text-4xl md:leading-[1.2] lg:mb-12 lg:text-5xl lg:leading-[54px]">
           Build AI agents and share
           <br />
-          <span className="text-violet-600 dark:text-violet-400">your</span> vision
+          <span className="text-violet-600 dark:text-violet-400">
+            your
+          </span>{" "}
+          vision
         </h2>
 
         <p className="font-geist mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 dark:text-neutral-300 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl">
@@ -46,7 +49,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
           trigger={
             <button
               onClick={handleButtonClick}
-              className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 dark:bg-neutral-700 px-8 py-3 transition-colors hover:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5"
+              className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5"
             >
               <span className="font-poppins whitespace-nowrap text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
                 {buttonText}

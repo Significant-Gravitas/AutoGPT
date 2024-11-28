@@ -41,16 +41,20 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
         <button
           key={filter.value}
           onClick={() => handleFilterClick(filter.value)}
-          className={`px-5 py-2 rounded-[34px] flex items-center gap-2.5 ${
+          className={`flex items-center gap-2.5 rounded-[34px] px-5 py-2 ${
             selected === filter.value
-              ? "bg-neutral-800 dark:bg-neutral-100 text-white dark:text-neutral-900"
-              : "border border-neutral-600 dark:border-neutral-400 text-neutral-800 dark:text-neutral-200"
+              ? "bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900"
+              : "border border-neutral-600 text-neutral-800 dark:border-neutral-400 dark:text-neutral-200"
           }`}
         >
-          <span className={`text-base ${selected === filter.value ? "font-medium" : ""}`}>
+          <span
+            className={`text-base ${selected === filter.value ? "font-medium" : ""}`}
+          >
             {filter.label}
           </span>
-          <span className={`text-base ${selected === filter.value ? "font-medium" : ""}`}>
+          <span
+            className={`text-base ${selected === filter.value ? "font-medium" : ""}`}
+          >
             {filter.count}
           </span>
         </button>

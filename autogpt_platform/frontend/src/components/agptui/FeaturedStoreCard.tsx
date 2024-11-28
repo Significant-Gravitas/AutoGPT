@@ -55,7 +55,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
             objectFit="cover"
             className="rounded-xl transition-opacity duration-200 group-hover:opacity-0"
           />
-          <div className="absolute inset-0 overflow-y-auto rounded-xl bg-white dark:bg-neutral-700 p-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="absolute inset-0 overflow-y-auto rounded-xl bg-white p-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:bg-neutral-700">
             <div className="font-['Geist'] text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
               {description}
             </div>

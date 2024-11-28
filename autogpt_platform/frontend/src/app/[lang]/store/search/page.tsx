@@ -17,7 +17,7 @@ export default function Page({
   searchParams: { searchTerm?: string; sort?: string };
 }) {
   return (
-    <SearchResults 
+    <SearchResults
       searchTerm={searchParams.searchTerm || ""}
       sort={searchParams.sort || "trending"}
     />
@@ -26,7 +26,7 @@ export default function Page({
 
 function SearchResults({
   searchTerm,
-  sort
+  sort,
 }: {
   searchTerm: string;
   sort: string;
@@ -41,22 +41,22 @@ function SearchResults({
     const fetchData = async () => {
       setIsLoading(true);
       const api = new AutoGPTServerAPIClient();
-      
+
       try {
         const [agentsRes, creatorsRes] = await Promise.all([
-          api.getStoreAgents({ 
+          api.getStoreAgents({
             search_query: searchTerm,
-            sorted_by: sort 
+            sorted_by: sort,
           }),
           api.getStoreCreators({
             search_query: searchTerm,
-          })
+          }),
         ]);
 
         setAgents(agentsRes.agents || []);
         setCreators(creatorsRes.creators || []);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error("Error fetching data:", error);
       } finally {
         setIsLoading(false);
       }
@@ -84,8 +84,8 @@ function SearchResults({
 
   return (
     <div className="w-full">
-      <div className="px-10 max-w-[1440px] lg:min-w-[1440px] mx-auto min-h-screen">
-        <div className="flex items-center mt-8">
+      <div className="mx-auto min-h-screen max-w-[1440px] px-10 lg:min-w-[1440px]">
+        <div className="mt-8 flex items-center">
           <div className="flex-1">
             <h2 className="font-['Poppins'] text-base font-medium text-neutral-800 dark:text-neutral-200">
               Results for:
@@ -100,13 +100,13 @@ function SearchResults({
         </div>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center mt-20">
+          <div className="mt-20 flex flex-col items-center justify-center">
             <p className="text-neutral-500 dark:text-neutral-400">Loading...</p>
           </div>
         ) : totalCount > 0 ? (
           <>
-            <div className="mt-8 flex justify-between items-center">
-              <SearchFilterChips 
+            <div className="mt-8 flex items-center justify-between">
+              <SearchFilterChips
                 totalCount={totalCount}
                 agentsCount={agentsCount}
                 creatorsCount={creatorsCount}
@@ -115,23 +115,32 @@ function SearchResults({
               <SortDropdown />
             </div>
             {/* Content section */}
-            <div className="max-w-[1440px] min-h-[500px]">
+            <div className="min-h-[500px] max-w-[1440px]">
               {showAgents && agentsCount > 0 && (
                 <div className="mt-8">
                   <AgentsSection agents={agents} sectionTitle="Agents" />
                 </div>
               )}
-              
-              {showAgents && agentsCount > 0 && creatorsCount > 0 && <Separator />}
+
+              {showAgents && agentsCount > 0 && creatorsCount > 0 && (
+                <Separator />
+              )}
               {showCreators && creatorsCount > 0 && (
-                <FeaturedCreators featuredCreators={creators} title="Creators" />
+                <FeaturedCreators
+                  featuredCreators={creators}
+                  title="Creators"
+                />
               )}
             </div>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center mt-20">
-            <h3 className="text-xl font-medium text-neutral-600 dark:text-neutral-300 mb-2">No results found</h3>
-            <p className="text-neutral-500 dark:text-neutral-400">Try adjusting your search terms or filters</p>
+          <div className="mt-20 flex flex-col items-center justify-center">
+            <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
+              No results found
+            </h3>
+            <p className="text-neutral-500 dark:text-neutral-400">
+              Try adjusting your search terms or filters
+            </p>
           </div>
         )}
       </div>

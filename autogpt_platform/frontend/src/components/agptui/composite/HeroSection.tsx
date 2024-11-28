@@ -34,7 +34,7 @@ export const HeroSection: React.FC = () => {
         <div className="mb:text-2xl mb-6 text-center font-['Geist'] text-xl font-normal leading-loose text-neutral-700 dark:text-neutral-300 md:mb-12">
           Bringing you AI agents designed by thinkers from around the world
         </div>
-        <div className="mb-4 sm:mb-5 md:mb-6 flex justify-center">
+        <div className="mb-4 flex justify-center sm:mb-5 md:mb-6">
           <SearchBar />
         </div>
         <div>

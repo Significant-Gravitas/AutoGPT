@@ -48,7 +48,9 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
           {sectionTitle}
         </div>
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <div className="text-center text-gray-500 dark:text-gray-400">No agents found</div>
+          <div className="text-center text-gray-500 dark:text-gray-400">
+            No agents found
+          </div>
         ) : (
           <>
             {/* Mobile Carousel View */}

@@ -28,7 +28,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         <SheetTrigger asChild>
           <Button
             aria-label="Open sidebar menu"
-            className="fixed left-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:bg-neutral-800 dark:border-neutral-700 dark:hover:bg-gray-700/50 md:block lg:hidden"
+            className="fixed left-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50 md:block lg:hidden"
           >
             <Menu className="h-8 w-8 stroke-black dark:stroke-white" />
             <span className="sr-only">Open sidebar menu</span>
@@ -36,7 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         </SheetTrigger>
         <SheetContent
           side="left"
-          className="z-50 w-[280px] border-none p-0 sm:w-[280px] dark:bg-neutral-900"
+          className="z-50 w-[280px] border-none p-0 dark:bg-neutral-900 sm:w-[280px]"
         >
           <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
             <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
@@ -125,4 +125,4 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
       </div>
     </>
   );
-}
+};

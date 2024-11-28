@@ -13,9 +13,9 @@ const TallyPopupSimple = () => {
   const [show_tutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
-    setShowTutorial(pathname.includes('build'));
+    setShowTutorial(pathname.includes("build"));
   }, [pathname]);
-  
+
   useEffect(() => {
     // Load Tally script
     const script = document.createElement("script");
@@ -67,7 +67,7 @@ const TallyPopupSimple = () => {
         </Button>
       )}
       <Button
-        className="h-14 w-14 bg-[rgba(65,65,64,1)] rounded-full" 
+        className="h-14 w-14 rounded-full bg-[rgba(65,65,64,1)]"
         variant="default"
         data-tally-open="3yx2L0"
         data-tally-emoji-text="👋"

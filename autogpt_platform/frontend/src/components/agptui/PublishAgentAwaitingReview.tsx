@@ -28,11 +28,11 @@ export const PublishAgentAwaitingReview: React.FC<
 }) => {
   return (
     <div
-      className="inline-flex min-h-screen w-full flex-col items-center justify-center rounded-none sm:h-auto sm:min-h-[824px] sm:rounded-3xl bg-white dark:bg-neutral-900"
+      className="inline-flex min-h-screen w-full flex-col items-center justify-center rounded-none bg-white dark:bg-neutral-900 sm:h-auto sm:min-h-[824px] sm:rounded-3xl"
       role="dialog"
       aria-labelledby="modal-title"
     >
-      <div className="relative h-[180px] w-full rounded-none sm:h-[140px] sm:rounded-t-3xl bg-white dark:bg-neutral-800">
+      <div className="relative h-[180px] w-full rounded-none bg-white dark:bg-neutral-800 sm:h-[140px] sm:rounded-t-3xl">
         <div className="absolute left-0 top-[40px] flex w-full flex-col items-center justify-start px-6 sm:top-[40px]">
           <div
             id="modal-title"
@@ -47,10 +47,13 @@ export const PublishAgentAwaitingReview: React.FC<
         </div>
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 dark:bg-neutral-700 transition-colors hover:bg-gray-200 dark:hover:bg-neutral-600"
+          className="absolute right-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-neutral-700 dark:hover:bg-neutral-600"
           aria-label="Close dialog"
         >
-          <IconClose size="default" className="text-neutral-600 dark:text-neutral-300" />
+          <IconClose
+            size="default"
+            className="text-neutral-600 dark:text-neutral-300"
+          />
         </button>
       </div>
 
@@ -94,7 +97,7 @@ export const PublishAgentAwaitingReview: React.FC<
         </div>
       </div>
 
-      <div className="flex w-full flex-col items-center justify-center gap-4 border-t border-slate-200 dark:border-slate-700 p-6 sm:flex-row">
+      <div className="flex w-full flex-col items-center justify-center gap-4 border-t border-slate-200 p-6 dark:border-slate-700 sm:flex-row">
         <Button
           onClick={onDone}
           variant="outline"

@@ -11,23 +11,27 @@ const loginFormSchema = z.object({
 });
 
 export async function logout() {
-  return await Sentry.withServerActionInstrumentation("logout", {}, async () => {
-    const supabase = createServerClient();
+  return await Sentry.withServerActionInstrumentation(
+    "logout",
+    {},
+    async () => {
+      const supabase = createServerClient();
 
-    if (!supabase) {
-      redirect("/error");
-    }
+      if (!supabase) {
+        redirect("/error");
+      }
 
-    const { error } = await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
 
-    if (error) {
-      console.log("Error logging out", error);
-      return error.message;
-    }
+      if (error) {
+        console.log("Error logging out", error);
+        return error.message;
+      }
 
-    revalidatePath("/", "layout");
-    redirect("/login");
-  });
+      revalidatePath("/", "layout");
+      redirect("/login");
+    },
+  );
 }
 
 export async function login(values: z.infer<typeof loginFormSchema>) {
