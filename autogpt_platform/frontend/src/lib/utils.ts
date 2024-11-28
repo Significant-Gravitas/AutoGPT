@@ -218,7 +218,9 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
   if (categories.length === 0) {
     return "bg-gray-300 dark:bg-slate-700";
   }
-  return categoryColorMap[categories[0].category] || "bg-gray-300 dark:bg-slate-700";
+  return (
+    categoryColorMap[categories[0].category] || "bg-gray-300 dark:bg-slate-700"
+  );
 }
 
 export function filterBlocksByType<T>(

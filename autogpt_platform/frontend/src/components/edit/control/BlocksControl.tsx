@@ -118,7 +118,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               variant="ghost"
               size="icon"
               data-id="blocks-control-popover-trigger"
-              className="dark:hover:bg-slate-800 dark:bg-slate-900 dark:text-slate-100"
+              className="dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
             >
               <IconToyBrick />
             </Button>
@@ -179,7 +179,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               })}
             </div>
           </CardHeader>
-          <CardContent className="overflow-scroll border-t border-t-gray-200 dark:border-t-slate-700 p-0">
+          <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
             <ScrollArea
               className="h-[60vh] w-fit"
               data-id="blocks-control-scroll-area"
@@ -187,7 +187,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               {getFilteredBlockList().map((block) => (
                 <Card
                   key={block.uiKey || block.id}
-                  className="m-2 my-4 flex h-20 cursor-pointer shadow-none hover:shadow-lg dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 dark:border-slate-700"
+                  className="m-2 my-4 flex h-20 cursor-pointer shadow-none hover:shadow-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                   data-id={`block-card-${block.id}`}
                   onClick={() =>
                     addBlock(block.id, block.name, block?.hardcodedValues || {})

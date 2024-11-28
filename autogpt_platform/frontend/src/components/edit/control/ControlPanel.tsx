@@ -60,14 +60,17 @@ export const ControlPanel = ({
                     onClick={() => control.onClick()}
                     data-id={`control-button-${index}`}
                     disabled={control.disabled || false}
-                    className="dark:hover:bg-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                    className="dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
                     {control.icon}
                     <span className="sr-only">{control.label}</span>
                   </Button>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="right" className="dark:bg-slate-800 dark:text-slate-100">
+              <TooltipContent
+                side="right"
+                className="dark:bg-slate-800 dark:text-slate-100"
+              >
                 {control.label}
               </TooltipContent>
             </Tooltip>

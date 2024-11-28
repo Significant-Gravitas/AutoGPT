@@ -107,7 +107,9 @@ export const SaveControl = ({
         <Card className="border-none shadow-none dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="grid gap-3">
-              <Label htmlFor="name" className="dark:text-gray-300">Name</Label>
+              <Label htmlFor="name" className="dark:text-gray-300">
+                Name
+              </Label>
               <Input
                 id="name"
                 placeholder="Enter your agent name"
@@ -116,7 +118,9 @@ export const SaveControl = ({
                 onChange={(e) => onNameChange(e.target.value)}
                 data-id="save-control-name-input"
               />
-              <Label htmlFor="description" className="dark:text-gray-300">Description</Label>
+              <Label htmlFor="description" className="dark:text-gray-300">
+                Description
+              </Label>
               <Input
                 id="description"
                 placeholder="Your agent description"
@@ -127,7 +131,9 @@ export const SaveControl = ({
               />
               {agentMeta?.version && (
                 <>
-                  <Label htmlFor="version" className="dark:text-gray-300">Version</Label>
+                  <Label htmlFor="version" className="dark:text-gray-300">
+                    Version
+                  </Label>
                   <Input
                     id="version"
                     placeholder="Version"
@@ -141,7 +147,7 @@ export const SaveControl = ({
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
             <Button
-              className="w-full dark:hover:bg-slate-800 dark:bg-slate-700 dark:text-slate-100"
+              className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
               onClick={handleSave}
               data-id="save-control-save-agent"
             >
