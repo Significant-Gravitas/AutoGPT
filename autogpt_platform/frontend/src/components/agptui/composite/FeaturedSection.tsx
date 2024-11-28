@@ -12,9 +12,9 @@ import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 
 const BACKGROUND_COLORS = [
-  "bg-violet-200", // #ddd6fe
-  "bg-blue-200", // #bfdbfe
-  "bg-green-200", // #bbf7d0
+  "bg-violet-200 dark:bg-violet-800", // #ddd6fe / #5b21b6
+  "bg-blue-200 dark:bg-blue-800", // #bfdbfe / #1e3a8a
+  "bg-green-200 dark:bg-green-800", // #bbf7d0 / #065f46
 ];
 
 export interface FeaturedAgent {
@@ -62,7 +62,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   return (
     <div className="flex w-full flex-col items-center justify-center">
       <div className="w-full">
-        <h2 className="font-poppins mb-8 text-2xl font-semibold leading-7 text-neutral-800">
+        <h2 className="font-poppins mb-8 text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
           Featured agents
         </h2>
 
@@ -107,25 +107,24 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
                 key={index}
                 className={`${
                   currentSlide === index
-                    ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500"
-                    : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500"
+                    ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 dark:bg-neutral-200 transition-all duration-500"
+                    : "h-3 w-3 rounded-full bg-neutral-300 dark:bg-neutral-600 transition-all duration-500"
                 }`}
               />
             ))}
           </div>
           <div className="flex items-center gap-3">
-            {/* We can't get the exact styling of the button using the button from the component library */}
             <button
               onClick={handlePrevSlide}
-              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 bg-white"
+              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 dark:border-neutral-600 bg-white dark:bg-neutral-800"
             >
-              <IconLeftArrow className="h-8 w-8" />
+              <IconLeftArrow className="h-8 w-8 text-neutral-800 dark:text-neutral-200" />
             </button>
             <button
               onClick={handleNextSlide}
-              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-900 bg-white"
+              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-900 dark:border-neutral-600 bg-white dark:bg-neutral-800"
             >
-              <IconRightArrow className="h-8 w-8" />
+              <IconRightArrow className="h-8 w-8 text-neutral-800 dark:text-neutral-200" />
             </button>
           </div>
         </div>

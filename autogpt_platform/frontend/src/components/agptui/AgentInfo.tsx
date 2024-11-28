@@ -31,22 +31,22 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
       {/* Title */}
-      <div className="mb-3 w-full font-['Poppins'] text-2xl font-medium leading-normal text-neutral-900 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
+      <div className="mb-3 w-full font-['Poppins'] text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
         {name}
       </div>
 
       {/* Creator */}
       <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <div className="font-['Geist'] text-base font-normal text-neutral-800 sm:text-lg lg:text-xl">
+        <div className="font-['Geist'] text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           by
         </div>
-        <div className="font-['Geist'] text-base font-medium text-neutral-800 sm:text-lg lg:text-xl">
+        <div className="font-['Geist'] text-base font-medium text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           {creator}
         </div>
       </div>
 
       {/* Short Description */}
-      <div className="mb-4 line-clamp-2 w-full font-['Geist'] text-base font-normal leading-normal text-neutral-600 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
+      <div className="mb-4 line-clamp-2 w-full font-['Geist'] text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
         {shortDescription}
       </div>
 
@@ -63,12 +63,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       {/* Rating and Runs */}
       <div className="mb-4 flex w-full items-center justify-between lg:mb-6">
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="whitespace-nowrap font-['Geist'] text-base font-semibold text-neutral-800 sm:text-lg">
+          <span className="whitespace-nowrap font-['Geist'] text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
             {rating.toFixed(1)}
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <div className="whitespace-nowrap font-['Geist'] text-base font-semibold text-neutral-800 sm:text-lg">
+        <div className="whitespace-nowrap font-['Geist'] text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
           {runs.toLocaleString()} runs
         </div>
       </div>
@@ -78,24 +78,24 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Description Section */}
       <div className="mb-4 w-full lg:mb-6">
-        <div className="mb-1.5 text-xs font-medium text-neutral-800 sm:mb-2 sm:text-sm">
+        <div className="mb-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:mb-2 sm:text-sm">
           Description
         </div>
-        <div className="w-full whitespace-pre-line font-['Geist'] text-sm font-normal text-neutral-600 sm:text-base">
+        <div className="w-full whitespace-pre-line font-['Geist'] text-sm font-normal text-neutral-600 dark:text-neutral-300 sm:text-base">
           {longDescription}
         </div>
       </div>
 
       {/* Categories */}
       <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-6">
-        <div className="text-xs font-medium text-neutral-800 sm:text-sm">
+        <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
           Categories
         </div>
         <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {categories.map((category, index) => (
             <div
               key={index}
-              className="whitespace-nowrap rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-xs text-neutral-800 sm:px-3 sm:py-1 sm:text-sm"
+              className="whitespace-nowrap rounded-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-0.5 text-xs text-neutral-800 dark:text-neutral-200 sm:px-3 sm:py-1 sm:text-sm"
             >
               {category}
             </div>
@@ -105,14 +105,14 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Rate Agent */}
       <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-6">
-        <div className="text-xs font-medium text-neutral-800 sm:text-sm">
+        <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
           Rate agent
         </div>
         <div className="flex gap-1">
           {[1, 2, 3, 4, 5].map((star) => (
             <IconStar
               key={star}
-              className="h-4 w-4 cursor-pointer text-neutral-300 hover:text-neutral-800 sm:h-5 sm:w-5"
+              className="h-4 w-4 cursor-pointer text-neutral-300 dark:text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 sm:h-5 sm:w-5"
             />
           ))}
         </div>
@@ -120,13 +120,13 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Version History */}
       <div className="flex w-full flex-col gap-0.5 sm:gap-1">
-        <div className="text-xs font-medium text-neutral-800 sm:text-sm">
+        <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
           Version history
         </div>
-        <div className="text-xs text-neutral-600 sm:text-sm">
+        <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
           Last updated {lastUpdated}
         </div>
-        <div className="text-xs text-neutral-600 sm:text-sm">
+        <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
           Version {version}
         </div>
       </div>

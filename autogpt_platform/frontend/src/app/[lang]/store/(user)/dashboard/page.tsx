@@ -51,10 +51,10 @@ export default async function Page({
       {/* Header Section */}
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="font-neue text-3xl font-medium leading-9 tracking-tight text-neutral-900">
+          <h1 className="font-neue text-3xl font-medium leading-9 tracking-tight text-neutral-900 dark:text-neutral-100">
             Submit a New Agent
           </h1>
-          <p className="mt-2 font-neue text-sm text-[#707070]">
+          <p className="mt-2 font-neue text-sm text-[#707070] dark:text-neutral-400">
             Select from the list of agents you currently have, or upload from
             your local machine.
           </p>
@@ -65,7 +65,6 @@ export default async function Page({
               Create New Agent
             </Button>
           }
-          agents={[]}
         />
       </div>
 
@@ -73,7 +72,7 @@ export default async function Page({
 
       {/* Agents Section */}
       <div>
-        <h2 className="mb-4 text-xl font-bold text-neutral-900">Your Agents</h2>
+        <h2 className="mb-4 text-xl font-bold text-neutral-900 dark:text-neutral-100">Your Agents</h2>
         <AgentTable
           agents={
             submissions?.submissions.map((submission, index) => ({

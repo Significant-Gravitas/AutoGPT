@@ -2,10 +2,10 @@ import * as React from "react";
 import Image from "next/image";
 
 const BACKGROUND_COLORS = [
-  "bg-amber-100", // #fef3c7
-  "bg-violet-100", // #ede9fe
-  "bg-green-100", // #dcfce7
-  "bg-blue-100", // #dbeafe
+  "bg-amber-100 dark:bg-amber-800", // #fef3c7 / #92400e
+  "bg-violet-100 dark:bg-violet-800", // #ede9fe / #5b21b6
+  "bg-green-100 dark:bg-green-800", // #dcfce7 / #065f46
+  "bg-blue-100 dark:bg-blue-800", // #dbeafe / #1e3a8a
 ];
 
 interface CreatorCardProps {
@@ -47,15 +47,15 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
       </div>
 
       <div className="flex flex-1 flex-col items-start justify-start self-stretch">
-        <div className="mb-1 self-stretch font-['Poppins'] text-2xl font-semibold leading-loose text-neutral-800">
+        <div className="mb-1 self-stretch font-['Poppins'] text-2xl font-semibold leading-loose text-neutral-800 dark:text-neutral-200">
           {creatorName}
         </div>
-        <div className="line-clamp-2 self-stretch font-['Geist'] text-base font-normal leading-normal text-neutral-800">
+        <div className="line-clamp-2 self-stretch font-['Geist'] text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
           {bio}
         </div>
       </div>
 
-      <div className="self-stretch font-['Geist'] text-lg font-semibold leading-7 text-neutral-800">
+      <div className="self-stretch font-['Geist'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
         {agentsUploaded} agents
       </div>
     </div>

@@ -83,16 +83,16 @@ const PopoutMenuItem: React.FC<{
   };
 
   const content = (
-    <div className="inline-flex w-full items-center justify-start gap-4 hover:rounded hover:bg-[#e0e0e0]">
+    <div className="inline-flex w-full items-center justify-start gap-4 hover:rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3a3a3a]">
       {getIcon(icon)}
       <div className="relative">
         <div
-          className={`font-['Inter'] text-base font-normal leading-7 text-[#474747] ${isActive ? "font-semibold text-[#272727]" : "text-[#474747]"}`}
+          className={`font-['Inter'] text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
         >
           {text}
         </div>
         {isActive && (
-          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-[#272727]"></div>
+          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-[#272727] dark:bg-[#ffffff]"></div>
         )}
       </div>
     </div>
@@ -129,12 +129,12 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
       <PopoverTrigger asChild>
         <Button
           aria-label="Open menu"
-          className="fixed right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 md:hidden"
+          className="fixed right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:bg-neutral-800 dark:border-neutral-700 dark:hover:bg-gray-700/50 md:hidden"
         >
           {isOpen ? (
-            <IconChevronUp className="h-8 w-8 stroke-black" />
+            <IconChevronUp className="h-8 w-8 stroke-black dark:stroke-white" />
           ) : (
-            <IconMenu className="h-8 w-8 stroke-black" />
+            <IconMenu className="h-8 w-8 stroke-black dark:stroke-white" />
           )}
           <span className="sr-only">Open menu</span>
         </Button>
@@ -147,10 +147,10 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                 initial={{ opacity: 0, y: -32 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -32, transition: { duration: 0.2 } }}
-                className="w-screen rounded-b-2xl"
+                className="w-screen rounded-b-2xl bg-white dark:bg-neutral-900"
               >
                 <div className="mb-4 inline-flex items-end justify-start gap-4">
-                  <Avatar className="h-14 w-14 border border-[#474747]">
+                  <Avatar className="h-14 w-14 border border-[#474747] dark:border-[#cfcfcf]">
                     <AvatarImage
                       src={avatarSrc}
                       alt={userName || "Unknown User"}
@@ -160,15 +160,15 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                     </AvatarFallback>
                   </Avatar>
                   <div className="relative h-14 w-[153px]">
-                    <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747]">
+                    <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747] dark:text-[#cfcfcf]">
                       {userName || "Unknown User"}
                     </div>
-                    <div className="absolute left-0 top-6 font-['Inter'] text-base font-normal leading-7 text-[#474747]">
+                    <div className="absolute left-0 top-6 font-['Inter'] text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
                       {userEmail || "No Email Set"}
                     </div>
                   </div>
                 </div>
-                <Separator className="mb-4" />
+                <Separator className="mb-4 dark:bg-[#3a3a3a]" />
                 {menuItemGroups.map((group, groupIndex) => (
                   <React.Fragment key={groupIndex}>
                     {group.items.map((item, itemIndex) => (
@@ -182,7 +182,7 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                       />
                     ))}
                     {groupIndex < menuItemGroups.length - 1 && (
-                      <Separator className="my-4" />
+                      <Separator className="my-4 dark:bg-[#3a3a3a]" />
                     )}
                   </React.Fragment>
                 ))}

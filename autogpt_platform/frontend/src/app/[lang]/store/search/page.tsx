@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AutoGPTServerAPIClient from "@/lib/autogpt-server-api/client";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { SearchBar } from "@/components/agptui/SearchBar";
@@ -9,63 +9,67 @@ import { Separator } from "@/components/ui/separator";
 import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
 import { SortDropdown } from "@/components/agptui/SortDropdown";
 
-export default async function Page({
+export default function Page({
   params,
   searchParams,
 }: {
   params: { lang: string };
   searchParams: { searchTerm?: string; sort?: string };
 }) {
-  const search_term = searchParams.searchTerm || "";
-  const sort = searchParams.sort || "trending";
-  
-  const api = new AutoGPTServerAPIClient();
-  const { agents } = await api.getStoreAgents({ 
-    search_query: search_term,
-    sorted_by: sort 
-  });
-  const { creators } = await api.getStoreCreators({
-    search_query: search_term,
-  });
-
-  const agentsCount = agents?.length || 0;
-  const creatorsCount = creators?.length || 0;
-  const totalCount = agentsCount + creatorsCount;
-
-  // Move state to client component
   return (
     <SearchResults 
-      search_term={search_term}
-      agents={agents}
-      creators={creators}
-      agentsCount={agentsCount} 
-      creatorsCount={creatorsCount}
-      totalCount={totalCount}
+      searchTerm={searchParams.searchTerm || ""}
+      sort={searchParams.sort || "trending"}
     />
   );
 }
 
 function SearchResults({
-  search_term,
-  agents,
-  creators,
-  agentsCount,
-  creatorsCount, 
-  totalCount
+  searchTerm,
+  sort
 }: {
-  search_term: string;
-  agents: any[];
-  creators: any[];
-  agentsCount: number;
-  creatorsCount: number;
-  totalCount: number;
+  searchTerm: string;
+  sort: string;
 }) {
-  const [filter, setFilter] = useState("all");
   const [showAgents, setShowAgents] = useState(true);
   const [showCreators, setShowCreators] = useState(true);
+  const [agents, setAgents] = useState<any[]>([]);
+  const [creators, setCreators] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      const api = new AutoGPTServerAPIClient();
+      
+      try {
+        const [agentsRes, creatorsRes] = await Promise.all([
+          api.getStoreAgents({ 
+            search_query: searchTerm,
+            sorted_by: sort 
+          }),
+          api.getStoreCreators({
+            search_query: searchTerm,
+          })
+        ]);
+
+        setAgents(agentsRes.agents || []);
+        setCreators(creatorsRes.creators || []);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [searchTerm, sort]);
+
+  const agentsCount = agents.length;
+  const creatorsCount = creators.length;
+  const totalCount = agentsCount + creatorsCount;
 
   const handleFilterChange = (value: string) => {
-    setFilter(value);
     if (value === "agents") {
       setShowAgents(true);
       setShowCreators(false);
@@ -79,15 +83,15 @@ function SearchResults({
   };
 
   return (
-    <div className="w-full bg-white">
-      <div className="px-10 max-w-[1440px] mx-auto min-h-screen">
+    <div className="w-full">
+      <div className="px-10 max-w-[1440px] lg:min-w-[1440px] mx-auto min-h-screen">
         <div className="flex items-center mt-8">
           <div className="flex-1">
-            <h2 className="font-['Poppins'] text-base font-medium text-neutral-800">
+            <h2 className="font-['Poppins'] text-base font-medium text-neutral-800 dark:text-neutral-200">
               Results for:
             </h2>
-            <h1 className="font-['Poppins'] text-2xl font-semibold text-neutral-800">
-              {search_term}
+            <h1 className="font-['Poppins'] text-2xl font-semibold text-neutral-800 dark:text-neutral-100">
+              {searchTerm}
             </h1>
           </div>
           <div className="flex-none">
@@ -95,7 +99,11 @@ function SearchResults({
           </div>
         </div>
 
-        {totalCount > 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center mt-20">
+            <p className="text-neutral-500 dark:text-neutral-400">Loading...</p>
+          </div>
+        ) : totalCount > 0 ? (
           <>
             <div className="mt-8 flex justify-between items-center">
               <SearchFilterChips 
@@ -122,8 +130,8 @@ function SearchResults({
           </>
         ) : (
           <div className="flex flex-col items-center justify-center mt-20">
-            <h3 className="text-xl font-medium text-neutral-600 mb-2">No results found</h3>
-            <p className="text-neutral-500">Try adjusting your search terms or filters</p>
+            <h3 className="text-xl font-medium text-neutral-600 dark:text-neutral-300 mb-2">No results found</h3>
+            <p className="text-neutral-500 dark:text-neutral-400">Try adjusting your search terms or filters</p>
           </div>
         )}
       </div>

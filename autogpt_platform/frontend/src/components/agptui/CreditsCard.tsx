@@ -29,7 +29,7 @@ const CreditsCard = ({ credits }: CreditsCardProps) => {
       </div>
       <button
         onClick={onRefresh}
-        className="h-6 w-6 transition-colors hover:text-neutral-700"
+        className="h-6 w-6 transition-colors hover:text-neutral-700 dark:hover:text-neutral-300"
         aria-label="Refresh credits"
       >
         <IconRefresh className="h-6 w-6" />
