@@ -12,12 +12,14 @@ interface SearchFilterChipsProps {
   totalCount?: number;
   agentsCount?: number;
   creatorsCount?: number;
+  onFilterChange?: (value: string) => void;
 }
 
 export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
   totalCount = 10,
   agentsCount = 8,
   creatorsCount = 2,
+  onFilterChange,
 }) => {
   const [selected, setSelected] = React.useState("all");
 
@@ -29,6 +31,7 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
 
   const handleFilterClick = (value: string) => {
     setSelected(value);
+    onFilterChange?.(value);
     console.log(`Filter selected: ${value}`);
   };
 

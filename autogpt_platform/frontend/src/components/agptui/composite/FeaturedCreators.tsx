@@ -13,11 +13,13 @@ export interface FeaturedCreator {
 }
 
 interface FeaturedCreatorsProps {
+  title?: string;
   featuredCreators: FeaturedCreator[];
 }
 
 export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
   featuredCreators,
+  title = "Featured Creators",
 }) => {
   const router = useRouter();
 
@@ -32,7 +34,7 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
     <div className="flex w-full flex-col items-center justify-center py-16">
       <div className="w-full max-w-[1360px]">
         <h2 className="font-poppins mb-8 text-2xl font-semibold leading-7 text-neutral-800">
-          Featured creators
+          {title}
         </h2>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
