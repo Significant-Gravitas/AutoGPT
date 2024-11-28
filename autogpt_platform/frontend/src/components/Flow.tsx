@@ -661,9 +661,10 @@ const FlowEditor: React.FC<{
           deleteKeyCode={["Backspace", "Delete"]}
           minZoom={0.2}
           maxZoom={2}
+          className="dark:bg-slate-900"
         >
           <Controls />
-          <Background />
+          <Background className="dark:bg-slate-800" />
           <ControlPanel
             className="absolute z-10"
             controls={editorControls}
