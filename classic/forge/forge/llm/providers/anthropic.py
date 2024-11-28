@@ -180,7 +180,6 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         """Create a completion using the Anthropic API."""
         anthropic_messages, completion_kwargs = self._get_chat_completion_args(
             prompt_messages=model_prompt,
-            model=model_name,
             functions=functions,
             max_output_tokens=max_output_tokens,
             **kwargs,

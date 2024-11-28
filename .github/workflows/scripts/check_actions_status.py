@@ -7,13 +7,18 @@ from typing import Dict, List, Tuple
 
 CHECK_INTERVAL = 30
 
+
 def get_environment_variables() -> Tuple[str, str, str, str, str]:
     """Retrieve and return necessary environment variables."""
     try:
         with open(os.environ["GITHUB_EVENT_PATH"]) as f:
             event = json.load(f)
 
-        sha = event["pull_request"]["head"]["sha"]
+        # Handle both PR and merge group events
+        if "pull_request" in event:
+            sha = event["pull_request"]["head"]["sha"]
+        else:
+            sha = os.environ["GITHUB_SHA"]
 
         return (
             os.environ["GITHUB_API_URL"],

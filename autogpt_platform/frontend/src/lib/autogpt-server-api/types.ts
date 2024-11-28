@@ -56,6 +56,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  hidden?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
@@ -259,6 +260,7 @@ export type NodeExecutionResult = {
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
+  provider: CredentialsProviderName;
   type: CredentialsType;
   title?: string;
   scopes?: Array<string>;
@@ -269,6 +271,13 @@ export type CredentialsMetaResponse = {
 export type CredentialsDeleteResponse = {
   deleted: true;
   revoked: boolean | null;
+};
+
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+export type CredentialsDeleteNeedConfirmationResponse = {
+  deleted: false;
+  need_confirmation: true;
+  message: string;
 };
 
 /* Mirror of backend/data/model.py:CredentialsMetaInput */
@@ -284,7 +293,7 @@ type BaseCredentials = {
   id: string;
   type: CredentialsType;
   title?: string;
-  provider: string;
+  provider: CredentialsProviderName;
 };
 
 /* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
@@ -317,6 +326,7 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  WEBHOOK = "Webhook",
   AGENT = "Agent",
 }
 
