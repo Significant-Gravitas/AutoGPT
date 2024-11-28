@@ -94,7 +94,7 @@ export const SaveControl = ({
               data-testid="blocks-control-save-button"
               name="Save"
             >
-              <IconSave />
+              <IconSave className="dark:text-gray-300" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -106,10 +106,10 @@ export const SaveControl = ({
         align="start"
         data-id="save-control-popover-content"
       >
-        <Card className="border-none shadow-none">
+        <Card className="border-none shadow-none dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="grid gap-3">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name" className="dark:text-gray-300">Name</Label>
               <Input
                 id="name"
                 placeholder="Enter your agent name"
@@ -120,7 +120,7 @@ export const SaveControl = ({
                 data-testid="save-control-name-input"
                 maxLength={100}
               />
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description" className="dark:text-gray-300">Description</Label>
               <Input
                 id="description"
                 placeholder="Your agent description"
@@ -133,7 +133,7 @@ export const SaveControl = ({
               />
               {agentMeta?.version && (
                 <>
-                  <Label htmlFor="version">Version</Label>
+                  <Label htmlFor="version" className="dark:text-gray-300">Version</Label>
                   <Input
                     id="version"
                     placeholder="Version"
@@ -148,26 +148,13 @@ export const SaveControl = ({
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
             <Button
-              className="w-full"
+              className="w-full dark:hover:bg-slate-800 dark:bg-slate-700 dark:text-slate-100"
               onClick={handleSave}
               data-id="save-control-save-agent"
               data-testid="save-control-save-agent-button"
             >
               Save {getType()}
             </Button>
-            {!agentMeta && (
-              <Button
-                variant="secondary"
-                className="w-full"
-                data-id="save-control-template-button"
-                onClick={() => {
-                  isTemplate = true;
-                  handleSave();
-                }}
-              >
-                Save as Template
-              </Button>
-            )}
           </CardFooter>
         </Card>
       </PopoverContent>
