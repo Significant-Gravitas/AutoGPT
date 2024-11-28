@@ -72,18 +72,8 @@ for model in LlmModel:
 
 
 LLM_COST = (
+    # Anthropic Models
     [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "api_key": None,  # Running LLM with user own API key is free.
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-    ]
-    + [
         BlockCost(
             cost_type=BlockCostType.RUN,
             cost_filter={
@@ -99,6 +89,7 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "anthropic"
     ]
+    # OpenAI Models
     + [
         BlockCost(
             cost_type=BlockCostType.RUN,
@@ -115,6 +106,7 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "openai"
     ]
+    # Groq Models
     + [
         BlockCost(
             cost_type=BlockCostType.RUN,
@@ -126,13 +118,6 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "groq"
-    ]
-    + [
-        BlockCost(
-            # Default cost is running LlmModel.GPT4O.
-            cost_amount=MODEL_COST[LlmModel.GPT4O],
-            cost_filter={"api_key": None},
-        ),
     ]
     # Open Router Models
     + [
@@ -150,6 +135,13 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "open_router"
+    ]
+    + [
+        BlockCost(
+            # Default cost is running LlmModel.GPT4O.
+            cost_amount=MODEL_COST[LlmModel.GPT4O],
+            cost_filter={"api_key": None},
+        ),
     ]
 )
 
