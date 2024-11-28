@@ -436,17 +436,22 @@ export function CustomNode({
     "bg-white/[.9] dark:bg-gray-800/[.9]",
     "border border-gray-300 dark:border-gray-600",
     data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
-    data.uiType === BlockUIType.NOTE ? "bg-yellow-100 dark:bg-yellow-900" : "bg-white dark:bg-gray-800",
+    data.uiType === BlockUIType.NOTE
+      ? "bg-yellow-100 dark:bg-yellow-900"
+      : "bg-white dark:bg-gray-800",
     selected ? "shadow-2xl" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const errorClass =
-    hasConfigErrors || hasOutputError ? "border-red-200 dark:border-red-800 border-2" : "";
+    hasConfigErrors || hasOutputError
+      ? "border-red-200 dark:border-red-800 border-2"
+      : "";
 
   const statusClass = (() => {
-    if (hasConfigErrors || hasOutputError) return "border-red-200 dark:border-red-800 border-4";
+    if (hasConfigErrors || hasOutputError)
+      return "border-red-200 dark:border-red-800 border-4";
     switch (data.status?.toLowerCase()) {
       case "completed":
         return "border-green-200 dark:border-green-800 border-4";
@@ -501,13 +506,13 @@ export function CustomNode({
     );
 
   const LineSeparator = () => (
-    <div className="bg-white dark:bg-gray-800 pt-6">
+    <div className="bg-white pt-6 dark:bg-gray-800">
       <Separator.Root className="h-[1px] w-full bg-gray-300 dark:bg-gray-600"></Separator.Root>
     </div>
   );
 
   const ContextMenuContent = () => (
-    <ContextMenu.Content className="z-10 rounded-xl border bg-white dark:bg-gray-800 p-1 shadow-md">
+    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
       <ContextMenu.Item
         onSelect={copyNode}
         className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -586,7 +591,7 @@ export function CustomNode({
           <Badge
             key={category.category}
             variant="outline"
-            className={`mr-5 ${getPrimaryCategoryColor([category])} whitespace-nowrap rounded-xl border border-gray-300 dark:border-gray-600 opacity-50`}
+            className={`mr-5 ${getPrimaryCategoryColor([category])} whitespace-nowrap rounded-xl border border-gray-300 opacity-50 dark:border-gray-600`}
           >
             {beautifyString(category.category.toLowerCase())}
           </Badge>

@@ -978,7 +978,9 @@ const NodeBooleanInput: FC<{
           defaultChecked={value}
           onCheckedChange={(v) => handleInputChange(selfKey, v)}
         />
-        {displayName && <span className="ml-3 dark:text-gray-300">{displayName}</span>}
+        {displayName && (
+          <span className="ml-3 dark:text-gray-300">{displayName}</span>
+        )}
       </div>
       {error && <span className="error-message">{error}</span>}
     </div>
