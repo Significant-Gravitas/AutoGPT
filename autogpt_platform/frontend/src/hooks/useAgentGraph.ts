@@ -777,6 +777,7 @@ export default function useAgentGraph(
                     ),
                     status: undefined,
                     backend_id: backendNode.id,
+                    webhookId: backendNode.webhook_id,
                     executionResults: [],
                   },
                 }
