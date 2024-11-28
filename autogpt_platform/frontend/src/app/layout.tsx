@@ -83,7 +83,6 @@ export default async function RootLayout({
                     {
                       icon: IconType.UploadCloud,
                       text: "Publish an agent",
-                      href: "/store/publish",
                     },
                   ],
                 },

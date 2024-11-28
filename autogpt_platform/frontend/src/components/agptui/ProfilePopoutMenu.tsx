@@ -19,6 +19,7 @@ import {
 } from "../ui/icons";
 import Link from "next/link";
 import { ProfilePopoutMenuLogoutButton } from "./ProfilePopoutMenuLogoutButton";
+import { PublishAgentPopout } from "./composite/PublishAgentPopout";
 
 interface ProfilePopoutMenuProps {
   userName?: string;
@@ -132,6 +133,24 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
                   );
                 } else if (item.text === "Log out") {
                   return <ProfilePopoutMenuLogoutButton key={itemIndex} />;
+                } else if (item.text === "Publish an agent") {
+                  return (
+                    <PublishAgentPopout
+                      key={itemIndex}
+                      trigger={
+                        <div 
+                          className="inline-flex w-full items-center justify-start gap-2.5"
+                        >
+                          <div className="relative h-6 w-6">
+                            {getIcon(item.icon)}
+                          </div>
+                          <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800">
+                            {item.text}
+                          </div>
+                        </div>
+                      }
+                    />
+                  );
                 } else {
                   return (
                     <div
