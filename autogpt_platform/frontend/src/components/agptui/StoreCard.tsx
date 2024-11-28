@@ -32,7 +32,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] transition-all duration-300 hover:shadow-lg"
+      className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white dark:bg-gray-800 transition-all duration-300 hover:shadow-lg dark:hover:shadow-gray-700"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -55,7 +55,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         />
         {!hideAvatar && (
           <div className="absolute bottom-4 left-4">
-            <Avatar className="h-16 w-16 border-2 border-white">
+            <Avatar className="h-16 w-16 border-2 border-white dark:border-gray-800">
               <AvatarImage
                 src={avatarSrc}
                 alt={`${creatorName || agentName} creator avatar`}
@@ -69,29 +69,29 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       </div>
 
       {/* Content Section */}
-      <div className="w-full px-1 py-4">
+      <div className="w-full px-2 py-4">
         {/* Title and Creator */}
-        <h3 className="mb-2 font-['Poppins'] text-2xl font-semibold leading-tight text-[#272727]">
+        <h3 className="mb-2 font-['Poppins'] text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (
-          <p className="mb-4 font-['Geist'] text-base font-normal text-neutral-600">
+          <p className="mb-4 font-['Geist'] text-base font-normal text-neutral-600 dark:text-neutral-400">
             by {creatorName}
           </p>
         )}
 
         {/* Description */}
-        <p className="mb-4 line-clamp-3 font-['Geist'] text-base font-normal leading-normal text-neutral-600">
+        <p className="mb-4 line-clamp-3 font-['Geist'] text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {description}
         </p>
 
         {/* Stats Row */}
         <div className="flex items-center justify-between">
-          <div className="font-['Geist'] text-lg font-semibold text-neutral-800">
+          <div className="font-['Geist'] text-lg font-semibold text-neutral-800 dark:text-neutral-200">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-['Geist'] text-lg font-semibold text-neutral-800">
+            <span className="font-['Geist'] text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {rating.toFixed(1)}
             </span>
             <div

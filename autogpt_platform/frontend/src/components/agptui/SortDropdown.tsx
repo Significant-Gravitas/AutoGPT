@@ -33,16 +33,16 @@ export const SortDropdown: React.FC = () => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-1.5 focus:outline-none">
-        <span className="text-neutral-800 text-base font-medium">Sort by</span>
-        <span className="text-neutral-800 text-base font-medium">{selected.label}</span>
-        <ChevronDownIcon className="h-4 w-4 text-neutral-800" />
+        <span className="text-neutral-800 dark:text-neutral-200 text-base font-medium">Sort by</span>
+        <span className="text-neutral-800 dark:text-neutral-200 text-base font-medium">{selected.label}</span>
+        <ChevronDownIcon className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[200px] bg-white rounded-lg shadow-lg">
+      <DropdownMenuContent align="end" className="w-[200px] bg-white dark:bg-neutral-800 rounded-lg shadow-lg">
         {sortOptions.map((option) => (
           <DropdownMenuItem
             key={option.value}
-            className={`px-4 py-2 text-base cursor-pointer hover:bg-neutral-100 ${
-              selected.value === option.value ? "text-neutral-800 font-medium" : "text-neutral-600"
+            className={`px-4 py-2 text-base cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+              selected.value === option.value ? "text-neutral-800 dark:text-neutral-200 font-medium" : "text-neutral-600 dark:text-neutral-400"
             }`}
             onClick={() => handleSelect(option)}
           >

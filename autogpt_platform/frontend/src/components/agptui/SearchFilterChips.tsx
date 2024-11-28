@@ -43,8 +43,8 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
           onClick={() => handleFilterClick(filter.value)}
           className={`px-5 py-2 rounded-[34px] flex items-center gap-2.5 ${
             selected === filter.value
-              ? "bg-neutral-800 text-white"
-              : "border border-neutral-600 text-neutral-800"
+              ? "bg-neutral-800 dark:bg-neutral-100 text-white dark:text-neutral-900"
+              : "border border-neutral-600 dark:border-neutral-400 text-neutral-800 dark:text-neutral-200"
           }`}
         >
           <span className={`text-base ${selected === filter.value ? "font-medium" : ""}`}>

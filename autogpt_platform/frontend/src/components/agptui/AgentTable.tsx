@@ -13,7 +13,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
     <div className="w-full">
       {/* Table header - Hide on mobile */}
       <div className="hidden flex-col md:flex">
-        <div className="border-t border-neutral-300" />
+        <div className="border-t border-neutral-300 dark:border-neutral-700" />
         <div className="flex items-center px-4 py-2">
           <div className="flex items-center">
             <div className="flex min-w-[120px] items-center">
@@ -21,34 +21,36 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
                 type="checkbox"
                 id="selectAllAgents"
                 aria-label="Select all agents"
-                className="mr-4 h-5 w-5 rounded border-2 border-neutral-400"
+                className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
               />
               <label
                 htmlFor="selectAllAgents"
-                className="text-sm font-medium text-neutral-800"
+                className="text-sm font-medium text-neutral-800 dark:text-neutral-200"
               >
                 Select all
               </label>
             </div>
           </div>
           <div className="ml-2 grid w-full grid-cols-[400px,150px,150px,100px,100px,50px] items-center">
-            <div className="text-sm font-medium text-neutral-800">
+            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Agent info
             </div>
-            <div className="text-sm font-medium text-neutral-800">
+            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Date submitted
             </div>
-            <div className="text-sm font-medium text-neutral-800">Status</div>
-            <div className="text-right text-sm font-medium text-neutral-800">
+            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+              Status
+            </div>
+            <div className="text-right text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Runs
             </div>
-            <div className="text-right text-sm font-medium text-neutral-800">
+            <div className="text-right text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Reviews
             </div>
             <div></div>
           </div>
         </div>
-        <div className="border-b border-neutral-300" />
+        <div className="border-b border-neutral-300 dark:border-neutral-700" />
       </div>
 
       {/* Table body */}
@@ -64,7 +66,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
           ))}
         </div>
       ) : (
-        <div className="py-4 text-center font-['Geist'] text-base text-neutral-600">
+        <div className="py-4 text-center font-['Geist'] text-base text-neutral-600 dark:text-neutral-400">
           No agents available. Create your first agent to get started!
         </div>
       )}

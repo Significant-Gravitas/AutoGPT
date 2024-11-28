@@ -147,7 +147,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
               Display name
             </label>
-            <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700">
+            <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
               <input
                 type="text"
                 name="displayName"
@@ -169,7 +169,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
               Handle
             </label>
-            <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700">
+            <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
               <input
                 type="text"
                 name="handle"
@@ -191,7 +191,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
               Bio
             </label>
-            <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4 dark:border-slate-700">
+            <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4 dark:border-slate-700 dark:bg-slate-800">
               <textarea
                 name="bio"
                 defaultValue={profileData.description}
@@ -224,7 +224,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                     <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
                       Link {linkNum}
                     </label>
-                    <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700">
+                    <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                       <input
                         type="text"
                         name={`link${linkNum}`}
