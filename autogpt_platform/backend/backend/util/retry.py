@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import threading
@@ -20,7 +21,14 @@ def _log_prefix(resource_name: str, conn_id: str):
     return f"[PID-{os.getpid()}|THREAD-{threading.get_native_id()}|{get_service_name()}|{resource_name}-{conn_id}]"
 
 
-def conn_retry(resource_name: str, action_name: str, max_retry: int = 5):
+def conn_retry(
+    resource_name: str,
+    action_name: str,
+    max_retry: int = 5,
+    multiplier: int = 1,
+    min_wait: float = 1,
+    max_wait: float = 30,
+):
     conn_id = str(uuid4())
 
     def on_retry(retry_state):
@@ -29,27 +37,39 @@ def conn_retry(resource_name: str, action_name: str, max_retry: int = 5):
         logger.error(f"{prefix} {action_name} failed: {exception}. Retrying now...")
 
     def decorator(func):
+        is_coroutine = asyncio.iscoroutinefunction(func)
+        retry_decorator = retry(
+            stop=stop_after_attempt(max_retry + 1),
+            wait=wait_exponential(multiplier=multiplier, min=min_wait, max=max_wait),
+            before_sleep=on_retry,
+            reraise=True,
+        )
+        wrapped_func = retry_decorator(func)
+
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def sync_wrapper(*args, **kwargs):
             prefix = _log_prefix(resource_name, conn_id)
             logger.info(f"{prefix} {action_name} started...")
-
-            # Define the retrying strategy
-            retrying_func = retry(
-                stop=stop_after_attempt(max_retry + 1),
-                wait=wait_exponential(multiplier=1, min=1, max=30),
-                before_sleep=on_retry,
-                reraise=True,
-            )(func)
-
             try:
-                result = retrying_func(*args, **kwargs)
+                result = wrapped_func(*args, **kwargs)
                 logger.info(f"{prefix} {action_name} completed successfully.")
                 return result
             except Exception as e:
                 logger.error(f"{prefix} {action_name} failed after retries: {e}")
                 raise
 
-        return wrapper
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            prefix = _log_prefix(resource_name, conn_id)
+            logger.info(f"{prefix} {action_name} started...")
+            try:
+                result = await wrapped_func(*args, **kwargs)
+                logger.info(f"{prefix} {action_name} completed successfully.")
+                return result
+            except Exception as e:
+                logger.error(f"{prefix} {action_name} failed after retries: {e}")
+                raise
+
+        return async_wrapper if is_coroutine else sync_wrapper
 
     return decorator
