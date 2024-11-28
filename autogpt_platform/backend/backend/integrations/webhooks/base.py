@@ -81,7 +81,9 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     # --8<-- [end:BaseWebhooksManager3]
 
     # --8<-- [start:BaseWebhooksManager5]
-    async def trigger_ping(self, webhook: integrations.Webhook) -> None:
+    async def trigger_ping(
+        self, webhook: integrations.Webhook, credentials: Credentials | None
+    ) -> None:
         """
         Triggers a ping to the given webhook.
 
