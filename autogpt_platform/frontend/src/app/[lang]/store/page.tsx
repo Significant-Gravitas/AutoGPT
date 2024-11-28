@@ -113,8 +113,7 @@ export default async function Page({
         />
         <Separator />
         <BecomeACreator
-          title="Want to contribute?"
-          heading="We're always looking for more Creators!"
+          title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
         />

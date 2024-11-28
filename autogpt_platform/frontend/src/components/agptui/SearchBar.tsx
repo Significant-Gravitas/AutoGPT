@@ -41,12 +41,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   return (
     <form
       onSubmit={handleSubmit}
-      className={width}
       data-testid="store-search-bar"
+      className={`${width} h-12 px-4 py-2 md:h-[4.5rem] md:px-6 md:py-1 ${backgroundColor} flex items-center justify-center gap-2 rounded-full md:gap-5`}
+
     >
-      <div
-        className={`h-12 px-4 py-2 md:h-[4.5rem] md:px-6 md:py-1 ${backgroundColor} flex items-center gap-2 rounded-full md:gap-5`}
-      >
         <MagnifyingGlassIcon className={`h-5 w-5 md:h-7 md:w-7 ${iconColor}`} />
         <input
           type="text"
@@ -56,7 +54,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           className={`flex-grow border-none bg-transparent ${textColor} font-['Geist'] text-lg font-normal leading-[2.25rem] tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-none`}
           data-testid="store-search-input"
         />
-      </div>
     </form>
   );
 };

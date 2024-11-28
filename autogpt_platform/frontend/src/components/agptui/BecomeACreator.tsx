@@ -26,8 +26,8 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       <div className="absolute left-0 top-0 h-px w-full bg-gray-200" />
 
       {/* Title */}
-      <div className="absolute left-4 top-[26px] text-base font-normal leading-7 text-neutral-800 md:left-6 md:text-lg lg:left-8">
-        {title.toLowerCase()}
+      <div className="absolute left-4 top-[26px] text-base font-semibold leading-7 font-['Poppins'] text-neutral-800 md:left-6 md:text-lg lg:left-8">
+        {title}
       </div>
 
       {/* Content Container */}
