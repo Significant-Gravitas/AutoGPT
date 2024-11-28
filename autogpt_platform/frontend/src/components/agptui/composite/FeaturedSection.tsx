@@ -107,8 +107,8 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
                 key={index}
                 className={`${
                   currentSlide === index
-                    ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 dark:bg-neutral-200 transition-all duration-500"
-                    : "h-3 w-3 rounded-full bg-neutral-300 dark:bg-neutral-600 transition-all duration-500"
+                    ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
+                    : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600"
                 }`}
               />
             ))}
@@ -116,13 +116,13 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={handlePrevSlide}
-              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 bg-white dark:border-neutral-600 dark:bg-neutral-800"
             >
               <IconLeftArrow className="h-8 w-8 text-neutral-800 dark:text-neutral-200" />
             </button>
             <button
               onClick={handleNextSlide}
-              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-900 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-900 bg-white dark:border-neutral-600 dark:bg-neutral-800"
             >
               <IconRightArrow className="h-8 w-8 text-neutral-800 dark:text-neutral-200" />
             </button>

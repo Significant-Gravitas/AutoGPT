@@ -90,7 +90,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
 
       <PopoverContent
         id={popupId}
-        className="flex h-[380px] w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 dark:bg-zinc-800/70 p-6 shadow backdrop-blur-2xl"
+        className="flex h-[380px] w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
       >
         {/* Header with avatar and user info */}
         <div className="inline-flex items-center justify-start gap-4 self-stretch">
@@ -115,7 +115,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
           {menuItemGroups.map((group, groupIndex) => (
             <div
               key={groupIndex}
-              className="flex w-full flex-col items-start justify-start gap-5 rounded-[18px] bg-white dark:bg-neutral-900 p-3.5"
+              className="flex w-full flex-col items-start justify-start gap-5 rounded-[18px] bg-white p-3.5 dark:bg-neutral-900"
             >
               {group.items.map((item, itemIndex) => {
                 if (item.href) {
@@ -125,7 +125,9 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
                       href={item.href}
                       className="inline-flex w-full items-center justify-start gap-2.5"
                     >
-                      <div className="relative h-6 w-6">{getIcon(item.icon)}</div>
+                      <div className="relative h-6 w-6">
+                        {getIcon(item.icon)}
+                      </div>
                       <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                         {item.text}
                       </div>
@@ -138,9 +140,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
                     <PublishAgentPopout
                       key={itemIndex}
                       trigger={
-                        <div 
-                          className="inline-flex w-full items-center justify-start gap-2.5"
-                        >
+                        <div className="inline-flex w-full items-center justify-start gap-2.5">
                           <div className="relative h-6 w-6">
                             {getIcon(item.icon)}
                           </div>
@@ -160,7 +160,9 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
                       role="button"
                       tabIndex={0}
                     >
-                      <div className="relative h-6 w-6">{getIcon(item.icon)}</div>
+                      <div className="relative h-6 w-6">
+                        {getIcon(item.icon)}
+                      </div>
                       <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                         {item.text}
                       </div>

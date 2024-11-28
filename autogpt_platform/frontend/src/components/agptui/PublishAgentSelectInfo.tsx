@@ -136,7 +136,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
             aria-label="Close"
           >
-            <IconClose size="default" className="text-neutral-600 dark:text-neutral-300" />
+            <IconClose
+              size="default"
+              className="text-neutral-600 dark:text-neutral-300"
+            />
           </button>
         </div>
         <h2 className="text-center font-['Poppins'] text-2xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100">
@@ -238,7 +241,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       onChange={handleAddImage}
                       className="hidden"
                     />
-                    <IconPlus size="lg" className="text-neutral-600 dark:text-neutral-300" />
+                    <IconPlus
+                      size="lg"
+                      className="text-neutral-600 dark:text-neutral-300"
+                    />
                     <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600 dark:text-neutral-300">
                       Add image
                     </span>
@@ -263,7 +269,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white bg-opacity-70 transition-opacity hover:bg-opacity-100 dark:bg-gray-800 dark:bg-opacity-70 dark:hover:bg-opacity-100"
                       aria-label="Remove image"
                     >
-                      <IconClose size="sm" className="text-neutral-600 dark:text-neutral-300" />
+                      <IconClose
+                        size="sm"
+                        className="text-neutral-600 dark:text-neutral-300"
+                      />
                     </button>
                   </div>
                 ))}
@@ -272,7 +281,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                   variant="ghost"
                   className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600"
                 >
-                  <IconPlus size="lg" className="text-neutral-600 dark:text-neutral-300" />
+                  <IconPlus
+                    size="lg"
+                    className="text-neutral-600 dark:text-neutral-300"
+                  />
                   <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600 dark:text-neutral-300">
                     Add image
                   </span>
@@ -358,7 +370,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           onClick={onBack}
           variant="outline"
           size="default"
-          className="w-full sm:flex-1 dark:border-slate-700 dark:text-slate-300"
+          className="w-full dark:border-slate-700 dark:text-slate-300 sm:flex-1"
         >
           Back
         </Button>
@@ -366,7 +378,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           onClick={handleSubmit}
           variant="default"
           size="default"
-          className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1 dark:bg-neutral-600 dark:hover:bg-neutral-500"
+          className="w-full bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 sm:flex-1"
         >
           Submit for review
         </Button>

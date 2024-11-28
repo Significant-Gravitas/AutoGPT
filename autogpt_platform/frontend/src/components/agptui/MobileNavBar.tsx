@@ -129,7 +129,7 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
       <PopoverTrigger asChild>
         <Button
           aria-label="Open menu"
-          className="fixed right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:bg-neutral-800 dark:border-neutral-700 dark:hover:bg-gray-700/50 md:hidden"
+          className="fixed right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50 md:hidden"
         >
           {isOpen ? (
             <IconChevronUp className="h-8 w-8 stroke-black dark:stroke-white" />

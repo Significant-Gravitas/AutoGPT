@@ -34,8 +34,8 @@ export const SettingsInputForm = ({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1077px] px-4 pt-8 sm:px-6 sm:pt-16 bg-white dark:bg-neutral-900">
-      <h1 className="mb-8 text-2xl font-semibold sm:mb-16 sm:text-3xl text-slate-950 dark:text-slate-200">
+    <div className="mx-auto w-full max-w-[1077px] bg-white px-4 pt-8 dark:bg-neutral-900 sm:px-6 sm:pt-16">
+      <h1 className="mb-8 text-2xl font-semibold text-slate-950 dark:text-slate-200 sm:mb-16 sm:text-3xl">
         Settings
       </h1>
 
@@ -60,7 +60,7 @@ export const SettingsInputForm = ({
                 id="email-input"
                 type="email"
                 value={email}
-                className="w-full rounded-full border border-neutral-200 dark:border-neutral-700 bg-transparent px-4 py-2.5 text-base text-slate-950 dark:text-white"
+                className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base text-slate-950 dark:border-neutral-700 dark:text-white"
                 readOnly
                 aria-label="Email address"
               />
@@ -79,7 +79,7 @@ export const SettingsInputForm = ({
                 id="password-input"
                 type="password"
                 value="************"
-                className="w-full rounded-full border border-neutral-200 dark:border-neutral-700 bg-transparent px-4 py-2.5 text-base text-slate-950 dark:text-white"
+                className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base text-slate-950 dark:border-neutral-700 dark:text-white"
                 readOnly
                 aria-label="Password field"
               />
@@ -154,13 +154,13 @@ export const SettingsInputForm = ({
         <div className="flex gap-3">
           <Button
             variant="secondary"
-            className="h-[50px] rounded-[35px] bg-neutral-200 dark:bg-neutral-700 px-6 py-3 font-['Geist'] text-base font-medium text-neutral-800 dark:text-neutral-200 transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-600"
+            className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 font-['Geist'] text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600"
           >
             Cancel
           </Button>
           <Button
             variant="default"
-            className="h-[50px] rounded-[35px] bg-neutral-800 dark:bg-neutral-900 px-6 py-3 font-['Geist'] text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:hover:bg-neutral-800"
+            className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-['Geist'] text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-900 dark:hover:bg-neutral-800"
           >
             Save changes
           </Button>

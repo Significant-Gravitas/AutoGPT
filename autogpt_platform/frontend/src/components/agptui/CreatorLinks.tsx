@@ -21,7 +21,9 @@ export const CreatorLinks: React.FC<CreatorLinksProps> = ({ links }) => {
         {new URL(url).hostname.replace("www.", "")}
       </div>
       <div className="relative h-6 w-6">
-        {getIconForSocial(url, { className: "h-6 w-6 text-neutral-800 dark:text-neutral-200" })}
+        {getIconForSocial(url, {
+          className: "h-6 w-6 text-neutral-800 dark:text-neutral-200",
+        })}
       </div>
     </a>
   );

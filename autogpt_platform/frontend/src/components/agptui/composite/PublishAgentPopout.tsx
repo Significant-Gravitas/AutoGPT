@@ -163,7 +163,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       case "select":
         return (
           <div className="flex min-h-screen items-center justify-center">
-            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white dark:bg-gray-800 shadow-lg">
+            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
               <div className="h-full overflow-y-auto">
                 <PublishAgentSelect
                   agents={
@@ -188,7 +188,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       case "info":
         return (
           <div className="flex min-h-screen items-center justify-center">
-            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white dark:bg-gray-800 shadow-lg">
+            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
               <div className="h-[700px] overflow-y-auto">
                 <PublishAgentInfo
                   onBack={handleBack}
@@ -202,7 +202,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       case "review":
         return publishData ? (
           <div className="flex justify-center">
-            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white dark:bg-gray-800 shadow-lg">
+            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
               <div className="h-[600px] overflow-y-auto">
                 <PublishAgentAwaitingReview
                   agentName={publishData.name}

@@ -50,15 +50,18 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white dark:bg-gray-800 shadow-lg">
-      <div className="relative border-b border-slate-200 dark:border-slate-700 p-4 sm:p-6">
+    <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
+      <div className="relative border-b border-slate-200 p-4 dark:border-slate-700 sm:p-6">
         <div className="absolute right-4 top-4">
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 transition-colors hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
             aria-label="Close"
           >
-            <IconClose size="default" className="text-neutral-600 dark:text-neutral-400" />
+            <IconClose
+              size="default"
+              className="text-neutral-600 dark:text-neutral-400"
+            />
           </button>
         </div>
         <h2 className="mb-2 text-center font-['Poppins'] text-xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100 sm:text-2xl">
@@ -144,7 +147,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-between gap-4 border-t border-slate-200 dark:border-slate-700 p-4 sm:p-6">
+          <div className="flex justify-between gap-4 border-t border-slate-200 p-4 dark:border-slate-700 sm:p-6">
             <Button
               onClick={onCancel}
               variant="outline"

@@ -95,7 +95,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           {categories.map((category, index) => (
             <div
               key={index}
-              className="whitespace-nowrap rounded-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-0.5 text-xs text-neutral-800 dark:text-neutral-200 sm:px-3 sm:py-1 sm:text-sm"
+              className="whitespace-nowrap rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-xs text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-3 sm:py-1 sm:text-sm"
             >
               {category}
             </div>
@@ -112,7 +112,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           {[1, 2, 3, 4, 5].map((star) => (
             <IconStar
               key={star}
-              className="h-4 w-4 cursor-pointer text-neutral-300 dark:text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 sm:h-5 sm:w-5"
+              className="h-4 w-4 cursor-pointer text-neutral-300 hover:text-neutral-800 dark:text-neutral-500 dark:hover:text-neutral-200 sm:h-5 sm:w-5"
             />
           ))}
         </div>
