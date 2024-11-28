@@ -10,72 +10,25 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
-    agents: { control: "object" },
-    onOpenBuilder: { action: "onOpenBuilder" },
+    trigger: { control: "object" },
   },
 } satisfies Meta<typeof PublishAgentPopout>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const mockAgents = [
-  {
-    name: "Marketing Assistant",
-    lastEdited: "2 days ago",
-    imageSrc: "https://picsum.photos/seed/marketing/300/200",
-  },
-  {
-    name: "Sales Bot",
-    lastEdited: "5 days ago",
-    imageSrc: "https://picsum.photos/seed/sales/300/200",
-  },
-  {
-    name: "Content Writer",
-    lastEdited: "1 week ago",
-    imageSrc: "https://picsum.photos/seed/content/300/200",
-  },
-];
-
 export const Default: Story = {
-  args: {
-    agents: mockAgents,
-  },
+  args: {},
 };
 
 export const WithCustomTrigger: Story = {
   args: {
-    agents: mockAgents,
     trigger: <button>Custom Publish Button</button>,
   },
 };
 
-export const EmptyAgentsList: Story = {
-  args: {
-    agents: [],
-  },
-};
-
-export const WithBuilderCallback: Story = {
-  args: {
-    agents: mockAgents,
-    onOpenBuilder: () => {
-      console.log("Opening builder...");
-    },
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const publishButton = canvas.getByText("Publish Agent");
-    await userEvent.click(publishButton);
-
-    const builderButton = canvas.getByText("Create new agent");
-    await userEvent.click(builderButton);
-  },
-};
-
-export const SelectAndPublishFlow: Story = {
-  args: {
-    agents: mockAgents,
-  },
+export const PublishFlow: Story = {
+  args: {},
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
@@ -83,12 +36,17 @@ export const SelectAndPublishFlow: Story = {
     const publishButton = canvas.getByText("Publish Agent");
     await userEvent.click(publishButton);
 
-    // Select an agent
-    const agentCard = canvas.getByText("Marketing Assistant");
+    // Select an agent (assuming one exists)
+    const agentCard = await canvas.findByRole("button", {
+      name: /select agent/i,
+    });
     await userEvent.click(agentCard);
 
     // Click next
     const nextButton = canvas.getByText("Next");
     await userEvent.click(nextButton);
+
+    // Fill out info form
+    // Note: Actual form interactions would need to be added based on PublishAgentInfo implementation
   },
 };

@@ -20,18 +20,10 @@ import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
 import { useRouter } from "next/navigation";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
-  agents: {
-    name: string;
-    lastEdited: string;
-    imageSrc: string;
-  }[];
-  onOpenBuilder?: () => void;
 }
 
 export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   trigger,
-  agents,
-  onOpenBuilder,
 }) => {
   const [step, setStep] = React.useState<"select" | "info" | "review">(
     "select",
@@ -187,7 +179,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                   onCancel={handleClose}
                   onNext={handleNextFromSelect}
                   onClose={handleClose}
-                  onOpenBuilder={onOpenBuilder || (() => router.push("/build"))}
+                  onOpenBuilder={() => router.push("/build")}
                 />
               </div>
             </div>

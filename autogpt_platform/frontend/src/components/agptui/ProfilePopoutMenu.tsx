@@ -18,6 +18,7 @@ import {
   IconBuilder,
 } from "../ui/icons";
 import Link from "next/link";
+import { ProfilePopoutMenuLogoutButton } from "./ProfilePopoutMenuLogoutButton";
 
 interface ProfilePopoutMenuProps {
   userName?: string;
@@ -115,33 +116,39 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
               key={groupIndex}
               className="flex w-full flex-col items-start justify-start gap-5 rounded-[18px] bg-white p-3.5"
             >
-              {group.items.map((item, itemIndex) =>
-                item.href ? (
-                  <Link
-                    key={itemIndex}
-                    href={item.href}
-                    className="inline-flex w-full items-center justify-start gap-2.5"
-                  >
-                    <div className="relative h-6 w-6">{getIcon(item.icon)}</div>
-                    <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800">
-                      {item.text}
+              {group.items.map((item, itemIndex) => {
+                if (item.href) {
+                  return (
+                    <Link
+                      key={itemIndex}
+                      href={item.href}
+                      className="inline-flex w-full items-center justify-start gap-2.5"
+                    >
+                      <div className="relative h-6 w-6">{getIcon(item.icon)}</div>
+                      <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800">
+                        {item.text}
+                      </div>
+                    </Link>
+                  );
+                } else if (item.text === "Log out") {
+                  return <ProfilePopoutMenuLogoutButton key={itemIndex} />;
+                } else {
+                  return (
+                    <div
+                      key={itemIndex}
+                      className="inline-flex w-full items-center justify-start gap-2.5"
+                      onClick={item.onClick}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="relative h-6 w-6">{getIcon(item.icon)}</div>
+                      <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800">
+                        {item.text}
+                      </div>
                     </div>
-                  </Link>
-                ) : (
-                  <div
-                    key={itemIndex}
-                    className="inline-flex w-full items-center justify-start gap-2.5"
-                    onClick={item.onClick}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="relative h-6 w-6">{getIcon(item.icon)}</div>
-                    <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800">
-                      {item.text}
-                    </div>
-                  </div>
-                ),
-              )}
+                  );
+                }
+              })}
             </div>
           ))}
         </div>
