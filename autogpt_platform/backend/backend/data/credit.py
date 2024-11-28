@@ -11,6 +11,8 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
 from backend.util.settings import Config
 
+config = Config()
+
 
 class UserCreditBase(ABC):
     def __init__(self, num_user_credits_refill: int):
@@ -202,7 +204,6 @@ class DisabledUserCredit(UserCreditBase):
 
 
 def get_user_credit_model() -> UserCreditBase:
-    config = Config()
     if config.enable_credit.lower() == "true":
         return UserCredit(config.num_user_credits_refill)
     else:

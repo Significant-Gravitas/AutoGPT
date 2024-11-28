@@ -3,6 +3,7 @@ import prisma
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
+    "Webhook": True,
     "AgentBlock": True,
 }
 
@@ -26,4 +27,8 @@ GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
             "AgentGraphExecution": True,
         }
     }
+}
+
+INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
+    "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
 }

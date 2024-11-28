@@ -38,6 +38,7 @@ def _extract_schema_from_url(database_url) -> tuple[str, str]:
 
 
 logger = logging.getLogger(__name__)
+config = Config()
 
 
 def log(msg, **kwargs):
@@ -96,7 +97,7 @@ class ExecutionScheduler(AppService):
 
     @classmethod
     def get_port(cls) -> int:
-        return Config().execution_scheduler_port
+        return config.execution_scheduler_port
 
     @property
     @thread_cached

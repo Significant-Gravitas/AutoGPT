@@ -144,7 +144,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
           ref={ref}
           onKeyDown={handleKeyDown}
           className={cn(
-            "flex flex-col space-y-2 overflow-visible bg-transparent",
+            "flex flex-col overflow-visible bg-transparent",
             className,
           )}
           dir={dir}
@@ -174,7 +174,7 @@ const MultiSelectorTrigger = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "flex flex-wrap gap-1 rounded-lg border border-muted bg-background p-1 py-2",
+        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-sm",
         className,
       )}
       {...props}
@@ -183,7 +183,7 @@ const MultiSelectorTrigger = forwardRef<
         <Badge
           key={item}
           className={cn(
-            "flex items-center gap-1 rounded-xl px-1",
+            "flex items-center gap-1 rounded-xl px-1 pl-2",
             activeIndex === index && "ring-2 ring-muted-foreground",
           )}
           variant={"secondary"}
@@ -237,10 +237,10 @@ MultiSelectorInput.displayName = "MultiSelectorInput";
 const MultiSelectorContent = forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ children }, ref) => {
+>(({ children, className }, ref) => {
   const { open } = useMultiSelect();
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={cn("relative mt-2", className)}>
       {open && children}
     </div>
   );
