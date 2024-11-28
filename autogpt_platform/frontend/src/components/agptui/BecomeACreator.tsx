@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "./Button";
-
+import { PublishAgentPopout } from "./composite/PublishAgentPopout";
 interface BecomeACreatorProps {
   title?: string;
   description?: string;
@@ -43,14 +42,18 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
           {description}
         </p>
 
-        <button
-          onClick={handleButtonClick}
-          className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5"
-        >
-          <span className="font-poppins whitespace-nowrap text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
-            {buttonText}
-          </span>
-        </button>
+        <PublishAgentPopout
+          trigger={
+            <button
+              onClick={handleButtonClick}
+              className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5"
+            >
+              <span className="font-poppins whitespace-nowrap text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
+                {buttonText}
+              </span>
+            </button>
+          }
+        />
       </div>
     </div>
   );
