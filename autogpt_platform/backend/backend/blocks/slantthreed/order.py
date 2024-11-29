@@ -1,6 +1,8 @@
 import uuid
 from typing import List
 
+from backend.util import settings
+from backend.util.settings import BehaveAs
 import requests as baserequests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 
@@ -284,6 +286,8 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
             description="Get all orders for the account",
             input_schema=self.Input,
             output_schema=self.Output,
+            # This block is disabled for cloud hosted because it allows access to all orders for the account
+            disabled=settings.Settings().config.behave_as == BehaveAs.CLOUD,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
