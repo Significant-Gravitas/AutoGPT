@@ -3,6 +3,11 @@
 import { IconRefresh } from "@/components/ui/icons";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface CreditsCardProps {
   credits: number;
@@ -27,13 +32,20 @@ const CreditsCard = ({ credits }: CreditsCardProps) => {
           credits
         </span>
       </div>
-      <button
-        onClick={onRefresh}
-        className="h-6 w-6 transition-colors hover:text-neutral-700 dark:hover:text-neutral-300"
-        aria-label="Refresh credits"
-      >
-        <IconRefresh className="h-6 w-6" />
-      </button>
+      <Tooltip key="RefreshCredits" delayDuration={500}>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onRefresh}
+            className="h-6 w-6 transition-colors hover:text-neutral-700 dark:hover:text-neutral-300"
+            aria-label="Refresh credits"
+          >
+            <IconRefresh className="h-6 w-6" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Refresh credits</p>
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 };
