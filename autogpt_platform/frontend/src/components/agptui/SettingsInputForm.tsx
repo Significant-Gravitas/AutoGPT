@@ -93,8 +93,8 @@ export const SettingsInputForm = ({
         role="separator"
       />
 
-      {/* Notifications Section */}
-      <section aria-labelledby="notifications-heading">
+      {/* Notifications Section - Commented out for now, but keeping until we have approval to remove */}
+      {/* <section aria-labelledby="notifications-heading">
         <h2
           id="notifications-heading"
           className="mb-8 text-lg font-medium text-neutral-500 dark:text-neutral-400 sm:mb-12"
@@ -148,7 +148,7 @@ export const SettingsInputForm = ({
             </div>
           </div>
         </div>
-      </section>
+      </section> */}
 
       <div className="mt-8 flex justify-end">
         <div className="flex gap-3">
