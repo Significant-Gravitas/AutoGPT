@@ -12,6 +12,8 @@ import { IconPersonFill } from "@/components/ui/icons";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
 import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { createClient } from "@/lib/supabase/client";
+import { Separator } from "@/components/ui/separator";
+
 
 export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -248,9 +250,9 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             </div>
           </section>
 
-          <hr className="my-8 border-neutral-300 dark:border-neutral-700" />
+          <Separator />
 
-          <div className="flex h-[50px] items-center justify-end gap-3">
+          <div className="py-8 flex h-[50px] items-center justify-end gap-3">
             <Button
               type="button"
               variant="secondary"
