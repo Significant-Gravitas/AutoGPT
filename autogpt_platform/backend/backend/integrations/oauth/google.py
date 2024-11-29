@@ -1,6 +1,5 @@
 import logging
 
-from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
 )
@@ -8,6 +7,8 @@ from google.auth.transport.requests import AuthorizedSession, Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
+
+from backend.data.model import OAuth2Credentials
 
 from .base import BaseOAuthHandler
 
