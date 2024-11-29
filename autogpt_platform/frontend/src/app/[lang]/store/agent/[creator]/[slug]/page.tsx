@@ -55,12 +55,13 @@ export default async function Page({
       <main className="px-4 md:mt-4 lg:mt-8">
         <BreadCrumbs items={breadcrumbs} />
 
-        <div className="flex flex-col gap-5 lg:flex-row">
-          <div>
-            <AgentInfo
+        <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
+        <div className="w-full md:w-auto md:shrink-0">
+        <AgentInfo
               name={agent.agent_name}
               creator={agent.creator}
-              description={agent.description}
+              shortDescription={agent.description}
+              longDescription={agent.description}
               rating={agent.rating}
               runs={agent.runs}
               categories={agent.categories}
@@ -80,10 +81,8 @@ export default async function Page({
           agents={similarAgents.agents}
           sectionTitle="Similar agents"
         />
-        <Separator className="my-6" />
         <BecomeACreator
-          title="Want to contribute?"
-          heading="We're always looking for more Creators!"
+          title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
         />
