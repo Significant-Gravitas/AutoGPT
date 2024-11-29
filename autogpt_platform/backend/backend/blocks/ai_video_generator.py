@@ -1,9 +1,11 @@
 import logging
-from typing import Literal, Optional, Dict, Any, Set
-import requests
 import time
+from typing import Literal, Set
+
+import requests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 
@@ -67,96 +69,99 @@ class AIVideoGeneratorBlock(Block):
     def generate_video(api_key: str, prompt: str) -> str:
         headers = {
             "Authorization": f"Key {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
-        
+
         # Keep track of logs we've already seen
         seen_logs: Set[str] = set()
-        
+
         try:
             # Submit request to queue
             submit_response = requests.post(
                 "https://queue.fal.run/fal-ai/mochi-v1",
                 headers=headers,
-                json={
-                    "prompt": prompt,
-                    "enable_prompt_expansion": True
-                }
+                json={"prompt": prompt, "enable_prompt_expansion": True},
             )
             submit_response.raise_for_status()
             request_data = submit_response.json()
-            
+
             # Get request_id and urls from initial response
             request_id = request_data.get("request_id")
             status_url = request_data.get("status_url")
             result_url = request_data.get("response_url")
-            
+
             if not all([request_id, status_url, result_url]):
                 raise ValueError("Missing required data in submission response")
-            
+
             # Poll for status with exponential backoff
             max_attempts = 30
             attempt = 0
             base_wait_time = 5
-            
+
             while attempt < max_attempts:
-                status_response = requests.get(
-                    f"{status_url}?logs=1",
-                    headers=headers
-                )
+                status_response = requests.get(f"{status_url}?logs=1", headers=headers)
                 status_response.raise_for_status()
                 status_data = status_response.json()
-                
+
                 # Process new logs only
-                logs = status_data.get('logs', [])
+                logs = status_data.get("logs", [])
                 if logs and isinstance(logs, list):
                     for log in logs:
                         if isinstance(log, dict):
                             # Create a unique key for this log entry
-                            log_key = f"{log.get('timestamp', '')}-{log.get('message', '')}"
+                            log_key = (
+                                f"{log.get('timestamp', '')}-{log.get('message', '')}"
+                            )
                             if log_key not in seen_logs:
                                 seen_logs.add(log_key)
-                                message = log.get('message', '')
+                                message = log.get("message", "")
                                 if message:
-                                    logger.debug(f"[AIVideoGeneratorBlock] - [{log.get('level', 'INFO')}] [{log.get('source', '')}] [{log.get('timestamp', '')}] {message}")
-                
+                                    logger.debug(
+                                        f"[AIVideoGeneratorBlock] - [{log.get('level', 'INFO')}] [{log.get('source', '')}] [{log.get('timestamp', '')}] {message}"
+                                    )
+
                 status = status_data.get("status")
                 if status == "COMPLETED":
                     # Get the final result using the result_url
-                    result_response = requests.get(
-                        result_url,
-                        headers=headers
-                    )
+                    result_response = requests.get(result_url, headers=headers)
                     result_response.raise_for_status()
                     result_data = result_response.json()
-                    
+
                     # Extract video URL from response
-                    if "video" not in result_data or not isinstance(result_data["video"], dict):
+                    if "video" not in result_data or not isinstance(
+                        result_data["video"], dict
+                    ):
                         raise ValueError("Invalid response format - missing video data")
-                    
+
                     video_url = result_data["video"].get("url")
                     if not video_url:
                         raise ValueError("No video URL in response")
-                    
+
                     return video_url
-                    
+
                 elif status == "FAILED":
                     error_msg = status_data.get("error", "No error details provided")
                     raise RuntimeError(f"Video generation failed: {error_msg}")
                 elif status == "IN_QUEUE":
                     position = status_data.get("queue_position", "unknown")
-                    logger.debug(f"[AIVideoGeneratorBlock] - Status: In queue, position: {position}")
+                    logger.debug(
+                        f"[AIVideoGeneratorBlock] - Status: In queue, position: {position}"
+                    )
                 elif status == "IN_PROGRESS":
-                    logger.debug("[AIVideoGeneratorBlock] - Status: Request is being processed...")
+                    logger.debug(
+                        "[AIVideoGeneratorBlock] - Status: Request is being processed..."
+                    )
                 else:
-                    logger.info(f"[AIVideoGeneratorBlock] - Status: Unknown status: {status}")
-                
-                wait_time = min(base_wait_time * (2 ** attempt), 60)
+                    logger.info(
+                        f"[AIVideoGeneratorBlock] - Status: Unknown status: {status}"
+                    )
+
+                wait_time = min(base_wait_time * (2**attempt), 60)
                 time.sleep(wait_time)
                 attempt += 1
-            
+
             raise RuntimeError("Maximum polling attempts reached")
-            
+
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"API request failed: {str(e)}")
 
