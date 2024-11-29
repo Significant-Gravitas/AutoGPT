@@ -1,12 +1,12 @@
 from datetime import datetime
 
 import pytest
-from autogpt_libs.supabase_integration_credentials_store.store import openai_credentials
 from prisma.models import UserBlockCredit
 
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.credit import UserCredit
 from backend.data.user import DEFAULT_USER_ID
+from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
 REFILL_VALUE = 1000

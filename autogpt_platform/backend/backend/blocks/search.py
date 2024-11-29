@@ -1,12 +1,16 @@
 from typing import Literal
 from urllib.parse import quote
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.blocks.helpers.http import GetRequest
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):

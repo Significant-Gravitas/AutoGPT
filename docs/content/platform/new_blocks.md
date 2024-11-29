@@ -113,7 +113,7 @@ Implementing the block itself is relatively simple. On top of the instructions a
 you're going to add a `credentials` parameter to the `Input` model and the `run` method:
 
 ```python
-from autogpt_libs.supabase_integration_credentials_store.types import (
+from backend.data.model import (
     APIKeyCredentials,
     OAuth2Credentials,
     Credentials,

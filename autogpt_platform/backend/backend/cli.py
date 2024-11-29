@@ -93,6 +93,16 @@ def stop():
     print("Server Stopped")
 
 
+@main.command()
+def gen_encrypt_key():
+    """
+    Generate a new encryption key
+    """
+    from cryptography.fernet import Fernet
+
+    print(Fernet.generate_key().decode())
+
+
 @click.group()
 def test():
     """

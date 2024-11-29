@@ -290,7 +290,7 @@ export type CredentialsMetaInput = {
   provider: string;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
+/* Mirror of backend/backend/data/model.py:_BaseCredentials */
 type BaseCredentials = {
   id: string;
   type: CredentialsType;
@@ -298,7 +298,7 @@ type BaseCredentials = {
   provider: CredentialsProviderName;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
+/* Mirror of backend/backend/data/model.py:OAuth2Credentials */
 export type OAuth2Credentials = BaseCredentials & {
   type: "oauth2";
   scopes: string[];
@@ -310,7 +310,7 @@ export type OAuth2Credentials = BaseCredentials & {
   metadata: Record<string, any>;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
+/* Mirror of backend/backend/data/model.py:APIKeyCredentials */
 export type APIKeyCredentials = BaseCredentials & {
   type: "api_key";
   title: string;
