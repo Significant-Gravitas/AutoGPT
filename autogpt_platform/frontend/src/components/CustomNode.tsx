@@ -491,14 +491,26 @@ export function CustomNode({
     });
 
   const inputValues = data.hardcodedValues;
+
+  const isCostFilterMatch = (costFilter: any, inputValues: any): boolean => {
+    /*
+      Filter rules:
+      - If costFilter is an object, then check if costFilter is the subset of inputValues
+      - Otherwise, check if costFilter is equal to inputValues.
+      - Undefined, null, and empty string are considered as equal.
+    */
+    return typeof costFilter === "object" && typeof inputValues === "object"
+      ? Object.entries(costFilter).every(
+          ([k, v]) =>
+            (!v && !inputValues[k]) || isCostFilterMatch(v, inputValues[k]),
+        )
+      : costFilter === inputValues;
+  };
+
   const blockCost =
     data.blockCosts &&
     data.blockCosts.find((cost) =>
-      Object.entries(cost.cost_filter).every(
-        // Undefined, null, or empty values are considered equal
-        ([key, value]) =>
-          value === inputValues[key] || (!value && !inputValues[key]),
-      ),
+      isCostFilterMatch(cost.cost_filter, inputValues),
     );
 
   const LineSeparator = () => (

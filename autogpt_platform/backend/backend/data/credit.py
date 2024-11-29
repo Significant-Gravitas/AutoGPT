@@ -107,8 +107,8 @@ class UserCredit(UserCreditBase):
     def time_now():
         return datetime.now(timezone.utc)
 
-    @staticmethod
     def _block_usage_cost(
+        self,
         block: Block,
         input_data: BlockInput,
         data_size: float,
@@ -119,27 +119,43 @@ class UserCredit(UserCreditBase):
             return 0, {}
 
         for block_cost in block_costs:
-            if all(
-                # None, [], {}, "", are considered the same value.
-                input_data.get(k) == b or (not input_data.get(k) and not b)
-                for k, b in block_cost.cost_filter.items()
-            ):
-                if block_cost.cost_type == BlockCostType.RUN:
-                    return block_cost.cost_amount, block_cost.cost_filter
+            if not self._is_cost_filter_match(block_cost.cost_filter, input_data):
+                continue
 
-                if block_cost.cost_type == BlockCostType.SECOND:
-                    return (
-                        int(run_time * block_cost.cost_amount),
-                        block_cost.cost_filter,
-                    )
+            if block_cost.cost_type == BlockCostType.RUN:
+                return block_cost.cost_amount, block_cost.cost_filter
 
-                if block_cost.cost_type == BlockCostType.BYTE:
-                    return (
-                        int(data_size * block_cost.cost_amount),
-                        block_cost.cost_filter,
-                    )
+            if block_cost.cost_type == BlockCostType.SECOND:
+                return (
+                    int(run_time * block_cost.cost_amount),
+                    block_cost.cost_filter,
+                )
+
+            if block_cost.cost_type == BlockCostType.BYTE:
+                return (
+                    int(data_size * block_cost.cost_amount),
+                    block_cost.cost_filter,
+                )
 
         return 0, {}
+
+    def _is_cost_filter_match(
+        self, cost_filter: BlockInput, input_data: BlockInput
+    ) -> bool:
+        """
+        Filter rules:
+          - If costFilter is an object, then check if costFilter is the subset of inputValues
+          - Otherwise, check if costFilter is equal to inputValues.
+          - Undefined, null, and empty string are considered as equal.
+        """
+        if not isinstance(cost_filter, dict) or not isinstance(input_data, dict):
+            return cost_filter == input_data
+
+        return all(
+            (not input_data.get(k) and not v)
+            or (input_data.get(k) and self._is_cost_filter_match(v, input_data[k]))
+            for k, v in cost_filter.items()
+        )
 
     async def spend_credits(
         self,
