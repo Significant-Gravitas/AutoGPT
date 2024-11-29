@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import SchemaTooltip from "@/components/SchemaTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
@@ -46,23 +47,27 @@ export const providerIcons: Record<
   CredentialsProviderName,
   React.FC<{ className?: string }>
 > = {
+  anthropic: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
+  groq: fallbackIcon,
   notion: NotionLogoIcon,
   discord: FaDiscord,
   d_id: fallbackIcon,
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
-  llm: fallbackIcon,
   medium: FaMedium,
+  ollama: fallbackIcon,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,
+  open_router: fallbackIcon,
   pinecone: fallbackIcon,
   replicate: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  hubspot: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
@@ -81,7 +86,7 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 export const CredentialsInput: FC<{
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
-  onSelectCredentials: (newValue: CredentialsMetaInput) => void;
+  onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
 }> = ({ className, selectedCredentials, onSelectCredentials }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const credentials = useCredentials();
@@ -92,12 +97,8 @@ export const CredentialsInput: FC<{
     useState<AbortController | null>(null);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
 
-  if (!credentials) {
+  if (!credentials || credentials.isLoading) {
     return null;
-  }
-
-  if (credentials.isLoading) {
-    return <div>Loading...</div>;
   }
 
   const {
@@ -223,10 +224,24 @@ export const CredentialsInput: FC<{
     </>
   );
 
+  // Deselect credentials if they do not exist (e.g. provider was changed)
+  if (
+    selectedCredentials &&
+    !savedApiKeys
+      .concat(savedOAuthCredentials)
+      .some((c) => c.id === selectedCredentials.id)
+  ) {
+    onSelectCredentials(undefined);
+  }
+
   // No saved credentials yet
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
     return (
       <>
+        <div className="mb-2 flex gap-1">
+          <span className="text-m green text-gray-900">Credentials</span>
+          <SchemaTooltip description={schema.description} />
+        </div>
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
             <Button onClick={handleOAuthLogin}>
@@ -249,6 +264,25 @@ export const CredentialsInput: FC<{
     );
   }
 
+  const singleCredential =
+    savedApiKeys.length === 1 && savedOAuthCredentials.length === 0
+      ? savedApiKeys[0]
+      : savedOAuthCredentials.length === 1 && savedApiKeys.length === 0
+        ? savedOAuthCredentials[0]
+        : null;
+
+  if (singleCredential) {
+    if (!selectedCredentials) {
+      onSelectCredentials({
+        id: singleCredential.id,
+        type: singleCredential.type,
+        provider,
+        title: singleCredential.title,
+      });
+    }
+    return null;
+  }
+
   function handleValueChange(newValue: string) {
     if (newValue === "sign-in") {
       // Trigger OAuth2 sign in flow
@@ -264,7 +298,7 @@ export const CredentialsInput: FC<{
       onSelectCredentials({
         id: selectedCreds.id,
         type: selectedCreds.type,
-        provider: schema.credentials_provider,
+        provider: provider,
         // title: customTitle, // TODO: add input for title
       });
     }
@@ -273,6 +307,7 @@ export const CredentialsInput: FC<{
   // Saved credentials exist
   return (
     <>
+      <span className="text-m green mb-0 text-gray-900">Credentials</span>
       <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={schema.placeholder} />

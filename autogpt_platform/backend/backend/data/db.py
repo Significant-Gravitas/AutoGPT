@@ -23,14 +23,22 @@ logger = logging.getLogger(__name__)
 async def connect():
     if prisma.is_connected():
         return
+
     await prisma.connect()
+
+    if not prisma.is_connected():
+        raise ConnectionError("Failed to connect to Prisma.")
 
 
 @conn_retry("Prisma", "Releasing connection")
 async def disconnect():
     if not prisma.is_connected():
         return
+
     await prisma.disconnect()
+
+    if prisma.is_connected():
+        raise ConnectionError("Failed to disconnect from Prisma.")
 
 
 @asynccontextmanager

@@ -18,9 +18,17 @@ import {
   BlockUIType,
   BlockCost,
 } from "@/lib/autogpt-server-api/types";
-import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
+import {
+  beautifyString,
+  cn,
+  getValue,
+  hasNonNullNonObjectValue,
+  parseKeys,
+  setNestedProperty,
+} from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
@@ -31,12 +39,16 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import NodeOutputs from "./NodeOutputs";
+import SchemaTooltip from "./SchemaTooltip";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { DotsVerticalIcon, TrashIcon, CopyIcon } from "@radix-ui/react-icons";
-
-type ParsedKey = { key: string; index?: number };
+import {
+  DotsVerticalIcon,
+  TrashIcon,
+  CopyIcon,
+  ExitIcon,
+} from "@radix-ui/react-icons";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -92,11 +104,13 @@ export function CustomNode({
   >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
+  let nodeFlowId = "";
 
   if (data.uiType === BlockUIType.AGENT) {
     // Display the graph's schema instead AgentExecutorBlock's schema.
     data.inputSchema = data.hardcodedValues?.input_schema || {};
     data.outputSchema = data.hardcodedValues?.output_schema || {};
+    nodeFlowId = data.hardcodedValues?.graph_id || nodeFlowId;
   }
 
   if (!flowContext) {
@@ -154,7 +168,7 @@ export function CustomNode({
       <div key={key}>
         <NodeHandle
           keyName={key}
-          isConnected={isHandleConnected(key)}
+          isConnected={isOutputHandleConnected(key)}
           schema={schema.properties[key]}
           side="right"
         />
@@ -178,7 +192,7 @@ export function CustomNode({
               className=""
               selfKey={noteKey}
               schema={noteSchema as BlockIOStringSubSchema}
-              value={getValue(noteKey)}
+              value={getValue(noteKey, data.hardcodedValues)}
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               error={data.errors?.[noteKey] ?? ""}
@@ -193,16 +207,18 @@ export function CustomNode({
 
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
+          const isHidden = propSchema.hidden;
           const isConnectable =
+            // No input connection handles on INPUT and WEBHOOK blocks
+            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
-            // No input connection handles on INPUT blocks
-            nodeType !== BlockUIType.INPUT &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
             !(nodeType == BlockUIType.OUTPUT && propKey == "name");
+          const isConnected = isInputHandleConnected(propKey);
           return (
+            !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
                 {isConnectable ? (
@@ -214,21 +230,24 @@ export function CustomNode({
                     side="left"
                   />
                 ) : (
-                  <span
-                    className="text-m green mb-0 text-gray-900"
-                    title={propSchema.description}
-                  >
-                    {propKey == "credentials"
-                      ? "Credentials"
-                      : propSchema.title || beautifyString(propKey)}
-                  </span>
+                  propKey != "credentials" && (
+                    <div className="flex gap-1">
+                      <span className="text-m green mb-0 text-gray-900">
+                        {propSchema.title || beautifyString(propKey)}
+                      </span>
+                      <SchemaTooltip description={propSchema.description} />
+                    </div>
+                  )
                 )}
-                {!isConnected && (
+                {isConnected || (
                   <NodeGenericInputField
                     nodeId={id}
                     propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
-                    currentValue={getValue(getInputPropKey(propKey))}
+                    currentValue={getValue(
+                      getInputPropKey(propKey),
+                      data.hardcodedValues,
+                    )}
                     connections={data.connections}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
@@ -283,63 +302,28 @@ export function CustomNode({
     setErrors({ ...errors });
   };
 
-  // Helper function to parse keys with array indices
-  //TODO move to utils
-  const parseKeys = (key: string): ParsedKey[] => {
-    const splits = key.split(/_@_|_#_|_\$_|\./);
-    const keys: ParsedKey[] = [];
-    let currentKey: string | null = null;
-
-    splits.forEach((split) => {
-      const isInteger = /^\d+$/.test(split);
-      if (!isInteger) {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey });
-        }
-        currentKey = split;
-      } else {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey, index: parseInt(split, 10) });
-          currentKey = null;
-        } else {
-          throw new Error("Invalid key format: array index without a key");
-        }
-      }
-    });
-
-    if (currentKey !== null) {
-      keys.push({ key: currentKey });
-    }
-
-    return keys;
-  };
-
-  const getValue = (key: string) => {
-    const keys = parseKeys(key);
-    return keys.reduce((acc, k) => {
-      if (acc === undefined) return undefined;
-      if (k.index !== undefined) {
-        return Array.isArray(acc[k.key]) ? acc[k.key][k.index] : undefined;
-      }
-      return acc[k.key];
-    }, data.hardcodedValues as any);
-  };
-
-  const isHandleConnected = (key: string) => {
+  const isInputHandleConnected = (key: string) => {
     return (
       data.connections &&
       data.connections.some((conn: any) => {
         if (typeof conn === "string") {
-          const [source, target] = conn.split(" -> ");
-          return (
-            (target.includes(key) && target.includes(data.title)) ||
-            (source.includes(key) && source.includes(data.title))
-          );
+          const [_source, target] = conn.split(" -> ");
+          return target.includes(key) && target.includes(data.title);
         }
-        return (
-          (conn.target === id && conn.targetHandle === key) ||
-          (conn.source === id && conn.sourceHandle === key)
-        );
+        return conn.target === id && conn.targetHandle === key;
+      })
+    );
+  };
+
+  const isOutputHandleConnected = (key: string) => {
+    return (
+      data.connections &&
+      data.connections.some((conn: any) => {
+        if (typeof conn === "string") {
+          const [source, _target] = conn.split(" -> ");
+          return source.includes(key) && source.includes(data.title);
+        }
+        return conn.source === id && conn.sourceHandle === key;
       })
     );
   };
@@ -347,7 +331,7 @@ export function CustomNode({
   const handleInputClick = (key: string) => {
     console.debug(`Opening modal for key: ${key}`);
     setActiveKey(key);
-    const value = getValue(key);
+    const value = getValue(key, data.hardcodedValues);
     setInputModalValue(
       typeof value === "object" ? JSON.stringify(value, null, 2) : value,
     );
@@ -415,9 +399,7 @@ export function CustomNode({
     });
   }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
-  const hasConfigErrors =
-    data.errors &&
-    Object.entries(data.errors).some(([_, value]) => value !== null);
+  const hasConfigErrors = data.errors && hasNonNullNonObjectValue(data.errors);
   const outputData = data.executionResults?.at(-1)?.data;
   const hasOutputError =
     typeof outputData === "object" &&
@@ -427,8 +409,8 @@ export function CustomNode({
   useEffect(() => {
     if (hasConfigErrors) {
       const filteredErrors = Object.fromEntries(
-        Object.entries(data.errors || {}).filter(
-          ([_, value]) => value !== null,
+        Object.entries(data.errors || {}).filter(([, value]) =>
+          hasNonNullNonObjectValue(value),
         ),
       );
       console.error(
@@ -509,14 +491,26 @@ export function CustomNode({
     });
 
   const inputValues = data.hardcodedValues;
+
+  const isCostFilterMatch = (costFilter: any, inputValues: any): boolean => {
+    /*
+      Filter rules:
+      - If costFilter is an object, then check if costFilter is the subset of inputValues
+      - Otherwise, check if costFilter is equal to inputValues.
+      - Undefined, null, and empty string are considered as equal.
+    */
+    return typeof costFilter === "object" && typeof inputValues === "object"
+      ? Object.entries(costFilter).every(
+          ([k, v]) =>
+            (!v && !inputValues[k]) || isCostFilterMatch(v, inputValues[k]),
+        )
+      : costFilter === inputValues;
+  };
+
   const blockCost =
     data.blockCosts &&
     data.blockCosts.find((cost) =>
-      Object.entries(cost.cost_filter).every(
-        // Undefined, null, or empty values are considered equal
-        ([key, value]) =>
-          value === inputValues[key] || (!value && !inputValues[key]),
-      ),
+      isCostFilterMatch(cost.cost_filter, inputValues),
     );
 
   const LineSeparator = () => (
@@ -534,6 +528,15 @@ export function CustomNode({
         <CopyIcon className="mr-2 h-5 w-5" />
         <span>Copy</span>
       </ContextMenu.Item>
+      {nodeFlowId && (
+        <ContextMenu.Item
+          onSelect={() => window.open(`/build?flowID=${nodeFlowId}`)}
+          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+        >
+          <ExitIcon className="mr-2 h-5 w-5" />
+          <span>Open agent</span>
+        </ContextMenu.Item>
+      )}
       <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
       <ContextMenu.Item
         onSelect={deleteNode}
@@ -574,9 +577,13 @@ export function CustomNode({
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
             <div className="font-roboto flex items-center px-3 text-lg font-semibold">
-              {beautifyString(
-                data.blockType?.replace(/Block$/, "") || data.title,
-              )}
+              <TextRenderer
+                value={beautifyString(
+                  data.blockType?.replace(/Block$/, "") || data.title,
+                )}
+                truncateLengthLimit={80}
+              />
+
               <div className="px-2 text-xs text-gray-500">
                 #{id.split("-")[0]}
               </div>

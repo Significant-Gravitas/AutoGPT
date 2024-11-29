@@ -1,5 +1,5 @@
-from typing import Callable, TypeVar, ParamSpec
 import threading
+from typing import Callable, ParamSpec, TypeVar
 
 P = ParamSpec("P")
 R = TypeVar("R")

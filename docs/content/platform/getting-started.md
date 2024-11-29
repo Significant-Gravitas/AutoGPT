@@ -56,7 +56,7 @@ You can check if you have Docker installed by running the following command:
 
 ```bash
 docker -v
-docker-compose -v
+docker compose -v
 ```
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
@@ -90,7 +90,7 @@ To run the backend services, follow these steps:
 
 * Run the backend services:
   ```
-   docker compose up -d
+   docker compose up -d --build
   ```
   This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
 

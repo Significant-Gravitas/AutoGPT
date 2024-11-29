@@ -3,7 +3,7 @@ import os
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -11,7 +11,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from backend.util.data import get_data_path, get_secrets_path
+from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -136,11 +136,31 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    platform_base_url: str = Field(
+        default="",
+        description="Must be set so the application knows where it's hosted at. "
+        "This is necessary to make sure webhooks find their way.",
+    )
+
     frontend_base_url: str = Field(
-        default="http://localhost:3000",
+        default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
+
+    @field_validator("platform_base_url", "frontend_base_url")
+    @classmethod
+    def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
+        if not v:
+            return v
+        if not v.startswith(("http://", "https://")):
+            raise ValueError(
+                f"{info.field_name} must be a full URL "
+                "including a http:// or https:// schema"
+            )
+        if v.endswith("/"):
+            return v.rstrip("/")  # Remove trailing slash
+        return v
 
     app_env: AppEnvironment = Field(
         default=AppEnvironment.LOCAL,
@@ -238,6 +258,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
+    open_router_api_key: str = Field(default="", description="Open Router API Key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
@@ -267,13 +288,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
     jina_api_key: str = Field(default="", description="Jina API Key")
+    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
     fal_key: str = Field(default="", description="FAL API key")
 
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
-        secrets_dir=get_secrets_path(),
         env_file=".env",
         env_file_encoding="utf-8",
         extra="allow",
@@ -300,11 +321,3 @@ class Settings(BaseModel):
                 with open(config_path, "w") as f:
                     json.dump(config_to_save, f, indent=2)
             self.config.clear_updates()
-
-        # Save updated secrets to individual files
-        secrets_dir = get_secrets_path()
-        for key in self.secrets.updated_fields:
-            secret_file = os.path.join(secrets_dir, key)
-            with open(secret_file, "w") as f:
-                f.write(str(getattr(self.secrets, key)))
-        self.secrets.clear_updates()
