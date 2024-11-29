@@ -86,6 +86,9 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             beautifyString(block.name)
               .toLowerCase()
+              .includes(searchQuery.toLowerCase()) ||
+            block.description
+              .toLowerCase()
               .includes(searchQuery.toLowerCase())) &&
           (!selectedCategory ||
             block.categories.some((cat) => cat.category === selectedCategory)),
