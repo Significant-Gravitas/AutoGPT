@@ -44,8 +44,8 @@ export default async function Page({
     const creatorAgents = await api.getStoreAgents({ creator: params.creator });
 
     return (
-      <>
-        <div className="w-full min-w-[1372px] px-4 py-2">
+      <div className="mx-auto w-screen max-w-[1360px]">
+        <main className="px-4 md:mt-4 lg:mt-8">
           <BreadCrumbs
             items={[
               { name: "Store", link: "/store" },
@@ -79,8 +79,8 @@ export default async function Page({
               sectionTitle={`Agents by ${creator.name}`}
             />
           </div>
-        </div>
-      </>
+        </main>
+      </div>
     );
   } catch (error) {
     return (
