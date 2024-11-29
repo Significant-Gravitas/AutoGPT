@@ -1,14 +1,17 @@
-from typing import Optional
+from backend.util import settings
+from backend.util.settings import BehaveAs
 from pydantic import BaseModel
+
 from backend.data.block import (
     Block,
-    BlockSchema,
-    BlockOutput,
-    BlockWebhookConfig,
     BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
-from ._api import Slant3DCredentialsField, Slant3DCredentialsInput
+
+from ._api import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, Slant3DCredentialsField, Slant3DCredentialsInput
 
 
 class Slant3DTriggerBase:
@@ -63,6 +66,8 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
                 "This block triggers on Slant3D order status updates and outputs "
                 "the event details, including tracking information when orders are shipped."
             ),
+            # All webhooks are currently subscribed to for all orders. This works for self hosted, but not for cloud hosted
+            disabled=settings.Settings().config.behave_as == BehaveAs.CLOUD,
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -74,7 +79,7 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
                 event_format="order.{event}",
             ),
             test_input={
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "events": {"shipped": True},
                 "payload": {
                     "orderId": "1234567890",
@@ -83,6 +88,7 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
                     "carrierCode": "usps",
                 },
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "payload",
@@ -100,7 +106,7 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
         yield from super().run(input_data, **kwargs)
 
         try:
