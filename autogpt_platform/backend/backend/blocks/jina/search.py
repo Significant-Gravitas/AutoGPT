@@ -81,9 +81,13 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             categories={BlockCategory.SEARCH},
             input_schema=ExtractWebsiteContentBlock.Input,
             output_schema=ExtractWebsiteContentBlock.Output,
-            test_input={"url": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
+            test_input={
+                "url": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
             test_output=("content", "scraped content"),
-            test_mock={"get_request": lambda url, json: "scraped content"},
+            test_mock={"get_request": lambda *args, **kwargs: "scraped content"},
         )
 
     def run(
