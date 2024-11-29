@@ -48,7 +48,7 @@ from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
-    from autogpt_libs.supabase_integration_credentials_store.types import Credentials
+    from backend.data.model import Credentials
 
 
 @thread_cached
