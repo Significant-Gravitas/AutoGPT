@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+from autogpt_libs.supabase_integration_credentials_store.store import openai_credentials
 from prisma.models import UserBlockCredit
 
 from backend.blocks.llm import AITextGeneratorBlock
@@ -20,7 +21,14 @@ async def test_block_credit_usage(server: SpinTestServer):
         DEFAULT_USER_ID,
         current_credit,
         AITextGeneratorBlock().id,
-        {"model": "gpt-4-turbo"},
+        {
+            "model": "gpt-4-turbo",
+            "credentials": {
+                "id": openai_credentials.id,
+                "provider": openai_credentials.provider,
+                "type": openai_credentials.type,
+            },
+        },
         0.0,
         0.0,
         validate_balance=False,
