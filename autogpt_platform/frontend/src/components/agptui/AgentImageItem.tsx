@@ -14,12 +14,6 @@ const isValidVideoUrl = (url: string): boolean => {
   return videoExtensions.test(url) || youtubeRegex.test(url);
 };
 
-const isValidImageUrl = (url: string): boolean => {
-  const imageExtensions = /\.(jpeg|jpg|gif|png|svg|webp)$/i;
-  const cleanedUrl = url.split("?")[0];
-  return imageExtensions.test(cleanedUrl);
-};
-
 const getYouTubeVideoId = (url: string) => {
   const regExp =
     /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
@@ -83,18 +77,15 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
                 </video>
               </div>
             )
-          ) : isValidImageUrl(image) ? (
-            <Image
-              src={image}
-              alt="Image"
-              fill
-              sizes="100%"
-              style={{ objectFit: "cover" }}
-              className="rounded-xl"
-            />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-neutral-800 dark:text-neutral-200">
-              Unsupported content
+            <div className="relative h-full w-full">
+              <Image
+                src={image}
+                alt="Image"
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                className="rounded-xl object-cover"
+              />
             </div>
           )}
         </div>
