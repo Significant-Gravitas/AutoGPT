@@ -83,13 +83,10 @@ class UpscaleOption(str, Enum):
 
 class IdeogramModelBlock(Block):
     class Input(BlockSchema):
-
-        credentials: CredentialsMetaInput[Literal["ideogram"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="ideogram",
-                supported_credential_types={"api_key"},
-                description="The Ideogram integration can be used with any API key with sufficient permissions for the blocks it is used on.",
-            )
+        credentials: CredentialsMetaInput[
+            Literal["ideogram"], Literal["api_key"]
+        ] = CredentialsField(
+            description="The Ideogram integration can be used with any API key with sufficient permissions for the blocks it is used on.",
         )
         prompt: str = SchemaField(
             description="Text prompt for image generation",

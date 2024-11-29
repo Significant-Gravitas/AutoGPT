@@ -17,11 +17,7 @@ DiscordCredentials = CredentialsMetaInput[Literal["discord"], Literal["api_key"]
 
 
 def DiscordCredentialsField() -> DiscordCredentials:
-    return CredentialsField(
-        description="Discord bot token",
-        provider="discord",
-        supported_credential_types={"api_key"},
-    )
+    return CredentialsField(description="Discord bot token")
 
 
 TEST_CREDENTIALS = APIKeyCredentials(

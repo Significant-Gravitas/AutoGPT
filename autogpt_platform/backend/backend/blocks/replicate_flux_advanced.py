@@ -54,13 +54,11 @@ class ImageType(str, Enum):
 
 class ReplicateFluxAdvancedModelBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="replicate",
-                supported_credential_types={"api_key"},
-                description="The Replicate integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
-            )
+        credentials: CredentialsMetaInput[
+            Literal["replicate"], Literal["api_key"]
+        ] = CredentialsField(
+            description="The Replicate integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
         )
         prompt: str = SchemaField(
             description="Text prompt for image generation",

@@ -39,11 +39,7 @@ class GoogleMapsSearchBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
             Literal["google_maps"], Literal["api_key"]
-        ] = CredentialsField(
-            provider="google_maps",
-            supported_credential_types={"api_key"},
-            description="Google Maps API Key",
-        )
+        ] = CredentialsField(description="Google Maps API Key")
         query: str = SchemaField(
             description="Search query for local businesses",
             placeholder="e.g., 'restaurants in New York'",

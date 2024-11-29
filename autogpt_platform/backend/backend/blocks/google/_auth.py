@@ -23,8 +23,6 @@ def GoogleCredentialsField(scopes: list[str]) -> GoogleCredentialsInput:
         scopes: The authorization scopes needed for the block to work.
     """
     return CredentialsField(
-        provider="google",
-        supported_credential_types={"oauth2"},
         required_scopes=set(scopes),
         description="The Google integration requires OAuth2 authentication.",
     )

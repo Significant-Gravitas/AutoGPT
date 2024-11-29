@@ -30,10 +30,6 @@ def GithubCredentialsField(scope: str) -> GithubCredentialsInput:
         scope: The authorization scope needed for the block to work. ([list of available scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes))
     """  # noqa
     return CredentialsField(
-        provider="github",
-        supported_credential_types=(
-            {"api_key", "oauth2"} if GITHUB_OAUTH_IS_CONFIGURED else {"api_key"}
-        ),
         required_scopes={scope},
         description="The GitHub integration can be used with OAuth, "
         "or any API key with sufficient permissions for the blocks it is used on.",

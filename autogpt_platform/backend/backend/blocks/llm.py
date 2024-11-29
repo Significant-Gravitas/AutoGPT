@@ -48,8 +48,6 @@ TEST_CREDENTIALS_INPUT = {
 def AICredentialsField() -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
-        provider=["anthropic", "groq", "openai", "ollama", "open_router"],
-        supported_credential_types={"api_key"},
         discriminator="model",
         discriminator_mapping={
             model.value: model.metadata.provider for model in LlmModel

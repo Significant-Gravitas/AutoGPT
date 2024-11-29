@@ -176,6 +176,11 @@ class BlockSchema(BaseModel):
                 f"Field 'credentials' on {cls.__qualname__} "
                 f"must be of type {CredentialsMetaInput.__name__}"
             )
+        if credentials_field := cls.model_fields.get(CREDENTIALS_FIELD_NAME):
+            credentials_input_type = cast(
+                CredentialsMetaInput, credentials_field.annotation
+            )
+            credentials_input_type.validate_credentials_field_schema(cls)
 
 
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)

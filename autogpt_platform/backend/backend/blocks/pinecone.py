@@ -19,13 +19,8 @@ PineconeCredentialsInput = CredentialsMetaInput[
 
 
 def PineconeCredentialsField() -> PineconeCredentialsInput:
-    """
-    Creates a Pinecone credentials input on a block.
-
-    """
+    """Creates a Pinecone credentials input on a block."""
     return CredentialsField(
-        provider="pinecone",
-        supported_credential_types={"api_key"},
         description="The Pinecone integration can be used with an API Key.",
     )
 

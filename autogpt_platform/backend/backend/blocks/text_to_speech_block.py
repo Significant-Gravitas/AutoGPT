@@ -40,8 +40,6 @@ class UnrealTextToSpeechBlock(Block):
         credentials: CredentialsMetaInput[
             Literal["unreal_speech"], Literal["api_key"]
         ] = CredentialsField(
-            provider="unreal_speech",
-            supported_credential_types={"api_key"},
             description="The Unreal Speech integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
         )

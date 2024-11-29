@@ -67,8 +67,6 @@ class GetWeatherInformationBlock(Block, GetRequest):
         credentials: CredentialsMetaInput[
             Literal["openweathermap"], Literal["api_key"]
         ] = CredentialsField(
-            provider="openweathermap",
-            supported_credential_types={"api_key"},
             description="The OpenWeatherMap integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
         )
