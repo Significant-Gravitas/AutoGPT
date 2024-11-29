@@ -1,13 +1,13 @@
 import uuid
 from typing import List
 
-from backend.util import settings
-from backend.util.settings import BehaveAs
 import requests as baserequests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 
 from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util import settings
+from backend.util.settings import BehaveAs
 
 from ._api import (
     TEST_CREDENTIALS,
