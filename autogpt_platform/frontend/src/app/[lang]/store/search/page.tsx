@@ -82,6 +82,26 @@ function SearchResults({
     }
   };
 
+  const handleSortChange = (sortValue: string) => {
+    
+    let sortBy = "recent";
+    if (sortValue === "runs") {
+      sortBy = "runs";
+    } else if (sortValue === "rating") {
+      sortBy = "rating";
+    }
+    const sortedAgents = [...agents].sort((a, b) => {
+      if (sortBy === "runs") {
+        return b.runs - a.runs;
+      } else if (sortBy === "rating") {
+        return b.rating - a.rating;
+      } else {
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }
+    });
+    setAgents(sortedAgents);
+  };
+
   return (
     <div className="w-full">
       <div className="mx-auto min-h-screen max-w-[1440px] px-10 lg:min-w-[1440px]">
@@ -112,7 +132,7 @@ function SearchResults({
                 creatorsCount={creatorsCount}
                 onFilterChange={handleFilterChange}
               />
-              <SortDropdown />
+              <SortDropdown onSort={handleSortChange} />
             </div>
             {/* Content section */}
             <div className="min-h-[500px] max-w-[1440px]">
