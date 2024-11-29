@@ -54,6 +54,7 @@ class BlockCategory(Enum):
     DEVELOPER_TOOLS = "Developer tools such as GitHub blocks."
     DATA = "Block that interacts with structured data."
     AGENT = "Block that interacts with other agents."
+    CRM = "Block that interacts with CRM services."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
