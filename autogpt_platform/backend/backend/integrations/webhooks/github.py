@@ -3,11 +3,11 @@ import hmac
 import logging
 
 import requests
-from autogpt_libs.supabase_integration_credentials_store import Credentials
 from fastapi import HTTPException, Request
 from strenum import StrEnum
 
 from backend.data import integrations
+from backend.data.model import Credentials
 
 from .base import BaseWebhooksManager
 

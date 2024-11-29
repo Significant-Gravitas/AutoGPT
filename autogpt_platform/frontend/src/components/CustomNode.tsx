@@ -28,6 +28,7 @@ import {
 } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
@@ -490,14 +491,26 @@ export function CustomNode({
     });
 
   const inputValues = data.hardcodedValues;
+
+  const isCostFilterMatch = (costFilter: any, inputValues: any): boolean => {
+    /*
+      Filter rules:
+      - If costFilter is an object, then check if costFilter is the subset of inputValues
+      - Otherwise, check if costFilter is equal to inputValues.
+      - Undefined, null, and empty string are considered as equal.
+    */
+    return typeof costFilter === "object" && typeof inputValues === "object"
+      ? Object.entries(costFilter).every(
+          ([k, v]) =>
+            (!v && !inputValues[k]) || isCostFilterMatch(v, inputValues[k]),
+        )
+      : costFilter === inputValues;
+  };
+
   const blockCost =
     data.blockCosts &&
     data.blockCosts.find((cost) =>
-      Object.entries(cost.cost_filter).every(
-        // Undefined, null, or empty values are considered equal
-        ([key, value]) =>
-          value === inputValues[key] || (!value && !inputValues[key]),
-      ),
+      isCostFilterMatch(cost.cost_filter, inputValues),
     );
 
   const LineSeparator = () => (
@@ -564,9 +577,13 @@ export function CustomNode({
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
             <div className="font-roboto flex items-center px-3 text-lg font-semibold">
-              {beautifyString(
-                data.blockType?.replace(/Block$/, "") || data.title,
-              )}
+              <TextRenderer
+                value={beautifyString(
+                  data.blockType?.replace(/Block$/, "") || data.title,
+                )}
+                truncateLengthLimit={80}
+              />
+
               <div className="px-2 text-xs text-gray-500">
                 #{id.split("-")[0]}
               </div>

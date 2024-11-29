@@ -2,6 +2,7 @@ import AutoGPTServerAPI, { GraphMeta } from "@/lib/autogpt-server-api";
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { TextRenderer } from "@/components/ui/render";
 import Link from "next/link";
 import {
   Dialog,
@@ -94,7 +95,10 @@ export const AgentFlowList = ({
                             });
                         }}
                       >
-                        {template.name}
+                        <TextRenderer
+                          value={template.name}
+                          truncateLengthLimit={30}
+                        />
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -162,7 +166,9 @@ export const AgentFlowList = ({
                   onClick={() => onSelectFlow(flow)}
                   data-state={selectedFlow?.id == flow.id ? "selected" : null}
                 >
-                  <TableCell>{flow.name}</TableCell>
+                  <TableCell>
+                    <TextRenderer value={flow.name} truncateLengthLimit={30} />
+                  </TableCell>
                   {/* <TableCell><FlowStatusBadge status={flow.status ?? "active"} /></TableCell> */}
                   {/* <TableCell>
                   {flow.updatedAt ?? "???"}
