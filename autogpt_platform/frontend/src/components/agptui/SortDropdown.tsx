@@ -10,11 +10,9 @@ import {
 import { ChevronDownIcon } from "@radix-ui/react-icons";
 
 const sortOptions: SortOption[] = [
-  { label: "Trending", value: "trending" },
   { label: "Most Recent", value: "recent" },
-  { label: "Most Popular", value: "popular" },
-  { label: "Highest Rated", value: "rating" },
   { label: "Most Runs", value: "runs" },
+  { label: "Highest Rated", value: "rating" },
 ];
 
 interface SortOption {
@@ -22,11 +20,14 @@ interface SortOption {
   value: string;
 }
 
-export const SortDropdown: React.FC = () => {
+export const SortDropdown: React.FC<{
+  onSort: (sortValue: string) => void;
+}> = ({ onSort }) => {
   const [selected, setSelected] = React.useState(sortOptions[0]);
 
   const handleSelect = (option: SortOption) => {
     setSelected(option);
+    onSort(option.value);
     console.log(`Sorting by: ${option.label} (${option.value})`);
   };
 
