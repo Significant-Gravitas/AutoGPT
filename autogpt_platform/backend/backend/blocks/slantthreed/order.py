@@ -1,51 +1,21 @@
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List
+import uuid
+
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
+
+from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.data.block import BlockSchema, BlockOutput
-from .base import Slant3DBlockBase
+
 from ._api import (
-    Slant3DCredentialsField,
-    Slant3DCredentialsInput,
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     CustomerDetails,
     OrderItem,
+    Slant3DCredentialsField,
+    Slant3DCredentialsInput,
 )
-
-
-def _format_order_data(
-    customer: CustomerDetails, order_number: str, items: List[OrderItem]
-) -> List[Dict[str, Any]]:
-    """Helper function to format order data for API requests"""
-    orders = []
-    for item in items:
-        order_data = {
-            "email": customer.email,
-            "phone": customer.phone,
-            "name": customer.name,
-            "orderNumber": order_number,
-            "filename": item.filename,
-            "fileURL": item.file_url,
-            "bill_to_street_1": customer.address,
-            "bill_to_city": customer.city,
-            "bill_to_state": customer.state,
-            "bill_to_zip": customer.zip,
-            "bill_to_country_as_iso": customer.country_iso,
-            "bill_to_is_US_residential": str(customer.is_residential).lower(),
-            "ship_to_name": customer.name,
-            "ship_to_street_1": customer.address,
-            "ship_to_city": customer.city,
-            "ship_to_state": customer.state,
-            "ship_to_zip": customer.zip,
-            "ship_to_country_as_iso": customer.country_iso,
-            "ship_to_is_US_residential": str(customer.is_residential).lower(),
-            "order_item_name": item.filename,
-            "order_quantity": item.quantity,
-            "order_image_url": item.image_url,
-            "order_sku": item.sku,
-            "order_item_color": item.color,
-            "profile": item.profile,
-        }
-        orders.append(order_data)
-    return orders
+from .base import Slant3DBlockBase
+import requests as baserequests
 
 
 class Slant3DCreateOrderBlock(Slant3DBlockBase):
@@ -53,9 +23,18 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
 
     class Input(BlockSchema):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_number: str = SchemaField(description="Your custom order number")
-        customer: CustomerDetails = SchemaField()
-        items: List[OrderItem] = SchemaField()
+        order_number: str = SchemaField(
+            description="Your custom order number (or leave blank for a random one)",
+            default_factory=lambda: str(uuid.uuid4()),
+        )
+        customer: CustomerDetails = SchemaField(
+            description="Customer details for where to ship the item",
+            advanced=False,
+        )
+        items: List[OrderItem] = SchemaField(
+            description="List of items to print",
+            advanced=False,
+        )
 
     class Output(BlockSchema):
         order_id: str = SchemaField(description="Slant3D order ID")
@@ -68,7 +47,7 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "order_number": "TEST-001",
                 "customer": {
                     "name": "John Doe",
@@ -89,6 +68,7 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
                     }
                 ],
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("order_id", "314144241")],
             test_mock={
                 "_make_request": lambda *args, **kwargs: {"orderId": "314144241"}
@@ -99,8 +79,11 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            order_data = _format_order_data(
-                input_data.customer, input_data.order_number, input_data.items
+            order_data = self._format_order_data(
+                input_data.customer,
+                input_data.order_number,
+                input_data.items,
+                credentials.api_key.get_secret_value(),
             )
             result = self._make_request(
                 "POST", "order", credentials.api_key.get_secret_value(), json=order_data
@@ -116,9 +99,18 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
 
     class Input(BlockSchema):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_number: str = SchemaField(description="Your custom order number")
-        customer: CustomerDetails = SchemaField()
-        items: List[OrderItem] = SchemaField()
+        order_number: str = SchemaField(
+            description="Your custom order number (or leave blank for a random one)",
+            default_factory=lambda: str(uuid.uuid4()),
+        )
+        customer: CustomerDetails = SchemaField(
+            description="Customer details for where to ship the item",
+            advanced=False,
+        )
+        items: List[OrderItem] = SchemaField(
+            description="List of items to print",
+            advanced=False,
+        )
 
     class Output(BlockSchema):
         total_price: float = SchemaField(description="Total price in USD")
@@ -133,7 +125,7 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "order_number": "TEST-001",
                 "customer": {
                     "name": "John Doe",
@@ -154,6 +146,7 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
                     }
                 ],
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("total_price", 9.31),
                 ("shipping_cost", 5.56),
@@ -171,10 +164,13 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        order_data = self._format_order_data(
+            input_data.customer,
+            input_data.order_number,
+            input_data.items,
+            credentials.api_key.get_secret_value(),
+        )
         try:
-            order_data = _format_order_data(
-                input_data.customer, input_data.order_number, input_data.items
-            )
             result = self._make_request(
                 "POST",
                 "order/estimate",
@@ -184,8 +180,8 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
             yield "total_price", result["totalPrice"]
             yield "shipping_cost", result["shippingCost"]
             yield "printing_cost", result["printingCost"]
-        except Exception as e:
-            yield "error", str(e)
+        except baserequests.HTTPError as e:
+            yield "error", str(f"Error estimating order: {e} {e.response.text}")
             raise
 
 
@@ -194,9 +190,17 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
 
     class Input(BlockSchema):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_number: str = SchemaField(description="Your custom order number")
-        customer: CustomerDetails = SchemaField()
-        items: List[OrderItem] = SchemaField()
+        order_number: str = SchemaField(
+            description="Your custom order number (or leave blank for a random one)",
+            default_factory=lambda: str(uuid.uuid4()),
+        )
+        customer: CustomerDetails = SchemaField(
+            description="Customer details for where to ship the item"
+        )
+        items: List[OrderItem] = SchemaField(
+            description="List of items to print",
+            advanced=False,
+        )
 
     class Output(BlockSchema):
         shipping_cost: float = SchemaField(description="Estimated shipping cost")
@@ -210,7 +214,7 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "order_number": "TEST-001",
                 "customer": {
                     "name": "John Doe",
@@ -231,6 +235,7 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
                     }
                 ],
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("shipping_cost", 4.81), ("currency_code", "usd")],
             test_mock={
                 "_make_request": lambda *args, **kwargs: {
@@ -244,8 +249,11 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            order_data = _format_order_data(
-                input_data.customer, input_data.order_number, input_data.items
+            order_data = self._format_order_data(
+                input_data.customer,
+                input_data.order_number,
+                input_data.items,
+                credentials.api_key.get_secret_value(),
             )
             result = self._make_request(
                 "POST",
@@ -267,7 +275,7 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
 
     class Output(BlockSchema):
-        orders: List[Dict] = SchemaField(description="List of orders with their details")
+        orders: List[str] = SchemaField(description="List of orders with their details")
         error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
@@ -276,18 +284,13 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
             description="Get all orders for the account",
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={"credentials": {"api_key": "test_key"}},
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "orders",
                     [
-                        {
-                            "orderId": 1234567890,
-                            "orderTimestamp": {
-                                "_seconds": 1719510986,
-                                "_nanoseconds": 710000000,
-                            },
-                        }
+                        "1234567890",
                     ],
                 )
             ],
@@ -313,7 +316,7 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
             result = self._make_request(
                 "GET", "order", credentials.api_key.get_secret_value()
             )
-            yield "orders", result["ordersData"]
+            yield "orders", [str(order["orderId"]) for order in result["ordersData"]]
         except Exception as e:
             yield "error", str(e)
             raise
@@ -328,7 +331,9 @@ class Slant3DTrackingBlock(Slant3DBlockBase):
 
     class Output(BlockSchema):
         status: str = SchemaField(description="Order status")
-        tracking_numbers: List[str] = SchemaField(description="List of tracking numbers")
+        tracking_numbers: List[str] = SchemaField(
+            description="List of tracking numbers"
+        )
         error: str = SchemaField(description="Error message if tracking failed")
 
     def __init__(self):
@@ -338,9 +343,10 @@ class Slant3DTrackingBlock(Slant3DBlockBase):
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "order_id": "314144241",
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "awaiting_shipment"), ("tracking_numbers", [])],
             test_mock={
                 "_make_request": lambda *args, **kwargs: {
@@ -384,9 +390,10 @@ class Slant3DCancelOrderBlock(Slant3DBlockBase):
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "order_id": "314144241",
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Order cancelled")],
             test_mock={
                 "_make_request": lambda *args, **kwargs: {"status": "Order cancelled"}

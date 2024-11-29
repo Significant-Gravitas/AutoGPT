@@ -1,9 +1,12 @@
-from typing import Optional, List, Dict
+from typing import List
+
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
-from backend.data.block import BlockSchema, BlockOutput
+
+from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+
+from ._api import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, Filament, Slant3DCredentialsField, Slant3DCredentialsInput
 from .base import Slant3DBlockBase
-from ._api import Slant3DCredentialsField, Slant3DCredentialsInput
 
 
 class Slant3DFilamentBlock(Slant3DBlockBase):
@@ -13,7 +16,9 @@ class Slant3DFilamentBlock(Slant3DBlockBase):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
 
     class Output(BlockSchema):
-        filaments: List[Dict] = SchemaField(description="List of available filaments")
+        filaments: List[Filament] = SchemaField(
+            description="List of available filaments"
+        )
         error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
@@ -22,7 +27,8 @@ class Slant3DFilamentBlock(Slant3DBlockBase):
             description="Get list of available filaments",
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={"credentials": {"api_key": "test_key"}},
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
                     "filaments",

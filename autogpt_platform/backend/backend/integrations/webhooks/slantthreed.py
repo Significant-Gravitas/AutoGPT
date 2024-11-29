@@ -1,11 +1,14 @@
-from typing import Dict, Tuple, List, ClassVar
+from typing import ClassVar, Dict, List, Tuple
+
+import requests
 from autogpt_libs.supabase_integration_credentials_store.types import (
     APIKeyCredentials,
+    Credentials,
 )
-from backend.data import integrations
 from fastapi import Request
+
+from backend.data import integrations
 from backend.integrations.webhooks.base import BaseWebhooksManager
-import requests
 
 
 class Slant3DWebhooksManager(BaseWebhooksManager):
@@ -16,7 +19,7 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
 
     async def _register_webhook(
         self,
-        credentials: APIKeyCredentials,
+        credentials: Credentials,
         webhook_type: str,
         resource: str,
         events: List[str],
@@ -24,6 +27,9 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
         secret: str,
     ) -> Tuple[str, Dict]:
         """Register a new webhook with Slant3D"""
+
+        if not isinstance(credentials, APIKeyCredentials):
+            raise ValueError("API key is required to register a webhook")
 
         headers = {
             "api-key": credentials.api_key.get_secret_value(),
@@ -84,7 +90,7 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
         return normalized_payload, event_type
 
     async def _deregister_webhook(
-        self, webhook: integrations.Webhook, credentials: APIKeyCredentials
+        self, webhook: integrations.Webhook, credentials: Credentials
     ) -> None:
         """
         Note: Slant3D API currently doesn't provide a deregistration endpoint.

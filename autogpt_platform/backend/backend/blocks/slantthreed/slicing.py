@@ -1,9 +1,10 @@
-from typing import Optional
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
-from backend.data.block import BlockSchema, BlockOutput
+
+from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+
+from ._api import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, Slant3DCredentialsField, Slant3DCredentialsInput
 from .base import Slant3DBlockBase
-from ._api import Slant3DCredentialsField, Slant3DCredentialsInput
 
 
 class Slant3DSlicerBlock(Slant3DBlockBase):
@@ -11,11 +12,13 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
 
     class Input(BlockSchema):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        file_url: str = SchemaField(description="URL of the 3D model file to slice")
+        file_url: str = SchemaField(
+            description="URL of the 3D model file to slice (STL)"
+        )
 
     class Output(BlockSchema):
         message: str = SchemaField(description="Response message")
-        price: str = SchemaField(description="Calculated price for printing")
+        price: float = SchemaField(description="Calculated price for printing")
         error: str = SchemaField(description="Error message if slicing failed")
 
     def __init__(self):
@@ -25,9 +28,10 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "file_url": "https://example.com/model.stl",
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("message", "Slicing successful"), ("price", "$8.23")],
             test_mock={
                 "_make_request": lambda *args, **kwargs: {
