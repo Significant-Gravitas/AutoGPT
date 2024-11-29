@@ -37,11 +37,11 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
                 "file_url": "https://example.com/model.stl",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("message", "Slicing successful"), ("price", "$8.23")],
+            test_output=[("message", "Slicing successful"), ("price", 8.23)],
             test_mock={
                 "_make_request": lambda *args, **kwargs: {
                     "message": "Slicing successful",
-                    "data": {"price": "$8.23"},
+                    "data": {"price": 8.23},
                 }
             },
         )

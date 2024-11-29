@@ -60,7 +60,6 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
                 },
                 "items": [
                     {
-                        "filename": "test-model",
                         "file_url": "https://example.com/model.stl",
                         "quantity": "1",
                         "color": "black",
@@ -71,7 +70,8 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("order_id", "314144241")],
             test_mock={
-                "_make_request": lambda *args, **kwargs: {"orderId": "314144241"}
+                "_make_request": lambda *args, **kwargs: {"orderId": "314144241"},
+                "_convert_to_color": lambda *args, **kwargs: "black",
             },
         )
 
@@ -138,7 +138,6 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
                 },
                 "items": [
                     {
-                        "filename": "test-model",
                         "file_url": "https://example.com/model.stl",
                         "quantity": "1",
                         "color": "black",
@@ -157,7 +156,8 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
                     "totalPrice": 9.31,
                     "shippingCost": 5.56,
                     "printingCost": 3.75,
-                }
+                },
+                "_convert_to_color": lambda *args, **kwargs: "black",
             },
         )
 
@@ -227,7 +227,6 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
                 },
                 "items": [
                     {
-                        "filename": "test-model",
                         "file_url": "https://example.com/model.stl",
                         "quantity": "1",
                         "color": "black",
@@ -241,7 +240,8 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
                 "_make_request": lambda *args, **kwargs: {
                     "shippingCost": 4.81,
                     "currencyCode": "usd",
-                }
+                },
+                "_convert_to_color": lambda *args, **kwargs: "black",
             },
         )
 
