@@ -1,87 +1,113 @@
 import logging
 import time
-from typing import Literal, Set
+from enum import Enum
+from typing import Any, Dict
 
-import requests
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
-from pydantic import SecretStr
+import httpx
 
+from backend.blocks.fal._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    FalCredentials,
+    FalCredentialsField,
+    FalCredentialsInput,
+)
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import SchemaField
 
 logger = logging.getLogger(__name__)
 
 
+class FalModel(str, Enum):
+    MOCHI = "fal-ai/mochi-v1"
+    LUMA = "fal-ai/luma-dream-machine"
+
+
 class AIVideoGeneratorBlock(Block):
     class Input(BlockSchema):
-        video_description: str = SchemaField(
+        prompt: str = SchemaField(
             description="Description of the video to generate.",
             placeholder="A dog running in a field.",
         )
-        credentials: CredentialsMetaInput[Literal["fal"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="fal",
-                supported_credential_types={"api_key"},
-                description="The FAL integration can be used with any API key with sufficient permissions for video generation.",
-            )
+        model: FalModel = SchemaField(
+            title="FAL Model",
+            default=FalModel.MOCHI,
+            description="The FAL model to use for video generation.",
         )
+        credentials: FalCredentialsInput = FalCredentialsField()
 
     class Output(BlockSchema):
         video_url: str = SchemaField(description="The URL of the generated video.")
         error: str = SchemaField(
             description="Error message if video generation failed."
         )
-
-    def __init__(self):
-        test_credentials = APIKeyCredentials(
-            id="01234567-89ab-cdef-0123-456789abcdef",
-            provider="fal",
-            api_key=SecretStr("test-api-key"),
-            title="Mock FAL API Key",
-            expires_at=None,
+        logs: list[str] = SchemaField(
+            description="Generation progress logs.", optional=True
         )
 
-        test_credentials_input = {
-            "provider": test_credentials.provider,
-            "id": test_credentials.id,
-            "type": test_credentials.type,
-            "title": test_credentials.title,
-        }
-
+    def __init__(self):
         super().__init__(
             id="530cf046-2ce0-4854-ae2c-659db17c7a46",
-            description="A block that takes in a description of a video and generates a video using the FAL Mochi API.",
+            description="Generate videos using FAL AI models.",
             categories={BlockCategory.AI},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
-                "video_description": "A dog running in a field.",
-                "credentials": test_credentials_input,
+                "prompt": "A dog running in a field.",
+                "model": FalModel.MOCHI,
+                "credentials": TEST_CREDENTIALS_INPUT,
             },
-            test_credentials=test_credentials,
-            test_output=[("video_url", "https://fal.media/files/.../video.mp4")],
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[("video_url", "https://fal.media/files/example/video.mp4")],
             test_mock={
-                "generate_video": lambda *args, **kwargs: "https://fal.media/files/.../video.mp4"
+                "generate_video": lambda *args, **kwargs: "https://fal.media/files/example/video.mp4"
             },
         )
 
-    @staticmethod
-    def generate_video(api_key: str, prompt: str) -> str:
-        headers = {
+    def _get_headers(self, api_key: str) -> Dict[str, str]:
+        """Get headers for FAL API requests."""
+        return {
             "Authorization": f"Key {api_key}",
             "Content-Type": "application/json",
         }
 
-        # Keep track of logs we've already seen
-        seen_logs: Set[str] = set()
+    def _submit_request(
+        self, url: str, headers: Dict[str, str], data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Submit a request to the FAL API."""
+        try:
+            response = httpx.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"FAL API request failed: {str(e)}")
+            raise RuntimeError(f"Failed to submit request: {str(e)}")
+
+    def _poll_status(self, status_url: str, headers: Dict[str, str]) -> Dict[str, Any]:
+        """Poll the status endpoint until completion or failure."""
+        try:
+            response = httpx.get(status_url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to get status: {str(e)}")
+            raise RuntimeError(f"Failed to get status: {str(e)}")
+
+    def generate_video(self, input_data: Input, credentials: FalCredentials) -> str:
+        """Generate video using the specified FAL model."""
+        base_url = "https://queue.fal.run"
+        api_key = credentials.api_key.get_secret_value()
+        headers = self._get_headers(api_key)
+
+        # Submit generation request
+        submit_url = f"{base_url}/{input_data.model.value}"
+        submit_data = {"prompt": input_data.prompt}
+
+        seen_logs = set()
 
         try:
             # Submit request to queue
-            submit_response = requests.post(
-                "https://queue.fal.run/fal-ai/mochi-v1",
-                headers=headers,
-                json={"prompt": prompt, "enable_prompt_expansion": True},
-            )
+            submit_response = httpx.post(submit_url, headers=headers, json=submit_data)
             submit_response.raise_for_status()
             request_data = submit_response.json()
 
@@ -99,7 +125,7 @@ class AIVideoGeneratorBlock(Block):
             base_wait_time = 5
 
             while attempt < max_attempts:
-                status_response = requests.get(f"{status_url}?logs=1", headers=headers)
+                status_response = httpx.get(f"{status_url}?logs=1", headers=headers)
                 status_response.raise_for_status()
                 status_data = status_response.json()
 
@@ -117,17 +143,16 @@ class AIVideoGeneratorBlock(Block):
                                 message = log.get("message", "")
                                 if message:
                                     logger.debug(
-                                        f"[AIVideoGeneratorBlock] - [{log.get('level', 'INFO')}] [{log.get('source', '')}] [{log.get('timestamp', '')}] {message}"
+                                        f"[FAL Generation] [{log.get('level', 'INFO')}] [{log.get('source', '')}] [{log.get('timestamp', '')}] {message}"
                                     )
 
                 status = status_data.get("status")
                 if status == "COMPLETED":
-                    # Get the final result using the result_url
-                    result_response = requests.get(result_url, headers=headers)
+                    # Get the final result
+                    result_response = httpx.get(result_url, headers=headers)
                     result_response.raise_for_status()
                     result_data = result_response.json()
 
-                    # Extract video URL from response
                     if "video" not in result_data or not isinstance(
                         result_data["video"], dict
                     ):
@@ -145,35 +170,30 @@ class AIVideoGeneratorBlock(Block):
                 elif status == "IN_QUEUE":
                     position = status_data.get("queue_position", "unknown")
                     logger.debug(
-                        f"[AIVideoGeneratorBlock] - Status: In queue, position: {position}"
+                        f"[FAL Generation] Status: In queue, position: {position}"
                     )
                 elif status == "IN_PROGRESS":
                     logger.debug(
-                        "[AIVideoGeneratorBlock] - Status: Request is being processed..."
+                        "[FAL Generation] Status: Request is being processed..."
                     )
                 else:
-                    logger.info(
-                        f"[AIVideoGeneratorBlock] - Status: Unknown status: {status}"
-                    )
+                    logger.info(f"[FAL Generation] Status: Unknown status: {status}")
 
-                wait_time = min(base_wait_time * (2**attempt), 60)
+                wait_time = min(base_wait_time * (2**attempt), 60)  # Cap at 60 seconds
                 time.sleep(wait_time)
                 attempt += 1
 
             raise RuntimeError("Maximum polling attempts reached")
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             raise RuntimeError(f"API request failed: {str(e)}")
 
     def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: FalCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            video_url = self.generate_video(
-                api_key=credentials.api_key.get_secret_value(),
-                prompt=input_data.video_description,
-            )
+            video_url = self.generate_video(input_data, credentials)
             yield "video_url", video_url
         except Exception as e:
             error_message = str(e)
-            yield "error", [error_message]
+            yield "error", error_message
