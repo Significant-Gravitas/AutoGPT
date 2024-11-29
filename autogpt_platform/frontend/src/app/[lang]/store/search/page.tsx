@@ -83,13 +83,13 @@ function SearchResults({
   };
 
   const handleSortChange = (sortValue: string) => {
-    
     let sortBy = "recent";
     if (sortValue === "runs") {
       sortBy = "runs";
     } else if (sortValue === "rating") {
-      sortBy = "rating";
+      sortBy = "rating"; 
     }
+
     const sortedAgents = [...agents].sort((a, b) => {
       if (sortBy === "runs") {
         return b.runs - a.runs;
@@ -99,7 +99,20 @@ function SearchResults({
         return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
       }
     });
+
+    const sortedCreators = [...creators].sort((a, b) => {
+      if (sortBy === "runs") {
+        return b.agent_runs - a.agent_runs;
+      } else if (sortBy === "rating") {
+        return b.agent_rating - a.agent_rating;
+      } else {
+        // Creators don't have updated_at, sort by number of agents as fallback
+        return b.num_agents - a.num_agents;
+      }
+    });
+
     setAgents(sortedAgents);
+    setCreators(sortedCreators);
   };
 
   return (

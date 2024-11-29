@@ -393,6 +393,8 @@ export type Creator = {
   description: string;
   avatar_url: string;
   num_agents: number;
+  agent_rating: number;
+  agent_runs: number;
 };
 
 export type CreatorsResponse = {
