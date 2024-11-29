@@ -55,3 +55,53 @@ class SearchTheWebBlock(Block, GetRequest):
 
         # Output the search results
         yield "results", results
+
+
+class ExtractWebsiteContentBlock(Block, GetRequest):
+    class Input(BlockSchema):
+        credentials: JinaCredentialsInput = JinaCredentialsField()
+        url: str = SchemaField(description="The URL to scrape the content from")
+        raw_content: bool = SchemaField(
+            default=False,
+            title="Raw Content",
+            description="Whether to do a raw scrape of the content or use Jina-ai Reader to scrape the content",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        content: str = SchemaField(description="The scraped content from the given URL")
+        error: str = SchemaField(
+            description="Error message if the content cannot be retrieved"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="436c3984-57fd-4b85-8e9a-459b356883bd",
+            description="This block scrapes the content from the given web URL.",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExtractWebsiteContentBlock.Input,
+            output_schema=ExtractWebsiteContentBlock.Output,
+            test_input={
+                "url": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=("content", "scraped content"),
+            test_mock={"get_request": lambda *args, **kwargs: "scraped content"},
+        )
+
+    def run(
+        self, input_data: Input, *, credentials: JinaCredentials, **kwargs
+    ) -> BlockOutput:
+        if input_data.raw_content:
+            url = input_data.url
+            headers = {}
+        else:
+            url = f"https://r.jina.ai/{input_data.url}"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
+            }
+
+        content = self.get_request(url, json=False, headers=headers)
+        yield "content", content
