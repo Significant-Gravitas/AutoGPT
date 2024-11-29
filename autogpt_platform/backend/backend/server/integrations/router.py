@@ -1,12 +1,6 @@
 import logging
 from typing import Annotated, Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import (
-    APIKeyCredentials,
-    Credentials,
-    CredentialsType,
-    OAuth2Credentials,
-)
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
@@ -17,6 +11,12 @@ from backend.data.integrations import (
     get_webhook,
     listen_for_webhook_event,
     publish_webhook_event,
+)
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsType,
+    OAuth2Credentials,
 )
 from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
