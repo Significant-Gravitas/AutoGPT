@@ -7,9 +7,8 @@ from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
 
 if TYPE_CHECKING:
-    from autogpt_libs.supabase_integration_credentials_store.types import Credentials
-
     from backend.data.graph import GraphModel, NodeModel
+    from backend.data.model import Credentials
 
     from .base import BaseWebhooksManager
 
