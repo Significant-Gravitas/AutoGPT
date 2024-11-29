@@ -6,12 +6,9 @@ from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from backend.executor.database import DatabaseManager
-    from redis import Redis
 
 from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
-
-from backend.util.settings import Settings
 
 from backend.data.model import (
     APIKeyCredentials,
@@ -20,6 +17,7 @@ from backend.data.model import (
     OAuthState,
     UserIntegrations,
 )
+from backend.util.settings import Settings
 
 settings = Settings()
 

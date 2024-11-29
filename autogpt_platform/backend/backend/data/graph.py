@@ -615,7 +615,7 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
 
 async def fix_llm_provider_credentials():
     """Fix node credentials with provider `llm`"""
-    from backend.integrations.credential_store import IntegrationCredentialsStore
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
 
     from .user import get_user_integrations
 
