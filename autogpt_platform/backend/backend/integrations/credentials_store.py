@@ -6,20 +6,18 @@ from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from backend.executor.database import DatabaseManager
-    from redis import Redis
 
 from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
-from backend.util.settings import Settings
-
-from .types import (
+from backend.data.model import (
     APIKeyCredentials,
     Credentials,
     OAuth2Credentials,
     OAuthState,
     UserIntegrations,
 )
+from backend.util.settings import Settings
 
 settings = Settings()
 
@@ -109,9 +107,11 @@ DEFAULT_CREDENTIALS = [
 ]
 
 
-class SupabaseIntegrationCredentialsStore:
-    def __init__(self, redis: "Redis"):
-        self.locks = RedisKeyedMutex(redis)
+class IntegrationCredentialsStore:
+    def __init__(self):
+        from backend.data.redis import get_redis
+
+        self.locks = RedisKeyedMutex(get_redis())
 
     @property
     @thread_cached

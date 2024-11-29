@@ -3,7 +3,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
-from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
+from backend.data.model import OAuth2Credentials
 
 logger = logging.getLogger(__name__)
 
