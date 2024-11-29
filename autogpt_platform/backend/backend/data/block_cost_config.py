@@ -136,13 +136,6 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "open_router"
     ]
-    + [
-        BlockCost(
-            # Default cost is running LlmModel.GPT4O.
-            cost_amount=MODEL_COST[LlmModel.GPT4O],
-            cost_filter={"api_key": None},
-        ),
-    ]
 )
 
 # =============== This is the exhaustive list of cost for each Block =============== #
@@ -178,7 +171,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     ExtractWebsiteContentBlock: [
-        BlockCost(cost_amount=1, cost_filter={"raw_content": False})
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "raw_content": False,
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
+                },
+            },
+        )
     ],
     IdeogramModelBlock: [
         BlockCost(
