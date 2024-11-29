@@ -71,6 +71,7 @@ app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
 )
 
+
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
     return {"status": "healthy"}

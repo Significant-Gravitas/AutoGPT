@@ -56,8 +56,8 @@ export default async function Page({
         <BreadCrumbs items={breadcrumbs} />
 
         <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
-        <div className="w-full md:w-auto md:shrink-0">
-        <AgentInfo
+          <div className="w-full md:w-auto md:shrink-0">
+            <AgentInfo
               name={agent.agent_name}
               creator={agent.creator}
               shortDescription={agent.description}

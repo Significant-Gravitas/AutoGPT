@@ -19,15 +19,18 @@ class Pagination(pydantic.BaseModel):
         description="Number of items per page.", examples=[25]
     )
 
+
 class MyAgent(pydantic.BaseModel):
     agent_id: str
     agent_version: int
     agent_name: str
     last_edited: datetime.datetime
 
+
 class MyAgentsResponse(pydantic.BaseModel):
     agents: list[MyAgent]
     pagination: Pagination
+
 
 class StoreAgent(pydantic.BaseModel):
     slug: str
@@ -85,12 +88,14 @@ class CreatorDetails(pydantic.BaseModel):
     agent_runs: int
     top_categories: list[str]
 
+
 class Profile(pydantic.BaseModel):
     name: str
     username: str
     description: str
     links: list[str]
     avatar_url: str
+
 
 class StoreSubmission(pydantic.BaseModel):
     name: str

@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 import prisma.enums
 import prisma.errors
@@ -7,8 +8,6 @@ import prisma.types
 
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
-
-from datetime import datetime   
 
 logger = logging.getLogger(__name__)
 
@@ -389,7 +388,7 @@ async def create_store_submission(
                         "description": description,
                         "categories": categories,
                         "subHeading": sub_heading,
-                    }   
+                    }
                 },
             }
         )
@@ -563,18 +562,30 @@ async def get_my_agents(
 
     try:
         agents_with_max_version = await prisma.models.AgentGraph.prisma().find_many(
-            where=prisma.types.AgentGraphWhereInput(userId=user_id),
+            where=prisma.types.AgentGraphWhereInput(
+                userId=user_id, StoreListing={"none": {"isDeleted": False}}
+            ),
             order=[{"version": "desc"}],
             distinct=["id"],
             skip=(page - 1) * page_size,
             take=page_size,
         )
 
-        total = len(await prisma.models.AgentGraph.prisma().find_many(
-            where=prisma.types.AgentGraphWhereInput(userId=user_id),
-            order=[{"version": "desc"}],
-            distinct=["id"],
-        ))
+        # store_listings = await prisma.models.StoreListing.prisma().find_many(
+        #     where=prisma.types.StoreListingWhereInput(
+        #         isDeleted=False,
+        #     ),
+        # )
+
+        total = len(
+            await prisma.models.AgentGraph.prisma().find_many(
+                where=prisma.types.AgentGraphWhereInput(
+                    userId=user_id, StoreListing={"none": {"isDeleted": False}}
+                ),
+                order=[{"version": "desc"}],
+                distinct=["id"],
+            )
+        )
 
         total_pages = (total + page_size - 1) // page_size
 

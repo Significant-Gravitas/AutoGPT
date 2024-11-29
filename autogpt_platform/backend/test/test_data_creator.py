@@ -45,6 +45,7 @@ def get_image():
         url = faker.image_url()
     return url
 
+
 async def main():
     db = Prisma()
     await db.connect()
