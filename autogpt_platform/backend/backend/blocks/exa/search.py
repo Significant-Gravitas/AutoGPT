@@ -82,10 +82,9 @@ class ExaSearchBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: list = SchemaField(description="Search results from Exa")
-        error: str = SchemaField(
-            description="Error message if the search fails",
-            default="",
+        results: list = SchemaField(
+            description="List of search results",
+            default=[],
         )
 
     def __init__(self):
@@ -110,17 +109,34 @@ class ExaSearchBlock(Block):
             "query": input_data.query,
             "useAutoprompt": input_data.useAutoprompt,
             "numResults": input_data.numResults,
+            "contents": {
+                "text": {"maxCharacters": 1000, "includeHtmlTags": False},
+                "highlights": {
+                    "numSentences": 3,
+                    "highlightsPerUrl": 3,
+                },
+                "summary": {"query": ""},
+            },
         }
 
+        # Add dates if they exist
+        date_fields = [
+            "startCrawlDate",
+            "endCrawlDate",
+            "startPublishedDate",
+            "endPublishedDate",
+        ]
+        for field in date_fields:
+            value = getattr(input_data, field, None)
+            if value:
+                payload[field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+        # Add other fields
         optional_fields = [
             "type",
             "category",
             "includeDomains",
             "excludeDomains",
-            "startCrawlDate",
-            "endCrawlDate",
-            "startPublishedDate",
-            "endPublishedDate",
             "includeText",
             "excludeText",
         ]
@@ -128,19 +144,14 @@ class ExaSearchBlock(Block):
         for field in optional_fields:
             value = getattr(input_data, field)
             if value:  # Only add non-empty values
-                if isinstance(value, datetime):
-                    payload[field] = value.isoformat() + "Z"
-                else:
-                    payload[field] = value
-
-        if input_data.contents:
-            payload["contents"] = input_data.contents.dict(exclude_none=True)
+                payload[field] = value
 
         try:
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
-            results = response.json()
-            yield "results", results
+            data = response.json()
+            # Extract just the results array from the response
+            yield "results", data.get("results", [])
         except Exception as e:
             yield "error", str(e)
             yield "results", []
