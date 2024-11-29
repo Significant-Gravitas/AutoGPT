@@ -5,7 +5,13 @@ from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCred
 from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
-from ._api import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, Filament, Slant3DCredentialsField, Slant3DCredentialsInput
+from ._api import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    Filament,
+    Slant3DCredentialsField,
+    Slant3DCredentialsInput,
+)
 from .base import Slant3DBlockBase
 
 

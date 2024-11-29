@@ -1,6 +1,5 @@
 from typing import Any, Dict
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from backend.blocks.slantthreed._api import Color, CustomerDetails, OrderItem, Profile
 from backend.data.block import Block
 from backend.util.request import requests

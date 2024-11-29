@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
 import uuid
+from typing import List
 
+import requests as baserequests
 from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 
 from backend.data.block import BlockOutput, BlockSchema
@@ -15,7 +16,6 @@ from ._api import (
     Slant3DCredentialsInput,
 )
 from .base import Slant3DBlockBase
-import requests as baserequests
 
 
 class Slant3DCreateOrderBlock(Slant3DBlockBase):

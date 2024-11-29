@@ -1,5 +1,3 @@
-from backend.util import settings
-from backend.util.settings import BehaveAs
 from pydantic import BaseModel
 
 from backend.data.block import (
@@ -10,8 +8,15 @@ from backend.data.block import (
     BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
+from backend.util import settings
+from backend.util.settings import BehaveAs
 
-from ._api import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, Slant3DCredentialsField, Slant3DCredentialsInput
+from ._api import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    Slant3DCredentialsField,
+    Slant3DCredentialsInput,
+)
 
 
 class Slant3DTriggerBase:
