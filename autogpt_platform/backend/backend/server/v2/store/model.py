@@ -71,6 +71,8 @@ class Creator(pydantic.BaseModel):
     description: str
     avatar_url: str
     num_agents: int
+    agent_rating: float
+    agent_runs: int
 
 
 class CreatorsResponse(pydantic.BaseModel):

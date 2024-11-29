@@ -192,6 +192,8 @@ async def get_store_creators(
                 description=creator.description,
                 avatar_url=creator.avatar_url,
                 num_agents=creator.num_agents,
+                agent_rating=creator.agent_rating,
+                agent_runs=creator.agent_runs,
             )
             for creator in creators
         ]
