@@ -226,12 +226,14 @@ async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDet
 ############# Store Submissions ###############
 ############################################
 @router.get(
-        "/myagents",
-        tags=["store", "private"],
-        dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    "/myagents",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
 )
 async def get_my_agents(
-    user_id: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)]
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ]
 ) -> backend.server.v2.store.model.MyAgentsResponse:
     try:
         agents = await backend.server.v2.store.db.get_my_agents(user_id)
@@ -239,6 +241,7 @@ async def get_my_agents(
     except Exception:
         logger.exception("Exception occurred whilst getting my agents")
         raise
+
 
 @router.get(
     "/submissions",

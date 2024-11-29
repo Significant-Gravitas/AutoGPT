@@ -60,17 +60,19 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   );
 
   React.useEffect(() => {
-    const loadMyAgents = async () => {
-      try {
-        const response = await api.getMyAgents();
-        setMyAgents(response);
-      } catch (error) {
-        console.error("Failed to load my agents:", error);
-      }
-    };
+    if (open) {
+      const loadMyAgents = async () => {
+        try {
+          const response = await api.getMyAgents();
+          setMyAgents(response);
+        } catch (error) {
+          console.error("Failed to load my agents:", error);
+        }
+      };
 
-    loadMyAgents();
-  }, []);
+      loadMyAgents();
+    }
+  }, [open]);
 
   const handleClose = () => {
     setStep("select");

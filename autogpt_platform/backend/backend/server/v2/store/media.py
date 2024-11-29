@@ -2,9 +2,9 @@ import logging
 import os
 import uuid
 
+import dotenv
 import fastapi
 from google.cloud import storage
-import dotenv
 
 import backend.server.v2.store.exceptions
 
@@ -76,10 +76,7 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
             blob.content_type = content_type
 
             file_bytes = await file.read()
-            blob.upload_from_string(
-                file_bytes,
-                content_type=content_type
-            )
+            blob.upload_from_string(file_bytes, content_type=content_type)
 
             public_url = blob.public_url
 
