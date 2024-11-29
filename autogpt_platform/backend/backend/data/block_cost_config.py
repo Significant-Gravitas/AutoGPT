@@ -17,7 +17,7 @@ from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
-from backend.blocks.jina.search import SearchTheWebBlock
+from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.llm import (
     MODEL_METADATA,
     AIConversationBlock,
@@ -28,7 +28,6 @@ from backend.blocks.llm import (
     LlmModel,
 )
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
-from backend.blocks.search import ExtractWebsiteContentBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.data.block import Block
@@ -72,18 +71,8 @@ for model in LlmModel:
 
 
 LLM_COST = (
+    # Anthropic Models
     [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "api_key": None,  # Running LLM with user own API key is free.
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-    ]
-    + [
         BlockCost(
             cost_type=BlockCostType.RUN,
             cost_filter={
@@ -99,6 +88,7 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "anthropic"
     ]
+    # OpenAI Models
     + [
         BlockCost(
             cost_type=BlockCostType.RUN,
@@ -115,6 +105,7 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "openai"
     ]
+    # Groq Models
     + [
         BlockCost(
             cost_type=BlockCostType.RUN,
@@ -126,13 +117,6 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "groq"
-    ]
-    + [
-        BlockCost(
-            # Default cost is running LlmModel.GPT4O.
-            cost_amount=MODEL_COST[LlmModel.GPT4O],
-            cost_filter={"api_key": None},
-        ),
     ]
     # Open Router Models
     + [
@@ -186,7 +170,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     ExtractWebsiteContentBlock: [
-        BlockCost(cost_amount=1, cost_filter={"raw_content": False})
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "raw_content": False,
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
+                },
+            },
+        )
     ],
     IdeogramModelBlock: [
         BlockCost(

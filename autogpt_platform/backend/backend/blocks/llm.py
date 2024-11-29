@@ -23,13 +23,6 @@ from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 
-# LlmApiKeys = {
-#     "openai": BlockSecret("openai_api_key"),
-#     "anthropic": BlockSecret("anthropic_api_key"),
-#     "groq": BlockSecret("groq_api_key"),
-#     "ollama": BlockSecret(value=""),
-# }
-
 LLMProviderName = Literal["anthropic", "groq", "openai", "ollama", "open_router"]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 

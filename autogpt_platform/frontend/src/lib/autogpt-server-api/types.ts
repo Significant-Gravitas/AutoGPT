@@ -118,6 +118,7 @@ export const PROVIDER_NAMES = {
   REPLICATE: "replicate",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  HUBSPOT: "hubspot",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
