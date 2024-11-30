@@ -21,6 +21,9 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
+import { useIndexedDB } from "@/hooks/useIndexedDB";
+import { useLocalStorage } from "./useLocalStorage";
+import { useDebounce } from "@/hooks/useDebounce";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -43,6 +46,12 @@ export default function useAgentGraph(
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
+  const [isOnline, setIsOnline] = useState(true);
+  // const { saveData, getData } = useIndexedDB(flowID);
+  const { saveData, getData, clearStore } = useLocalStorage(flowID);
+  const debouncedSave = useDebounce(saveData, 3000);
+  const [unsavedChangesDialogOpen, setUnsavedChangesDialogOpen] =
+    useState<boolean>(false);
   /**
    * User `request` to save or save&run the agent, or to stop the active run.
    * `state` is used to track the request status:
@@ -329,6 +338,49 @@ export default function useAgentGraph(
     [passDataToBeads, updateEdgeBeads],
   );
 
+  const checkUnsavedChanges = useCallback(
+    async (backendFlowData: Graph) => {
+      if (isOnline) {
+        try {
+          const localFlowData = getData();
+          if (localFlowData) {
+            const payload = localFlowData.graph;
+            const comparedPayload = {
+              ...(({ id, ...rest }) => rest)(payload),
+              nodes: payload.nodes.map(
+                ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
+              ),
+              links: payload.links.map(
+                ({ source_id, sink_id, ...rest }) => rest,
+              ),
+            };
+
+            const comparedSavedAgent = {
+              name: backendFlowData?.name,
+              description: backendFlowData?.description,
+              nodes: backendFlowData?.nodes.map((v) => ({
+                block_id: v.block_id,
+                input_default: v.input_default,
+                metadata: v.metadata,
+              })),
+              links: backendFlowData?.links.map((v) => ({
+                sink_name: v.sink_name,
+                source_name: v.source_name,
+              })),
+            };
+
+            if (!deepEquals(comparedPayload, comparedSavedAgent)) {
+              setUnsavedChangesDialogOpen(true);
+            }
+          }
+        } catch (error) {
+          console.error("Error checking unsaved changes:", error);
+        }
+      }
+    },
+    [isOnline, getData],
+  );
+
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
@@ -336,9 +388,11 @@ export default function useAgentGraph(
       (graph) => {
         console.debug("Loading graph");
         loadGraph(graph);
+
+        checkUnsavedChanges(graph);
       },
     );
-  }, [flowID, template, availableNodes, api, loadGraph]);
+  }, [flowID, template, availableNodes, api, loadGraph, checkUnsavedChanges]);
 
   // Update nodes with execution data
   useEffect(() => {
@@ -829,6 +883,75 @@ export default function useAgentGraph(
     [_saveAgent, toast],
   );
 
+  const saveAgentLocally = useCallback(() => {
+    const blockIdToNodeIdMap: Record<string, string> = {};
+
+    nodes.forEach((node) => {
+      const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
+      blockIdToNodeIdMap[key] = node.id;
+    });
+
+    const formattedNodes = nodes.map((node) => {
+      const inputDefault = prepareNodeInputData(node);
+      const inputNodes = edges
+        .filter((edge) => edge.target === node.id)
+        .map((edge) => ({
+          name: edge.targetHandle || "",
+          node_id: edge.source,
+        }));
+
+      const outputNodes = edges
+        .filter((edge) => edge.source === node.id)
+        .map((edge) => ({
+          name: edge.sourceHandle || "",
+          node_id: edge.target,
+        }));
+
+      return {
+        id: node.id,
+        block_id: node.data.block_id,
+        input_default: inputDefault,
+        input_nodes: inputNodes,
+        output_nodes: outputNodes,
+        data: {
+          ...node.data,
+          hardcodedValues: removeEmptyStringsAndNulls(
+            node.data.hardcodedValues,
+          ),
+        },
+        metadata: { position: node.position },
+      };
+    });
+
+    const links = edges.map((edge) => ({
+      source_id: edge.source,
+      sink_id: edge.target,
+      source_name: edge.sourceHandle || "",
+      sink_name: edge.targetHandle || "",
+      is_static: false,
+      id: edge.id,
+    }));
+
+    const payload = {
+      id: savedAgent?.id!,
+      name: agentName || `New Agent ${new Date().toISOString()}`,
+      description: agentDescription || "",
+      nodes: formattedNodes,
+      links: links,
+    };
+
+    // saving data locally
+    saveData(payload);
+  }, [
+    nodes,
+    edges,
+    savedAgent,
+    agentName,
+    agentDescription,
+    prepareNodeInputData,
+    saveData,
+  ]);
+
   const requestSave = useCallback(
     (asTemplate: boolean) => {
       saveAgent(asTemplate);
@@ -905,6 +1028,75 @@ export default function useAgentGraph(
     [api, flowID, saveAgent, toast, router, searchParams],
   );
 
+  // Handle online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log("Got online event");
+      setIsOnline(true);
+    };
+    const handleOffline = () => {
+      console.log("Got online event");
+      setIsOnline(false);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // saving the data when user ig going outside the tab/window
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.hidden && savedAgent) {
+        saveAgentLocally();
+      }
+    };
+
+    const handleBeforeUnload = async () => {
+      if (savedAgent) {
+        saveAgentLocally();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [saveAgentLocally, savedAgent]);
+
+  // Force saving data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (savedAgent) {
+        console.log("Saving data after 30 sec");
+        saveAgentLocally();
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [saveAgentLocally, savedAgent]);
+
+  const handleLocalSave = useCallback(async () => {
+    const localFlowData = getData();
+    if (localFlowData) {
+      loadGraph(localFlowData.graph);
+    }
+    setUnsavedChangesDialogOpen(false);
+    clearStore();
+  }, [loadGraph, getData, clearStore]);
+
+  const handleLocalCancel = useCallback(() => {
+    clearStore();
+    setUnsavedChangesDialogOpen(false);
+  }, [clearStore]);
+
   return {
     agentName,
     setAgentName,
@@ -923,6 +1115,10 @@ export default function useAgentGraph(
     isStopping: saveRunRequest.state == "stopping",
     isScheduling,
     setIsScheduling,
+    unsavedChangesDialogOpen,
+    setUnsavedChangesDialogOpen,
+    handleLocalSave,
+    handleLocalCancel,
     nodes,
     setNodes,
     edges,

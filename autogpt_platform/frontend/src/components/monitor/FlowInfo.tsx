@@ -29,6 +29,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
@@ -39,6 +40,7 @@ export const FlowInfo: React.FC<
   }
 > = ({ flow, flowRuns, flowVersion, refresh, ...props }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const { clearStore } = useLocalStorage(flow.id);
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(
@@ -165,6 +167,7 @@ export const FlowInfo: React.FC<
               onClick={() => {
                 api.deleteGraph(flow.id).then(() => {
                   setIsDeleteModalOpen(false);
+                  clearStore();
                   refresh();
                 });
               }}

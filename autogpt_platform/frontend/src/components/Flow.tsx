@@ -46,6 +46,7 @@ import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 import { CronScheduler } from "./cronScheduler";
+import { UnsavedChangesDialog } from "./autoSaveModel";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -100,6 +101,10 @@ const FlowEditor: React.FC<{
     requestStopRun,
     scheduleRunner,
     isRunning,
+    unsavedChangesDialogOpen,
+    setUnsavedChangesDialogOpen,
+    handleLocalSave,
+    handleLocalCancel,
     isScheduling,
     setIsScheduling,
     nodes,
@@ -714,6 +719,12 @@ const FlowEditor: React.FC<{
             afterCronCreation={afterCronCreation}
             open={openCron}
             setOpen={setOpenCron}
+          />
+          <UnsavedChangesDialog
+            open={unsavedChangesDialogOpen}
+            onOpenChange={setUnsavedChangesDialogOpen}
+            onConfirm={handleLocalSave}
+            onCancel={handleLocalCancel}
           />
         </ReactFlow>
       </div>
