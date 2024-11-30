@@ -8,6 +8,7 @@ from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import Credentials
+from backend.integrations.providers import ProviderName
 
 from .base import BaseWebhooksManager
 
@@ -20,7 +21,7 @@ class GithubWebhookType(StrEnum):
 
 
 class GithubWebhooksManager(BaseWebhooksManager):
-    PROVIDER_NAME = "github"
+    PROVIDER_NAME = ProviderName.GITHUB
 
     WebhookType = GithubWebhookType
 
