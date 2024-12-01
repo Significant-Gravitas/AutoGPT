@@ -52,6 +52,8 @@ export default function useAgentGraph(
   const debouncedSave = useDebounce(saveData, 3000);
   const [unsavedChangesDialogOpen, setUnsavedChangesDialogOpen] =
     useState<boolean>(false);
+  const [localChangesPresent, setLocalChangesPresent] =
+    useState<boolean>(false);
   /**
    * User `request` to save or save&run the agent, or to stop the active run.
    * `state` is used to track the request status:
@@ -778,7 +780,11 @@ export default function useAgentGraph(
       };
 
       let newSavedAgent = null;
-      if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
+      if (
+        savedAgent &&
+        !localChangesPresent &&
+        deepEquals(comparedPayload, comparedSavedAgent)
+      ) {
         console.warn("No need to save: Graph is the same as version on server");
         newSavedAgent = savedAgent;
       } else {
@@ -856,6 +862,7 @@ export default function useAgentGraph(
       nodes,
       edges,
       pathname,
+      localChangesPresent,
       router,
       searchParams,
       savedAgent,
@@ -1087,9 +1094,11 @@ export default function useAgentGraph(
     const localFlowData = getData();
     if (localFlowData) {
       loadGraph(localFlowData.graph);
+      setLocalChangesPresent(true);
+      setUnsavedChangesDialogOpen(false);
+      setSavedAgent(localFlowData.graph);
+      clearStore();
     }
-    setUnsavedChangesDialogOpen(false);
-    clearStore();
   }, [loadGraph, getData, clearStore]);
 
   const handleLocalCancel = useCallback(() => {
