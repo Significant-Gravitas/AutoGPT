@@ -13,7 +13,7 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
     <NextThemesProvider {...props}>
       <SupabaseProvider>
         <CredentialsProvider>
-          <LaunchDarklyProvider >
+          <LaunchDarklyProvider>
             <TooltipProvider>{children}</TooltipProvider>
           </LaunchDarklyProvider>
         </CredentialsProvider>

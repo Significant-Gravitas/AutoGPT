@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 export function withFeatureFlag<P extends object>(
   WrappedComponent: React.ComponentType<P>,
-  flagKey: string
+  flagKey: string,
 ) {
   return function FeatureFlaggedComponent(props: P) {
     const flags = useFlags();
@@ -22,14 +22,14 @@ export function withFeatureFlag<P extends object>(
 
     useEffect(() => {
       if (hasFlagLoaded && !flags[flagKey]) {
-        router.push('/404');
+        router.push("/404");
       }
     }, [hasFlagLoaded, flags, flagKey, router]);
 
     // Show loading state until flags loaded
     if (!hasFlagLoaded) {
       return (
-        <div className="flex items-center justify-center min-h-screen">
+        <div className="flex min-h-screen items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       );
