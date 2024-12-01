@@ -793,6 +793,7 @@ export default function useAgentGraph(
           payload,
         );
         setNodesSyncedWithSavedAgent(false);
+        setLocalChangesPresent(false);
 
         newSavedAgent = savedAgent
           ? await (savedAgent.is_template
