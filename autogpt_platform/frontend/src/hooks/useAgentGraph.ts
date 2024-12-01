@@ -47,7 +47,6 @@ export default function useAgentGraph(
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
   const [isOnline, setIsOnline] = useState(true);
-  // const { saveData, getData } = useIndexedDB(flowID);
   const { saveData, getData, clearStore } = useLocalStorage(flowID);
   const debouncedSave = useDebounce(saveData, 3000);
   const [unsavedChangesDialogOpen, setUnsavedChangesDialogOpen] =
