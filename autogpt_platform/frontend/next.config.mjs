@@ -15,7 +15,6 @@ const nextConfig = {
     ];
   },
   output: "standalone",
-  reactStrictMode: false,
   // TODO: Re-enable TypeScript checks once current issues are resolved
   typescript: {
     ignoreBuildErrors: true,
