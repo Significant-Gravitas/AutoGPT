@@ -54,8 +54,12 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const graphHasWebhookNodes = nodes.some((n) => n.data.uiType == BlockUIType.WEBHOOK);
-  const graphHasInputNodes = nodes.some((n) => n.data.uiType == BlockUIType.INPUT);
+  const graphHasWebhookNodes = nodes.some(
+    (n) => n.data.uiType == BlockUIType.WEBHOOK,
+  );
+  const graphHasInputNodes = nodes.some(
+    (n) => n.data.uiType == BlockUIType.INPUT,
+  );
 
   const filteredAvailableBlocks = useMemo(() => {
     const blockList = blocks
