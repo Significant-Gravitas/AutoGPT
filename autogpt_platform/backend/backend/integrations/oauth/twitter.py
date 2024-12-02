@@ -48,7 +48,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
         # scopes = self.handle_default_scopes(scopes)
 
         if code_challenge is None:
-            raise ValueError("code_verifier is required for Twitter OAuth")
+            raise ValueError("code_challenge is required for Twitter OAuth")
 
         params = {
             "response_type": "code",

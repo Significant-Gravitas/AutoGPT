@@ -862,10 +862,7 @@ const NodeArrayInput: FC<{
   if (!entries || !Array.isArray(entries)) entries = [];
 
   const isMultiSelectEnum =
-    schema.items &&
-    isStringSubSchema(schema.items) &&
-    schema.items.enum &&
-    schema.isMultiSelect;
+    schema.items && isStringSubSchema(schema.items) && schema.items.enum;
 
   if (isMultiSelectEnum) {
     return (
