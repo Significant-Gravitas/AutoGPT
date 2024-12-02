@@ -7,6 +7,7 @@ import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BecomeACreator } from "@/components/agptui/BecomeACreator";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
+import { RatingCard } from "@/components/agptui/RatingCard";
 
 export async function generateMetadata({
   params,
@@ -86,6 +87,10 @@ export default async function Page({
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
         />
+        
+        <div className="fixed bottom-8 right-8">
+          <RatingCard agentName={agent.agent_name} />
+        </div>
       </main>
     </div>
   );
