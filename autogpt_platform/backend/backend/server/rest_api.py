@@ -6,6 +6,10 @@ import fastapi
 import fastapi.responses
 import starlette.middleware.cors
 import uvicorn
+from autogpt_libs.feature_flag.client import (
+    initialize_launchdarkly,
+    shutdown_launchdarkly,
+)
 
 import backend.data.block
 import backend.data.db
@@ -18,6 +22,8 @@ import backend.util.settings
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
+logging.getLogger("autogpt_libs").setLevel(logging.INFO)
+
 
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
@@ -25,7 +31,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
+    initialize_launchdarkly()
     yield
+    shutdown_launchdarkly()
     await backend.data.db.disconnect()
 
 
