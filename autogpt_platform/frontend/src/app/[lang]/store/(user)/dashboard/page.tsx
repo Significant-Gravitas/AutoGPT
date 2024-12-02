@@ -1,15 +1,26 @@
+"use client";
+
 import * as React from "react";
 import { AgentTable } from "@/components/agptui/AgentTable";
+import { AgentTableRowProps } from "@/components/agptui/AgentTableRow";
 import { Button } from "@/components/agptui/Button";
 import { Separator } from "@/components/ui/separator";
-import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
-import { createServerClient } from "@/lib/supabase/server";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import { createClient } from "@/lib/supabase/client";
 import { StatusType } from "@/components/agptui/Status";
 import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
+import { useCallback, useEffect, useState } from "react";
+import {
+  StoreSubmissionsResponse,
+  StoreSubmissionRequest,
+} from "@/lib/autogpt-server-api/types";
 
 async function getDashboardData() {
-  // Get the supabase client first
-  const supabase = createServerClient();
+  const supabase = createClient();
+  if (!supabase) {
+    return { submissions: [] };
+  }
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -19,11 +30,10 @@ async function getDashboardData() {
     return { profile: null };
   }
 
-  // Create API client with the same supabase instance
-  const api = new AutoGPTServerAPIServerSide(
+  const api = new AutoGPTServerAPI(
     process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
     process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-    supabase, // Pass the supabase client instance
+    supabase,
   );
 
   try {
@@ -39,12 +49,57 @@ async function getDashboardData() {
   }
 }
 
-export default async function Page({
+export default function Page({
   params: { lang },
 }: {
   params: { lang: string };
 }) {
-  const { submissions } = await getDashboardData();
+  const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();
+  const [openPopout, setOpenPopout] = useState<boolean>(false);
+  const [submissionData, setSubmissionData] =
+    useState<StoreSubmissionRequest>();
+  const [popoutStep, setPopoutStep] = useState<"select" | "info" | "review">(
+    "info",
+  );
+
+  const fetchData = useCallback(async () => {
+    const { submissions } = await getDashboardData();
+    if (submissions) {
+      setSubmissions(submissions as StoreSubmissionsResponse);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const onEditSubmission = useCallback((submission: StoreSubmissionRequest) => {
+    setSubmissionData(submission);
+    setPopoutStep("review");
+    setOpenPopout(true);
+  }, []);
+
+  const onDeleteSubmission = useCallback(
+    (submission_id: string) => {
+      const supabase = createClient();
+      if (!supabase) {
+        return;
+      }
+      const api = new AutoGPTServerAPI(
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+        supabase,
+      );
+      api.deleteStoreSubmission(submission_id);
+      fetchData();
+    },
+    [fetchData],
+  );
+
+  const onOpenPopout = useCallback(() => {
+    setPopoutStep("select");
+    setOpenPopout(true);
+  }, []);
 
   return (
     <main className="flex-1 px-6 py-8 md:px-10">
@@ -61,10 +116,13 @@ export default async function Page({
         </div>
         <PublishAgentPopout
           trigger={
-            <Button variant="default" size="lg">
+            <Button variant="default" size="lg" onClick={onOpenPopout}>
               Create New Agent
             </Button>
           }
+          openPopout={openPopout}
+          inputStep={popoutStep}
+          submissionData={submissionData}
         />
       </div>
 
@@ -77,17 +135,25 @@ export default async function Page({
         </h2>
         <AgentTable
           agents={
-            submissions?.submissions.map((submission, index) => ({
+            (submissions?.submissions.map((submission, index) => ({
               id: index,
+              agent_id: submission.agent_id,
+              agent_version: submission.agent_version,
+              sub_heading: submission.sub_heading,
+              date_submitted: submission.date_submitted,
               agentName: submission.name,
               description: submission.description,
-              imageSrc: submission.image_urls[0] || "",
+              imageSrc: submission.image_urls || [""],
               dateSubmitted: new Date(
                 submission.date_submitted,
               ).toLocaleDateString(),
               status: submission.status.toLowerCase() as StatusType,
-            })) || []
+              runs: submission.runs,
+              rating: submission.rating,
+            })) as AgentTableRowProps[]) || []
           }
+          onEditSubmission={onEditSubmission}
+          onDeleteSubmission={onDeleteSubmission}
         />
       </div>
     </main>

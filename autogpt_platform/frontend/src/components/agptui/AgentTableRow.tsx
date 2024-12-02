@@ -2,23 +2,34 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Button } from "./Button";
-import { IconStarFilled, IconEdit, IconMore } from "@/components/ui/icons";
+import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
 import { Status, StatusType } from "./Status";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { TrashIcon } from "@radix-ui/react-icons";
+import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
 
 export interface AgentTableRowProps {
+  agent_id: string;
+  agent_version: number;
   agentName: string;
+  sub_heading: string;
   description: string;
-  imageSrc: string;
-  dateSubmitted: string;
+  imageSrc: string[];
+  date_submitted: string;
   status: StatusType;
-  runs?: number;
-  rating?: number;
+  runs: number;
+  rating: number;
+  dateSubmitted: string;
   id: number;
+  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onDeleteSubmission: (submission_id: string) => void;
 }
 
 export const AgentTableRow: React.FC<AgentTableRowProps> = ({
+  agent_id,
+  agent_version,
   agentName,
+  sub_heading,
   description,
   imageSrc,
   dateSubmitted,
@@ -26,13 +37,36 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   runs,
   rating,
   id,
+  onEditSubmission,
+  onDeleteSubmission,
 }) => {
   // Create a unique ID for the checkbox
   const checkboxId = `agent-${id}-checkbox`;
 
-  const onEdit = () => {
-    console.log("Edit agent", id);
-  };
+  const handleEdit = React.useCallback(() => {
+    onEditSubmission({
+      agent_id,
+      agent_version,
+      slug: "",
+      name: agentName,
+      sub_heading,
+      description,
+      image_urls: imageSrc,
+      categories: [],
+    } as StoreSubmissionRequest);
+  }, [
+    agent_id,
+    agent_version,
+    agentName,
+    sub_heading,
+    description,
+    imageSrc,
+    onEditSubmission,
+  ]);
+
+  const handleDelete = React.useCallback(() => {
+    onDeleteSubmission(agent_id);
+  }, [agent_id, onDeleteSubmission]);
 
   return (
     <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
@@ -56,7 +90,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
         <div className="flex items-center gap-4">
           <div className="relative h-[70px] w-[125px] overflow-hidden rounded-[10px] bg-[#d9d9d9] dark:bg-neutral-700">
             <Image
-              src={imageSrc}
+              src={imageSrc?.[0] ?? "/nada.png"}
               alt={agentName}
               fill
               style={{ objectFit: "cover" }}
@@ -105,12 +139,30 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
 
         {/* Actions - Three dots menu */}
         <div className="flex justify-end">
-          <button
-            onClick={onEdit}
-            className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-          >
-            <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
-          </button>
+          <ContextMenu.Root>
+            <ContextMenu.Trigger>
+              <button className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700">
+                <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
+              </button>
+            </ContextMenu.Trigger>
+            <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
+              <ContextMenu.Item
+                onSelect={handleEdit}
+                className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />
+                <span className="dark:text-gray-100">Edit</span>
+              </ContextMenu.Item>
+              <ContextMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
+              <ContextMenu.Item
+                onSelect={handleDelete}
+                className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+                <span className="dark:text-red-400">Delete</span>
+              </ContextMenu.Item>
+            </ContextMenu.Content>
+          </ContextMenu.Root>
         </div>
       </div>
     </div>

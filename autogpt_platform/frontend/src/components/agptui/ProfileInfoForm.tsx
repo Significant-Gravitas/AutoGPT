@@ -14,7 +14,6 @@ import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { createClient } from "@/lib/supabase/client";
 import { Separator } from "@/components/ui/separator";
 
-
 export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState(profile);
@@ -252,7 +251,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
 
           <Separator />
 
-          <div className="py-8 flex h-[50px] items-center justify-end gap-3">
+          <div className="flex h-[50px] items-center justify-end gap-3 py-8">
             <Button
               type="button"
               variant="secondary"

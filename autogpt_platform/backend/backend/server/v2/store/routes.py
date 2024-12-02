@@ -243,6 +243,38 @@ async def get_my_agents(
         raise
 
 
+@router.delete(
+    "/submissions/{submission_id}",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def delete_submission(
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+    submission_id: str,
+) -> bool:
+    """
+    Delete a store listing submission.
+
+    Args:
+        user_id (str): ID of the authenticated user
+        submission_id (str): ID of the submission to be deleted
+
+    Returns:
+        bool: True if the submission was successfully deleted, False otherwise
+    """
+    try:
+        result = await backend.server.v2.store.db.delete_store_submission(
+            user_id=user_id,
+            submission_id=submission_id,
+        )
+        return result
+    except Exception:
+        logger.exception("Exception occurred whilst deleting store submission")
+        raise
+
+
 @router.get(
     "/submissions",
     tags=["store", "private"],

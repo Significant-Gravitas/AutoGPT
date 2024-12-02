@@ -414,7 +414,10 @@ export type CreatorDetails = {
 };
 
 export type StoreSubmission = {
+  agent_id: string;
+  agent_version: number;
   name: string;
+  sub_heading: string;
   description: string;
   image_urls: string[];
   date_submitted: string;

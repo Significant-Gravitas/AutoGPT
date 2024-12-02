@@ -102,7 +102,9 @@ export const SettingsInputForm = ({
               />
             </div>
             {!passwordsMatch && (
-              <p className="text-red-500 text-sm mt-1">Passwords do not match</p>
+              <p className="mt-1 text-sm text-red-500">
+                Passwords do not match
+              </p>
             )}
           </div>
         </div>

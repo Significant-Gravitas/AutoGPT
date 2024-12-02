@@ -100,7 +100,10 @@ class Profile(pydantic.BaseModel):
 
 
 class StoreSubmission(pydantic.BaseModel):
+    agent_id: str
+    agent_version: int
     name: str
+    sub_heading: str
     slug: str
     description: str
     image_urls: list[str]

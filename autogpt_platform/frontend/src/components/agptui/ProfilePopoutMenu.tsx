@@ -149,6 +149,9 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
                           </div>
                         </div>
                       }
+                      inputStep="select"
+                      submissionData={null}
+                      openPopout={false}
                     />
                   );
                 } else {
