@@ -212,8 +212,12 @@ export default class BaseAutoGPTServerAPI {
     );
   }
 
-  listCredentials(provider: string): Promise<CredentialsMetaResponse[]> {
-    return this._get(`/integrations/${provider}/credentials`);
+  listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
+    return this._get(
+      provider
+        ? `/integrations/${provider}/credentials`
+        : "/integrations/credentials",
+    );
   }
 
   getCredentials(

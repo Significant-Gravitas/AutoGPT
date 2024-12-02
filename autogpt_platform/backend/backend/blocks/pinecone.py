@@ -1,11 +1,15 @@
 import uuid
 from typing import Any, Literal
 
-from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
 from pinecone import Pinecone, ServerlessSpec
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
 PineconeCredentials = APIKeyCredentials
 PineconeCredentialsInput = CredentialsMetaInput[
