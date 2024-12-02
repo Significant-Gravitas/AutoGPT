@@ -147,8 +147,6 @@ class TwitterGetSpacesBlock(Block):
                 .build()
             )
 
-            print(" before space response")
-
             response = cast(Response, client.get_spaces(**params))
 
             ids = []
