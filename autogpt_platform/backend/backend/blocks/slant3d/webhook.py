@@ -119,12 +119,7 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
         yield from super().run(input_data, **kwargs)
 
-        try:
-            # Extract and normalize values from the payload
-            yield "status", input_data.payload["status"]
-            yield "tracking_number", input_data.payload["trackingNumber"]
-            yield "carrier_code", input_data.payload["carrierCode"]
-        except KeyError as e:
-            error_msg = f"Missing required field in webhook payload: {e}"
-            yield "error", error_msg
-            raise RuntimeError(error_msg)
+        # Extract and normalize values from the payload
+        yield "status", input_data.payload["status"]
+        yield "tracking_number", input_data.payload["trackingNumber"]
+        yield "carrier_code", input_data.payload["carrierCode"]
