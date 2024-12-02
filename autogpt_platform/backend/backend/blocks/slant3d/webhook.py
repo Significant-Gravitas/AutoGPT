@@ -54,7 +54,9 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             shipped: bool = True
 
         events: EventsFilter = SchemaField(
-            title="Events", description="Order status events to subscribe to"
+            title="Events",
+            description="Order status events to subscribe to",
+            default=EventsFilter(shipped=True),
         )
 
     class Output(Slant3DTriggerBase.Output):

@@ -1,4 +1,5 @@
-from typing import ClassVar, Dict, List, Tuple
+import logging
+from typing import ClassVar
 
 import requests
 from fastapi import Request
@@ -6,6 +7,8 @@ from fastapi import Request
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.webhooks.base import BaseWebhooksManager
+
+logger = logging.getLogger(__name__)
 
 
 class Slant3DWebhooksManager(BaseWebhooksManager):
@@ -19,10 +22,10 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
         credentials: Credentials,
         webhook_type: str,
         resource: str,
-        events: List[str],
+        events: list[str],
         ingress_url: str,
         secret: str,
-    ) -> Tuple[str, Dict]:
+    ) -> tuple[str, dict]:
         """Register a new webhook with Slant3D"""
 
         if not isinstance(credentials, APIKeyCredentials):
@@ -44,10 +47,6 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
             error = response.json().get("error", "Unknown error")
             raise RuntimeError(f"Failed to register webhook: {error}")
 
-        # Slant3D doesn't return a webhook ID, so we generate one
-        # The actual webhook is identified by its endpoint URL
-        webhook_id = str(__import__("uuid").uuid4())
-
         webhook_config = {
             "endpoint": ingress_url,
             "provider": self.PROVIDER_NAME,
@@ -55,12 +54,12 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
             "type": webhook_type,
         }
 
-        return webhook_id, webhook_config
+        return "", webhook_config
 
     @classmethod
     async def validate_payload(
         cls, webhook: integrations.Webhook, request: Request
-    ) -> Tuple[Dict, str]:
+    ) -> tuple[dict, str]:
         """Validate incoming webhook payload from Slant3D"""
 
         payload = await request.json()
@@ -94,12 +93,7 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
         This would need to be handled through support.
         """
         # Log warning since we can't properly deregister
-        print(f"Warning: Manual deregistration required for webhook {webhook.id}")
-        pass
-
-    async def trigger_ping(self, webhook: integrations.Webhook) -> None:
-        """
-        Note: Slant3D automatically sends a test payload during registration,
-        so we don't need a separate ping implementation.
-        """
+        logger.warning(
+            f"Warning: Manual deregistration required for webhook {webhook.id}"
+        )
         pass
