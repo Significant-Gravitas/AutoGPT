@@ -23,15 +23,15 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
   return (
     <div className="relative mx-auto h-auto min-h-[300px] w-full max-w-[1360px] px-4 md:min-h-[400px] md:px-6 lg:h-[459px] lg:px-8">
       {/* Top border */}
-      <div className="absolute left-0 top-0 h-px w-full bg-gray-200 dark:bg-gray-700" />
+      <div className="left-0 top-0 h-px w-full bg-gray-200 dark:bg-gray-700" />
 
       {/* Title */}
-      <div className="absolute left-4 top-[26px] font-['Poppins'] text-base font-semibold leading-7 text-neutral-800 dark:text-neutral-200 md:left-6 md:text-lg lg:left-8">
+      <div className="pt-4 mb-4 left-4 top-[26px] font-['Poppins'] text-base font-semibold leading-7 text-neutral-800 dark:text-neutral-200 md:left-6 md:text-lg lg:left-8">
         {title}
       </div>
 
       {/* Content Container */}
-      <div className="absolute left-1/2 top-1/2 w-full max-w-[900px] -translate-x-1/2 -translate-y-1/2 px-4 pt-[40px] text-center md:px-6 lg:px-0">
+      <div className="absolute left-1/2 top-1/2 w-full max-w-[900px] -translate-x-1/2 -translate-y-1/2 px-4 pt-16 md:pt-10 text-center md:px-6 lg:px-0">
         <h2 className="font-poppins mb-6 text-3xl font-semibold leading-tight text-neutral-950 dark:text-neutral-50 md:mb-8 md:text-4xl md:leading-[1.2] lg:mb-12 lg:text-5xl lg:leading-[54px]">
           Build AI agents and share
           <br />
