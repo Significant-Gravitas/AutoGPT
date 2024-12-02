@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING
 
-from backend.integrations.webhooks.slantthreed import Slant3DWebhooksManager
-
 from .github import GithubWebhooksManager
+from .slant3d import Slant3DWebhooksManager
 
 if TYPE_CHECKING:
     from .base import BaseWebhooksManager
