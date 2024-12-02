@@ -5,7 +5,6 @@ from json import JSONDecodeError
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 if TYPE_CHECKING:
@@ -17,18 +16,16 @@ import openai
 from groq import Groq
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
-
-# LlmApiKeys = {
-#     "openai": BlockSecret("openai_api_key"),
-#     "anthropic": BlockSecret("anthropic_api_key"),
-#     "groq": BlockSecret("groq_api_key"),
-#     "ollama": BlockSecret(value=""),
-# }
 
 LLMProviderName = Literal["anthropic", "groq", "openai", "ollama", "open_router"]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
@@ -526,7 +523,7 @@ class AIStructuredResponseGeneratorBlock(Block):
 class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str = SchemaField(
-            description="The prompt to send to the language model.",
+            description="The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces.",
             placeholder="Enter your prompt here...",
         )
         model: LlmModel = SchemaField(
