@@ -9,11 +9,11 @@ class InputValidationBlock(Block):
 
     class Input(BlockSchema):
         required_field: str = SchemaField(
-            description="parent of dependent_field", default=""
+            description="parent of dependent_field", default="hello"
         )
 
         required_field_2: str = SchemaField(
-            description="parent of dependent_field", default=""
+            description="parent of dependent_field"
         )
 
         optional_field: str = SchemaField(
@@ -22,7 +22,7 @@ class InputValidationBlock(Block):
         dependent_field: str = SchemaField(
             description="This field depends on required_field being set",
             depends_on=["required_field", "required_field_2"],
-            default="",
+            default = ""
         )
 
     class Output(BlockSchema):
