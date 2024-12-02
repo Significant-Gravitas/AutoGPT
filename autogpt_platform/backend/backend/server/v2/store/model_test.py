@@ -80,6 +80,8 @@ def test_store_agent_details():
 
 def test_creator():
     creator = backend.server.v2.store.model.Creator(
+        agent_rating=4.8,
+        agent_runs=1000,
         name="Test Creator",
         username="creator1",
         description="Test description",
@@ -94,6 +96,8 @@ def test_creators_response():
     response = backend.server.v2.store.model.CreatorsResponse(
         creators=[
             backend.server.v2.store.model.Creator(
+                agent_rating=4.8,
+                agent_runs=1000,
                 name="Test Creator",
                 username="creator1",
                 description="Test description",
@@ -128,6 +132,9 @@ def test_creator_details():
 
 def test_store_submission():
     submission = backend.server.v2.store.model.StoreSubmission(
+        agent_id="agent123",
+        agent_version=1,
+        sub_heading="Test subheading",
         name="Test Agent",
         slug="test-agent",
         description="Test description",
@@ -146,6 +153,9 @@ def test_store_submissions_response():
     response = backend.server.v2.store.model.StoreSubmissionsResponse(
         submissions=[
             backend.server.v2.store.model.StoreSubmission(
+                agent_id="agent123",
+                agent_version=1,
+                sub_heading="Test subheading",
                 name="Test Agent",
                 slug="test-agent",
                 description="Test description",
