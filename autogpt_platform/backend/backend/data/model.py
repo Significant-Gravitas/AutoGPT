@@ -138,6 +138,7 @@ def SchemaField(
     secret: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
+    mutually_exclusive: Optional[str] = None,
     **kwargs,
 ) -> T:
     json_extra = {
@@ -147,6 +148,7 @@ def SchemaField(
             "secret": secret,
             "advanced": advanced,
             "hidden": hidden,
+            "mutually_exclusive": mutually_exclusive,
         }.items()
         if v is not None
     }
