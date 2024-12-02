@@ -9,7 +9,7 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.util import settings
-from backend.util.settings import BehaveAs
+from backend.util.settings import AppEnvironment, BehaveAs
 
 from ._api import (
     TEST_CREDENTIALS,
@@ -73,8 +73,11 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
                 "This block triggers on Slant3D order status updates and outputs "
                 "the event details, including tracking information when orders are shipped."
             ),
-            # All webhooks are currently subscribed to for all orders. This works for self hosted, but not for cloud hosted
-            disabled=settings.Settings().config.behave_as == BehaveAs.CLOUD,
+            # All webhooks are currently subscribed to for all orders. This works for self hosted, but not for cloud hosted prod
+            disabled=(
+                settings.Settings().config.behave_as == BehaveAs.CLOUD
+                and settings.Settings().config.app_env != AppEnvironment.LOCAL
+            ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=self.Input,
             output_schema=self.Output,
