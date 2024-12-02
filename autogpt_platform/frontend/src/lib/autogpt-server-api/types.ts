@@ -75,7 +75,6 @@ export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   type: "array";
   items?: BlockIOSimpleTypeSubSchema;
-  isMultiSelect?: boolean;
   default?: Array<string>;
 };
 

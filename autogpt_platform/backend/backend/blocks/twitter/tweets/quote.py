@@ -56,7 +56,7 @@ class TwitterGetQuoteTweetsBlock(Block):
             description="Types of tweets to exclude",
             required=False,
             advanced=True,
-            is_multi_select=True,
+            enum = TweetExcludes,
             default=[],
         )
 

@@ -83,24 +83,20 @@ def callback(
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
     handler = _get_provider_oauth_handler(request, provider)
-    code_verifier = creds_manager.store._get_code_verifier(
-        user_id, provider, state_token
-    )
 
     # Verify the state token
-    if not creds_manager.store.verify_state_token(user_id, state_token, provider):
+    valid_state = creds_manager.store.verify_state_token(user_id, state_token, provider)
+
+    if not valid_state:
         logger.warning(f"Invalid or expired state token for user {user_id}")
         raise HTTPException(status_code=400, detail="Invalid or expired state token")
-
     try:
-        scopes = creds_manager.store.get_any_valid_scopes_from_state_token(
-            user_id, state_token, provider
-        )
+        scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
 
         scopes = handler.handle_default_scopes(scopes)
 
-        credentials = handler.exchange_code_for_tokens(code, scopes, code_verifier)
+        credentials = handler.exchange_code_for_tokens(code, scopes, valid_state.code_verifier)
 
         logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
 

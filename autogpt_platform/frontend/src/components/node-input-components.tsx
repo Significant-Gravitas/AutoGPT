@@ -543,7 +543,7 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          /* 
+          /*
           The `index` is used as a DOM key instead of the actual `key`
           because the `key` can change with each input, causing the input to lose focus.
           */
@@ -655,10 +655,7 @@ const NodeArrayInput: FC<{
   if (!entries || !Array.isArray(entries)) entries = [];
 
   const isMultiSelectEnum =
-    schema.items &&
-    isStringSubSchema(schema.items) &&
-    schema.items.enum &&
-    schema.isMultiSelect;
+    schema.items && isStringSubSchema(schema.items) && schema.items.enum;
 
   if (isMultiSelectEnum) {
     return (

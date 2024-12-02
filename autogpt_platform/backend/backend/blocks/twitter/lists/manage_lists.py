@@ -60,8 +60,7 @@ class TwitterDeleteListBlock(Block):
 
         except tweepy.TweepyException:
             raise
-        except Exception as e:
-            print(f"Unexpected error: {str(e)}")
+        except Exception:
             raise
 
     def run(
@@ -151,8 +150,7 @@ class TwitterUpdateListBlock(Block):
 
         except tweepy.TweepyException:
             raise
-        except Exception as e:
-            print(f"Unexpected error: {str(e)}")
+        except Exception:
             raise
 
     def run(
@@ -256,8 +254,7 @@ class TwitterCreateListBlock(Block):
 
         except tweepy.TweepyException:
             raise
-        except Exception as e:
-            print(f"Unexpected error: {str(e)}")
+        except Exception:
             raise
 
     def run(

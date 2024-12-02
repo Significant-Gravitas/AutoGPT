@@ -258,7 +258,6 @@ class TweetExpansionInputs(BlockSchema):
         enum=TweetExpansions,
         placeholder="Pick the extra information you want to see",
         default=[],
-        is_multi_select=True,
         advanced=True,
     )
 
@@ -267,7 +266,6 @@ class TweetExpansionInputs(BlockSchema):
         enum=TweetMediaFields,
         placeholder="Choose what media details you want to see",
         default=[],
-        is_multi_select=True,
         advanced=True,
     )
 
@@ -276,7 +274,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what location details you want to see",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetPlaceFields,
     )
 
@@ -285,7 +282,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what poll details you want to see",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetPollFields,
     )
 
@@ -294,7 +290,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what tweet details you want to see",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetFields,
     )
 
@@ -303,7 +298,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what user details you want to see",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetUserFields,
     )
 
@@ -314,7 +308,6 @@ class DMEventExpansionInputs(BlockSchema):
         enum=DMEventExpansion,
         placeholder="Enter expansions",
         default=[],
-        is_multi_select=True,
         advanced=True,
     )
 
@@ -323,7 +316,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter event types",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=DMEventType,
     )
 
@@ -332,7 +324,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter media fields",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=DMMediaField,
     )
 
@@ -341,7 +332,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter tweet fields",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=DMTweetField,
     )
 
@@ -350,7 +340,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter user fields",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetUserFields,
     )
 
@@ -361,7 +350,6 @@ class UserExpansionInputs(BlockSchema):
         enum=UserExpansions,
         placeholder="Select extra user information to include",
         default=[],
-        is_multi_select=True,
         advanced=True,
     )
 
@@ -370,7 +358,6 @@ class UserExpansionInputs(BlockSchema):
         placeholder="Choose what details to see in pinned tweets",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetFields,
     )
 
@@ -379,7 +366,6 @@ class UserExpansionInputs(BlockSchema):
         placeholder="Choose what user details you want to see",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetUserFields,
     )
 
@@ -390,7 +376,6 @@ class SpaceExpansionInputs(BlockSchema):
         enum=SpaceExpansions,
         placeholder="Pick what extra information you want to see about the Space",
         default=[],
-        is_multi_select=True,
         advanced=True,
     )
 
@@ -399,7 +384,6 @@ class SpaceExpansionInputs(BlockSchema):
         placeholder="Choose what Space information you want to get",
         default=[SpaceFields.title_, SpaceFields.host_ids],
         advanced=True,
-        is_multi_select=True,
         enum=SpaceFields,
     )
 
@@ -408,7 +392,6 @@ class SpaceExpansionInputs(BlockSchema):
         placeholder="Pick what details you want to see about the users",
         default=[],
         advanced=True,
-        is_multi_select=True,
         enum=TweetUserFields,
     )
 
@@ -419,7 +402,6 @@ class ListExpansionInputs(BlockSchema):
         enum=ListExpansions,
         placeholder="Pick what extra list information you want to see",
         default=[ListExpansions.owner_id],
-        is_multi_select=True,
         advanced=True,
     )
 
@@ -428,7 +410,6 @@ class ListExpansionInputs(BlockSchema):
         placeholder="Select what details you want to see about list owners",
         default=[TweetUserFields.id, TweetUserFields.username],
         advanced=True,
-        is_multi_select=True,
         enum=TweetUserFields,
     )
 
@@ -437,7 +418,6 @@ class ListExpansionInputs(BlockSchema):
         placeholder="Pick what list details you want to see",
         default=[ListFields.owner_id],
         advanced=True,
-        is_multi_select=True,
         enum=ListFields,
     )
 

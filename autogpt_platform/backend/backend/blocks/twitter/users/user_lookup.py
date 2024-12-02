@@ -139,8 +139,6 @@ class TwitterGetUserBlock(Block):
                 .build()
             )
 
-            print("params : ", params)
-
             response = cast(Response, client.get_user(**params))
 
             username = ""
