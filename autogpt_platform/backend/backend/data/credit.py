@@ -70,7 +70,11 @@ class UserCredit(UserCreditBase):
     async def get_or_refill_credit(self, user_id: str) -> int:
         cur_time = self.time_now()
         cur_month = cur_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        nxt_month = cur_month.replace(month=cur_month.month % 12 + 1)
+        nxt_month = (
+            cur_month.replace(month=cur_month.month + 1)
+            if cur_month.month < 12
+            else cur_month.replace(year=cur_month.year + 1, month=1)
+        )
 
         user_credit = await UserBlockCredit.prisma().group_by(
             by=["userId"],
