@@ -1,13 +1,10 @@
 from typing import ClassVar, Dict, List, Tuple
 
 import requests
-from autogpt_libs.supabase_integration_credentials_store.types import (
-    APIKeyCredentials,
-    Credentials,
-)
 from fastapi import Request
 
 from backend.data import integrations
+from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.webhooks.base import BaseWebhooksManager
 
 

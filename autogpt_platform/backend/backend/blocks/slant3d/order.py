@@ -2,10 +2,9 @@ import uuid
 from typing import List
 
 import requests as baserequests
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 
 from backend.data.block import BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util import settings
 from backend.util.settings import BehaveAs
 

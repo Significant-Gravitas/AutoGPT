@@ -1,7 +1,5 @@
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
-
 from backend.data.block import BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import APIKeyCredentials, SchemaField
 
 from ._api import (
     TEST_CREDENTIALS,
