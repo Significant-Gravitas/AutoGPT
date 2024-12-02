@@ -1,8 +1,10 @@
 from fastapi import Request, HTTPException
+from starlette.middleware.base import RequestResponseEndpoint
+
 from .limiter import RateLimiter
 
 
-async def rate_limit_middleware(request: Request, call_next):
+async def rate_limit_middleware(request: Request, call_next: RequestResponseEndpoint):
     """FastAPI middleware for rate limiting API requests."""
     limiter = RateLimiter()
 

@@ -1,13 +1,15 @@
 import time
-import redis
+from redis import Redis
 from typing import Tuple
 from .config import RATE_LIMIT_SETTINGS
 
 
 class RateLimiter:
-    def __init__(self, redis_url: str = RATE_LIMIT_SETTINGS.redis_url,
+    def __init__(self, redis_host: str = RATE_LIMIT_SETTINGS.redis_host,
+                 redis_port: str = RATE_LIMIT_SETTINGS.redis_port,
+                 redis_password: str = RATE_LIMIT_SETTINGS.redis_password,
                  requests_per_minute: int = RATE_LIMIT_SETTINGS.requests_per_minute):
-        self.redis = redis.from_url(redis_url)
+        self.redis = Redis(host=redis_host, port=redis_port, password=redis_password, decode_responses=True)
         self.window = 60
         self.max_requests = requests_per_minute
 
