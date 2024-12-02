@@ -125,24 +125,20 @@ test.describe("Build", () => {
     await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
 
     // Wait for the save button to be enabled again
-    await page.waitForSelector(
-      '[data-testid="blocks-control-save-button"]:not([disabled])',
-    );
+    await buildPage.waitForSaveButton();
 
     // Ensure the run button is enabled
-    const runButton = page.locator('[data-id="primary-action-run-agent"]');
-    await test.expect(runButton).toBeEnabled();
+    await test.expect(buildPage.isRunButtonEnabled()).resolves.toBeTruthy();
 
     // Run the agent
-    await runButton.click();
+    await buildPage.runAgent();
 
     // Wait for processing to complete by checking the completion badge
-    await page.waitForSelector('[data-id^="badge-"][data-id$="-COMPLETED"]');
+    await buildPage.waitForCompletionBadge();
 
     // Get the first completion badge and verify it's visible
-    const completionBadge = page
-      .locator('[data-id^="badge-"][data-id$="-COMPLETED"]')
-      .first();
-    await test.expect(completionBadge).toBeVisible();
+    await test
+      .expect(buildPage.isCompletionBadgeVisible())
+      .resolves.toBeTruthy();
   });
 });

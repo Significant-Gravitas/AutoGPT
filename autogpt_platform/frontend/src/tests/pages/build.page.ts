@@ -220,4 +220,33 @@ export class BuildPage extends BasePage {
       return false;
     }
   }
+
+  async isRunButtonEnabled(): Promise<boolean> {
+    const runButton = this.page.locator('[data-id="primary-action-run-agent"]');
+    return await runButton.isEnabled();
+  }
+
+  async runAgent(): Promise<void> {
+    const runButton = this.page.locator('[data-id="primary-action-run-agent"]');
+    await runButton.click();
+  }
+
+  async waitForCompletionBadge(): Promise<void> {
+    await this.page.waitForSelector(
+      '[data-id^="badge-"][data-id$="-COMPLETED"]',
+    );
+  }
+
+  async waitForSaveButton(): Promise<void> {
+    await this.page.waitForSelector(
+      '[data-testid="blocks-control-save-button"]:not([disabled])',
+    );
+  }
+
+  async isCompletionBadgeVisible(): Promise<boolean> {
+    const completionBadge = this.page
+      .locator('[data-id^="badge-"][data-id$="-COMPLETED"]')
+      .first();
+    return await completionBadge.isVisible();
+  }
 }
