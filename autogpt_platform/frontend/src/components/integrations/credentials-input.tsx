@@ -65,8 +65,10 @@ export const providerIcons: Record<
   pinecone: fallbackIcon,
   slant3d: fallbackIcon,
   replicate: fallbackIcon,
+  fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  hubspot: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
