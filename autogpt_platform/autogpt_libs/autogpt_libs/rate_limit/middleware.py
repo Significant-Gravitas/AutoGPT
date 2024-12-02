@@ -21,8 +21,7 @@ async def rate_limit_middleware(request: Request, call_next: RequestResponseEndp
 
     if not is_allowed:
         raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Please try again later."
+            status_code=429, detail="Rate limit exceeded. Please try again later."
         )
 
     response = await call_next(request)
