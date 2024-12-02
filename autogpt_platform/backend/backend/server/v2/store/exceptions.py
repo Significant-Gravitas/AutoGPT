@@ -68,3 +68,9 @@ class ProfileNotFoundError(StoreError):
     """Raised when a profile is not found"""
 
     pass
+
+
+class SubmissionNotFoundError(StoreError):
+    """Raised when a submission is not found"""
+
+    pass

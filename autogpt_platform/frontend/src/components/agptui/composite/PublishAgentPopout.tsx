@@ -20,17 +20,16 @@ import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
 import { useRouter } from "next/navigation";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
+  openPopout?: boolean;
+  inputStep?: "select" | "info" | "review";
+  submissionData?: StoreSubmissionRequest;
 }
 
 export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   trigger,
-}) => {
-  const [step, setStep] = React.useState<"select" | "info" | "review">(
-    "select",
-  );
-  const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
-  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
-  const [publishData, setPublishData] = React.useState<StoreSubmissionRequest>({
+  openPopout = false,
+  inputStep = "select",
+  submissionData = {
     name: "",
     sub_heading: "",
     slug: "",
@@ -39,7 +38,15 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     agent_id: "",
     agent_version: 0,
     categories: [],
-  });
+  },
+}) => {
+  const [step, setStep] = React.useState<"select" | "info" | "review">(
+    inputStep,
+  );
+  const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
+  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
+  const [publishData, setPublishData] =
+    React.useState<StoreSubmissionRequest>(submissionData);
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
     null,
   );
@@ -51,15 +58,27 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const popupId = React.useId();
   const router = useRouter();
 
-  const supabase = createClient();
+  const supabase = React.useMemo(() => createClient(), []);
 
-  const api = new AutoGPTServerAPI(
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-    supabase,
+  const api = React.useMemo(
+    () =>
+      new AutoGPTServerAPI(
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+        supabase,
+      ),
+    [supabase],
   );
 
   React.useEffect(() => {
+    console.log("PublishAgentPopout Effect");
+    setOpen(openPopout);
+    setStep(inputStep);
+    setPublishData(submissionData);
+  }, [openPopout]);
+
+  React.useEffect(() => {
+    console.log("LoadMyAgents Effect");
     if (open) {
       const loadMyAgents = async () => {
         try {
@@ -213,7 +232,10 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                   thumbnailSrc={publishData.image_urls[0]}
                   onClose={handleClose}
                   onDone={handleClose}
-                  onViewProgress={() => router.push("/store/dashboard")}
+                  onViewProgress={() => {
+                    router.push("/store/dashboard");
+                    handleClose();
+                  }}
                 />
               </div>
             </div>
@@ -223,7 +245,14 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (isOpen !== open) {
+          setOpen(isOpen);
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         {trigger || <Button variant="default">Publish Agent</Button>}
       </PopoverTrigger>

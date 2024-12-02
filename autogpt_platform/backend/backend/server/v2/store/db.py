@@ -275,7 +275,10 @@ async def get_store_submissions(
         # Convert to response models
         submission_models = [
             backend.server.v2.store.model.StoreSubmission(
+                agent_id=sub.agent_id,
+                agent_version=sub.agent_version,
                 name=sub.name,
+                sub_heading=sub.sub_heading,
                 slug=sub.slug,
                 description=sub.description,
                 image_urls=sub.image_urls or [],
@@ -310,6 +313,49 @@ async def get_store_submissions(
                 page_size=page_size,
             ),
         )
+
+
+async def delete_store_submission(
+    user_id: str,
+    submission_id: str,
+) -> bool:
+    """
+    Delete a store listing submission.
+
+    Args:
+        user_id: ID of the authenticated user
+        submission_id: ID of the submission to be deleted
+
+    Returns:
+        bool: True if the submission was successfully deleted, False otherwise
+    """
+    logger.debug(f"Deleting store submission {submission_id} for user {user_id}")
+
+    try:
+        # Verify the submission belongs to this user
+        submission = await prisma.models.StoreListing.prisma().find_first(
+            where={"agentId": submission_id, "owningUserId": user_id}
+        )
+
+        if not submission:
+            logger.warning(f"Submission not found for user {user_id}: {submission_id}")
+            raise backend.server.v2.store.exceptions.SubmissionNotFoundError(
+                f"Submission not found for this user. User ID: {user_id}, Submission ID: {submission_id}"
+            )
+
+        # Delete the submission
+        await prisma.models.StoreListing.prisma().delete(
+            where=prisma.types.StoreListingWhereUniqueInput(id=submission.id)
+        )
+
+        logger.debug(
+            f"Successfully deleted submission {submission_id} for user {user_id}"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(f"Error deleting store submission: {str(e)}")
+        return False
 
 
 async def create_store_submission(
@@ -398,8 +444,11 @@ async def create_store_submission(
         logger.debug(f"Created store listing for agent {agent_id}")
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
+            agent_id=agent_id,
+            agent_version=agent_version,
             name=name,
             slug=slug,
+            sub_heading=sub_heading,
             description=description,
             image_urls=image_urls,
             date_submitted=listing.createdAt,

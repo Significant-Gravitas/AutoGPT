@@ -479,12 +479,15 @@ view StoreSubmission {
   user_id        String
   slug           String
   name           String
+  sub_heading    String
   description    String
   image_urls     String[]
   date_submitted DateTime
   status         SubmissionStatus
   runs           Int
   rating         Float
+  agent_id       String
+  agent_version  Int
 
   @@index([user_id])
 }

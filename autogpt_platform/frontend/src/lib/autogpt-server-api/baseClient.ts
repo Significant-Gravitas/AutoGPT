@@ -323,6 +323,10 @@ export default class BaseAutoGPTServerAPI {
     return this._request("POST", "/store/submissions", submission);
   }
 
+  deleteStoreSubmission(submission_id: string): Promise<boolean> {
+    return this._request("DELETE", `/store/submissions/${submission_id}`);
+  }
+
   uploadStoreSubmissionMedia(file: File): Promise<string> {
     const formData = new FormData();
     formData.append("file", file);

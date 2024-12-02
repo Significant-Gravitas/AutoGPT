@@ -3,12 +3,36 @@
 import * as React from "react";
 import { AgentTableRow, AgentTableRowProps } from "./AgentTableRow";
 import { AgentTableCard } from "./AgentTableCard";
+import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
 
 export interface AgentTableProps {
   agents: AgentTableRowProps[];
+  onEditSubmission: (submission: StoreSubmissionRequest) => void;
+  onDeleteSubmission: (submission_id: string) => void;
 }
 
-export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
+export const AgentTable: React.FC<AgentTableProps> = ({
+  agents,
+  onEditSubmission,
+  onDeleteSubmission,
+}) => {
+  // Use state to track selected agents
+  const [selectedAgents, setSelectedAgents] = React.useState<Set<string>>(
+    new Set(),
+  );
+
+  // Handle select all checkbox
+  const handleSelectAll = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.checked) {
+        setSelectedAgents(new Set(agents.map((agent) => agent.id.toString())));
+      } else {
+        setSelectedAgents(new Set());
+      }
+    },
+    [agents],
+  );
+
   return (
     <div className="w-full">
       {/* Table header - Hide on mobile */}
@@ -22,6 +46,10 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
                 id="selectAllAgents"
                 aria-label="Select all agents"
                 className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
+                checked={
+                  selectedAgents.size === agents.length && agents.length > 0
+                }
+                onChange={handleSelectAll}
               />
               <label
                 htmlFor="selectAllAgents"
@@ -57,8 +85,12 @@ export const AgentTable: React.FC<AgentTableProps> = ({ agents }) => {
       {agents.length > 0 ? (
         <div className="flex flex-col">
           {agents.map((agent, index) => (
-            <div key={index} className="md:block">
-              <AgentTableRow {...agent} />
+            <div key={agent.id} className="md:block">
+              <AgentTableRow
+                {...agent}
+                onEditSubmission={onEditSubmission}
+                onDeleteSubmission={onDeleteSubmission}
+              />
               <div className="block md:hidden">
                 <AgentTableCard {...agent} />
               </div>
