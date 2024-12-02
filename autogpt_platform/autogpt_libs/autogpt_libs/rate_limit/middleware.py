@@ -1,4 +1,4 @@
-from fastapi import Request, HTTPException
+from fastapi import HTTPException, Request
 from starlette.middleware.base import RequestResponseEndpoint
 
 from .limiter import RateLimiter

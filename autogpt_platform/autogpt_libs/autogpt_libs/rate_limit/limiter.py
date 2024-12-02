@@ -1,6 +1,8 @@
 import time
-from redis import Redis
 from typing import Tuple
+
+from redis import Redis
+
 from .config import RATE_LIMIT_SETTINGS
 
 
