@@ -95,7 +95,7 @@ export async function signup(values: z.infer<typeof loginFormSchema>) {
       }
       console.log("Signed up");
       revalidatePath("/", "layout");
-      redirect("/");
+      redirect("/store/profile");
     },
   );
 }
