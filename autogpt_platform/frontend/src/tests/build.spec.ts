@@ -114,6 +114,7 @@ test.describe("Build", () => {
       block1.id,
       "Enter input",
       "Test Value",
+      "1",
     );
 
     // Save the agent and wait for the URL to update

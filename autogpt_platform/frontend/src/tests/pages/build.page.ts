@@ -145,12 +145,21 @@ export class BuildPage extends BasePage {
     // }
   }
 
+  // dataId is optional, if provided, it will start the search with that container, otherwise it will start with the blockId
+  // this is useful if you have multiple blocks with the same id, but different dataIds which you should have when adding a block to the graph.
+  // Do note that once you run an agent, the dataId will change, so you will need to update the tests to use the new dataId or not use the same block in tests that run an agent
   async fillBlockInputByPlaceholder(
     blockId: string,
     placeholder: string,
     value: string,
+    dataId?: string,
   ): Promise<void> {
-    const block = await this.page.locator(`[data-blockid="${blockId}"]`);
+    // If dataId is provided, start with that container, otherwise use blockId
+    let selector = dataId
+      ? `[data-id="${dataId}"] [data-blockid="${blockId}"]`
+      : `[data-blockid="${blockId}"]`;
+
+    const block = await this.page.locator(selector);
     const input = await block.getByPlaceholder(placeholder);
     await input.fill(value);
   }
