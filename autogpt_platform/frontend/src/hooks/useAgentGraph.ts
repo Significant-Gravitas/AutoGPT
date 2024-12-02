@@ -366,6 +366,7 @@ export default function useAgentGraph(
 
     nodes.forEach((node) => {
       const validate = ajv.compile(node.data.inputSchema);
+      console.log("Validating node", node.id, node.data.inputSchema);
       const errors = {} as { [key: string]: string };
 
       // Validate values against schema using AJV
@@ -405,7 +406,34 @@ export default function useAgentGraph(
             setNestedProperty(errors, key, "This field is required");
           }
         });
-      }
+      } 
+      
+      Object.entries(node.data.inputSchema.properties || {}).forEach(([key, schema]) => {
+        if ('depends_on' in schema) {
+          const dependencies = Array.isArray(schema.depends_on) ? schema.depends_on : [schema.depends_on];
+          
+          // Check if dependent field is set while required fields are empty
+          const hasValue = inputData[key as keyof typeof inputData] && String(inputData[key as keyof typeof inputData]).length > 0;
+          const missingDependencies = dependencies.filter(dep => !inputData[dep as keyof typeof inputData] || String(inputData[dep as keyof typeof inputData]).length === 0);
+          
+          if (hasValue && missingDependencies.length > 0) {
+            errors[key] = `Requires ${missingDependencies.join(', ')} to be set`;
+            errorMessage = `Field ${key} requires ${missingDependencies.join(', ')} to be set`;
+          }
+          
+          // Check if required fields are set but dependent field is empty
+          const hasAllDependencies = dependencies.every(dep => 
+            inputData[dep as keyof typeof inputData] && 
+            String(inputData[dep as keyof typeof inputData]).length > 0
+          );
+          if (hasAllDependencies && (!inputData[key as keyof typeof inputData] || String(inputData[key as keyof typeof inputData]).length === 0)) {
+            errors[key] = `This field is required when ${dependencies.join(', ')} are set`;
+            errorMessage = `${key} is required when ${dependencies.join(', ')} are set`;
+          }
+        }
+      });
+
+
       // Set errors
       setNodes((nodes) => {
         return nodes.map((n) => {

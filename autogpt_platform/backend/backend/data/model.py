@@ -124,6 +124,7 @@ def SchemaField(
     secret: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
+    depends_on: list[str] | None = None,
     **kwargs,
 ) -> T:
     json_extra = {
@@ -133,6 +134,7 @@ def SchemaField(
             "secret": secret,
             "advanced": advanced,
             "hidden": hidden,
+            "depends_on": depends_on,
         }.items()
         if v is not None
     }
