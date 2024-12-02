@@ -73,4 +73,66 @@ test.describe("Build", () => {
     await page.reload();
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
   });
+
+  test("user can add two blocks and connect them", async ({ page }, testInfo) => {
+    await test.setTimeout(testInfo.timeout * 10);
+
+    await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
+    await test.expect(page).toHaveURL(new RegExp("/.*build"));
+    await buildPage.closeTutorial();
+    await buildPage.openBlocksPanel();
+
+    // Define the blocks to add
+    const block1 = {
+      id: "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      name: "Store Value 1",
+      description: "Store Value Block 1",
+    };
+    const block2 = {
+      id: "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      name: "Store Value 2",
+      description: "Store Value Block 2",
+    };
+
+    // Add the blocks
+    await buildPage.addBlock(block1);
+    await buildPage.addBlock(block2);
+    await buildPage.closeBlocksPanel();
+
+    // Connect the blocks
+    await buildPage.connectBlockOutputToBlockInput(
+      "1-1-output-source",
+      "Output Source",
+      "1-2-input-target",
+      "Input Target"
+    );
+
+    // Fill in the input for the first block
+    await buildPage.fillBlockInputByPlaceholder(
+      block1.id,
+      "Enter input",
+      "Test Value"
+    );
+
+    // Save the agent and wait for the URL to update
+    await buildPage.saveAgent("Connected Blocks Test", "Testing block connections");
+    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+
+    // Wait for the save button to be enabled again
+    await page.waitForSelector('[data-testid="blocks-control-save-button"]:not([disabled])');
+
+    // Ensure the run button is enabled
+    const runButton = page.locator('[data-id="primary-action-run-agent"]');
+    await test.expect(runButton).toBeEnabled();
+
+    // Run the agent
+    await runButton.click();
+
+    // Wait for processing to complete by checking the completion badge
+    await page.waitForSelector('[data-id^="badge-"][data-id$="-COMPLETED"]');
+
+    // Get the first completion badge and verify it's visible
+    const completionBadge = page.locator('[data-id^="badge-"][data-id$="-COMPLETED"]').first();
+    await test.expect(completionBadge).toBeVisible();
+  });
 });

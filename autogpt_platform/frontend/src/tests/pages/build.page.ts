@@ -172,7 +172,25 @@ export class BuildPage extends BasePage {
     blockInputId: string,
     blockInputName: string,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    try {
+      // Locate the output element
+      const outputElement = await this.page.locator(`[data-id="${blockOutputId}"]`);
+      // Locate the input element
+      const inputElement = await this.page.locator(`[data-id="${blockInputId}"]`);
+
+      // Drag from the output to the input
+      const outputBox = await outputElement.boundingBox();
+      const inputBox = await inputElement.boundingBox();
+
+      if (outputBox && inputBox) {
+        await this.page.mouse.move(outputBox.x + outputBox.width / 2, outputBox.y + outputBox.height / 2);
+        await this.page.mouse.down();
+        await this.page.mouse.move(inputBox.x + inputBox.width / 2, inputBox.y + inputBox.height / 2);
+        await this.page.mouse.up();
+      }
+    } catch (error) {
+      console.error("Error connecting block output to input:", error);
+    }
   }
 
   async isLoaded(): Promise<boolean> {
