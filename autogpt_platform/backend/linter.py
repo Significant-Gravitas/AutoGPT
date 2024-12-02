@@ -12,10 +12,10 @@ def run(*command: str) -> None:
 
 def lint():
     try:
-        run("ruff", "check", ".", "--exit-zero")
+        run("ruff", "check", *target_dirs, "--exit-zero")
         run("isort", "--diff", "--check", "--profile", "black", ".")
         run("black", "--diff", "--check", ".")
-        run("pyright")
+        run("pyright", *target_dirs)
     except subprocess.CalledProcessError as e:
         print("Lint failed, try running `poetry run format` to fix the issues: ", e)
         raise e
@@ -23,6 +23,6 @@ def lint():
 
 def format():
     run("ruff", "check", "--fix", *target_dirs)
-    run("isort", "--profile", "black")
-    run("black")
+    run("isort", "--profile", "black", ".")
+    run("black", ".")
     run("pyright", *target_dirs)
