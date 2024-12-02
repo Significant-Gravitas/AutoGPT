@@ -366,7 +366,6 @@ export default function useAgentGraph(
 
     nodes.forEach((node) => {
       const validate = ajv.compile(node.data.inputSchema);
-      console.log("Validating node", node.id, node.data.inputSchema);
       const errors = {} as { [key: string]: string };
 
       // Validate values against schema using AJV
