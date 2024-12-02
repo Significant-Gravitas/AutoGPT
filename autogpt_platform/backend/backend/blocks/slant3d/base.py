@@ -1,8 +1,9 @@
 from typing import Any, Dict
 
-from backend.blocks.slantthreed._api import Color, CustomerDetails, OrderItem, Profile
 from backend.data.block import Block
 from backend.util.request import requests
+
+from ._api import Color, CustomerDetails, OrderItem, Profile
 
 
 class Slant3DBlockBase(Block):
