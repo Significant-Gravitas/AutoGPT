@@ -12,9 +12,9 @@ readme = "README.md"
 python = "^3.10"
 prisma = "^0.15.0"
 python-dotenv = "^1.0.1"
-uvicorn = "^0.32.0"
+uvicorn = "^0.32.1"
 fastapi = "^0.115.5"
-sentry-sdk = { extras = ["fastapi"], version = "^2.18.0" }
+sentry-sdk = { extras = ["fastapi"], version = "^2.19.0" }
 fuzzywuzzy = "^0.18.0"
 python-levenshtein = "^0.26.1"
 # autogpt-platform-backend = { path = "../backend", develop = true }
@@ -28,7 +28,7 @@ pytest-asyncio = "^0.24.0"
 
 pytest-watcher = "^0.4.3"
 requests = "^2.32.3"
-ruff = "^0.7.4"
+ruff = "^0.8.0"
 pyright = "^1.1.389"
 isort = "^5.13.2"
 black = "^24.10.0"

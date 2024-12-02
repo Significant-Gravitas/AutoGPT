@@ -3,7 +3,7 @@ import os
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -136,11 +136,31 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    platform_base_url: str = Field(
+        default="",
+        description="Must be set so the application knows where it's hosted at. "
+        "This is necessary to make sure webhooks find their way.",
+    )
+
     frontend_base_url: str = Field(
-        default="http://localhost:3000",
+        default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
+
+    @field_validator("platform_base_url", "frontend_base_url")
+    @classmethod
+    def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
+        if not v:
+            return v
+        if not v.startswith(("http://", "https://")):
+            raise ValueError(
+                f"{info.field_name} must be a full URL "
+                "including a http:// or https:// schema"
+            )
+        if v.endswith("/"):
+            return v.rstrip("/")  # Remove trailing slash
+        return v
 
     app_env: AppEnvironment = Field(
         default=AppEnvironment.LOCAL,
@@ -269,6 +289,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
     jina_api_key: str = Field(default="", description="Jina API Key")
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
+
+    fal_key: str = Field(default="", description="FAL API key")
 
     # Add more secret fields as needed
 

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 from autogpt_libs.utils.cache import thread_cached
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
 from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
 from backend.data.execution import (
@@ -29,7 +30,7 @@ from backend.data.execution import (
     merge_execution_input,
     parse_execution_output,
 )
-from backend.data.graph import Graph, Link, Node
+from backend.data.graph import GraphModel, Link, Node
 from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
@@ -135,7 +136,6 @@ def execute_node(
         logger.error(f"Block {node.block_id} not found.")
         return
 
-    # Sanity check: validate the execution input.
     log_metadata = LogMetadata(
         user_id=user_id,
         graph_eid=graph_exec_id,
@@ -144,10 +144,19 @@ def execute_node(
         node_id=node_id,
         block_name=node_block.name,
     )
+
+    # Sanity check: validate the execution input.
     input_data, error = validate_exec(node, data.data, resolve_input=False)
     if input_data is None:
         log_metadata.error(f"Skip execution, input validation error: {error}")
+        db_client.upsert_execution_output(node_exec_id, "error", error)
+        update_execution(ExecutionStatus.FAILED)
         return
+
+    # Re-shape the input data for agent block.
+    # AgentExecutorBlock specially separate the node input_data & its input_default.
+    if isinstance(node_block, AgentExecutorBlock):
+        input_data = {**node.input_default, "data": input_data}
 
     # Execute the node
     input_data_str = json.dumps(input_data)
@@ -177,7 +186,7 @@ def execute_node(
             input_data, **extra_exec_kwargs
         ):
             output_size += len(json.dumps(output_data))
-            log_metadata.info("Node produced output", output_name=output_data)
+            log_metadata.info("Node produced output", **{output_name: output_data})
             db_client.upsert_execution_output(node_exec_id, output_name, output_data)
 
             for execution in _enqueue_next_nodes(
@@ -244,7 +253,6 @@ def _enqueue_next_nodes(
     graph_id: str,
     log_metadata: LogMetadata,
 ) -> list[NodeExecution]:
-
     def add_enqueued_execution(
         node_exec_id: str, node_id: str, data: BlockInput
     ) -> NodeExecution:
@@ -376,31 +384,46 @@ def validate_exec(
     if not node_block:
         return None, f"Block for {node.block_id} not found."
 
-    error_prefix = f"Input data missing for {node_block.name}:"
+    if isinstance(node_block, AgentExecutorBlock):
+        # Validate the execution metadata for the agent executor block.
+        try:
+            exec_data = AgentExecutorBlock.Input(**node.input_default)
+        except Exception as e:
+            return None, f"Input data doesn't match {node_block.name}: {str(e)}"
+
+        # Validation input
+        input_schema = exec_data.input_schema
+        required_fields = set(input_schema["required"])
+        input_default = exec_data.data
+    else:
+        # Convert non-matching data types to the expected input schema.
+        for name, data_type in node_block.input_schema.__annotations__.items():
+            if (value := data.get(name)) and (type(value) is not data_type):
+                data[name] = convert(value, data_type)
+
+        # Validation input
+        input_schema = node_block.input_schema.jsonschema()
+        required_fields = node_block.input_schema.get_required_fields()
+        input_default = node.input_default
 
     # Input data (without default values) should contain all required fields.
+    error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
     input_fields_from_nodes = {link.sink_name for link in node.input_links}
     if not input_fields_from_nodes.issubset(data):
         return None, f"{error_prefix} {input_fields_from_nodes - set(data)}"
 
     # Merge input data with default values and resolve dynamic dict/list/object pins.
-    data = {**node.input_default, **data}
+    data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
 
     # Input data post-merge should contain all required fields from the schema.
-    input_fields_from_schema = node_block.input_schema.get_required_fields()
-    if not input_fields_from_schema.issubset(data):
-        return None, f"{error_prefix} {input_fields_from_schema - set(data)}"
-
-    # Convert non-matching data types to the expected input schema.
-    for name, data_type in node_block.input_schema.__annotations__.items():
-        if (value := data.get(name)) and (type(value) is not data_type):
-            data[name] = convert(value, data_type)
+    if not required_fields.issubset(data):
+        return None, f"{error_prefix} {required_fields - set(data)}"
 
     # Last validation: Validate the input values against the schema.
-    if error := node_block.input_schema.validate_data(data):
-        error_message = f"Input data doesn't match {node_block.name}: {error}"
+    if error := json.validate_with_jsonschema(schema=input_schema, data=data):
+        error_message = f"{error_prefix} {error}"
         logger.error(error_message)
         return None, error_message
 
@@ -689,7 +712,6 @@ class Executor:
 
 
 class ExecutionManager(AppService):
-
     def __init__(self):
         super().__init__()
         self.use_redis = True
@@ -703,13 +725,9 @@ class ExecutionManager(AppService):
         return settings.config.execution_manager_port
 
     def run_service(self):
-        from autogpt_libs.supabase_integration_credentials_store import (
-            SupabaseIntegrationCredentialsStore,
-        )
+        from backend.integrations.credentials_store import IntegrationCredentialsStore
 
-        self.credentials_store = SupabaseIntegrationCredentialsStore(
-            redis=redis.get_redis()
-        )
+        self.credentials_store = IntegrationCredentialsStore()
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
@@ -751,7 +769,7 @@ class ExecutionManager(AppService):
         user_id: str,
         graph_version: int | None = None,
     ) -> GraphExecution:
-        graph: Graph | None = self.db_client.get_graph(
+        graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
         if not graph:
@@ -774,6 +792,15 @@ class ExecutionManager(AppService):
                 name = node.input_default.get("name")
                 if name and name in data:
                     input_data = {"value": data[name]}
+
+            # Extract webhook payload, and assign it to the input pin
+            webhook_payload_key = f"webhook_{node.webhook_id}_payload"
+            if (
+                block.block_type == BlockType.WEBHOOK
+                and node.webhook_id
+                and webhook_payload_key in data
+            ):
+                input_data = {"payload": data[webhook_payload_key]}
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
@@ -852,7 +879,7 @@ class ExecutionManager(AppService):
                 )
                 self.db_client.send_execution_update(exec_update)
 
-    def _validate_node_input_credentials(self, graph: Graph, user_id: str):
+    def _validate_node_input_credentials(self, graph: GraphModel, user_id: str):
         """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:

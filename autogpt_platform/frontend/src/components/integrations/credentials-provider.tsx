@@ -1,5 +1,6 @@
 import AutoGPTServerAPI, {
   APIKeyCredentials,
+  CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
   CredentialsProviderName,
@@ -37,8 +38,10 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   open_router: "Open Router",
   pinecone: "Pinecone",
   replicate: "Replicate",
+  fal: "FAL",
   revid: "Rev.ID",
   unreal_speech: "Unreal Speech",
+  hubspot: "Hubspot",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
 
@@ -59,7 +62,12 @@ export type CredentialsProviderData = {
   createAPIKeyCredentials: (
     credentials: APIKeyCredentialsCreatable,
   ) => Promise<CredentialsMetaResponse>;
-  deleteCredentials: (id: string) => Promise<CredentialsDeleteResponse>;
+  deleteCredentials: (
+    id: string,
+    force?: boolean,
+  ) => Promise<
+    CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
+  >;
 };
 
 export type CredentialsProvidersContextType = {
@@ -144,8 +152,14 @@ export default function CredentialsProvider({
     async (
       provider: CredentialsProviderName,
       id: string,
-    ): Promise<CredentialsDeleteResponse> => {
-      const result = await api.deleteCredentials(provider, id);
+      force: boolean = false,
+    ): Promise<
+      CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
+    > => {
+      const result = await api.deleteCredentials(provider, id, force);
+      if (!result.deleted) {
+        return result;
+      }
       setProviders((prev) => {
         if (!prev || !prev[provider]) return prev;
 
@@ -172,43 +186,64 @@ export default function CredentialsProvider({
     api.isAuthenticated().then((isAuthenticated) => {
       if (!isAuthenticated) return;
 
-      CREDENTIALS_PROVIDER_NAMES.forEach(
-        (provider: CredentialsProviderName) => {
-          api.listCredentials(provider).then((response) => {
-            const { oauthCreds, apiKeys } = response.reduce<{
+      api.listCredentials().then((response) => {
+        const credentialsByProvider = response.reduce(
+          (acc, cred) => {
+            if (!acc[cred.provider]) {
+              acc[cred.provider] = { oauthCreds: [], apiKeys: [] };
+            }
+            if (cred.type === "oauth2") {
+              acc[cred.provider].oauthCreds.push(cred);
+            } else if (cred.type === "api_key") {
+              acc[cred.provider].apiKeys.push(cred);
+            }
+            return acc;
+          },
+          {} as Record<
+            CredentialsProviderName,
+            {
               oauthCreds: CredentialsMetaResponse[];
               apiKeys: CredentialsMetaResponse[];
-            }>(
-              (acc, cred) => {
-                if (cred.type === "oauth2") {
-                  acc.oauthCreds.push(cred);
-                } else if (cred.type === "api_key") {
-                  acc.apiKeys.push(cred);
-                }
-                return acc;
-              },
-              { oauthCreds: [], apiKeys: [] },
-            );
+            }
+          >,
+        );
 
-            setProviders((prev) => ({
-              ...prev,
-              [provider]: {
+        setProviders((prev) => ({
+          ...prev,
+          ...Object.fromEntries(
+            CREDENTIALS_PROVIDER_NAMES.map((provider) => [
+              provider,
+              {
                 provider,
-                providerName: providerDisplayNames[provider],
-                savedApiKeys: apiKeys,
-                savedOAuthCredentials: oauthCreds,
+                providerName:
+                  providerDisplayNames[provider as CredentialsProviderName],
+                savedApiKeys: credentialsByProvider[provider]?.apiKeys ?? [],
+                savedOAuthCredentials:
+                  credentialsByProvider[provider]?.oauthCreds ?? [],
                 oAuthCallback: (code: string, state_token: string) =>
-                  oAuthCallback(provider, code, state_token),
+                  oAuthCallback(
+                    provider as CredentialsProviderName,
+                    code,
+                    state_token,
+                  ),
                 createAPIKeyCredentials: (
                   credentials: APIKeyCredentialsCreatable,
-                ) => createAPIKeyCredentials(provider, credentials),
-                deleteCredentials: (id: string) =>
-                  deleteCredentials(provider, id),
+                ) =>
+                  createAPIKeyCredentials(
+                    provider as CredentialsProviderName,
+                    credentials,
+                  ),
+                deleteCredentials: (id: string, force: boolean = false) =>
+                  deleteCredentials(
+                    provider as CredentialsProviderName,
+                    id,
+                    force,
+                  ),
               },
-            }));
-          });
-        },
-      );
+            ]),
+          ),
+        }));
+      });
     });
   }, [api, createAPIKeyCredentials, deleteCredentials, oAuthCallback]);
 

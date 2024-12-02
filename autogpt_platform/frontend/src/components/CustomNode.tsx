@@ -28,6 +28,7 @@ import {
 } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
@@ -38,6 +39,7 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import NodeOutputs from "./NodeOutputs";
+import SchemaTooltip from "./SchemaTooltip";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -166,7 +168,7 @@ export function CustomNode({
       <div key={key}>
         <NodeHandle
           keyName={key}
-          isConnected={isHandleConnected(key)}
+          isConnected={isOutputHandleConnected(key)}
           schema={schema.properties[key]}
           side="right"
         />
@@ -205,16 +207,18 @@ export function CustomNode({
 
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
+          const isHidden = propSchema.hidden;
           const isConnectable =
+            // No input connection handles on INPUT and WEBHOOK blocks
+            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
-            // No input connection handles on INPUT blocks
-            nodeType !== BlockUIType.INPUT &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
             !(nodeType == BlockUIType.OUTPUT && propKey == "name");
+          const isConnected = isInputHandleConnected(propKey);
           return (
+            !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
                 {isConnectable ? (
@@ -227,15 +231,15 @@ export function CustomNode({
                   />
                 ) : (
                   propKey != "credentials" && (
-                    <span
-                      className="text-m green mb-0 text-gray-900"
-                      title={propSchema.description}
-                    >
-                      {propSchema.title || beautifyString(propKey)}
-                    </span>
+                    <div className="flex gap-1">
+                      <span className="text-m green mb-0 text-gray-900">
+                        {propSchema.title || beautifyString(propKey)}
+                      </span>
+                      <SchemaTooltip description={propSchema.description} />
+                    </div>
                   )
                 )}
-                {!isConnected && (
+                {isConnected || (
                   <NodeGenericInputField
                     nodeId={id}
                     propKey={getInputPropKey(propKey)}
@@ -298,21 +302,28 @@ export function CustomNode({
     setErrors({ ...errors });
   };
 
-  const isHandleConnected = (key: string) => {
+  const isInputHandleConnected = (key: string) => {
     return (
       data.connections &&
       data.connections.some((conn: any) => {
         if (typeof conn === "string") {
-          const [source, target] = conn.split(" -> ");
-          return (
-            (target.includes(key) && target.includes(data.title)) ||
-            (source.includes(key) && source.includes(data.title))
-          );
+          const [_source, target] = conn.split(" -> ");
+          return target.includes(key) && target.includes(data.title);
         }
-        return (
-          (conn.target === id && conn.targetHandle === key) ||
-          (conn.source === id && conn.sourceHandle === key)
-        );
+        return conn.target === id && conn.targetHandle === key;
+      })
+    );
+  };
+
+  const isOutputHandleConnected = (key: string) => {
+    return (
+      data.connections &&
+      data.connections.some((conn: any) => {
+        if (typeof conn === "string") {
+          const [source, _target] = conn.split(" -> ");
+          return source.includes(key) && source.includes(data.title);
+        }
+        return conn.source === id && conn.sourceHandle === key;
       })
     );
   };
@@ -480,14 +491,26 @@ export function CustomNode({
     });
 
   const inputValues = data.hardcodedValues;
+
+  const isCostFilterMatch = (costFilter: any, inputValues: any): boolean => {
+    /*
+      Filter rules:
+      - If costFilter is an object, then check if costFilter is the subset of inputValues
+      - Otherwise, check if costFilter is equal to inputValues.
+      - Undefined, null, and empty string are considered as equal.
+    */
+    return typeof costFilter === "object" && typeof inputValues === "object"
+      ? Object.entries(costFilter).every(
+          ([k, v]) =>
+            (!v && !inputValues[k]) || isCostFilterMatch(v, inputValues[k]),
+        )
+      : costFilter === inputValues;
+  };
+
   const blockCost =
     data.blockCosts &&
     data.blockCosts.find((cost) =>
-      Object.entries(cost.cost_filter).every(
-        // Undefined, null, or empty values are considered equal
-        ([key, value]) =>
-          value === inputValues[key] || (!value && !inputValues[key]),
-      ),
+      isCostFilterMatch(cost.cost_filter, inputValues),
     );
 
   const LineSeparator = () => (
@@ -554,9 +577,13 @@ export function CustomNode({
         <div className="flex w-full flex-col">
           <div className="flex flex-row items-center justify-between">
             <div className="font-roboto flex items-center px-3 text-lg font-semibold">
-              {beautifyString(
-                data.blockType?.replace(/Block$/, "") || data.title,
-              )}
+              <TextRenderer
+                value={beautifyString(
+                  data.blockType?.replace(/Block$/, "") || data.title,
+                )}
+                truncateLengthLimit={80}
+              />
+
               <div className="px-2 text-xs text-gray-500">
                 #{id.split("-")[0]}
               </div>

@@ -56,6 +56,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  hidden?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
@@ -115,8 +116,10 @@ export const PROVIDER_NAMES = {
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
   REPLICATE: "replicate",
+  FAL: "fal",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  HUBSPOT: "hubspot",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
@@ -259,6 +262,7 @@ export type NodeExecutionResult = {
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
+  provider: CredentialsProviderName;
   type: CredentialsType;
   title?: string;
   scopes?: Array<string>;
@@ -271,6 +275,13 @@ export type CredentialsDeleteResponse = {
   revoked: boolean | null;
 };
 
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+export type CredentialsDeleteNeedConfirmationResponse = {
+  deleted: false;
+  need_confirmation: true;
+  message: string;
+};
+
 /* Mirror of backend/data/model.py:CredentialsMetaInput */
 export type CredentialsMetaInput = {
   id: string;
@@ -279,15 +290,15 @@ export type CredentialsMetaInput = {
   provider: string;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
+/* Mirror of backend/backend/data/model.py:_BaseCredentials */
 type BaseCredentials = {
   id: string;
   type: CredentialsType;
   title?: string;
-  provider: string;
+  provider: CredentialsProviderName;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
+/* Mirror of backend/backend/data/model.py:OAuth2Credentials */
 export type OAuth2Credentials = BaseCredentials & {
   type: "oauth2";
   scopes: string[];
@@ -299,7 +310,7 @@ export type OAuth2Credentials = BaseCredentials & {
   metadata: Record<string, any>;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
+/* Mirror of backend/backend/data/model.py:APIKeyCredentials */
 export type APIKeyCredentials = BaseCredentials & {
   type: "api_key";
   title: string;
@@ -317,6 +328,7 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  WEBHOOK = "Webhook",
   AGENT = "Agent",
 }
 

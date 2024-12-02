@@ -10,6 +10,7 @@ on:
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
+  merge_group:
 
 defaults:
   run:
