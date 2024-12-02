@@ -10,6 +10,7 @@ nav:
   - The AutoGPT Platform 🆕: 
     - Getting Started: platform/getting-started.md
     - Advanced Setup: platform/advanced_setup.md
+    - Agent Blocks: platform/agent-blocks.md
     - Build your own Blocks: platform/new_blocks.md
     - Using Ollama: platform/ollama.md
     - Using D-ID: platform/d_id.md

@@ -1,6 +1,7 @@
 import pytest
-from autogpt_libs.feature_flag.client import feature_flag, mock_flag_variation
 from ldclient import LDClient
+
+from autogpt_libs.feature_flag.client import feature_flag, mock_flag_variation
 
 
 @pytest.fixture
