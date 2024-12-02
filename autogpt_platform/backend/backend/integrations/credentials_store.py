@@ -5,20 +5,18 @@ from typing import TYPE_CHECKING
 from pydantic import SecretStr
 
 if TYPE_CHECKING:
-    from redis import Redis
     from backend.executor.database import DatabaseManager
 
 from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 
-from .types import (
+from backend.data.model import (
     APIKeyCredentials,
     Credentials,
     OAuth2Credentials,
     OAuthState,
     UserIntegrations,
 )
-
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -109,9 +107,11 @@ DEFAULT_CREDENTIALS = [
 ]
 
 
-class SupabaseIntegrationCredentialsStore:
-    def __init__(self, redis: "Redis"):
-        self.locks = RedisKeyedMutex(redis)
+class IntegrationCredentialsStore:
+    def __init__(self):
+        from backend.data.redis import get_redis
+
+        self.locks = RedisKeyedMutex(get_redis())
 
     @property
     @thread_cached
@@ -305,5 +305,5 @@ class SupabaseIntegrationCredentialsStore:
         return integrations
 
     def locked_user_integrations(self, user_id: str):
-        key = (self.db_manager, f"user:{user_id}", "integrations")
+        key = (f"user:{user_id}", "integrations")
         return self.locks.locked(key)

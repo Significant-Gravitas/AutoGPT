@@ -41,6 +41,7 @@ export function getTypeTextColor(type: string | null): string {
     {
       string: "text-green-500",
       number: "text-blue-500",
+      integer: "text-blue-500",
       boolean: "text-yellow-500",
       object: "text-purple-500",
       array: "text-indigo-500",
@@ -58,6 +59,7 @@ export function getTypeBgColor(type: string | null): string {
     {
       string: "border-green-500",
       number: "border-blue-500",
+      integer: "border-blue-500",
       boolean: "border-yellow-500",
       object: "border-purple-500",
       array: "border-indigo-500",
@@ -74,6 +76,7 @@ export function getTypeColor(type: string | null): string {
     {
       string: "#22c55e",
       number: "#3b82f6",
+      integer: "#3b82f6",
       boolean: "#eab308",
       object: "#a855f7",
       array: "#6366f1",
