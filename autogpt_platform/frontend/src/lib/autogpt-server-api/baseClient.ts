@@ -26,6 +26,8 @@ import {
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
   StoreSubmission,
+  StoreReviewCreate,
+  StoreReview,
   ScheduleCreatable,
   Schedule,
 } from "./types";
@@ -335,6 +337,15 @@ export default class BaseAutoGPTServerAPI {
 
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
     return this._request("POST", "/store/profile", profile);
+  }
+
+  reviewAgent(
+    username: string,
+    agentName: string,
+    review: StoreReviewCreate,
+  ): Promise<StoreReview> {
+    console.log("Reviewing agent: ", username, agentName, review);
+    return this._request("POST", `/store/agents/${username}/${agentName}/review`, review);
   }
 
   getMyAgents(params?: {
