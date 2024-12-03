@@ -92,19 +92,6 @@ export class BuildPage extends BasePage {
     return await this.page.getByTestId(`rf__node-${nodeId}`).isVisible();
   }
 
-  // async hasBlock(block: Block): Promise<boolean> {
-  //   // all blocks on graph have a ref id  getByTestId('rf__node-1') where -1 is the order it was added to the graph or the internal id after its been saved
-  //   //so we can check by getting all elements with that testid and seeing if the textContent includes the block name
-  //   const nodes = await this.page.locator('[data-testid^="rf__node-"]').all();
-  //   console.log(`found ${nodes.length} nodes`);
-  //   const nodeTexts = await Promise.all(
-  //     nodes.map((node) => node.textContent()),
-  //   );
-  //   console.log(`nodeTexts: ${nodeTexts}`);
-  //   const matches = nodeTexts.some((text) => text?.includes(block.name));
-  //   console.log(`matches: ${matches}`);
-  //   return matches;
-  // }
   async hasBlock(block: Block): Promise<boolean> {
     try {
       // Use both ID and name for most precise matching
