@@ -72,7 +72,7 @@ def feature_flag(
     """
 
     def decorator(
-        func: Callable[P, Union[T, Awaitable[T]]]
+        func: Callable[P, Union[T, Awaitable[T]]],
     ) -> Callable[P, Union[T, Awaitable[T]]]:
         @wraps(func)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
