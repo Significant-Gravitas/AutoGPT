@@ -615,14 +615,11 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
 
 async def fix_llm_provider_credentials():
     """Fix node credentials with provider `llm`"""
-    from autogpt_libs.supabase_integration_credentials_store import (
-        SupabaseIntegrationCredentialsStore,
-    )
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
 
-    from .redis import get_redis
     from .user import get_user_integrations
 
-    store = SupabaseIntegrationCredentialsStore(get_redis())
+    store = IntegrationCredentialsStore()
 
     broken_nodes = await prisma.get_client().query_raw(
         """

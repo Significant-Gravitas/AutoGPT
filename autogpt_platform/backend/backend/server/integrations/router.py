@@ -1,12 +1,6 @@
 import logging
 from typing import Annotated, Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import (
-    APIKeyCredentials,
-    Credentials,
-    CredentialsType,
-    OAuth2Credentials,
-)
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 
@@ -17,6 +11,12 @@ from backend.data.integrations import (
     get_webhook,
     listen_for_webhook_event,
     publish_webhook_event,
+)
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsType,
+    OAuth2Credentials,
 )
 from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -65,6 +65,7 @@ def login(
 
 class CredentialsMetaResponse(BaseModel):
     id: str
+    provider: str
     type: CredentialsType
     title: str | None
     scopes: list[str] | None
@@ -119,6 +120,7 @@ def callback(
     )
     return CredentialsMetaResponse(
         id=credentials.id,
+        provider=credentials.provider,
         type=credentials.type,
         title=credentials.title,
         scopes=credentials.scopes,
@@ -126,8 +128,26 @@ def callback(
     )
 
 
-@router.get("/{provider}/credentials")
+@router.get("/credentials")
 def list_credentials(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> list[CredentialsMetaResponse]:
+    credentials = creds_manager.store.get_all_creds(user_id)
+    return [
+        CredentialsMetaResponse(
+            id=cred.id,
+            provider=cred.provider,
+            type=cred.type,
+            title=cred.title,
+            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
+            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
+        )
+        for cred in credentials
+    ]
+
+
+@router.get("/{provider}/credentials")
+def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
@@ -135,6 +155,7 @@ def list_credentials(
     return [
         CredentialsMetaResponse(
             id=cred.id,
+            provider=cred.provider,
             type=cred.type,
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,

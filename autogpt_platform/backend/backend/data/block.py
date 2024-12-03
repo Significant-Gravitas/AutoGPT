@@ -15,14 +15,18 @@ from typing import (
 
 import jsonref
 import jsonschema
-from autogpt_libs.supabase_integration_credentials_store.types import Credentials
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
 from backend.util import json
 from backend.util.settings import Config
 
-from .model import CREDENTIALS_FIELD_NAME, ContributorDetails, CredentialsMetaInput
+from .model import (
+    CREDENTIALS_FIELD_NAME,
+    ContributorDetails,
+    Credentials,
+    CredentialsMetaInput,
+)
 
 app_config = Config()
 
@@ -55,6 +59,7 @@ class BlockCategory(Enum):
     DATA = "Block that interacts with structured data."
     HARDWARE = "Block that interacts with hardware."
     AGENT = "Block that interacts with other agents."
+    CRM = "Block that interacts with CRM services."
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}

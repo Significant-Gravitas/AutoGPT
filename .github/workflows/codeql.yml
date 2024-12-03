@@ -16,6 +16,7 @@ on:
     branches: [ "master", "release-*", "dev" ]
   pull_request:
     branches: [ "master", "release-*", "dev" ]
+  merge_group:
   schedule:
     - cron: '15 4 * * 0'
 

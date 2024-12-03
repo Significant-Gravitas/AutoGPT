@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TextRenderer } from "../ui/render";
 
 interface SchedulesTableProps {
   schedules: Schedule[];
@@ -111,7 +112,7 @@ export const SchedulesTable = ({
             <SelectContent>
               {agents.map((agent, i) => (
                 <SelectItem key={agent.id + i} value={agent.id}>
-                  {agent.name}
+                  <TextRenderer value={agent.name} truncateLengthLimit={30} />
                 </SelectItem>
               ))}
             </SelectContent>
