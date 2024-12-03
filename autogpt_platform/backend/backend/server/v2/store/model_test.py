@@ -58,6 +58,7 @@ def test_store_agents_response():
 
 def test_store_agent_details():
     details = backend.server.v2.store.model.StoreAgentDetails(
+        store_listing_version_id="version123",
         slug="test-agent",
         agent_name="Test Agent",
         agent_video="video.mp4",

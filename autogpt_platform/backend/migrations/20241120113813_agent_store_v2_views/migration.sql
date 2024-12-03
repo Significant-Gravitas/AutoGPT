@@ -2,10 +2,9 @@ BEGIN;
 
 CREATE VIEW "StoreAgent" AS
 WITH ReviewStats AS (
-    SELECT 
-        sl."id" AS "storeListingId",
-        COUNT(sr.id) AS review_count,
-        AVG(CAST(sr.score AS DECIMAL)) AS avg_rating
+    SELECT sl."id" AS "storeListingId",
+    COUNT(sr.id) AS review_count,
+    AVG(CAST(sr.score AS DECIMAL)) AS avg_rating
     FROM "StoreListing" sl
     JOIN "StoreListingVersion" slv ON slv."storeListingId" = sl."id"
     JOIN "StoreListingReview" sr ON sr."storeListingVersionId" = slv.id
@@ -19,6 +18,7 @@ AgentRuns AS (
 )
 SELECT
     sl.id AS listing_id,
+    slv.id AS "storeListingVersionId",
     slv."createdAt" AS updated_at,
     slv.slug,
     a.name AS agent_name,
@@ -41,7 +41,7 @@ LEFT JOIN ReviewStats rs ON sl.id = rs."storeListingId"
 LEFT JOIN AgentRuns ar ON a.id = ar."agentGraphId"
 WHERE sl."isDeleted" = FALSE
   AND sl."isApproved" = TRUE
-GROUP BY sl.id, slv.slug, slv."createdAt", a.name, slv."videoUrl", slv."imageUrls", slv."isFeatured", 
+GROUP BY sl.id, slv.id, slv.slug, slv."createdAt", a.name, slv."videoUrl", slv."imageUrls", slv."isFeatured", 
          p.username, p."avatarUrl", slv."subHeading", slv.description, slv.categories,
          ar.run_count, rs.avg_rating;
 

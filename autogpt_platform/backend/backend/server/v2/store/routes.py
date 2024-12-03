@@ -157,6 +157,46 @@ async def get_agent(
         raise
 
 
+@router.post(
+    "/agents/{username}/{agent_name}/review",
+    tags=["store"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def create_review(
+    username: str,
+    agent_name: str,
+    review: backend.server.v2.store.model.StoreReviewCreate,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> backend.server.v2.store.model.StoreReview:
+    """
+    Create a review for a store agent.
+
+    Args:
+        username: Creator's username
+        agent_name: Name/slug of the agent
+        review: Review details including score and optional comments
+        user_id: ID of authenticated user creating the review
+
+    Returns:
+        The created review
+    """
+    try:
+        # Create the review
+        created_review = await backend.server.v2.store.db.create_store_review(
+            user_id=user_id,
+            store_listing_version_id=review.store_listing_version_id,
+            score=review.score,
+            comments=review.comments,
+        )
+
+        return created_review
+    except Exception:
+        logger.exception("Exception occurred whilst creating store review")
+        raise
+
+
 ##############################################
 ############# Creator Endpoints #############
 ##############################################

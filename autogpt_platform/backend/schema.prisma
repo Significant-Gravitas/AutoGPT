@@ -37,7 +37,7 @@ model User {
   StoreListingSubmission      StoreListingSubmission[]
   APIKeys                     APIKey[]
   AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
-  IntegrationWebhooks          IntegrationWebhook[]
+  IntegrationWebhooks         IntegrationWebhook[]
 
   @@index([id])
   @@index([email])
@@ -450,8 +450,9 @@ view Creator {
 }
 
 view StoreAgent {
-  listing_id String   @id
-  updated_at DateTime
+  listing_id               String   @id
+  store_listing_version_id String
+  updated_at               DateTime
 
   slug        String
   agent_name  String
@@ -472,6 +473,7 @@ view StoreAgent {
   @@index([creator_username])
   @@index([featured])
   @@index([categories])
+  @@index([store_listing_version_id])
 }
 
 view StoreSubmission {
