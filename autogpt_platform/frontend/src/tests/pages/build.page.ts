@@ -1,4 +1,4 @@
-import { ElementHandle, Page } from "@playwright/test";
+import { ElementHandle, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
 interface Block {
@@ -145,6 +145,22 @@ export class BuildPage extends BasePage {
     // }
   }
 
+  async build_block_selector(
+    blockId: string,
+    dataId?: string,
+  ): Promise<string> {
+    let selector = dataId
+      ? `[data-id="${dataId}"] [data-blockid="${blockId}"]`
+      : `[data-blockid="${blockId}"]`;
+    return selector;
+  }
+
+  async getBlockById(blockId: string, dataId?: string): Promise<Locator> {
+    return await this.page.locator(
+      await this.build_block_selector(blockId, dataId),
+    );
+  }
+
   // dataId is optional, if provided, it will start the search with that container, otherwise it will start with the blockId
   // this is useful if you have multiple blocks with the same id, but different dataIds which you should have when adding a block to the graph.
   // Do note that once you run an agent, the dataId will change, so you will need to update the tests to use the new dataId or not use the same block in tests that run an agent
@@ -154,14 +170,40 @@ export class BuildPage extends BasePage {
     value: string,
     dataId?: string,
   ): Promise<void> {
-    // If dataId is provided, start with that container, otherwise use blockId
-    let selector = dataId
-      ? `[data-id="${dataId}"] [data-blockid="${blockId}"]`
-      : `[data-blockid="${blockId}"]`;
-
-    const block = await this.page.locator(selector);
+    const block = await this.getBlockById(blockId, dataId);
     const input = await block.getByPlaceholder(placeholder);
     await input.fill(value);
+  }
+
+  async selectBlockInputValue(
+    blockId: string,
+    inputName: string,
+    value: string,
+    dataId?: string,
+  ): Promise<void> {
+    // First get the button that opens the dropdown
+    const baseSelector = await this.build_block_selector(blockId, dataId);
+
+    // Find the combobox button within the input handle container
+    const comboboxSelector = `${baseSelector} [data-id="input-handle-${inputName.toLowerCase()}"] button[role="combobox"]`;
+
+    try {
+      // Click the combobox to open it
+      await this.page.click(comboboxSelector);
+
+      // Wait a moment for the dropdown to open
+      await this.page.waitForTimeout(100);
+
+      // Select the option from the dropdown
+      // The actual selector for the option might need adjustment based on the dropdown structure
+      await this.page.getByRole("option", { name: value }).click();
+    } catch (error) {
+      console.error(
+        `Error selecting value "${value}" for input "${inputName}":`,
+        error,
+      );
+      throw error;
+    }
   }
 
   async fillBlockInputByLabel(
@@ -169,17 +211,15 @@ export class BuildPage extends BasePage {
     label: string,
     value: string,
   ): Promise<void> {
-    throw new Error("Not implemented");
-    // const block = await this.page.locator(`[data-blockid="${blockId}"]`);
-    // const input = await block.getByLabel(label);
-    // await input.fill(value);
+    // throw new Error("Not implemented");
+    const block = await this.getBlockById(blockId);
+    const input = await block.getByLabel(label);
+    await input.fill(value);
   }
 
-  async connectBlockOutputToBlockInput(
+  async connectBlockOutputToBlockInputViaDataId(
     blockOutputId: string,
-    blockOutputName: string,
     blockInputId: string,
-    blockInputName: string,
   ): Promise<void> {
     try {
       // Locate the output element
@@ -191,25 +231,36 @@ export class BuildPage extends BasePage {
         `[data-id="${blockInputId}"]`,
       );
 
-      // Drag from the output to the input
-      const outputBox = await outputElement.boundingBox();
-      const inputBox = await inputElement.boundingBox();
-
-      if (outputBox && inputBox) {
-        await this.page.mouse.move(
-          outputBox.x + outputBox.width / 2,
-          outputBox.y + outputBox.height / 2,
-        );
-        await this.page.mouse.down();
-        await this.page.mouse.move(
-          inputBox.x + inputBox.width / 2,
-          inputBox.y + inputBox.height / 2,
-        );
-        await this.page.mouse.up();
-      }
+      await outputElement.dragTo(inputElement);
     } catch (error) {
       console.error("Error connecting block output to input:", error);
     }
+  }
+
+  async connectBlockOutputToBlockInputViaName(
+    startBlockId: string,
+    startBlockOutputName: string,
+    endBlockId: string,
+    endBlockInputName: string,
+    startDataId?: string,
+    endDataId?: string,
+  ): Promise<void> {
+    const startBlockBase = await this.build_block_selector(
+      startBlockId,
+      startDataId,
+    );
+    const endBlockBase = await this.build_block_selector(endBlockId, endDataId);
+    // Use descendant combinator to find test-id at any depth
+    const startBlockOutputSelector = `${startBlockBase} [data-testid="output-handle-${startBlockOutputName.toLowerCase()}"]`;
+    const endBlockInputSelector = `${endBlockBase} [data-testid="input-handle-${endBlockInputName.toLowerCase()}"]`;
+
+    // Log for debugging
+    console.log("Start block selector:", startBlockOutputSelector);
+    console.log("End block selector:", endBlockInputSelector);
+
+    await this.page
+      .locator(startBlockOutputSelector)
+      .dragTo(this.page.locator(endBlockInputSelector));
   }
 
   async isLoaded(): Promise<boolean> {
@@ -229,6 +280,15 @@ export class BuildPage extends BasePage {
   async runAgent(): Promise<void> {
     const runButton = this.page.locator('[data-id="primary-action-run-agent"]');
     await runButton.click();
+  }
+
+  async fillRunDialog(inputs: Record<string, string>): Promise<void> {
+    for (const [key, value] of Object.entries(inputs)) {
+      await this.page.getByTestId(`run-dialog-input-${key}`).fill(value);
+    }
+  }
+  async clickRunDialogRunButton(): Promise<void> {
+    await this.page.getByTestId("run-dialog-run-button").click();
   }
 
   async waitForCompletionBadge(): Promise<void> {

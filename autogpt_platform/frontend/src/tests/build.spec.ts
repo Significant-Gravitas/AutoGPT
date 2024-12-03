@@ -102,11 +102,9 @@ test.describe("Build", () => {
     await buildPage.closeBlocksPanel();
 
     // Connect the blocks
-    await buildPage.connectBlockOutputToBlockInput(
+    await buildPage.connectBlockOutputToBlockInputViaDataId(
       "1-1-output-source",
-      "Output Source",
       "1-2-input-target",
-      "Input Target",
     );
 
     // Fill in the input for the first block
@@ -137,6 +135,86 @@ test.describe("Build", () => {
     await buildPage.waitForCompletionBadge();
 
     // Get the first completion badge and verify it's visible
+    await test
+      .expect(buildPage.isCompletionBadgeVisible())
+      .resolves.toBeTruthy();
+  });
+
+  test("user can build an agent with inputs and output blocks", async ({
+    page,
+  }) => {
+    // simple caluclator to double input and output it
+
+    // load the pages and prep
+    await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
+    await test.expect(page).toHaveURL(new RegExp("/.*build"));
+    await buildPage.closeTutorial();
+    await buildPage.openBlocksPanel();
+
+    // find the blocks we want
+    const blocks = await buildPage.getBlocks();
+    const inputBlock = blocks.find((b) => b.name === "Agent Input");
+    const outputBlock = blocks.find((b) => b.name === "Agent Output");
+    const calculatorBlock = blocks.find((b) => b.name === "Calculator");
+    if (!inputBlock || !outputBlock || !calculatorBlock) {
+      throw new Error("Input or output block not found");
+    }
+
+    // add the blocks
+    await buildPage.addBlock(inputBlock);
+    await buildPage.addBlock(outputBlock);
+    await buildPage.addBlock(calculatorBlock);
+    await buildPage.closeBlocksPanel();
+    await test.expect(buildPage.hasBlock(inputBlock)).resolves.toBeTruthy();
+    await test.expect(buildPage.hasBlock(outputBlock)).resolves.toBeTruthy();
+    await test
+      .expect(buildPage.hasBlock(calculatorBlock))
+      .resolves.toBeTruthy();
+
+    await buildPage.connectBlockOutputToBlockInputViaName(
+      inputBlock.id,
+      "Result",
+      calculatorBlock.id,
+      "A",
+    );
+    await buildPage.connectBlockOutputToBlockInputViaName(
+      inputBlock.id,
+      "Result",
+      calculatorBlock.id,
+      "B",
+    );
+    await buildPage.connectBlockOutputToBlockInputViaName(
+      calculatorBlock.id,
+      "Result",
+      outputBlock.id,
+      "Value",
+    );
+    await buildPage.fillBlockInputByPlaceholder(
+      inputBlock.id,
+      "Enter Name",
+      "Value",
+    );
+    await buildPage.fillBlockInputByPlaceholder(
+      outputBlock.id,
+      "Enter Name",
+      "Doubled",
+    );
+    await buildPage.selectBlockInputValue(
+      calculatorBlock.id,
+      "Operation",
+      "Add",
+    );
+    await buildPage.saveAgent(
+      "Input and Output Blocks Test",
+      "Testing input and output blocks",
+    );
+    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await buildPage.runAgent();
+    await buildPage.fillRunDialog({
+      Value: "10",
+    });
+    await buildPage.clickRunDialogRunButton();
+    await buildPage.waitForCompletionBadge();
     await test
       .expect(buildPage.isCompletionBadgeVisible())
       .resolves.toBeTruthy();
