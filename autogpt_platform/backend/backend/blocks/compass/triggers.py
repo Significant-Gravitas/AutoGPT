@@ -32,13 +32,15 @@ class CompassAITriggerBlock(Block):
 
         payload: TranscriptionDataModel = SchemaField(hidden=True)
         events: EventsFilter = SchemaField(
-            description="Filter the events to be triggered on."
+            description="Filter the events to be triggered on.",
+            default=EventsFilter(all=True),
         )
 
         credentials: CredentialsMetaInput[Literal["compass"], Literal["api_key"]] = (
             CredentialsField(
                 provider="compass",
                 supported_credential_types={"api_key"},
+                description="The Compass AI integration can be used with any API key with sufficient permissions for the blocks it is used on.",
             )
         )
 
@@ -57,14 +59,14 @@ class CompassAITriggerBlock(Block):
             webhook_config=BlockWebhookConfig(
                 provider="compass",
                 webhook_type=CompassWebhookType.TRANSCRIPTION,
-                resource_format="{transcription_id}",
+                resource_format="",
                 event_filter_input="events",
                 event_format="transcription.{event}",
             ),
-            # test_input=[
-            #     {"input": "Hello, World!"},
-            #     {"input": "Hello, World!", "data": "Existing Data"},
-            # ],
+            test_input=[
+                {"input": "Hello, World!"},
+                {"input": "Hello, World!", "data": "Existing Data"},
+            ],
             # test_output=[
             #     ("output", "Hello, World!"),  # No data provided, so trigger is returned
             #     ("output", "Existing Data"),  # Data is provided, so data is returned.

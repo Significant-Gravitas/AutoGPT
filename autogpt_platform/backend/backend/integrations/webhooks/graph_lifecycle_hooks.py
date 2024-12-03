@@ -145,6 +145,8 @@ async def on_node_activate(
         )
         logger.debug(f"Acquired webhook: {new_webhook}")
         return await set_node_webhook(node.id, new_webhook.id)
+    else:
+        logger.debug(f"Node #{node.id} does not have everything for a webhook")
 
     return node
 

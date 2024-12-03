@@ -4,8 +4,8 @@ import logging
 from typing import Generic, TypeVar
 import uuid
 
+from backend.data.model import APIKeyCredentials, Credentials, OAuth2Credentials
 import requests
-from autogpt_libs.supabase_integration_credentials_store import Credentials
 from fastapi import HTTPException, Request
 from strenum import StrEnum
 
@@ -36,19 +36,16 @@ class SimpleWebhooksManager(BaseWebhooksManager):
         secret: str,
     ) -> tuple[str, dict]:
 
-        webhook_id = uuid.uuid4()
-        config = {}
+        print(ingress_url)
 
-        return str(webhook_id), config
+        return "", {}
 
     async def _deregister_webhook(
-        self, webhook: integrations.Webhook, credentials: Credentials
+        self,
+        webhook: integrations.Webhook,
+        credentials: OAuth2Credentials | APIKeyCredentials,
     ) -> None:
-        if webhook.credentials_id != credentials.id:
-            raise ValueError(
-                f"Webhook #{webhook.id} does not belong to credentials {credentials.id}"
-            )
-        # If we reach here, the webhook was successfully deleted or didn't exist
+        pass
 
 
 class CompassWebhookManager(SimpleWebhooksManager):
