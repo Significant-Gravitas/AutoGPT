@@ -416,7 +416,9 @@ export default function useAgentGraph(
             const hasValue =
               (inputData[key] != null &&
                 String(inputData[key]).trim() !== "") ||
-              (schema.default != null && String(schema.default).trim() !== "");
+              ("default" in schema &&
+                schema.default != null &&
+                String(schema.default).trim() !== "");
 
             const mustHaveValue = node.data.inputSchema.required?.includes(key);
 

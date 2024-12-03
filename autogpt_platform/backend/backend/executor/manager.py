@@ -421,35 +421,6 @@ def validate_exec(
     if not required_fields.issubset(data):
         return None, f"{error_prefix} {required_fields - set(data)}"
 
-    # Validate dependencies
-    properties = input_schema.get("properties", {})
-
-    for field_name, field_schema in properties.items():
-        if "depends_on" in field_schema:
-            dependencies = field_schema["depends_on"]
-
-            # Check if dependent field has value
-            has_value = data.get(field_name) is not None and data.get(field_name) != "" or (field_schema.get("default") is not None and field_schema.get("default") != "")
-            must_have_value = field_name in required_fields
-
-            # Check for missing dependencies when depenedent field is present
-            missing_deps = [
-                dep for dep in dependencies
-                if not data.get(dep) or str(data[dep]).strip() == ""
-            ]
-
-            if (has_value or must_have_value) and missing_deps:
-                return None, f"{error_prefix} Field {field_name} requires {', '.join(missing_deps)} to be set"
-
-            # Check if field is required when dependencies are present
-            has_all_deps = all(
-                data.get(dep) and str(data[dep]).strip() != ""
-                for dep in dependencies
-            )
-            if has_all_deps and not has_value:
-                return None, f"{error_prefix} {field_name} is required when {', '.join(dependencies)} are set"
-
-
     # Last validation: Validate the input values against the schema.
     if error := json.validate_with_jsonschema(schema=input_schema, data=data):
         error_message = f"{error_prefix} {error}"

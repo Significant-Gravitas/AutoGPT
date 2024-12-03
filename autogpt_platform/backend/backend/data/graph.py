@@ -254,7 +254,7 @@ class GraphModel(Graph):
         for link in self.links:
             input_links[link.sink_id].append(link)
 
-        # Nodes: required fields are filled or connected
+        # Nodes: required fields are filled or or connected and dependencies are satisfied
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
@@ -274,6 +274,56 @@ class GraphModel(Graph):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
                     )
+
+            # Get input schema properties and check dependencies
+            input_schema = block.input_schema.model_json_schema()
+            properties = input_schema.get("properties", {})
+            required_fields = set(input_schema.get("required", []))
+
+            # Validate dependencies between fields
+            for field_name, field_schema in properties.items():
+                if "depends_on" in field_schema:
+                    dependencies = field_schema["depends_on"]
+
+                    # Check if dependent field has value in input_default
+                    has_value = (
+                        field_name in node.input_default
+                        and node.input_default[field_name] is not None
+                        and str(node.input_default[field_name]).strip() != ""
+                    ) or (
+                        "default" in field_schema
+                        and field_schema["default"] is not None
+                        and str(field_schema["default"]).strip() != ""
+                    )
+                    must_have_value = field_name in required_fields
+
+                    # Check for missing dependencies when dependent field is present
+                    missing_deps = [
+                        dep
+                        for dep in dependencies
+                        if dep not in node.input_default
+                        or not node.input_default[dep]
+                        or str(node.input_default[dep]).strip() == ""
+                    ]
+
+                    if (has_value or must_have_value) and missing_deps:
+                        raise ValueError(
+                            f"Node {block.name} #{node.id}: Field {field_name} requires {', '.join(missing_deps)} to be set"
+                        )
+
+                                # Check if field is required when dependencies are present
+                    has_all_deps = all(
+                        dep in node.input_default
+                        and node.input_default[dep]
+                        and str(node.input_default[dep]).strip() != ""
+                        for dep in dependencies
+                    )
+
+                    if has_all_deps and not has_value:
+                        raise ValueError(
+                            f"Node {block.name} #{node.id}: {field_name} is required when {', '.join(dependencies)} are set"
+                        )
+
 
         node_map = {v.id: v for v in self.nodes}
 
