@@ -311,7 +311,7 @@ class GraphModel(Graph):
                             f"Node {block.name} #{node.id}: Field {field_name} requires {', '.join(missing_deps)} to be set"
                         )
 
-                                # Check if field is required when dependencies are present
+                        # Check if field is required when dependencies are present
                     has_all_deps = all(
                         dep in node.input_default
                         and node.input_default[dep]
@@ -323,7 +323,6 @@ class GraphModel(Graph):
                         raise ValueError(
                             f"Node {block.name} #{node.id}: {field_name} is required when {', '.join(dependencies)} are set"
                         )
-
 
         node_map = {v.id: v for v in self.nodes}
 
