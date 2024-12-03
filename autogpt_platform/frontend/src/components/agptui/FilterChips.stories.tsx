@@ -57,8 +57,8 @@ export const WithSelectedFilters: Story = {
     await userEvent.click(marketingChip);
     await userEvent.click(salesChip);
 
-    expect(marketingChip).toHaveClass("bg-neutral-100");
-    expect(salesChip).toHaveClass("bg-neutral-100");
+    await expect(marketingChip).toHaveClass("bg-neutral-100");
+    await expect(salesChip).toHaveClass("bg-neutral-100");
   },
 };
 
@@ -114,10 +114,10 @@ export const SingleSelectBehavior: Story = {
     }
 
     await userEvent.click(salesChip);
-    expect(salesChip).toHaveClass("bg-neutral-100");
+    await expect(salesChip).toHaveClass("bg-neutral-100");
 
     await userEvent.click(marketingChip);
-    expect(marketingChip).toHaveClass("bg-neutral-100");
-    expect(salesChip).not.toHaveClass("bg-neutral-100");
+    await expect(marketingChip).toHaveClass("bg-neutral-100");
+    await expect(salesChip).not.toHaveClass("bg-neutral-100");
   },
 };
