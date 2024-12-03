@@ -16,7 +16,7 @@ class RateLimiter:
     ):
         self.redis = Redis(
             host=redis_host,
-            port=redis_port,
+            port=int(redis_port),
             password=redis_password,
             decode_responses=True,
         )
