@@ -25,6 +25,7 @@ async def test_get_store_agents(mocker):
     mock_agents = [
         prisma.models.StoreAgent(
             listing_id="test-id",
+            storeListingVersionId="version123",
             slug="test-agent",
             agent_name="Test Agent",
             agent_video=None,
@@ -65,6 +66,7 @@ async def test_get_store_agent_details(mocker):
     # Mock data
     mock_agent = prisma.models.StoreAgent(
         listing_id="test-id",
+        storeListingVersionId="version123",
         slug="test-agent",
         agent_name="Test Agent",
         agent_video="video.mp4",

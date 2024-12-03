@@ -451,7 +451,7 @@ view Creator {
 
 view StoreAgent {
   listing_id               String   @id
-  store_listing_version_id String
+  storeListingVersionId    String
   updated_at               DateTime
 
   slug        String
@@ -473,7 +473,7 @@ view StoreAgent {
   @@index([creator_username])
   @@index([featured])
   @@index([categories])
-  @@index([store_listing_version_id])
+  @@index([storeListingVersionId])
 }
 
 view StoreSubmission {
@@ -573,6 +573,9 @@ model StoreListingReview {
 
   score    Int
   comments String?
+
+  @@index([storeListingVersionId])
+  @@unique([storeListingVersionId, reviewByUserId])
 }
 
 enum SubmissionStatus {

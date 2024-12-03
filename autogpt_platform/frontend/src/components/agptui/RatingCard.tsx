@@ -3,32 +3,44 @@
 import * as React from "react";
 import { Cross1Icon } from "@radix-ui/react-icons";
 import { IconStar, IconStarFilled } from "@/components/ui/icons";
+import { createClient } from "@/lib/supabase/client";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
 
 interface RatingCardProps {
   agentName: string;
-  onClose?: () => void;
+  storeListingVersionId: string;
 }
 
 export const RatingCard: React.FC<RatingCardProps> = ({
   agentName,
-  onClose,
+  storeListingVersionId,
 }) => {
   const [rating, setRating] = React.useState<number>(0);
   const [hoveredRating, setHoveredRating] = React.useState<number>(0);
   const [isVisible, setIsVisible] = React.useState(true);
 
+  const supabase = createClient();
+
+  const api = new AutoGPTServerAPI(
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+        supabase,
+  );
+
   const handleClose = () => {
     setIsVisible(false);
-    onClose?.();
   };
 
   if (!isVisible) return null;
 
   const handleSubmit = async (rating: number) => {
     if (rating > 0) {
-        console.log("Rating submitted:", rating);
-        // TODO: add rating API endpoint to make this work
-        // Optionally show success message or close the rating card
+        console.log(`Rating submitted for ${agentName}:`, rating);
+        await api.reviewAgent("--", agentName, {
+          store_listing_version_id: storeListingVersionId,
+          score: rating
+        });
+        handleClose();
     }
   };
 

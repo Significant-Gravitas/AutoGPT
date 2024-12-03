@@ -1,5 +1,4 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-import { Navbar } from "@/components/agptui/Navbar";
 import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 import { AgentInfo } from "@/components/agptui/AgentInfo";
 import { AgentImages } from "@/components/agptui/AgentImages";
@@ -89,7 +88,10 @@ export default async function Page({
         />
         
         <div className="fixed bottom-8 right-8">
-          <RatingCard agentName={agent.agent_name} />
+          <RatingCard
+            agentName={agent.agent_name}
+            storeListingVersionId={agent.store_listing_version_id}
+          />
         </div>
       </main>
     </div>

@@ -109,7 +109,7 @@ async def get_store_agent_details(
 
         logger.debug(f"Found agent details for {username}/{agent_name}")
         return backend.server.v2.store.model.StoreAgentDetails(
-            store_listing_version_id=agent.store_listing_version_id,
+            store_listing_version_id=agent.storeListingVersionId,
             slug=agent.slug,
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
@@ -476,12 +476,24 @@ async def create_store_review(
     comments: str | None = None,
 ) -> backend.server.v2.store.model.StoreReview:
     try:
-        review = await prisma.models.StoreListingReview.prisma().create(
+        review = await prisma.models.StoreListingReview.prisma().upsert(
+            where={
+                "storeListingVersionId_reviewByUserId": {
+                    "storeListingVersionId": store_listing_version_id,
+                    "reviewByUserId": user_id,
+                }
+            },
             data={
-                "reviewByUserId": user_id,
-                "storeListingVersionId": store_listing_version_id,
-                "score": score,
-                "comments": comments,
+                "create": {
+                    "reviewByUserId": user_id,
+                    "storeListingVersionId": store_listing_version_id,
+                    "score": score,
+                    "comments": comments,
+                },
+                "update": {
+                    "score": score,
+                    "comments": comments,
+                }
             }
         )
         

@@ -372,6 +372,7 @@ export type StoreAgentsResponse = {
 };
 
 export type StoreAgentDetails = {
+  store_listing_version_id: string;
   slug: string;
   updated_at: string;
   agent_name: string;
@@ -478,4 +479,15 @@ export type MyAgent = {
 export type MyAgentsResponse = {
   agents: MyAgent[];
   pagination: Pagination;
+};
+
+export type StoreReview = {
+  score: number;
+  comments?: string;
+};
+
+export type StoreReviewCreate = {
+  store_listing_version_id: string;
+  score: number;
+  comments?: string;
 };
