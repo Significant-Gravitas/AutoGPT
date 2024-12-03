@@ -566,6 +566,17 @@ export function CustomNode({
       className={`${blockClasses} ${errorClass} ${statusClass}`}
       data-id={`custom-node-${id}`}
       z-index={1}
+      data-blockid={data.block_id}
+      data-blockname={data.title}
+      data-blocktype={data.blockType}
+      data-nodetype={data.uiType}
+      data-category={data.categories[0]?.category.toLowerCase() || ""}
+      data-inputs={JSON.stringify(
+        Object.keys(data.inputSchema?.properties || {}),
+      )}
+      data-outputs={JSON.stringify(
+        Object.keys(data.outputSchema?.properties || {}),
+      )}
     >
       {/* Header */}
       <div
