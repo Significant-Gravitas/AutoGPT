@@ -86,7 +86,7 @@ export default async function Page({
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
         />
-        
+
         <div className="fixed bottom-8 right-8">
           <RatingCard
             agentName={agent.agent_name}

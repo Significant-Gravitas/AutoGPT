@@ -345,7 +345,11 @@ export default class BaseAutoGPTServerAPI {
     review: StoreReviewCreate,
   ): Promise<StoreReview> {
     console.log("Reviewing agent: ", username, agentName, review);
-    return this._request("POST", `/store/agents/${username}/${agentName}/review`, review);
+    return this._request(
+      "POST",
+      `/store/agents/${username}/${agentName}/review`,
+      review,
+    );
   }
 
   getMyAgents(params?: {
