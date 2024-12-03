@@ -48,8 +48,9 @@ class StoreAgentsResponse(pydantic.BaseModel):
     agents: list[StoreAgent]
     pagination: Pagination
 
-
+    
 class StoreAgentDetails(pydantic.BaseModel):
+    store_listing_version_id: str
     slug: str
     agent_name: str
     agent_video: str
@@ -136,3 +137,14 @@ class ProfileDetails(pydantic.BaseModel):
     description: str
     links: list[str]
     avatar_url: str | None = None
+
+
+class StoreReview(pydantic.BaseModel):
+    score: int
+    comments: str | None = None
+
+
+class StoreReviewCreate(pydantic.BaseModel):
+    store_listing_version_id: str
+    score: int
+    comments: str | None = None
