@@ -15,7 +15,8 @@ nav:
     - Using Ollama: platform/ollama.md
     - Using D-ID: platform/d_id.md
     - Blocks: platform/blocks/blocks.md
-
+    - Contributing:
+        - Tests: platform/contributing/tests.md
   - AutoGPT Classic:
       - Introduction: classic/index.md
       - Setup:
