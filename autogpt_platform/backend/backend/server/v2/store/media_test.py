@@ -12,6 +12,7 @@ import backend.server.v2.store.media
 @pytest.fixture
 def mock_env_vars(monkeypatch):
     monkeypatch.setenv("GCS_BUCKET_NAME", "test-bucket")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "test-credentials")
 
 
 @pytest.fixture
@@ -59,7 +60,9 @@ async def test_upload_media_invalid_type(mock_env_vars, mock_storage_client):
     mock_blob.upload_from_string.assert_not_called()
 
 
-async def test_upload_media_missing_credentials():
+async def test_upload_media_missing_credentials(monkeypatch):
+    monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
+
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
         file=io.BytesIO(b"test data"),

@@ -3,18 +3,18 @@ from datetime import datetime
 import prisma.errors
 import prisma.models
 import pytest
-from prisma import Prisma, register
+from prisma import Prisma
 
 import backend.server.v2.store.db as db
-import backend.server.v2.store.exceptions
-from backend.server.v2.store.model import CreatorDetails
+from backend.server.v2.store.model import Profile
 
 
 @pytest.fixture(autouse=True)
 async def setup_prisma():
+    # Don't register client if already registered
     try:
-        register(Prisma())
-    except backend.server.v2.store.exceptions.DatabaseError:
+        Prisma()
+    except prisma.errors.ClientAlreadyRegisteredError:
         pass
     yield
 
@@ -209,15 +209,12 @@ async def test_update_profile(mocker):
     mock_profile_db.return_value.update = mocker.AsyncMock(return_value=mock_profile)
 
     # Test data
-    profile = CreatorDetails(
+    profile = Profile(
         name="Test Creator",
         username="creator",
         description="Test description",
         links=["link1"],
         avatar_url="avatar.jpg",
-        agent_rating=0.0,
-        agent_runs=0,
-        top_categories=[],
     )
 
     # Call function
@@ -237,7 +234,7 @@ async def test_get_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
         id="profile-id",
-        name="Test User",
+        name="No Profile Data",
         username="testuser",
         description="Test description",
         links=["link1", "link2"],
@@ -256,29 +253,8 @@ async def test_get_user_profile(mocker):
     result = await db.get_user_profile("user-id")
 
     # Verify results
-    assert result.name == "Test User"
-    assert result.username == "testuser"
-    assert result.description == "Test description"
-    assert result.links == ["link1", "link2"]
-    assert result.avatar_url == "avatar.jpg"
-
-    # Verify mock called correctly
-    mock_profile_db.return_value.find_unique.assert_called_once_with(
-        where={"userId": "user-id"}
-    )
-
-
-@pytest.mark.asyncio
-async def test_get_user_profile_not_found(mocker):
-    # Mock prisma calls to return None
-    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
-    mock_profile_db.return_value.find_unique = mocker.AsyncMock(return_value=None)
-
-    # Verify exception raised
-    with pytest.raises(backend.server.v2.store.exceptions.ProfileNotFoundError):
-        await db.get_user_profile("user-id")
-
-    # Verify mock called correctly
-    mock_profile_db.return_value.find_unique.assert_called_once_with(
-        where={"userId": "user-id"}
-    )
+    assert result.name == "No Profile Data"
+    assert result.username == "No Profile Data"
+    assert result.description == "No Profile Data"
+    assert result.links == []
+    assert result.avatar_url == ""

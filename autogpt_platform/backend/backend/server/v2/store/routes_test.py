@@ -336,6 +336,7 @@ def test_get_agents_malformed_request(mocker: pytest_mock.MockFixture):
 
 def test_get_agent_details(mocker: pytest_mock.MockFixture):
     mocked_value = backend.server.v2.store.model.StoreAgentDetails(
+        store_listing_version_id="test-version-id",
         slug="test-agent",
         agent_name="Test Agent",
         agent_video="video.mp4",
@@ -399,6 +400,8 @@ def test_get_creators_pagination(mocker: pytest_mock.MockFixture):
                 description=f"Creator {i} description",
                 avatar_url=f"avatar{i}.jpg",
                 num_agents=1,
+                agent_rating=4.5,
+                agent_runs=100,
             )
             for i in range(5)
         ],
@@ -446,7 +449,7 @@ def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
 
 def test_get_creator_details(mocker: pytest_mock.MockFixture):
     mocked_value = backend.server.v2.store.model.CreatorDetails(
-        name="Test Creator",
+        name="Test User",
         username="creator1",
         description="Test creator description",
         links=["link1.com", "link2.com"],
@@ -463,7 +466,7 @@ def test_get_creator_details(mocker: pytest_mock.MockFixture):
 
     data = backend.server.v2.store.model.CreatorDetails.model_validate(response.json())
     assert data.username == "creator1"
-    assert data.name == "Test Creator"
+    assert data.name == "Test User"
     mock_db_call.assert_called_once_with(username="creator1")
 
 
@@ -478,6 +481,10 @@ def test_get_submissions_success(mocker: pytest_mock.MockFixture):
                 status=prisma.enums.SubmissionStatus.APPROVED,
                 runs=50,
                 rating=4.2,
+                agent_id="test-agent-id",
+                agent_version=1,
+                sub_heading="Test agent subheading",
+                slug="test-agent",
             )
         ],
         pagination=backend.server.v2.store.model.Pagination(
