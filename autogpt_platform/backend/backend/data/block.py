@@ -188,7 +188,12 @@ class EmptySchema(BlockSchema):
 
 
 # --8<-- [start:BlockWebhookConfig]
-class BlockWebhookConfig(BaseModel):
+class BlockManualWebhookConfig(BaseModel):
+    """
+    Configuration model for webhook-triggered blocks on which
+    the user has to manually set up the webhook at the provider.
+    """
+
     provider: str
     """The service provider that the webhook connects to"""
 
@@ -199,6 +204,27 @@ class BlockWebhookConfig(BaseModel):
     Only for use in the corresponding `WebhooksManager`.
     """
 
+    event_filter_input: str = ""
+    """
+    Name of the block's event filter input.
+    Leave empty if the corresponding webhook doesn't have distinct event/payload types.
+    """
+
+    event_format: str = "{event}"
+    """
+    Template string for the event(s) that a block instance subscribes to.
+    Applied individually to each event selected in the event filter input.
+
+    Example: `"pull_request.{event}"` -> `"pull_request.opened"`
+    """
+
+
+class BlockWebhookConfig(BlockManualWebhookConfig):
+    """
+    Configuration model for webhook-triggered blocks for which
+    the webhook can be automatically set up through the provider's API.
+    """
+
     resource_format: str
     """
     Template string for the resource that a block instance subscribes to.
@@ -207,17 +233,6 @@ class BlockWebhookConfig(BaseModel):
     Example: `f"{repo}/pull_requests"` (note: not how it's actually implemented)
 
     Only for use in the corresponding `WebhooksManager`.
-    """
-
-    event_filter_input: str
-    """Name of the block's event filter input."""
-
-    event_format: str = "{event}"
-    """
-    Template string for the event(s) that a block instance subscribes to.
-    Applied individually to each event selected in the event filter input.
-
-    Example: `"pull_request.{event}"` -> `"pull_request.opened"`
     """
     # --8<-- [end:BlockWebhookConfig]
 
@@ -238,7 +253,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         disabled: bool = False,
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
-        webhook_config: Optional[BlockWebhookConfig] = None,
+        webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
     ):
         """
         Initialize the block with the given schema.
@@ -274,22 +289,32 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.execution_stats = {}
 
         if self.webhook_config:
-            # Enforce shape of webhook event filter
-            event_filter_field = self.input_schema.model_fields[
-                self.webhook_config.event_filter_input
-            ]
-            if not (
-                isinstance(event_filter_field.annotation, type)
-                and issubclass(event_filter_field.annotation, BaseModel)
-                and all(
-                    field.annotation is bool
-                    for field in event_filter_field.annotation.model_fields.values()
-                )
+            # Enforce presence of credentials field on auto-setup webhook blocks
+            if (
+                isinstance(self.webhook_config, BlockWebhookConfig)
+                and CREDENTIALS_FIELD_NAME not in self.input_schema.model_fields
             ):
-                raise NotImplementedError(
-                    f"{self.name} has an invalid webhook event selector: "
-                    "field must be a BaseModel and all its fields must be boolean"
+                raise TypeError(
+                    "credentials field is required on auto-setup webhook blocks"
                 )
+
+            # Enforce shape of webhook event filter, if present
+            if self.webhook_config.event_filter_input:
+                event_filter_field = self.input_schema.model_fields[
+                    self.webhook_config.event_filter_input
+                ]
+                if not (
+                    isinstance(event_filter_field.annotation, type)
+                    and issubclass(event_filter_field.annotation, BaseModel)
+                    and all(
+                        field.annotation is bool
+                        for field in event_filter_field.annotation.model_fields.values()
+                    )
+                ):
+                    raise NotImplementedError(
+                        f"{self.name} has an invalid webhook event selector: "
+                        "field must be a BaseModel and all its fields must be boolean"
+                    )
 
             # Enforce presence of 'payload' input
             if "payload" not in self.input_schema.model_fields:

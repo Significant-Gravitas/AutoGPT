@@ -1,7 +1,7 @@
 import logging
 import secrets
 from abc import ABC, abstractmethod
-from typing import ClassVar, Generic, TypeVar
+from typing import ClassVar, Generic, Optional, TypeVar
 from uuid import uuid4
 
 from fastapi import Request
@@ -43,11 +43,11 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         ):
             return webhook
         return await self._create_webhook(
-            user_id, credentials, webhook_type, resource, events
+            user_id, webhook_type, resource, events, credentials
         )
 
     async def prune_webhook_if_dangling(
-        self, webhook_id: str, credentials: Credentials
+        self, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
         webhook = await integrations.get_webhook(webhook_id)
         if webhook.attached_nodes is None:
@@ -56,7 +56,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             # Don't prune webhook if in use
             return False
 
-        await self._deregister_webhook(webhook, credentials)
+        if credentials:
+            await self._deregister_webhook(webhook, credentials)
         await integrations.delete_webhook(webhook.id)
         return True
 
@@ -132,11 +133,17 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     async def _create_webhook(
         self,
         user_id: str,
-        credentials: Credentials,
         webhook_type: WT,
         resource: str,
         events: list[str],
+        credentials: Optional[Credentials] = None,
+        register: bool = True,
     ) -> integrations.Webhook:
+        if not app_config.platform_base_url:
+            raise MissingConfigError(
+                "PLATFORM_BASE_URL must be set to use Webhook functionality"
+            )
+
         id = str(uuid4())
         secret = secrets.token_hex(32)
         provider_name = self.PROVIDER_NAME
@@ -144,15 +151,21 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             f"{app_config.platform_base_url}/api/integrations/{provider_name}"
             f"/webhooks/{id}/ingress"
         )
-        provider_webhook_id, config = await self._register_webhook(
-            credentials, webhook_type, resource, events, ingress_url, secret
-        )
+        if register:
+            if not credentials:
+                raise TypeError("credentials are required if register = True")
+            provider_webhook_id, config = await self._register_webhook(
+                credentials, webhook_type, resource, events, ingress_url, secret
+            )
+        else:
+            provider_webhook_id, config = "", {}
+
         return await integrations.create_webhook(
             integrations.Webhook(
                 id=id,
                 user_id=user_id,
                 provider=provider_name,
-                credentials_id=credentials.id,
+                credentials_id=credentials.id if credentials else "",
                 webhook_type=webhook_type,
                 resource=resource,
                 events=events,

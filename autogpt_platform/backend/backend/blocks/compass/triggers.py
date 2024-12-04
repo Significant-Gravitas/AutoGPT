@@ -1,14 +1,14 @@
-from typing import Literal
+from pydantic import BaseModel
+
 from backend.data.block import (
     Block,
     BlockCategory,
+    BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
-    BlockWebhookConfig,
 )
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import SchemaField
 from backend.integrations.webhooks.simple_webhook_manager import CompassWebhookType
-from pydantic import BaseModel
 
 
 class Transcription(BaseModel):
@@ -27,22 +27,7 @@ class TranscriptionDataModel(BaseModel):
 
 class CompassAITriggerBlock(Block):
     class Input(BlockSchema):
-        class EventsFilter(BaseModel):
-            all: bool = True
-
         payload: TranscriptionDataModel = SchemaField(hidden=True)
-        events: EventsFilter = SchemaField(
-            description="Filter the events to be triggered on.",
-            default=EventsFilter(all=True),
-        )
-
-        credentials: CredentialsMetaInput[Literal["compass"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="compass",
-                supported_credential_types={"api_key"},
-                description="The Compass AI integration can be used with any API key with sufficient permissions for the blocks it is used on.",
-            )
-        )
 
     class Output(BlockSchema):
         transcription: str = SchemaField(
@@ -56,12 +41,9 @@ class CompassAITriggerBlock(Block):
             categories={BlockCategory.HARDWARE},
             input_schema=CompassAITriggerBlock.Input,
             output_schema=CompassAITriggerBlock.Output,
-            webhook_config=BlockWebhookConfig(
+            webhook_config=BlockManualWebhookConfig(
                 provider="compass",
                 webhook_type=CompassWebhookType.TRANSCRIPTION,
-                resource_format="",
-                event_filter_input="events",
-                event_format="transcription.{event}",
             ),
             test_input=[
                 {"input": "Hello, World!"},

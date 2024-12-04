@@ -83,8 +83,10 @@ async def get_webhook(webhook_id: str) -> Webhook:
     return Webhook.from_db(webhook)
 
 
-async def get_all_webhooks(credentials_id: str) -> list[Webhook]:
+async def get_all_webhooks_by_creds(credentials_id: str) -> list[Webhook]:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    if not credentials_id:
+        raise ValueError("credentials_id must not be empty")
     webhooks = await IntegrationWebhook.prisma().find_many(
         where={"credentialsId": credentials_id},
         include=INTEGRATION_WEBHOOK_INCLUDE,

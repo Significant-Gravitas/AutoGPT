@@ -1,15 +1,10 @@
-import hashlib
-import hmac
 import logging
-from typing import Generic, TypeVar
-import uuid
 
-from backend.data.model import APIKeyCredentials, Credentials, OAuth2Credentials
-import requests
-from fastapi import HTTPException, Request
+from fastapi import Request
 from strenum import StrEnum
 
 from backend.data import integrations
+from backend.data.model import APIKeyCredentials, Credentials, OAuth2Credentials
 
 from .base import BaseWebhooksManager
 
@@ -35,7 +30,6 @@ class SimpleWebhooksManager(BaseWebhooksManager):
         ingress_url: str,
         secret: str,
     ) -> tuple[str, dict]:
-
         print(ingress_url)
 
         return "", {}
@@ -57,6 +51,6 @@ class CompassWebhookManager(SimpleWebhooksManager):
         cls, webhook: integrations.Webhook, request: Request
     ) -> tuple[dict, str]:
         payload = await request.json()
-        event_type = CompassWebhookType.TRANSCRIPTION
+        event_type = CompassWebhookType.TRANSCRIPTION  # currently the only type
 
         return payload, event_type

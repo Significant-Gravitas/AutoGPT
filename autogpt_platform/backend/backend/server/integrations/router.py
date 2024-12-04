@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
-    get_all_webhooks,
+    get_all_webhooks_by_creds,
     get_webhook,
     listen_for_webhook_event,
     publish_webhook_event,
@@ -330,7 +330,7 @@ async def remove_all_webhooks_for_credentials(
     Raises:
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
     """
-    webhooks = await get_all_webhooks(credentials.id)
+    webhooks = await get_all_webhooks_by_creds(credentials.id)
     if any(w.attached_nodes for w in webhooks) and not force:
         raise NeedConfirmation(
             "Some webhooks linked to these credentials are still in use by an agent"
