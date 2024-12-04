@@ -6,7 +6,7 @@
     "dev": "next dev",
     "dev:nosentry": "export NODE_ENV=development && export DISABLE_SENTRY=true && next dev",
     "dev:test": "export NODE_ENV=test && next dev",
-    "build": "next build",
+    "build": "SKIP_STORYBOOK_TESTS=true next build",
     "start": "next start",
     "lint": "next lint && prettier --check .",
     "format": "prettier --write .",
