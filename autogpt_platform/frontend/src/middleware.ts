@@ -7,8 +7,9 @@ import { LOCALES, DEFAULT_LOCALE } from "@/lib/utils";
 
 function getLocale(request: NextRequest) {
   let headers = Object.fromEntries(request.headers.entries());
+  console.log("Checking headers for locale", headers);
   let languages = new Negotiator({ headers }).languages();
-
+  console.log("Languages", languages);
   return match(languages, LOCALES, DEFAULT_LOCALE);
 }
 
