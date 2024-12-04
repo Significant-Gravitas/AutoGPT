@@ -98,6 +98,11 @@ repos:
         files: ^autogpt_platform/autogpt_libs/
         args: [--fix]
 
+      - id: ruff-format
+        name: Format (Ruff) - AutoGPT Platform - Libs
+        alias: ruff-lint-platform-libs
+        files: ^autogpt_platform/autogpt_libs/
+
   - repo: local
     # isort needs the context of which packages are installed to function, so we
     # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
@@ -140,7 +145,7 @@ repos:
     # everything in .gitignore, so it works fine without any config or arguments.
     hooks:
       - id: black
-        name: Lint (Black)
+        name: Format (Black)
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.0.0

@@ -91,6 +91,8 @@ export const SaveControl = ({
               variant="ghost"
               size="icon"
               data-id="save-control-popover-trigger"
+              data-testid="blocks-control-save-button"
+              name="Save"
             >
               <IconSave className="dark:text-gray-300" />
             </Button>
@@ -117,6 +119,7 @@ export const SaveControl = ({
                 value={agentName}
                 onChange={(e) => onNameChange(e.target.value)}
                 data-id="save-control-name-input"
+                data-testid="save-control-name-input"
                 maxLength={100}
               />
               <Label htmlFor="description" className="dark:text-gray-300">
@@ -129,6 +132,7 @@ export const SaveControl = ({
                 value={agentDescription}
                 onChange={(e) => onDescriptionChange(e.target.value)}
                 data-id="save-control-description-input"
+                data-testid="save-control-description-input"
                 maxLength={500}
               />
               {agentMeta?.version && (
@@ -142,6 +146,7 @@ export const SaveControl = ({
                     className="col-span-3"
                     value={agentMeta?.version || "-"}
                     disabled
+                    data-testid="save-control-version-output"
                   />
                 </>
               )}
@@ -152,6 +157,7 @@ export const SaveControl = ({
               className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
               onClick={handleSave}
               data-id="save-control-save-agent"
+              data-testid="save-control-save-agent-button"
             >
               Save {getType()}
             </Button>

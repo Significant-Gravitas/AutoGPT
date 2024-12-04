@@ -115,6 +115,7 @@ export const PROVIDER_NAMES = {
   OPENWEATHERMAP: "openweathermap",
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
+  SLANT3D: "slant3d",
   REPLICATE: "replicate",
   FAL: "fal",
   REVID: "revid",

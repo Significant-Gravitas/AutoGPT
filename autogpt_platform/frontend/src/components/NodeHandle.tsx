@@ -59,6 +59,7 @@ const NodeHandle: FC<HandleProps> = ({
       <div key={keyName} className="handle-container">
         <Handle
           type="target"
+          data-testid={`input-handle-${keyName}`}
           position={Position.Left}
           id={keyName}
           className="-ml-[26px]"
@@ -76,6 +77,7 @@ const NodeHandle: FC<HandleProps> = ({
       <div key={keyName} className="handle-container justify-end">
         <Handle
           type="source"
+          data-testid={`output-handle-${keyName}`}
           position={Position.Right}
           id={keyName}
           className="group -mr-[26px]"
