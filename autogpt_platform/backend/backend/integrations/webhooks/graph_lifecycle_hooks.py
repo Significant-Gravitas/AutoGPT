@@ -164,6 +164,7 @@ async def on_node_activate(
             )
         else:
             # Manual webhook -> no credentials -> don't register but do create
+            # FIXME: look up the current graph's webhook and use that. Make a method for this that wraps _create_webhook.
             new_webhook = await webhooks_manager._create_webhook(
                 user_id,
                 block.webhook_config.webhook_type,
