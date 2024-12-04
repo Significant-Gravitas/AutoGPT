@@ -6,11 +6,16 @@ import Negotiator from "negotiator";
 import { LOCALES, DEFAULT_LOCALE } from "@/lib/utils";
 
 function getLocale(request: NextRequest) {
-  let headers = Object.fromEntries(request.headers.entries());
-  console.log("Checking headers for locale", headers);
-  let languages = new Negotiator({ headers }).languages();
-  console.log("Languages", languages);
-  return match(languages, LOCALES, DEFAULT_LOCALE);
+  try {
+    let headers = Object.fromEntries(request.headers.entries());
+    console.log("Checking headers for locale", headers);
+    let languages = new Negotiator({ headers }).languages();
+    console.log("Languages", languages);
+    return match(languages, LOCALES, DEFAULT_LOCALE);
+  } catch (error) {
+    console.error("Error getting locale, defaulting to English:", error);
+    return "en";
+  }
 }
 
 export async function middleware(request: NextRequest) {
