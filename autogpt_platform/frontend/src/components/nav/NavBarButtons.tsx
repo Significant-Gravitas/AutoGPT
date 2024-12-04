@@ -34,6 +34,7 @@ export function NavBarButtons({ className }: { className?: string }) {
           <Link
             key={button.href}
             href={button.href}
+            data-testid={`${button.text.toLowerCase()}-nav-link`}
             className={cn(
               className,
               "flex items-center gap-2 rounded-xl p-3",
@@ -49,6 +50,7 @@ export function NavBarButtons({ className }: { className?: string }) {
       {isCloud ? (
         <Link
           href="/marketplace"
+          data-testid="marketplace-nav-link"
           className={cn(
             className,
             "flex items-center gap-2 rounded-xl p-3",
@@ -61,6 +63,7 @@ export function NavBarButtons({ className }: { className?: string }) {
         </Link>
       ) : (
         <MarketPopup
+          data-testid="marketplace-nav-link"
           className={cn(
             className,
             "flex items-center gap-2 rounded-xl p-3 text-muted-foreground hover:text-foreground",
