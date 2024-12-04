@@ -9,6 +9,7 @@ from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import Credentials
+from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
 
@@ -147,10 +148,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         id = str(uuid4())
         secret = secrets.token_hex(32)
         provider_name = self.PROVIDER_NAME
-        ingress_url = (
-            f"{app_config.platform_base_url}/api/integrations/{provider_name}"
-            f"/webhooks/{id}/ingress"
-        )
+        ingress_url = webhook_ingress_url(provider_name=provider_name, webhook_id=id)
         if register:
             if not credentials:
                 raise TypeError("credentials are required if register = True")
