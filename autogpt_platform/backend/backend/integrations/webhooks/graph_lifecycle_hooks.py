@@ -121,9 +121,15 @@ async def on_node_activate(
         resource is not None
         and (credentials_meta or not needs_credentials)
         and (
-            event_filter_input_name in node.input_default or not event_filter_input_name
+            not event_filter_input_name
+            or (
+                event_filter_input_name in node.input_default
+                and any(
+                    is_on
+                    for is_on in node.input_default[event_filter_input_name].values()
+                )
+            )
         )
-        and any(is_on for is_on in node.input_default[event_filter_input_name].values())
     )
 
     if has_everything_for_webhook and resource is not None:
