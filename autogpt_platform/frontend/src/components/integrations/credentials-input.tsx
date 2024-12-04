@@ -63,6 +63,7 @@ export const providerIcons: Record<
   openweathermap: fallbackIcon,
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
+  slant3d: fallbackIcon,
   replicate: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
