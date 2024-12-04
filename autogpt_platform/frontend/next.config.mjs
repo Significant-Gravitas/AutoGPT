@@ -18,11 +18,6 @@ const nextConfig = {
   // TODO: Re-enable TypeScript checks once current issues are resolved
   typescript: {
     ignoreBuildErrors: true,
-  },
-  experimental: {
-    // Skip static generation during build
-    workerThreads: false,
-    cpus: 1
   }
 };
 
