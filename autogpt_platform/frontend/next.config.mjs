@@ -19,6 +19,11 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  experimental: {
+    // Skip static generation during build
+    workerThreads: false,
+    cpus: 1
+  }
 };
 
 export default withSentryConfig(nextConfig, {
