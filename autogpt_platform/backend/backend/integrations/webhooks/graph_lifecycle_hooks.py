@@ -112,7 +112,7 @@ async def on_node_activate(
     else:
         resource = ""  # not relevant for manual webhooks
 
-    needs_credentials = CREDENTIALS_FIELD_NAME not in block.input_schema.model_fields
+    needs_credentials = CREDENTIALS_FIELD_NAME in block.input_schema.model_fields
     credentials_meta = (
         node.input_default.get(CREDENTIALS_FIELD_NAME) if needs_credentials else None
     )
