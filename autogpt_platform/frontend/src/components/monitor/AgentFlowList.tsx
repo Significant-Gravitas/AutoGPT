@@ -134,7 +134,7 @@ export const AgentFlowList = ({
               {flowRuns && <TableHead>Last run</TableHead>}
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody data-testid="agent-flow-list-body">
             {flows
               .map((flow) => {
                 let runCount = 0,
@@ -162,6 +162,7 @@ export const AgentFlowList = ({
               .map(({ flow, runCount, lastRun }) => (
                 <TableRow
                   key={flow.id}
+                  data-testid={flow.id}
                   className="cursor-pointer"
                   onClick={() => onSelectFlow(flow)}
                   data-state={selectedFlow?.id == flow.id ? "selected" : null}
