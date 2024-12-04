@@ -63,9 +63,12 @@ export const providerIcons: Record<
   openweathermap: fallbackIcon,
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
+  slant3d: fallbackIcon,
   replicate: fallbackIcon,
+  fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  hubspot: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

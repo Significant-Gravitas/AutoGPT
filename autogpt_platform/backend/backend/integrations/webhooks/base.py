@@ -4,11 +4,11 @@ from abc import ABC, abstractmethod
 from typing import ClassVar, Generic, TypeVar
 from uuid import uuid4
 
-from autogpt_libs.supabase_integration_credentials_store import Credentials
 from fastapi import Request
 from strenum import StrEnum
 
 from backend.data import integrations
+from backend.data.model import Credentials
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
 
