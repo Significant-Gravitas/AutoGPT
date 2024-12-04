@@ -18,15 +18,14 @@ test.describe("Build", () => {
   test("user can add a block", async ({ page }) => {
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
     await test.expect(page).toHaveURL(new RegExp("/.*build"));
+
     await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
-    const block = {
-      id: "31d1064e-7446-4693-a7d4-65e5ca1180d1",
-      name: "Add to Dictionary",
-      description: "Add to Dictionary",
-    };
+
+    const block = await buildPage.getBasicBlock();
     await buildPage.addBlock(block);
     await buildPage.closeBlocksPanel();
+
     await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
   });
 
