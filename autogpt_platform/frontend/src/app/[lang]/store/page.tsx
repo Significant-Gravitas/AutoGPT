@@ -17,30 +17,49 @@ import { Separator } from "@/components/ui/separator";
 import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
 import { Metadata } from "next";
 import { createServerClient } from "@/lib/supabase/server";
+import { StoreAgentsResponse, CreatorsResponse } from "@/lib/autogpt-server-api/types";
 
 async function getStoreData() {
-  const supabase = createServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  try {
+    const supabase = createServerClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  const api = new AutoGPTServerAPIServerSide(
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-    supabase,
-  );
+    const api = new AutoGPTServerAPIServerSide(
+      process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+      process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+      supabase,
+    );
 
-  const [featuredAgents, topAgents, featuredCreators] = await Promise.all([
-    api.getStoreAgents({ featured: true }),
-    api.getStoreAgents({ sorted_by: "runs" }),
-    api.getStoreCreators({ featured: true, sorted_by: "num_agents" }),
-  ]);
+    // Add error handling and default values
+    let featuredAgents: StoreAgentsResponse = { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } };
+    let topAgents: StoreAgentsResponse = { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } };
+    let featuredCreators: CreatorsResponse = { creators: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } };
 
-  return {
-    featuredAgents,
-    topAgents,
-    featuredCreators,
-  };
+    try {
+        [featuredAgents, topAgents, featuredCreators] = await Promise.all([
+        api.getStoreAgents({ featured: true }),
+        api.getStoreAgents({ sorted_by: "runs" }),
+        api.getStoreCreators({ featured: true, sorted_by: "num_agents" }),
+      ]);
+    } catch (error) {
+      console.error("Error fetching store data:", error);
+    }
+
+    return {
+      featuredAgents,
+      topAgents,
+      featuredCreators,
+    };
+  } catch (error) {
+    console.error("Error in getStoreData:", error);
+    return {
+      featuredAgents: { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } },
+      topAgents: { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } },
+      featuredCreators: { creators: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } },
+    };
+  }
 }
 
 // FIX: Correct metadata
