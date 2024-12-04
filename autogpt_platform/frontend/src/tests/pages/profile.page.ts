@@ -1,6 +1,7 @@
 import { Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
+// --8<-- [start:ProfilePageExample]
 export class ProfilePage extends BasePage {
   constructor(page: Page) {
     super(page);
@@ -14,7 +15,7 @@ export class ProfilePage extends BasePage {
     }
     return email;
   }
-
+  // --8<-- [end:ProfilePageExample]
   async isLoaded(): Promise<boolean> {
     try {
       await this.waitForPageToLoad();
