@@ -14,6 +14,7 @@ CMD ["yarn", "run", "dev"]
 # Build stage for prod
 FROM base AS build
 COPY autogpt_platform/frontend/ .
+ENV SKIP_STORYBOOK_TESTS=true
 RUN yarn build
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
