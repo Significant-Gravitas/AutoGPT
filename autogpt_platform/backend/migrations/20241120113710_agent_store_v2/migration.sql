@@ -181,6 +181,12 @@ CREATE INDEX "StoreListingSubmission_storeListingId_idx" ON "StoreListingSubmiss
 -- CreateIndex
 CREATE INDEX "StoreListingSubmission_Status_idx" ON "StoreListingSubmission"("Status");
 
+-- CreateIndex
+CREATE INDEX "StoreListingReview_storeListingVersionId_idx" ON "StoreListingReview"("storeListingVersionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StoreListingReview_storeListingVersionId_reviewByUserId_key" ON "StoreListingReview"("storeListingVersionId", "reviewByUserId");
+
 -- AddForeignKey
 ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

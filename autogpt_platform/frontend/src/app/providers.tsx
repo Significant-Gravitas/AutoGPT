@@ -14,7 +14,7 @@ export function Providers({
   ...props
 }: ThemeProviderProps & { initialUser: User | null }) {
   return (
-    <NextThemesProvider {...props}>
+    <NextThemesProvider {...props} forcedTheme="light">
       <SupabaseProvider initialUser={initialUser}>
         {/* <CredentialsProvider> */}
         <TooltipProvider>{children}</TooltipProvider>
