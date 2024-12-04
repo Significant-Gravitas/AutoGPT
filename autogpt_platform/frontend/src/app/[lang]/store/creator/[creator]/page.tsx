@@ -23,14 +23,14 @@ export async function generateMetadata({
   };
 }
 
-export async function generateStaticParams() {
-  const api = new AutoGPTServerAPI();
-  const creators = await api.getStoreCreators({ featured: true });
-  return creators.creators.map((creator) => ({
-    creator: creator.username,
-    lang: "en",
-  }));
-}
+// export async function generateStaticParams() {
+//   const api = new AutoGPTServerAPI();
+//   const creators = await api.getStoreCreators({ featured: true });
+//   return creators.creators.map((creator) => ({
+//     creator: creator.username,
+//     lang: "en",
+//   }));
+// }
 
 export default async function Page({
   params,

@@ -22,15 +22,15 @@ export async function generateMetadata({
   };
 }
 
-export async function generateStaticParams() {
-  const api = new AutoGPTServerAPI();
-  const agents = await api.getStoreAgents({ featured: true });
-  return agents.agents.map((agent) => ({
-    creator: agent.creator,
-    slug: agent.slug,
-    lang: "en",
-  }));
-}
+// export async function generateStaticParams() {
+//   const api = new AutoGPTServerAPI();
+//   const agents = await api.getStoreAgents({ featured: true });
+//   return agents.agents.map((agent) => ({
+//     creator: agent.creator,
+//     slug: agent.slug,
+//     lang: "en",
+//   }));
+// }
 
 export default async function Page({
   params,
