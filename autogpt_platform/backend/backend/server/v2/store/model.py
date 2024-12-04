@@ -48,7 +48,7 @@ class StoreAgentsResponse(pydantic.BaseModel):
     agents: list[StoreAgent]
     pagination: Pagination
 
-    
+
 class StoreAgentDetails(pydantic.BaseModel):
     store_listing_version_id: str
     slug: str

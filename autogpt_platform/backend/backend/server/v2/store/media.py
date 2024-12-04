@@ -19,7 +19,9 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
     # Check required environment variables first before doing any file processing
-    if not os.environ.get("MEDIA_GCS_BUCKET_NAME"):
+    if not os.environ.get("MEDIA_GCS_BUCKET_NAME") or not os.environ.get(
+        "GOOGLE_APPLICATION_CREDENTIALS"
+    ):
         logger.error("Missing required GCS environment variables")
         raise backend.server.v2.store.exceptions.StorageConfigError(
             "Missing storage configuration"

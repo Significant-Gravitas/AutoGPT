@@ -469,9 +469,10 @@ async def create_store_submission(
             "Failed to create store submission"
         ) from e
 
+
 async def create_store_review(
     user_id: str,
-    store_listing_version_id: str, 
+    store_listing_version_id: str,
     score: int,
     comments: str | None = None,
 ) -> backend.server.v2.store.model.StoreReview:
@@ -493,10 +494,10 @@ async def create_store_review(
                 "update": {
                     "score": score,
                     "comments": comments,
-                }
-            }
+                },
+            },
         )
-        
+
         return backend.server.v2.store.model.StoreReview(
             score=review.score,
             comments=review.comments,
@@ -507,7 +508,7 @@ async def create_store_review(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store review"
         ) from e
-    
+
 
 async def get_user_profile(
     user_id: str,
