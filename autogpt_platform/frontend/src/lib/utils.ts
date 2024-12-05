@@ -244,7 +244,7 @@ export function getBehaveAs(): BehaveAs {
     : BehaveAs.LOCAL;
 }
 
-export const LOCALES = process.env.NEXT_PUBLIC_LOCALES 
+export const LOCALES = process.env.NEXT_PUBLIC_LOCALES
   ? process.env.NEXT_PUBLIC_LOCALES.split(",").filter(Boolean)
   : ["en"];
 export const DEFAULT_LOCALE = process.env.NEXT_PUBLIC_DEFAULT_LOCALE || "en";

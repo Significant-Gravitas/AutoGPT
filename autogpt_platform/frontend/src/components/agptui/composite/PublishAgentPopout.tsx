@@ -75,7 +75,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     setOpen(openPopout);
     setStep(inputStep);
     setPublishData(submissionData);
-  }, [openPopout]);
+  }, [openPopout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     console.log("LoadMyAgents Effect");
@@ -91,7 +91,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
       loadMyAgents();
     }
-  }, [open]);
+  }, [open, api]);
 
   const handleClose = () => {
     setStep("select");

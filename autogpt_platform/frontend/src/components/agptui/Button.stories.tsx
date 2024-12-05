@@ -124,7 +124,7 @@ export const Sizes: Story = {
     await expect(buttons).toHaveLength(5);
     const sizeClasses = [
       "h-8 px-3 py-1.5 text-xs",
-      "h-10 px-4 py-2 text-sm", 
+      "h-10 px-4 py-2 text-sm",
       "h-12 px-5 py-2.5 text-lg",
       "h-10 w-28",
       "h-10 w-10",
@@ -132,7 +132,7 @@ export const Sizes: Story = {
     for (let i = 0; i < buttons.length; i++) {
       await expect(buttons[i]).toHaveAttribute(
         "class",
-        expect.stringContaining(sizeClasses[i])
+        expect.stringContaining(sizeClasses[i]),
       );
     }
   },
