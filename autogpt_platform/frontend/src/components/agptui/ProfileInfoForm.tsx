@@ -109,7 +109,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
 
   return (
     <div className="w-full min-w-[600px] px-4 sm:px-8">
-      <h1 className="mb-6 font-['Poppins'] text-[28px] font-medium text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <h1 className="mb-6 font-circular text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
         Profile
       </h1>
 
@@ -127,7 +127,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               <IconPersonFill className="absolute left-[30px] top-[24px] h-[77.80px] w-[70.63px] text-[#7e7e7e] dark:text-[#999999]" />
             )}
           </div>
-          <label className="mt-11 inline-flex h-[43px] items-center justify-center rounded-[22px] border border-slate-900 bg-slate-900 px-4 py-2 font-['Geist'] text-sm font-medium leading-normal text-slate-50 transition-colors hover:bg-white hover:text-slate-900 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100">
+          <label className="mt-11 inline-flex h-[43px] items-center justify-center rounded-[22px] bg-[#15171A] px-6 py-2 font-circular text-sm font-normal text-white transition-colors hover:bg-[#2D2F34] dark:bg-white dark:text-[#15171A] dark:hover:bg-[#E5E5E5]">
             <input
               type="file"
               accept="image/*"
@@ -145,7 +145,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
 
         <form className="space-y-4 sm:space-y-6" onSubmit={submitForm}>
           <div className="w-full">
-            <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
+            <label className="mb-1.5 block font-circular text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
               Display name
             </label>
             <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
@@ -154,7 +154,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 name="displayName"
                 defaultValue={profileData.name}
                 placeholder="Enter your display name"
-                className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                className="w-full border-none bg-transparent font-circular text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -167,7 +167,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
           </div>
 
           <div className="w-full">
-            <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
+            <label className="mb-1.5 block font-circular text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
               Handle
             </label>
             <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
@@ -176,7 +176,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 name="handle"
                 defaultValue={profileData.username}
                 placeholder="@username"
-                className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                className="w-full border-none bg-transparent font-circular text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -189,7 +189,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
           </div>
 
           <div className="w-full">
-            <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
+            <label className="mb-1.5 block font-circular text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
               Bio
             </label>
             <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4 dark:border-slate-700 dark:bg-slate-800">
@@ -197,7 +197,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 name="bio"
                 defaultValue={profileData.description}
                 placeholder="Tell us about yourself..."
-                className="h-full w-full resize-none border-none bg-transparent font-['Geist'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                className="h-full w-full resize-none border-none bg-transparent font-circular text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -210,10 +210,10 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
           </div>
 
           <section className="mb-8">
-            <h2 className="mb-4 font-['Poppins'] text-lg font-semibold leading-7 text-neutral-500 dark:text-neutral-400">
+            <h2 className="mb-4 font-circular text-lg font-normal leading-7 text-neutral-700 dark:text-neutral-300">
               Your links
             </h2>
-            <p className="mb-6 font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
+            <p className="mb-6 font-circular text-base font-normal leading-tight text-neutral-600 dark:text-neutral-400">
               You can display up to 5 links on your profile
             </p>
 
@@ -222,7 +222,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 const link = profileData.links[linkNum - 1];
                 return (
                   <div key={linkNum} className="w-full">
-                    <label className="mb-1.5 block font-['Geist'] text-base font-medium leading-tight text-slate-950 dark:text-slate-50">
+                    <label className="mb-1.5 block font-circular text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
                       Link {linkNum}
                     </label>
                     <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
@@ -231,7 +231,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                         name={`link${linkNum}`}
                         placeholder="https://"
                         defaultValue={link || ""}
-                        className="w-full border-none bg-transparent font-['Inter'] text-base font-normal text-[#666666] focus:outline-none dark:text-[#999999]"
+                        className="w-full border-none bg-transparent font-circular text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
                         onChange={(e) => {
                           const newProfileData = {
                             ...profileData,
@@ -255,7 +255,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <Button
               type="button"
               variant="secondary"
-              className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 font-['Geist'] text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
+              className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 font-circular text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
               onClick={() => {
                 setProfileData(profile);
               }}
@@ -266,7 +266,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               type="submit"
               variant="default"
               disabled={isSubmitting}
-              className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-['Geist'] text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
+              className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-circular text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
               onClick={submitForm}
             >
               {isSubmitting ? "Saving..." : "Save changes"}

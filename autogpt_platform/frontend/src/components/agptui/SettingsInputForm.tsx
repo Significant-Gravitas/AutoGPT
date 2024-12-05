@@ -64,7 +64,8 @@ export const SettingsInputForm = ({
         >
           My account
         </h2>
-        <div className="flex flex-col gap-7">
+        <div className="flex flex-col gap-7 max-w-[800px]">
+          {/* Password Input */}
           <div className="relative">
             <div className="flex flex-col gap-1.5">
               <label
@@ -78,12 +79,13 @@ export const SettingsInputForm = ({
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base text-slate-950 dark:border-neutral-700 dark:text-white"
+                className="w-full h-[50px] rounded-[35px] border border-neutral-200 bg-transparent px-6 py-3 text-base text-slate-950 dark:border-neutral-700 dark:text-white"
                 aria-label="Password field"
               />
             </div>
           </div>
 
+          {/* Confirm Password Input */}
           <div className="relative">
             <div className="flex flex-col gap-1.5">
               <label
@@ -97,15 +99,10 @@ export const SettingsInputForm = ({
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-full border border-neutral-200 bg-transparent px-4 py-2.5 text-base text-slate-950 dark:border-neutral-700 dark:text-white"
+                className="w-full h-[50px] rounded-[35px] border border-neutral-200 bg-transparent px-6 py-3 text-base text-slate-950 dark:border-neutral-700 dark:text-white"
                 aria-label="Confirm Password field"
               />
             </div>
-            {!passwordsMatch && (
-              <p className="mt-1 text-sm text-red-500">
-                Passwords do not match
-              </p>
-            )}
           </div>
         </div>
       </section>

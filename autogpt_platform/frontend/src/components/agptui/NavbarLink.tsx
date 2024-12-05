@@ -2,9 +2,10 @@
 import Link from "next/link";
 import {
   IconType,
-  IconMarketplace,
-  IconBuilder,
+  IconShoppingCart,
+  IconBoxes,
   IconLibrary,
+  IconLaptop,
 } from "@/components/ui/icons";
 import { usePathname } from "next/navigation";
 
@@ -27,12 +28,17 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
       } flex items-center justify-start gap-3`}
     >
       {href === "/store" && (
-        <IconMarketplace
+        <IconShoppingCart
           className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
         />
       )}
       {href === "/build" && (
-        <IconBuilder
+        <IconBoxes
+          className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
+        />
+      )}
+      {href === "/monitor" && (
+        <IconLaptop
           className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
         />
       )}
@@ -43,7 +49,7 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
       )}
       <Link href={href}>
         <div
-          className={`font-['Poppins'] text-xl font-medium leading-7 ${
+          className={`font-poppins text-xl font-medium leading-7 ${
             activeLink === href
               ? "text-neutral-50 dark:text-neutral-900"
               : "text-neutral-900 dark:text-neutral-50"

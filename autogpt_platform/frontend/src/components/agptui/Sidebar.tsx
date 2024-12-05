@@ -42,37 +42,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
             <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
               <Link
                 href="/store/dashboard"
-                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconDashboardLayout className="h-6 w-6" />
-                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+                <div className="p-ui-medium text-base font-medium leading-normal">
                   Creator dashboard
                 </div>
               </Link>
               <Link
                 href="/integrations"
-                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconIntegrations className="h-6 w-6" />
-                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+                <div className="p-ui-medium text-base font-medium leading-normal">
                   Integrations
                 </div>
               </Link>
               <Link
                 href="/store/profile"
-                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconProfile className="h-6 w-6" />
-                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+                <div className="p-ui-medium text-base font-medium leading-normal">
                   Profile
                 </div>
               </Link>
               <Link
                 href="/store/settings"
-                className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconSliders className="h-6 w-6" />
-                <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+                <div className="p-ui-medium text-base font-medium leading-normal">
                   Settings
                 </div>
               </Link>
@@ -86,37 +86,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
           <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
             <Link
               href="/store/dashboard"
-              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconDashboardLayout className="h-6 w-6" />
-              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+              <div className="p-ui-medium text-base font-medium leading-normal">
                 Agent dashboard
               </div>
             </Link>
             <Link
               href="/integrations"
-              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconIntegrations className="h-6 w-6" />
-              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+              <div className="p-ui-medium text-base font-medium leading-normal">
                 Integrations
               </div>
             </Link>
             <Link
               href="/store/profile"
-              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconProfile className="h-6 w-6" />
-              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+              <div className="p-ui-medium text-base font-medium leading-normal">
                 Profile
               </div>
             </Link>
             <Link
               href="/store/settings"
-              className="inline-flex items-center justify-center gap-2.5 self-stretch rounded-xl px-7 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconSliders className="h-6 w-6" />
-              <div className="shrink grow basis-0 font-['Inter'] text-base font-medium leading-normal">
+              <div className="p-ui-medium text-base font-medium leading-normal">
                 Settings
               </div>
             </Link>

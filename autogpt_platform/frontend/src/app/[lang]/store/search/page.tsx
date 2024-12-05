@@ -122,10 +122,10 @@ function SearchResults({
       <div className="mx-auto min-h-screen max-w-[1440px] px-10 lg:min-w-[1440px]">
         <div className="mt-8 flex items-center">
           <div className="flex-1">
-            <h2 className="font-['Poppins'] text-base font-medium text-neutral-800 dark:text-neutral-200">
+            <h2 className="font-geist text-base font-medium text-neutral-800 dark:text-neutral-200 leading-normal">
               Results for:
             </h2>
-            <h1 className="font-['Poppins'] text-2xl font-semibold text-neutral-800 dark:text-neutral-100">
+            <h1 className="font-poppins text-2xl font-semibold text-neutral-800 dark:text-neutral-100 leading-loose">
               {searchTerm}
             </h1>
           </div>
