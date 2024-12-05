@@ -8,9 +8,10 @@ import { LOCALES, DEFAULT_LOCALE } from "@/lib/utils";
 function getLocale(request: NextRequest) {
   try {
     let headers = Object.fromEntries(request.headers.entries());
-    console.log("Checking headers for locale", headers);
     let languages = new Negotiator({ headers }).languages();
-    console.log("Languages", languages);
+    if (languages.length === 0 || languages[0] === '*') {
+      languages = ["en"];
+    }
     return match(languages, LOCALES, DEFAULT_LOCALE);
   } catch (error) {
     console.error("Error getting locale, defaulting to English:", error);
