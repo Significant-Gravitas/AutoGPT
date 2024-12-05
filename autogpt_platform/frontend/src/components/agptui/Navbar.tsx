@@ -7,6 +7,10 @@ import {
   IconBuilder,
   IconMarketplace,
   IconLibrary,
+  IconMonitor,
+  IconBoxes,
+  IconShoppingCart,
+  IconLaptop,
 } from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
@@ -116,7 +120,9 @@ export const Navbar = async ({
                           ? IconType.Library
                           : link.name === "Build"
                             ? IconType.Builder
-                            : IconType.LayoutDashboard,
+                            : link.name === "Monitor"
+                              ? IconType.Monitor
+                              : IconType.LayoutDashboard,
                     text: link.name,
                     href: link.href,
                   })),

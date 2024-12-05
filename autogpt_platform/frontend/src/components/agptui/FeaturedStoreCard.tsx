@@ -34,16 +34,16 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
       data-testid="featured-store-card"
     >
       <div className="flex h-[188px] flex-col items-start justify-start gap-3 self-stretch">
-        <div className="self-stretch font-['Poppins'] text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100">
+        <h2 className="self-stretch font-poppins text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100">
           {agentName}
-        </div>
-        <div className="self-stretch font-['Geist'] text-xl font-normal leading-7 text-neutral-800 dark:text-neutral-200">
+        </h2>
+        <div className="self-stretch font-lead text-xl font-normal leading-7 text-neutral-800 dark:text-neutral-200">
           {subHeading}
         </div>
       </div>
 
       <div className="flex h-[489px] flex-col items-start justify-start gap-[18px] self-stretch">
-        <div className="self-stretch font-['Geist'] text-xl font-normal leading-7 text-neutral-800 dark:text-neutral-200">
+        <div className="self-stretch font-lead text-xl font-normal leading-7 text-neutral-800 dark:text-neutral-200">
           by {creatorName}
         </div>
 
@@ -74,11 +74,11 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
         </div>
 
         <div className="inline-flex items-center justify-between self-stretch">
-          <div className="font-['Inter'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+          <div className="font-['Large-Geist'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center justify-start gap-[5px]">
-            <div className="font-['Inter'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+            <div className="font-['Large-Geist'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
               {rating.toFixed(1)}
             </div>
             <div
