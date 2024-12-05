@@ -3,7 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { LOCALES } from "@/lib/utils";
 
 // TODO: Update the protected pages list
-const PROTECTED_PAGES = ["/monitor", "/build", "/store/profile", "/store/settings", "/store/dashboard"];
+const PROTECTED_PAGES = [
+  "/monitor",
+  "/build",
+  "/store/profile",
+  "/store/settings",
+  "/store/dashboard",
+];
 const ADMIN_PAGES = ["/admin"];
 
 export async function updateSession(request: NextRequest, locale: string) {

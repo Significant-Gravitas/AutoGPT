@@ -17,7 +17,10 @@ import { Separator } from "@/components/ui/separator";
 import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
 import { Metadata } from "next";
 import { createServerClient } from "@/lib/supabase/server";
-import { StoreAgentsResponse, CreatorsResponse } from "@/lib/autogpt-server-api/types";
+import {
+  StoreAgentsResponse,
+  CreatorsResponse,
+} from "@/lib/autogpt-server-api/types";
 
 async function getStoreData() {
   try {
@@ -33,12 +36,36 @@ async function getStoreData() {
     );
 
     // Add error handling and default values
-    let featuredAgents: StoreAgentsResponse = { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } };
-    let topAgents: StoreAgentsResponse = { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } };
-    let featuredCreators: CreatorsResponse = { creators: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } };
+    let featuredAgents: StoreAgentsResponse = {
+      agents: [],
+      pagination: {
+        total_items: 0,
+        total_pages: 0,
+        current_page: 0,
+        page_size: 0,
+      },
+    };
+    let topAgents: StoreAgentsResponse = {
+      agents: [],
+      pagination: {
+        total_items: 0,
+        total_pages: 0,
+        current_page: 0,
+        page_size: 0,
+      },
+    };
+    let featuredCreators: CreatorsResponse = {
+      creators: [],
+      pagination: {
+        total_items: 0,
+        total_pages: 0,
+        current_page: 0,
+        page_size: 0,
+      },
+    };
 
     try {
-        [featuredAgents, topAgents, featuredCreators] = await Promise.all([
+      [featuredAgents, topAgents, featuredCreators] = await Promise.all([
         api.getStoreAgents({ featured: true }),
         api.getStoreAgents({ sorted_by: "runs" }),
         api.getStoreCreators({ featured: true, sorted_by: "num_agents" }),
@@ -55,9 +82,33 @@ async function getStoreData() {
   } catch (error) {
     console.error("Error in getStoreData:", error);
     return {
-      featuredAgents: { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } },
-      topAgents: { agents: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } },
-      featuredCreators: { creators: [], pagination: { total_items: 0, total_pages: 0, current_page: 0, page_size: 0 } },
+      featuredAgents: {
+        agents: [],
+        pagination: {
+          total_items: 0,
+          total_pages: 0,
+          current_page: 0,
+          page_size: 0,
+        },
+      },
+      topAgents: {
+        agents: [],
+        pagination: {
+          total_items: 0,
+          total_pages: 0,
+          current_page: 0,
+          page_size: 0,
+        },
+      },
+      featuredCreators: {
+        creators: [],
+        pagination: {
+          total_items: 0,
+          total_pages: 0,
+          current_page: 0,
+          page_size: 0,
+        },
+      },
     };
   }
 }

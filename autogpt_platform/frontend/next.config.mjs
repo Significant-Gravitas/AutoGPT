@@ -27,7 +27,7 @@ const nextConfig = {
   // TODO: Re-enable TypeScript checks once current issues are resolved
   typescript: {
     ignoreBuildErrors: true,
-  }
+  },
 };
 
 export default withSentryConfig(nextConfig, {
