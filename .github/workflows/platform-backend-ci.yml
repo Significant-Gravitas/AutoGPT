@@ -79,6 +79,17 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
+      - name: Check poetry.lock
+        run: |
+          poetry lock --no-update
+
+          if ! git diff --quiet poetry.lock; then
+            echo "Error: poetry.lock not up to date."
+            echo
+            git diff poetry.lock
+            exit 1
+          fi
+
       - name: Install Python dependencies
         run: poetry install
 
