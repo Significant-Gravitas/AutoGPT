@@ -9,8 +9,8 @@ from backend.data.integrations import (
     WebhookEvent,
     get_all_webhooks,
     get_webhook,
-    listen_for_webhook_event,
     publish_webhook_event,
+    wait_for_webhook_event,
 )
 from backend.data.model import (
     APIKeyCredentials,
@@ -300,18 +300,28 @@ async def webhook_ingress_generic(
         )
 
 
-@router.post("/{provider}/webhooks/{webhook_id}/ping")
+@router.post("/webhooks/{webhook_id}/ping")
 async def webhook_ping(
-    provider: Annotated[str, Path(title="Provider where the webhook was registered")],
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
     user_id: Annotated[str, Depends(get_user_id)],  # require auth
 ):
-    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
     webhook = await get_webhook(webhook_id)
+    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[webhook.provider]()
 
-    await webhook_manager.trigger_ping(webhook)
-    if not await listen_for_webhook_event(webhook_id, event_type="ping"):
-        raise HTTPException(status_code=500, detail="Webhook ping event not received")
+    credentials = (
+        creds_manager.get(user_id, webhook.credentials_id)
+        if webhook.credentials_id
+        else None
+    )
+    try:
+        await webhook_manager.trigger_ping(webhook, credentials)
+    except NotImplementedError:
+        return False
+
+    if not await wait_for_webhook_event(webhook_id, event_type="ping", timeout=10):
+        raise HTTPException(status_code=504, detail="Webhook ping timed out")
+
+    return True
 
 
 # --------------------------- UTILITIES ---------------------------- #
