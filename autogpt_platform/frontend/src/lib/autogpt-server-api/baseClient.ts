@@ -241,6 +241,15 @@ export default class BaseAutoGPTServerAPI {
     );
   }
 
+  /**
+   * @returns `true` if a ping event was received, `false` if provider doesn't support pinging but the webhook exists.
+   * @throws  `Error` if the webhook does not exist.
+   * @throws  `Error` if the attempt to ping timed out.
+   */
+  async pingWebhook(webhook_id: string): Promise<boolean> {
+    return this._request("POST", `/integrations/webhooks/${webhook_id}/ping`);
+  }
+
   logMetric(metric: AnalyticsMetrics) {
     return this._request("POST", "/analytics/log_raw_metric", metric);
   }

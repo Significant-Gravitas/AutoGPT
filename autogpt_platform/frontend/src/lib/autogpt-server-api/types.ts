@@ -168,6 +168,7 @@ export type Node = {
     position: { x: number; y: number };
     [key: string]: any;
   };
+  webhook_id?: string;
 };
 
 /* Mirror of backend/data/graph.py:Link */
