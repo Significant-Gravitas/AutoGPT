@@ -641,7 +641,6 @@ export function CustomNode({
       {/* Header */}
       <div
         className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} space-x-1 rounded-t-xl`}
-        className={`flex h-24 border-b border-gray-300 dark:border-gray-600 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100 dark:bg-yellow-900" : "bg-white dark:bg-gray-800"} items-center rounded-t-xl`}
       >
         {/* Color Stripe */}
         <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
@@ -649,9 +648,6 @@ export function CustomNode({
         <div className="flex w-full flex-col justify-start space-y-2.5 px-4 pt-4">
           <div className="flex flex-row items-center space-x-2 font-semibold">
             <h3 className="font-roboto text-lg">
-        <div className="flex w-full flex-col">
-          <div className="flex flex-row items-center justify-between">
-            <div className="font-roboto flex items-center px-3 text-lg font-semibold dark:text-gray-100">
               <TextRenderer
                 value={beautifyString(
                   data.blockType?.replace(/Block$/, "") || data.title,
@@ -671,11 +667,6 @@ export function CustomNode({
             >
               <DotsVerticalIcon className="h-5 w-5" />
             </button>
-
-              <div className="px-2 text-xs text-gray-500 dark:text-gray-400">
-                #{id.split("-")[0]}
-              </div>
-            </div>
           </div>
           <div className="flex items-center space-x-2">
             {blockCost && (
@@ -700,32 +691,6 @@ export function CustomNode({
             ))}
           </div>
         </div>
-          {blockCost && (
-            <div className="px-3 text-base font-light">
-              <span className="ml-auto flex items-center">
-                <IconCoin />{" "}
-                <span className="m-1 font-medium">{blockCost.cost_amount}</span>{" "}
-                credits/{blockCost.cost_type}
-              </span>
-            </div>
-          )}
-        </div>
-        {data.categories.map((category) => (
-          <Badge
-            key={category.category}
-            variant="outline"
-            className={`mr-5 ${getPrimaryCategoryColor([category])} whitespace-nowrap rounded-xl border border-gray-300 opacity-50 dark:border-gray-600`}
-          >
-            {beautifyString(category.category.toLowerCase())}
-          </Badge>
-        ))}
-        <button
-          aria-label="Options"
-          className="mr-2 cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
-          onClick={onContextButtonTrigger}
-        >
-          <DotsVerticalIcon className="h-5 w-5 dark:text-gray-100" />
-        </button>
 
         <ContextMenuContent />
       </div>
@@ -754,7 +719,7 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
           <>
             <LineSeparator />
-            <div className="flex items-center justify-between pt-6 text-gray-900 dark:text-gray-100">
+            <div className="flex items-center justify-between pt-6">
               Advanced
               <Switch
                 onCheckedChange={toggleAdvancedSettings}
@@ -790,7 +755,7 @@ export function CustomNode({
             )}
           >
             {(data.executionResults?.length ?? 0) > 0 ? (
-              <div className="mt-0 rounded-b-xl bg-gray-50 dark:bg-gray-900">
+              <div className="mt-0 rounded-b-xl bg-gray-50">
                 <LineSeparator />
                 <NodeOutputs
                   title="Latest Output"
@@ -801,14 +766,14 @@ export function CustomNode({
                   <Button
                     variant="ghost"
                     onClick={handleOutputClick}
-                    className="border border-gray-300 dark:border-gray-600"
+                    className="border border-gray-300"
                   >
                     View More
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="mt-0 min-h-4 rounded-b-xl bg-white dark:bg-gray-800"></div>
+              <div className="mt-0 min-h-4 rounded-b-xl bg-white"></div>
             )}
             <div
               className={cn(
