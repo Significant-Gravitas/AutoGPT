@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useRef,
   useContext,
+  useMemo,
 } from "react";
 import { NodeProps, useReactFlow, Node, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -17,7 +18,8 @@ import {
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
-} from "@/lib/autogpt-server-api/types";
+  useBackendAPI,
+} from "@/lib/autogpt-server-api";
 import {
   beautifyString,
   cn,
@@ -68,6 +70,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
+  webhookId?: string;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -104,6 +107,7 @@ export function CustomNode({
   >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
+  const api = useBackendAPI();
   let nodeFlowId = "";
 
   if (data.uiType === BlockUIType.AGENT) {
@@ -513,6 +517,57 @@ export function CustomNode({
       isCostFilterMatch(cost.cost_filter, inputValues),
     );
 
+  const [webhookStatus, setWebhookStatus] = useState<
+    "works" | "exists" | "broken" | "none" | "pending" | null
+  >(null);
+
+  useEffect(() => {
+    if (data.uiType != BlockUIType.WEBHOOK) return;
+    if (!data.webhookId) {
+      setWebhookStatus("none");
+      return;
+    }
+
+    setWebhookStatus("pending");
+    api
+      .pingWebhook(data.webhookId)
+      .then((pinged) => setWebhookStatus(pinged ? "works" : "exists"))
+      .catch((error: Error) =>
+        error.message.includes("ping timed out")
+          ? setWebhookStatus("broken")
+          : setWebhookStatus("none"),
+      );
+  }, [data.uiType, data.webhookId, api, setWebhookStatus]);
+
+  const webhookStatusDot = useMemo(
+    () =>
+      webhookStatus && (
+        <div
+          className={cn(
+            "size-4 rounded-full border-2",
+            {
+              pending: "animate-pulse border-gray-300 bg-gray-400",
+              works: "border-green-300 bg-green-400",
+              exists: "border-green-200 bg-green-300",
+              broken: "border-red-400 bg-red-500",
+              none: "border-gray-300 bg-gray-400",
+            }[webhookStatus],
+          )}
+          title={
+            {
+              pending: "Checking connection status...",
+              works: "Connected",
+              exists:
+                "Connected (but we could not verify the real-time status)",
+              broken: "The connected webhook is not working",
+              none: "Not connected. Fill out all the required block inputs and save the agent to connect.",
+            }[webhookStatus]
+          }
+        />
+      ),
+    [webhookStatus],
+  );
+
   const LineSeparator = () => (
     <div className="bg-white pt-6">
       <Separator.Root className="h-[1px] w-full bg-gray-300"></Separator.Root>
@@ -580,55 +635,61 @@ export function CustomNode({
     >
       {/* Header */}
       <div
-        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} items-center rounded-t-xl`}
+        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} space-x-1 rounded-t-xl`}
       >
         {/* Color Stripe */}
         <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
 
-        <div className="flex w-full flex-col">
-          <div className="flex flex-row items-center justify-between">
-            <div className="font-roboto flex items-center px-3 text-lg font-semibold">
+        <div className="flex w-full flex-col justify-start space-y-2.5 px-4 pt-4">
+          <div className="flex flex-row items-center space-x-2 font-semibold">
+            <h3 className="font-roboto text-lg">
               <TextRenderer
                 value={beautifyString(
                   data.blockType?.replace(/Block$/, "") || data.title,
                 )}
                 truncateLengthLimit={80}
               />
+            </h3>
+            <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
 
-              <div className="px-2 text-xs text-gray-500">
-                #{id.split("-")[0]}
-              </div>
-            </div>
+            <div className="w-auto grow" />
+
+            {webhookStatusDot}
+            <button
+              aria-label="Options"
+              className="cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
+              onClick={onContextButtonTrigger}
+            >
+              <DotsVerticalIcon className="h-5 w-5" />
+            </button>
           </div>
-          {blockCost && (
-            <div className="px-3 text-base font-light">
-              <span className="ml-auto flex items-center">
-                <IconCoin />{" "}
-                <span className="m-1 font-medium">{blockCost.cost_amount}</span>{" "}
-                credits/{blockCost.cost_type}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center space-x-2">
+            {blockCost && (
+              <div className="mr-3 text-base font-light">
+                <span className="ml-auto flex items-center">
+                  <IconCoin />{" "}
+                  <span className="mx-1 font-medium">
+                    {blockCost.cost_amount}
+                  </span>{" "}
+                  credits/{blockCost.cost_type}
+                </span>
+              </div>
+            )}
+            {data.categories.map((category) => (
+              <Badge
+                key={category.category}
+                variant="outline"
+                className={`${getPrimaryCategoryColor([category])} h-6 whitespace-nowrap rounded-full border border-gray-300 opacity-50`}
+              >
+                {beautifyString(category.category.toLowerCase())}
+              </Badge>
+            ))}
+          </div>
         </div>
-        {data.categories.map((category) => (
-          <Badge
-            key={category.category}
-            variant="outline"
-            className={`mr-5 ${getPrimaryCategoryColor([category])} whitespace-nowrap rounded-xl border border-gray-300 opacity-50`}
-          >
-            {beautifyString(category.category.toLowerCase())}
-          </Badge>
-        ))}
-        <button
-          aria-label="Options"
-          className="mr-2 cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
-          onClick={onContextButtonTrigger}
-        >
-          <DotsVerticalIcon className="h-5 w-5" />
-        </button>
 
         <ContextMenuContent />
       </div>
+
       {/* Body */}
       <div className="ml-5 mt-6 rounded-b-xl">
         {/* Input Handles */}

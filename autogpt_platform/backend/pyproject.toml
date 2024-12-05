@@ -90,3 +90,6 @@ ignore_patterns = []
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py310"
