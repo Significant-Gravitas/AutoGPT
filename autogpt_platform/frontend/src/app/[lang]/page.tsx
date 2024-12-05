@@ -1,10 +1,9 @@
-import { getDictionary } from "./dictionaries";
+import { redirect } from "next/navigation";
 
 export default async function Page({
   params: { lang },
 }: {
   params: { lang: string };
 }) {
-  const dict = await getDictionary(lang); // en
-  return <h1>{dict.home.welcome}</h1>; // Add to Cart
+  redirect("/store");
 }
