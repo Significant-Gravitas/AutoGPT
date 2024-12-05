@@ -8,7 +8,7 @@ packages = [{ include = "backend" }]
 
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.13"
 aio-pika = "^9.5.0"
 anthropic = "^0.39.0"
 apscheduler = "^3.11.0"
