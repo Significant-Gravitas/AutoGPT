@@ -102,7 +102,9 @@ export class BuildPage extends BasePage {
   }
 
   async hasBlock(block: Block): Promise<boolean> {
-    console.log(`checking if block ${block.id} ${block.name} is visible on page`);
+    console.log(
+      `checking if block ${block.id} ${block.name} is visible on page`,
+    );
     try {
       // Use both ID and name for most precise matching
       const node = await this.page
@@ -251,7 +253,7 @@ export class BuildPage extends BasePage {
     endDataId?: string,
   ): Promise<void> {
     console.log(
-      `connecting block output ${startBlockOutputName} of block ${startBlockId} to block input ${endBlockInputName} of block ${endBlockId }`,
+      `connecting block output ${startBlockOutputName} of block ${startBlockId} to block input ${endBlockInputName} of block ${endBlockId}`,
     );
     const startBlockBase = await this._buildBlockSelector(
       startBlockId,
