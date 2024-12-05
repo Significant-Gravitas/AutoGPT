@@ -144,25 +144,28 @@ class WebhookEventBus(AsyncRedisEventBus[WebhookEvent]):
     def event_bus_name(self) -> str:
         return "webhooks"
 
-    async def publish(self, event: WebhookEvent):
-        await self.publish_event(event, f"{event.webhook_id}/{event.event_type}")
 
-    async def listen(
-        self, webhook_id: str, event_type: Optional[str] = None
-    ) -> AsyncGenerator[WebhookEvent, None]:
-        async for event in self.listen_events(f"{webhook_id}/{event_type or '*'}"):
-            yield event
-
-
-event_bus = WebhookEventBus()
+_webhook_event_bus = WebhookEventBus()
 
 
 async def publish_webhook_event(event: WebhookEvent):
-    await event_bus.publish(event)
+    await _webhook_event_bus.publish_event(
+        event, f"{event.webhook_id}/{event.event_type}"
+    )
 
 
-async def listen_for_webhook_event(
+async def listen_for_webhook_events(
     webhook_id: str, event_type: Optional[str] = None
+) -> AsyncGenerator[WebhookEvent, None]:
+    async for event in _webhook_event_bus.listen_events(
+        f"{webhook_id}/{event_type or '*'}"
+    ):
+        yield event
+
+
+async def wait_for_webhook_event(
+    webhook_id: str, event_type: Optional[str] = None, timeout: Optional[float] = None
 ) -> WebhookEvent | None:
-    async for event in event_bus.listen(webhook_id, event_type):
-        return event  # Only one event is expected
+    return await _webhook_event_bus.wait_for_event(
+        f"{webhook_id}/{event_type or '*'}", timeout
+    )
