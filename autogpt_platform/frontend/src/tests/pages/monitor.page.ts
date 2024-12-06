@@ -161,8 +161,9 @@ export class MonitorPage extends BasePage {
     return [];
   }
 
-  async selectAgent(id?: string, name?: string, regex?: string) {
-    console.log(`selecting agent ${id} ${name} ${regex}`);
+  async clickAgent(id: string) {
+    console.log(`selecting agent ${id}`);
+    await this.page.getByTestId(id).click();
   }
 
   async clickCreateAgent(): Promise<void> {
@@ -194,7 +195,9 @@ export class MonitorPage extends BasePage {
   }
 
   async exportToFile(agent: Agent) {
+    await this.clickAgent(agent.id);
     console.log(`exporting agent ${agent.id} ${agent.name} to file`);
+    await this.page.getByTestId("export-button").click();
   }
 
   async selectRun(agent: Agent, run: Run) {
