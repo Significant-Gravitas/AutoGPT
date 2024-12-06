@@ -11,15 +11,15 @@ export class NavBar {
   }
 
   async clickMonitorLink() {
-    await this.page.getByTestId("monitor-link").click();
+    await this.page.getByTestId("monitor-nav-link").click();
   }
 
   async clickBuildLink() {
-    await this.page.getByTestId("build-link").click();
+    await this.page.getByTestId("build-nav-link").click();
   }
 
   async clickMarketplaceLink() {
-    await this.page.getByTestId("marketplace-link").click();
+    await this.page.getByTestId("marketplace-nav-link").click();
   }
 
   async getUserMenuButton() {
