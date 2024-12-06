@@ -1,9 +1,10 @@
-import { TestInfo } from "@playwright/test";
+import { expect, TestInfo } from "@playwright/test";
 import { test } from "./fixtures";
 import { BuildPage } from "./pages/build.page";
 import { MonitorPage } from "./pages/monitor.page";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs/promises";
+import path from "path";
 // --8<-- [start:AttachAgentId]
 
 test.describe("Monitor", () => {
@@ -53,7 +54,9 @@ test.describe("Monitor", () => {
     await test.expect(agents.length).toBeGreaterThan(0);
   });
 
-  test("user can export agents", async ({ page }, testInfo: TestInfo) => {
+  test("user can export and import agents", async ({
+    page,
+  }, testInfo: TestInfo) => {
     // --8<-- [start:ReadAgentId]
     if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
       throw new Error("No agent id attached to the test");
@@ -61,6 +64,7 @@ test.describe("Monitor", () => {
     const id = testInfo.attachments[0].body.toString();
     // --8<-- [end:ReadAgentId]
     const agents = await monitorPage.listAgents();
+
     const downloadPromise = page.waitForEvent("download");
     await monitorPage.exportToFile(
       agents.find((a) => a.id === id) || agents[0],
@@ -79,6 +83,37 @@ test.describe("Monitor", () => {
     }
     await test.expect(download.suggestedFilename()).toContain("test-agent-");
     await test.expect(download.suggestedFilename()).toContain("v1.json");
+
+    // import the agent
+    const preImportAgents = await monitorPage.listAgents();
+    const filesInFolder = await fs.readdir(
+      `${monitorPage.downloadsFolder}/monitor`,
+    );
+    const importFile = filesInFolder.find((f) => f.includes(id));
+    if (!importFile) {
+      throw new Error(`No import file found for agent ${id}`);
+    }
+    const baseName = importFile.split(".")[0];
+    await monitorPage.importFromFile(
+      path.resolve(monitorPage.downloadsFolder, "monitor"),
+      importFile,
+      baseName + "-imported",
+    );
+
+    // You'll be dropped at the build page, so hit run and then go back to monitor
+    await buildPage.runAgent();
+    await monitorPage.navbar.clickMonitorLink();
+    await monitorPage.waitForPageLoad();
+
+    const postImportAgents = await monitorPage.listAgents();
+    await test
+      .expect(postImportAgents.length)
+      .toBeGreaterThan(preImportAgents.length);
+    console.log(`postImportAgents: ${JSON.stringify(postImportAgents)}`);
+    const importedAgent = postImportAgents.find(
+      (a) => a.name === `${baseName}-imported`,
+    );
+    await test.expect(importedAgent).toBeDefined();
   });
 
   test("user can view runs", async ({ page }) => {
