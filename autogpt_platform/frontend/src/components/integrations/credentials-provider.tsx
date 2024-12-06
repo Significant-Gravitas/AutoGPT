@@ -24,6 +24,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   anthropic: "Anthropic",
   discord: "Discord",
   d_id: "D-ID",
+  e2b: "E2B",
   github: "GitHub",
   google: "Google",
   google_maps: "Google Maps",
