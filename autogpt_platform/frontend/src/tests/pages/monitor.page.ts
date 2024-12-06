@@ -1,5 +1,6 @@
 import { ElementHandle, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
+import path from "path";
 
 interface Agent {
   id: string;
@@ -94,7 +95,7 @@ export class MonitorPage extends BasePage {
       const cells = await row.locator("td").all();
 
       // Extract name from first cell
-      const name = (await cells[0].textContent()) || "";
+      const name = (await row.getAttribute("data-name")) || "";
 
       // Extract run count from second cell
       const runCountText = (await cells[1].textContent()) || "0";
@@ -172,14 +173,35 @@ export class MonitorPage extends BasePage {
   }
 
   async importFromFile(
+    directory: string,
     file: string,
     name?: string,
     description?: string,
     importType: ImportType = ImportType.AGENT,
   ) {
     console.log(
-      `importing from file ${file} ${name} ${description} ${importType}`,
+      `importing from directory: ${directory} file: ${file} name: ${name} description: ${description} importType: ${importType}`,
     );
+    await this.page.getByTestId("create-agent-dropdown").click();
+    await this.page.getByTestId("import-agent-from-file").click();
+
+    await this.page
+      .getByTestId("import-agent-file-input")
+      .setInputFiles(path.join(directory, file));
+    if (name) {
+      console.log(`filling agent name: ${name}`);
+      await this.page.getByTestId("agent-name-input").fill(name);
+    }
+    if (description) {
+      console.log(`filling agent description: ${description}`);
+      await this.page.getByTestId("agent-description-input").fill(description);
+    }
+    if (importType === ImportType.TEMPLATE) {
+      console.log(`clicking import as template switch`);
+      await this.page.getByTestId("import-as-template-switch").click();
+    }
+    console.log(`clicking import agent submit`);
+    await this.page.getByTestId("import-agent-submit").click();
   }
 
   async deleteAgent(agent: Agent) {
@@ -196,6 +218,7 @@ export class MonitorPage extends BasePage {
 
   async exportToFile(agent: Agent) {
     await this.clickAgent(agent.id);
+
     console.log(`exporting agent ${agent.id} ${agent.name} to file`);
     await this.page.getByTestId("export-button").click();
   }
