@@ -68,6 +68,7 @@ export const AgentFlowList = ({
                 <Button
                   variant="outline"
                   className={"rounded-l-none border-l-0 px-2"}
+                  data-testid="create-agent-dropdown"
                 >
                   <ChevronDownIcon />
                 </Button>
@@ -75,7 +76,7 @@ export const AgentFlowList = ({
 
               <DropdownMenuContent>
                 <DialogTrigger asChild>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem data-testid="import-agent-from-file">
                     <EnterIcon className="mr-2" /> Import from file
                   </DropdownMenuItem>
                 </DialogTrigger>
@@ -163,6 +164,7 @@ export const AgentFlowList = ({
                 <TableRow
                   key={flow.id}
                   data-testid={flow.id}
+                  data-name={flow.name}
                   className="cursor-pointer"
                   onClick={() => onSelectFlow(flow)}
                   data-state={selectedFlow?.id == flow.id ? "selected" : null}
