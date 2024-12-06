@@ -5260,12 +5260,7 @@ devlop@^1.0.0, devlop@^1.1.0:
   dependencies:
     dequal "^2.0.0"
 
-dexie-react-hooks@^1.1.7:
-  version "1.1.7"
-  resolved "https://registry.npmjs.org/dexie-react-hooks/-/dexie-react-hooks-1.1.7.tgz"
-  integrity sha512-Lwv5W0Hk+uOW3kGnsU9GZoR1er1B7WQ5DSdonoNG+focTNeJbHW6vi6nBoX534VKI3/uwHebYzSw1fwY6a7mTw==
-
-"dexie@^3.2 || ^4.0.1-alpha", dexie@^4.0.10:
+dexie@^4.0.10:
   version "4.0.10"
   resolved "https://registry.npmjs.org/dexie/-/dexie-4.0.10.tgz"
   integrity sha512-eM2RzuR3i+M046r2Q0Optl3pS31qTWf8aFuA7H9wnsHTwl8EPvroVLwvQene/6paAs39Tbk6fWZcn2aZaHkc/w==
