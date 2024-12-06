@@ -48,8 +48,13 @@ class CodeExecutionBlock(Block):
         )
 
         # Todo : Option to run commond in background
-        commands: list[str] = SchemaField(
-            description="Run these commands in the sandbox before running the code, You can use `curl` or `git` to install your desired debian based package manager. pip and npm is pre installed\n Currently, none of these commands work in the background.",
+        setup_commands: list[str] = SchemaField(
+            description=(
+                "Shell commands to set up the sandbox before running the code. "
+                "You can use `curl` or `git` to install your desired Debian based "
+                "package manager. `pip` and `npm` are pre-installed.\n\n"
+                "These commands are executed with `sh`, in the foreground."
+            ),
             placeholder="pip install cowsay",
             default=[],
             advanced=False,
@@ -93,7 +98,7 @@ class CodeExecutionBlock(Block):
     def __init__(self):
         super().__init__(
             id="0b02b072-abe7-11ef-8372-fb5d162dd712",
-            description="Executes Python code commands in an isolated sandbox environment. Every sandbox has access to internet",
+            description="Executes code in an isolated sandbox environment with internet access.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=CodeExecutionBlock.Input,
             output_schema=CodeExecutionBlock.Output,
@@ -102,7 +107,7 @@ class CodeExecutionBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "code": "print('Hello World')",
                 "language": ProgrammingLanguage.PYTHON.value,
-                "commands": [],
+                "setup_commands": [],
                 "timeout": 300,
                 "template_id": "",
             },
@@ -111,7 +116,7 @@ class CodeExecutionBlock(Block):
                 ("stdout_logs", "Hello World\n"),
             ],
             test_mock={
-                "execute_code": lambda code, language, commands, timeout, api_key, template_id: (
+                "execute_code": lambda code, language, setup_commands, timeout, api_key, template_id: (
                     "Hello World",
                     "Hello World\n",
                     "",
@@ -123,7 +128,7 @@ class CodeExecutionBlock(Block):
         self,
         code: str,
         language: ProgrammingLanguage,
-        commands: list[str],
+        setup_commands: list[str],
         timeout: int,
         api_key: str,
         template_id: str,
@@ -140,8 +145,8 @@ class CodeExecutionBlock(Block):
             if not sandbox:
                 raise Exception("Sandbox not created")
 
-            # Running commands
-            for cmd in commands:
+            # Running setup commands
+            for cmd in setup_commands:
                 sandbox.commands.run(cmd)
 
             # Executing the code
@@ -170,7 +175,7 @@ class CodeExecutionBlock(Block):
             response, stdout_logs, stderr_logs = self.execute_code(
                 input_data.code,
                 input_data.language,
-                input_data.commands,
+                input_data.setup_commands,
                 input_data.timeout,
                 credentials.api_key.get_secret_value(),
                 input_data.template_id,
