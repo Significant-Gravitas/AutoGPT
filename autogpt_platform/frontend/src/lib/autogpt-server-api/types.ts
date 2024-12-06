@@ -83,6 +83,7 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   enum?: string[];
   secret?: true;
   default?: string;
+  format?: string;
 };
 
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
@@ -121,6 +122,7 @@ export const PROVIDER_NAMES = {
   FAL: "fal",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  EXA: "exa",
   HUBSPOT: "hubspot",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
