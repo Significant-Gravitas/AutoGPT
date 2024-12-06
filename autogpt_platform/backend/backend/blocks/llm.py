@@ -107,7 +107,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     # OpenRouter models
     GEMINI_FLASH_1_5_8B = "google/gemini-flash-1.5"
-    GEMINI_FLASH_1_5_EXP = "google/gemini-flash-1.5-exp"
     GROK_BETA = "x-ai/grok-beta"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
@@ -160,7 +159,6 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
     LlmModel.GEMINI_FLASH_1_5_8B: ModelMetadata("open_router", 8192),
-    LlmModel.GEMINI_FLASH_1_5_EXP: ModelMetadata("open_router", 8192),
     LlmModel.GROK_BETA: ModelMetadata("open_router", 8192),
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 4000),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 4000),
