@@ -705,6 +705,42 @@ files = [
 ]
 
 [[package]]
+name = "e2b"
+version = "1.0.4"
+description = "E2B SDK that give agents cloud environments"
+optional = false
+python-versions = "<4.0,>=3.8"
+files = [
+    {file = "e2b-1.0.4-py3-none-any.whl", hash = "sha256:1a9c765eb1b2cc291c5ebd3f2e268f8fba9471a12f470f4651395b5753730170"},
+    {file = "e2b-1.0.4.tar.gz", hash = "sha256:5ed3db4f984e52cf3aabb717725493ff060a8374b7c878b31bceeff46a0b5648"},
+]
+
+[package.dependencies]
+attrs = ">=23.2.0"
+httpcore = ">=1.0.5,<2.0.0"
+httpx = ">=0.27.0,<0.28.0"
+packaging = ">=24.1"
+protobuf = ">=3.20.0,<6.0.0"
+python-dateutil = ">=2.8.2"
+typing-extensions = ">=4.1.0"
+
+[[package]]
+name = "e2b-code-interpreter"
+version = "1.0.1"
+description = "E2B Code Interpreter - Stateful code execution"
+optional = false
+python-versions = "<4.0,>=3.8"
+files = [
+    {file = "e2b_code_interpreter-1.0.1-py3-none-any.whl", hash = "sha256:e27c40174ba7daac4942388611a73e1ac58300227f0ba6c0555ee54507d4944c"},
+    {file = "e2b_code_interpreter-1.0.1.tar.gz", hash = "sha256:b0c061e41315d21514affe78f80052be335b687204e669dd7ca852b59eeaaea2"},
+]
+
+[package.dependencies]
+attrs = ">=21.3.0"
+e2b = ">=1.0.0,<2.0.0"
+httpx = ">=0.20.0,<0.28.0"
+
+[[package]]
 name = "exceptiongroup"
 version = "1.2.2"
 description = "Backport of PEP 654 (exception groups)"
@@ -4028,4 +4064,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "5bc61641d782791b76f39b18625560a6652b02f3ad788f110e0258293032c34a"
+content-hash = "94dbe280c8215cd4ceef47c14b681092cb03964aa081b6cdb978da7bbf818593"
