@@ -111,7 +111,9 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
     def __init__(self):
         from backend.integrations.webhooks.github import GithubWebhookType
 
-        example_payload = json.loads(self.EXAMPLE_PAYLOAD_FILE.read_text())
+        example_payload = json.loads(
+            self.EXAMPLE_PAYLOAD_FILE.read_text(encoding="utf-8")
+        )
 
         super().__init__(
             id="6c60ec01-8128-419e-988f-96a063ee2fea",

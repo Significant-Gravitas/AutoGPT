@@ -120,7 +120,7 @@ def SchemaField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
-    advanced: Optional[bool] = None,
+    advanced: Optional[bool] = False,
     secret: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,

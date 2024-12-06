@@ -1,7 +1,7 @@
 import logging
 import time
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 
@@ -64,7 +64,7 @@ class AIVideoGeneratorBlock(Block):
             },
         )
 
-    def _get_headers(self, api_key: str) -> Dict[str, str]:
+    def _get_headers(self, api_key: str) -> dict[str, str]:
         """Get headers for FAL API requests."""
         return {
             "Authorization": f"Key {api_key}",
@@ -72,8 +72,8 @@ class AIVideoGeneratorBlock(Block):
         }
 
     def _submit_request(
-        self, url: str, headers: Dict[str, str], data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, url: str, headers: dict[str, str], data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Submit a request to the FAL API."""
         try:
             response = httpx.post(url, headers=headers, json=data)
@@ -83,7 +83,7 @@ class AIVideoGeneratorBlock(Block):
             logger.error(f"FAL API request failed: {str(e)}")
             raise RuntimeError(f"Failed to submit request: {str(e)}")
 
-    def _poll_status(self, status_url: str, headers: Dict[str, str]) -> Dict[str, Any]:
+    def _poll_status(self, status_url: str, headers: dict[str, str]) -> dict[str, Any]:
         """Poll the status endpoint until completion or failure."""
         try:
             response = httpx.get(status_url, headers=headers)
