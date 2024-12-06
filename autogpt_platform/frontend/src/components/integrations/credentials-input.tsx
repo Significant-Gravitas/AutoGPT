@@ -69,6 +69,7 @@ export const providerIcons: Record<
   fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  exa: fallbackIcon,
   hubspot: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
