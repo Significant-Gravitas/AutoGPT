@@ -59,6 +59,7 @@ export const ControlPanel = ({
                     size="icon"
                     onClick={() => control.onClick()}
                     data-id={`control-button-${index}`}
+                    data-testid={`blocks-control-${control.label.toLowerCase()}-button`}
                     disabled={control.disabled || false}
                   >
                     {control.icon}

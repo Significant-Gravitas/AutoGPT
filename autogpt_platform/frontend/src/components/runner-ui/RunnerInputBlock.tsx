@@ -40,7 +40,11 @@ export function InputBlock({
             </SelectTrigger>
             <SelectContent>
               {placeholder_values.map((placeholder, index) => (
-                <SelectItem key={index} value={placeholder.toString()}>
+                <SelectItem
+                  key={index}
+                  value={placeholder.toString()}
+                  data-testid={`run-dialog-input-${name}-${placeholder.toString()}`}
+                >
                   {placeholder.toString()}
                 </SelectItem>
               ))}
@@ -49,6 +53,7 @@ export function InputBlock({
         ) : (
           <Input
             id={`${id}-Value`}
+            data-testid={`run-dialog-input-${name}`}
             value={value}
             onChange={(e) => onInputChange(id, "value", e.target.value)}
             placeholder={placeholder_values?.[0]?.toString() || "Enter value"}
