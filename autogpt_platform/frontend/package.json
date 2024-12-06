@@ -55,6 +55,8 @@
     "cmdk": "1.0.4",
     "cookie": "1.0.2",
     "date-fns": "^4.1.0",
+    "dexie": "^4.0.10",
+    "dexie-react-hooks": "^1.1.7",
     "dotenv": "^16.4.5",
     "elliptic": "6.6.1",
     "lucide-react": "^0.460.0",

@@ -22,7 +22,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { useIndexedDB } from "@/hooks/useIndexedDB";
-import { useLocalStorage } from "./useLocalStorage";
 import { useDebounce } from "@/hooks/useDebounce";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
@@ -47,8 +46,7 @@ export default function useAgentGraph(
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
   const [isOnline, setIsOnline] = useState(true);
-  const { saveData, getData, clearStore } = useLocalStorage(flowID);
-  const debouncedSave = useDebounce(saveData, 3000);
+  const { saveData, getData, clearStore } = useIndexedDB(flowID);
   const [unsavedChangesDialogOpen, setUnsavedChangesDialogOpen] =
     useState<boolean>(false);
   const [localChangesPresent, setLocalChangesPresent] =
@@ -343,7 +341,7 @@ export default function useAgentGraph(
     async (backendFlowData: Graph) => {
       if (isOnline) {
         try {
-          const localFlowData = getData();
+          const localFlowData = await getData();
           if (localFlowData) {
             const payload = localFlowData.graph;
             const comparedPayload = {
@@ -890,7 +888,7 @@ export default function useAgentGraph(
     [_saveAgent, toast],
   );
 
-  const saveAgentLocally = useCallback(() => {
+  const saveAgentLocally = useCallback(async () => {
     const blockIdToNodeIdMap: Record<string, string> = {};
 
     nodes.forEach((node) => {
@@ -948,7 +946,7 @@ export default function useAgentGraph(
     };
 
     // saving data locally
-    saveData(payload);
+    await saveData(payload);
   }, [
     nodes,
     edges,
@@ -1059,13 +1057,13 @@ export default function useAgentGraph(
   useEffect(() => {
     const handleVisibilityChange = async () => {
       if (document.hidden && savedAgent) {
-        saveAgentLocally();
+        await saveAgentLocally();
       }
     };
 
     const handleBeforeUnload = async () => {
       if (savedAgent) {
-        saveAgentLocally();
+        await saveAgentLocally();
       }
     };
 
@@ -1080,10 +1078,9 @@ export default function useAgentGraph(
 
   // Force saving data every 30 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       if (savedAgent) {
-        console.log("Saving data after 30 sec");
-        saveAgentLocally();
+        await saveAgentLocally();
       }
     }, 30000);
 
@@ -1091,18 +1088,18 @@ export default function useAgentGraph(
   }, [saveAgentLocally, savedAgent]);
 
   const handleLocalSave = useCallback(async () => {
-    const localFlowData = getData();
+    const localFlowData = await getData();
     if (localFlowData) {
       loadGraph(localFlowData.graph);
       setLocalChangesPresent(true);
       setUnsavedChangesDialogOpen(false);
       setSavedAgent(localFlowData.graph);
-      clearStore();
+      await clearStore();
     }
   }, [loadGraph, getData, clearStore]);
 
-  const handleLocalCancel = useCallback(() => {
-    clearStore();
+  const handleLocalCancel = useCallback(async () => {
+    await clearStore();
     setUnsavedChangesDialogOpen(false);
   }, [clearStore]);
 
