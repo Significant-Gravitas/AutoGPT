@@ -43,6 +43,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   fal: "FAL",
   revid: "Rev.ID",
   unreal_speech: "Unreal Speech",
+  exa: "Exa",
   hubspot: "Hubspot",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
