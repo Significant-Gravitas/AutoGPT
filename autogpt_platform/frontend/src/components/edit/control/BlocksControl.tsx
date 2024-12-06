@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TextRenderer } from "@/components/ui/render";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { beautifyString } from "@/lib/utils";
 import {
@@ -85,6 +86,9 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             beautifyString(block.name)
               .toLowerCase()
+              .includes(searchQuery.toLowerCase()) ||
+            block.description
+              .toLowerCase()
               .includes(searchQuery.toLowerCase())) &&
           (!selectedCategory ||
             block.categories.some((cat) => cat.category === selectedCategory)),
@@ -118,6 +122,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               variant="ghost"
               size="icon"
               data-id="blocks-control-popover-trigger"
+              data-testid="blocks-control-blocks-button"
+              name="Blocks"
             >
               <IconToyBrick />
             </Button>
@@ -139,6 +145,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                 htmlFor="search-blocks"
                 className="whitespace-nowrap text-base font-bold text-black 2xl:text-xl"
                 data-id="blocks-control-label"
+                data-testid="blocks-control-blocks-label"
               >
                 Blocks
               </Label>
@@ -180,7 +187,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           </CardHeader>
           <CardContent className="overflow-scroll border-t p-0">
             <ScrollArea
-              className="h-[60vh] w-fit w-full"
+              className="h-[60vh]"
               data-id="blocks-control-scroll-area"
             >
               {getFilteredBlockList().map((block) => (
@@ -201,19 +208,30 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                       <span
                         className="block truncate pb-1 text-sm font-semibold"
                         data-id={`block-name-${block.id}`}
+                        data-testid={`block-name-${block.id}`}
                       >
-                        {beautifyString(block.name).replace(/ Block$/, "")}
+                        <TextRenderer
+                          value={beautifyString(block.name).replace(
+                            / Block$/,
+                            "",
+                          )}
+                          truncateLengthLimit={45}
+                        />
                       </span>
-                      <span className="block break-words text-xs font-normal text-gray-500">
-                        {/* Cap description at 100 characters max */}
-                        {block.description?.length > 100
-                          ? block.description.slice(0, 100) + "..."
-                          : block.description}
+                      <span
+                        className="block break-all text-xs font-normal text-gray-500"
+                        data-testid={`block-description-${block.id}`}
+                      >
+                        <TextRenderer
+                          value={block.description}
+                          truncateLengthLimit={165}
+                        />
                       </span>
                     </div>
                     <div
                       className="flex flex-shrink-0 items-center gap-1"
                       data-id={`block-tooltip-${block.id}`}
+                      data-testid={`block-add`}
                     >
                       <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1" />
                     </div>

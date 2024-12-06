@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import SchemaTooltip from "@/components/SchemaTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
@@ -63,9 +64,12 @@ export const providerIcons: Record<
   openweathermap: fallbackIcon,
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
+  slant3d: fallbackIcon,
   replicate: fallbackIcon,
+  fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  hubspot: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
@@ -236,12 +240,10 @@ export const CredentialsInput: FC<{
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
     return (
       <>
-        <span
-          className="text-m green mb-0 text-gray-900"
-          title={schema.description}
-        >
-          Credentials
-        </span>
+        <div className="mb-2 flex gap-1">
+          <span className="text-m green text-gray-900">Credentials</span>
+          <SchemaTooltip description={schema.description} />
+        </div>
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
             <Button onClick={handleOAuthLogin}>

@@ -11,6 +11,7 @@ on:
     paths:
       - ".github/workflows/platform-market-ci.yml"
       - "autogpt_platform/market/**"
+  merge_group:
 
 concurrency:
   group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}

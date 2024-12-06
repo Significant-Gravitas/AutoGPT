@@ -4,7 +4,7 @@ import { useSupabase } from "@/components/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext, useMemo } from "react";
+import { useCallback, useContext, useMemo, useState } from "react";
 import { FaSpinner } from "react-icons/fa";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
@@ -21,6 +21,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function PrivatePage() {
   const { user, isLoading, error } = useUser();
@@ -29,15 +39,40 @@ export default function PrivatePage() {
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
 
+  const [confirmationDialogState, setConfirmationDialogState] = useState<
+    | {
+        open: true;
+        message: string;
+        onConfirm: () => void;
+        onReject: () => void;
+      }
+    | { open: false }
+  >({ open: false });
+
   const removeCredentials = useCallback(
-    async (provider: CredentialsProviderName, id: string) => {
+    async (
+      provider: CredentialsProviderName,
+      id: string,
+      force: boolean = false,
+    ) => {
       if (!providers || !providers[provider]) {
         return;
       }
 
+      let result;
       try {
-        const { revoked } = await providers[provider].deleteCredentials(id);
-        if (revoked !== false) {
+        result = await providers[provider].deleteCredentials(id, force);
+      } catch (error: any) {
+        toast({
+          title: "Something went wrong when deleting credentials: " + error,
+          variant: "destructive",
+          duration: 2000,
+        });
+        setConfirmationDialogState({ open: false });
+        return;
+      }
+      if (result.deleted) {
+        if (result.revoked) {
           toast({
             title: "Credentials deleted",
             duration: 2000,
@@ -49,11 +84,13 @@ export default function PrivatePage() {
             duration: 3000,
           });
         }
-      } catch (error: any) {
-        toast({
-          title: "Something went wrong when deleting credentials: " + error,
-          variant: "destructive",
-          duration: 2000,
+        setConfirmationDialogState({ open: false });
+      } else if (result.need_confirmation) {
+        setConfirmationDialogState({
+          open: true,
+          message: result.message,
+          onConfirm: () => removeCredentials(provider, id, true),
+          onReject: () => setConfirmationDialogState({ open: false }),
         });
       }
     },
@@ -106,7 +143,9 @@ export default function PrivatePage() {
   return (
     <div className="mx-auto max-w-3xl md:py-8">
       <div className="flex items-center justify-between">
-        <p>Hello {user.email}</p>
+        <p>
+          Hello <span data-testid="profile-email">{user.email}</span>
+        </p>
         <Button onClick={() => supabase.auth.signOut()}>
           <LogOutIcon className="mr-1.5 size-4" />
           Log out
@@ -158,6 +197,36 @@ export default function PrivatePage() {
           ))}
         </TableBody>
       </Table>
+
+      <AlertDialog open={confirmationDialogState.open}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmationDialogState.open && confirmationDialogState.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() =>
+                confirmationDialogState.open &&
+                confirmationDialogState.onReject()
+              }
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() =>
+                confirmationDialogState.open &&
+                confirmationDialogState.onConfirm()
+              }
+            >
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
