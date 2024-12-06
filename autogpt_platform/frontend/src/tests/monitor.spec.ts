@@ -1,13 +1,16 @@
+import { TestInfo } from "@playwright/test";
 import { test } from "./fixtures";
 import { BuildPage } from "./pages/build.page";
 import { MonitorPage } from "./pages/monitor.page";
 import { v4 as uuidv4 } from "uuid";
+import * as fs from "fs/promises";
+// --8<-- [start:AttachAgentId]
 
 test.describe("Monitor", () => {
   let buildPage: BuildPage;
   let monitorPage: MonitorPage;
 
-  test.beforeEach(async ({ page, loginPage, testUser }, testInfo) => {
+  test.beforeEach(async ({ page, loginPage, testUser }, testInfo: TestInfo) => {
     buildPage = new BuildPage(page);
     monitorPage = new MonitorPage(page);
 
@@ -28,6 +31,20 @@ test.describe("Monitor", () => {
     await monitorPage.navbar.clickMonitorLink();
     await monitorPage.waitForPageLoad();
     await test.expect(monitorPage.isLoaded()).resolves.toBeTruthy();
+    testInfo.attach("agent-id", { body: id });
+  });
+  // --8<-- [end:AttachAgentId]
+
+  test.afterAll(async ({}) => {
+    // clear out the downloads folder
+    console.log(
+      `clearing out the downloads folder ${monitorPage.downloadsFolder}`,
+    );
+
+    await fs.rm(`${monitorPage.downloadsFolder}/monitor`, {
+      recursive: true,
+      force: true,
+    });
   });
 
   test("user can view agents", async ({ page }) => {
@@ -36,13 +53,34 @@ test.describe("Monitor", () => {
     await test.expect(agents.length).toBeGreaterThan(0);
   });
 
-  // test("user can export agents", async ({ page }) => {
-  //   // await monitorPage.selectAgent({
-  //   //   id: "test-agent-1",
-  //   //   name: "test-agent-1",
-  //   // });
-  //   await monitorPage.exportAgent();
-  // });
+  test("user can export agents", async ({ page }, testInfo: TestInfo) => {
+    // --8<-- [start:ReadAgentId]
+    if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
+      throw new Error("No agent id attached to the test");
+    }
+    const id = testInfo.attachments[0].body.toString();
+    // --8<-- [end:ReadAgentId]
+    const agents = await monitorPage.listAgents();
+    const downloadPromise = page.waitForEvent("download");
+    await monitorPage.exportToFile(
+      agents.find((a) => a.id === id) || agents[0],
+    );
+    const download = await downloadPromise;
+
+    // Wait for the download process to complete and save the downloaded file somewhere.
+    await download.saveAs(
+      `${monitorPage.downloadsFolder}/monitor/${download.suggestedFilename()}`,
+    );
+    console.log(`downloaded file to ${download.suggestedFilename()}`);
+    await test.expect(download.suggestedFilename()).toBeDefined();
+    // test-agent-uuid-v1.json
+    if (id) {
+      await test.expect(download.suggestedFilename()).toContain(id);
+    }
+    await test.expect(download.suggestedFilename()).toContain("test-agent-");
+    await test.expect(download.suggestedFilename()).toContain("v1.json");
+  });
+
   test("user can view runs", async ({ page }) => {
     const runs = await monitorPage.listRuns();
     console.log(runs);
