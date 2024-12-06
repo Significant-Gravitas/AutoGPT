@@ -6,11 +6,13 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
+      - "autogpt_platform/autogpt_libs/**"
   pull_request:
     branches: [master, dev, release-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
+      - "autogpt_platform/autogpt_libs/**"
   merge_group:
 
 concurrency:
@@ -75,6 +77,17 @@ jobs:
           if [ "${{ runner.os }}" = "macOS" ]; then
             PATH="$HOME/.local/bin:$PATH"
             echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Check poetry.lock
+        run: |
+          poetry lock --no-update
+
+          if ! git diff --quiet poetry.lock; then
+            echo "Error: poetry.lock not up to date."
+            echo
+            git diff poetry.lock
+            exit 1
           fi
 
       - name: Install Python dependencies
