@@ -48,6 +48,7 @@ export const providerIcons: Record<
   React.FC<{ className?: string }>
 > = {
   anthropic: fallbackIcon,
+  e2b: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
   groq: fallbackIcon,
