@@ -14,7 +14,7 @@ from backend.data.model import (
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
-    provider="e2b_sandbox",
+    provider="e2b",
     api_key=SecretStr("mock-e2b-api-key"),
     title="Mock E2B API key",
     expires_at=None,
@@ -39,12 +39,12 @@ class CodeExecutionBlock(Block):
     # TODO : Add support to upload and download files
     # Currently, You can customized the CPU and Memory, only by creating a pre customized sandbox template
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[
-            Literal["e2b"], Literal["api_key"]
-        ] = CredentialsField(
-            provider="e2b",
-            supported_credential_types={"api_key"},
-            description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
+        credentials: CredentialsMetaInput[Literal["e2b"], Literal["api_key"]] = (
+            CredentialsField(
+                provider="e2b",
+                supported_credential_types={"api_key"},
+                description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
+            )
         )
 
         # Todo : Option to run commond in background
