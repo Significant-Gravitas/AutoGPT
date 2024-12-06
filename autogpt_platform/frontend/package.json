@@ -57,7 +57,6 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
     "elliptic": "6.6.1",
-    "launchdarkly-js-client-sdk": "^3.5.0",
     "launchdarkly-react-client-sdk": "^3.6.0",
     "lucide-react": "^0.460.0",
     "moment": "^2.30.1",
