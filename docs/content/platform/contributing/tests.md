@@ -2,6 +2,10 @@
 
 We use [Playwright](https://playwright.dev/) for our testing framework.
 
+## Before you start
+
+Almost all of the tests require that you are running the frontend and backend servers. You will hit strange and hard to debug errors if you don't have them running because the tests will try to interact with the application when it's not running in an interactable state.
+
 ## Running the tests
 
 To run the tests, you can use the following commands:
@@ -142,6 +146,19 @@ A good test suite will have a healthy mix of focused and non-focused tests.
 12. The `await buildPage.closeBlocksPanel();` is used to close the blocks panel on the build page.
 13. The `await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();` is used to check that the block has been added to the build page.
 
+### Passing information between tests
+
+You can pass information between tests using the `testInfo` object. This is useful for things like passing the id of an agent between beforeAll so that you can have a shared setup for multiple tests.
+
+```typescript title="frontend/src/tests/monitor.spec.ts"
+--8<-- "autogpt_platform/frontend/src/tests/monitor.spec.ts:AttachAgentId"
+
+  test("test can read the agent id", async ({ page }, testInfo) => {
+    --8<-- "autogpt_platform/frontend/src/tests/monitor.spec.ts:ReadAgentId"
+    /// ... Do something with the agent id here
+  });
+});
+```
 
 ## See Also
 
