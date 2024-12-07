@@ -5,9 +5,9 @@ import { Separator } from "@/components/ui/separator";
 export default function StoreLoadingSkeleton() {
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
-      <main className="px-4">
+      <main className="flex flex-col gap-12 px-4 pt-8">
         {/* Hero Section Skeleton */}
-        <div className="py-8">
+        <div className="my-8 flex flex-col items-center">
           <Skeleton className="mb-4 h-12 w-3/4" />
           <Skeleton className="mb-8 h-6 w-1/2" />
         </div>
