@@ -1,3 +1,4 @@
+"use client";
 import { AutoGPTServerAPI } from "./client";
 import React, { createContext, useMemo } from "react";
 
