@@ -133,7 +133,6 @@ def SchemaField(
             "secret": secret,
             "advanced": advanced,
             "hidden": hidden,
-            "isMultiSelect": is_multi_select,
         }.items()
         if v is not None
     }
