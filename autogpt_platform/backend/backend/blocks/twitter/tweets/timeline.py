@@ -20,13 +20,13 @@ from backend.blocks.twitter._serializer import (
 )
 from backend.blocks.twitter._types import (
     TweetExpansionInputs,
-    TweetExpansions,
-    TweetFields,
-    TweetMediaFields,
-    TweetPlaceFields,
-    TweetPollFields,
+    ExpansionFilter,
+    TweetFieldsFilter,
+    TweetMediaFieldsFilter,
+    TweetPlaceFieldsFilter,
+    TweetPollFieldsFilter,
     TweetTimeWindowInputs,
-    TweetUserFields,
+    TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -149,12 +149,12 @@ class TwitterGetUserMentionsBlock(Block):
         until_id: str,
         sort_order: str,
         pagination: str,
-        expansions: list[TweetExpansions],
-        media_fields: list[TweetMediaFields],
-        place_fields: list[TweetPlaceFields],
-        poll_fields: list[TweetPollFields],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: ExpansionFilter,
+        media_fields: TweetMediaFieldsFilter,
+        place_fields: TweetPlaceFieldsFilter,
+        poll_fields: TweetPollFieldsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -340,12 +340,6 @@ class TwitterGetHomeTimelineBlock(Block):
                 "until_id": "",
                 "sort_order": "",
                 "pagination_token": "",
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -388,12 +382,12 @@ class TwitterGetHomeTimelineBlock(Block):
         until_id: str,
         sort_order: str,
         pagination: str,
-        expansions: list[TweetExpansions],
-        media_fields: list[TweetMediaFields],
-        place_fields: list[TweetPlaceFields],
-        poll_fields: list[TweetPollFields],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: ExpansionFilter,
+        media_fields: TweetMediaFieldsFilter,
+        place_fields: TweetPlaceFieldsFilter,
+        poll_fields: TweetPollFieldsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -632,12 +626,12 @@ class TwitterGetUserTweetsBlock(Block):
         until_id: str,
         sort_order: str,
         pagination: str,
-        expansions: list[TweetExpansions],
-        media_fields: list[TweetMediaFields],
-        place_fields: list[TweetPlaceFields],
-        poll_fields: list[TweetPollFields],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: ExpansionFilter,
+        media_fields: TweetMediaFieldsFilter,
+        place_fields: TweetPlaceFieldsFilter,
+        poll_fields: TweetPollFieldsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
