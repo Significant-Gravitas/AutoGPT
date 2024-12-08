@@ -861,23 +861,6 @@ const NodeArrayInput: FC<{
   entries ??= schema.default;
   if (!entries || !Array.isArray(entries)) entries = [];
 
-  const isMultiSelectEnum =
-    schema.items && isStringSubSchema(schema.items) && schema.items.enum;
-
-  if (isMultiSelectEnum) {
-    return (
-      <NodeMultiSelectInput
-        selfKey={selfKey}
-        schema={schema.items! as BlockIOStringSubSchema}
-        value={entries}
-        error={errors[selfKey]}
-        handleInputChange={handleInputChange}
-        className={className}
-        displayName={displayName || beautifyString(selfKey)}
-      />
-    );
-  }
-
   const prefix = `${selfKey}_$_`;
   connections
     .filter((c) => c.targetHandle.startsWith(prefix) && c.target === nodeId)

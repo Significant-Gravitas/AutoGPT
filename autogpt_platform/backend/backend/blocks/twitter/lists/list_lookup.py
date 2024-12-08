@@ -17,9 +17,9 @@ from backend.blocks.twitter._serializer import (
 )
 from backend.blocks.twitter._types import (
     ListExpansionInputs,
-    ListExpansions,
-    ListFields,
-    TweetUserFields,
+    ListExpansionsFilter,
+    ListFieldsFilter,
+    TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -94,9 +94,9 @@ class TwitterGetListBlock(Block):
     def get_list(
         credentials: TwitterCredentials,
         list_id: str,
-        expansions: list[ListExpansions],
-        user_fields: list[TweetUserFields],
-        list_fields: list[ListFields],
+        expansions: ListExpansionsFilter,
+        user_fields: TweetUserFieldsFilter,
+        list_fields: ListFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -252,9 +252,9 @@ class TwitterGetOwnedListsBlock(Block):
         user_id: str,
         max_results: int,
         pagination_token: str,
-        expansions: list[ListExpansions],
-        user_fields: list[TweetUserFields],
-        list_fields: list[ListFields],
+        expansions: ListExpansionsFilter,
+        user_fields: TweetUserFieldsFilter,
+        list_fields: ListFieldsFilter,
     ):
         try:
             client = tweepy.Client(

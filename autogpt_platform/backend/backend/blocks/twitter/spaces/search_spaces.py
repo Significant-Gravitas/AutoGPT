@@ -17,10 +17,10 @@ from backend.blocks.twitter._serializer import (
 )
 from backend.blocks.twitter._types import (
     SpaceExpansionInputs,
-    SpaceExpansions,
-    SpaceFields,
-    SpaceStates,
-    TweetUserFields,
+    SpaceExpansionsFilter,
+    SpaceFieldsFilter,
+    SpaceStatesFilter,
+    TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -49,10 +49,10 @@ class TwitterSearchSpacesBlock(Block):
             advanced=True,
         )
 
-        state: SpaceStates = SchemaField(
+        state: SpaceStatesFilter = SchemaField(
             description="Type of Spaces to return (live, scheduled, or all)",
             placeholder="Enter state filter",
-            default=SpaceStates.ALL,
+            default=SpaceStatesFilter.all,
         )
 
     class Output(BlockSchema):
@@ -112,10 +112,10 @@ class TwitterSearchSpacesBlock(Block):
         credentials: TwitterCredentials,
         query: str,
         max_results: int,
-        state: SpaceStates,
-        expansions: list[SpaceExpansions],
-        space_fields: list[SpaceFields],
-        user_fields: list[TweetUserFields],
+        state: SpaceStatesFilter,
+        expansions: SpaceExpansionsFilter,
+        space_fields: SpaceFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
