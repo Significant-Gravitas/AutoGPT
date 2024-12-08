@@ -29,6 +29,13 @@ async def connect():
     if not prisma.is_connected():
         raise ConnectionError("Failed to connect to Prisma.")
 
+    # Connection acquired from a pool like Supabase somehow still possibly allows
+    # the db client obtains a connection but still reject query connection afterward.
+    try:
+        await prisma.execute_raw("SELECT 1")
+    except Exception as e:
+        raise ConnectionError("Failed to connect to Prisma.") from e
+
 
 @conn_retry("Prisma", "Releasing connection")
 async def disconnect():

@@ -90,7 +90,7 @@ To specify the file use `--component-config-file` CLI option, for example to use
 
 !!! note
     If you're using Docker to run AutoGPT, you need to mount or copy the configuration file to the container.
-    See [Docker Guide](../../AutoGPT/setup/docker.md) for more information.
+    See [Docker Guide](../../classic/setup/docker.md) for more information.
 
 ### Example JSON configuration
 

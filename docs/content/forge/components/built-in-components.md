@@ -153,7 +153,7 @@ It is possible to use your own self-hosted Stable Diffusion WebUI with AutoGPT. 
 
 ## `WebSearchComponent`
 
-Allows agent to search the web. Google credentials aren't required for DuckDuckGo. [Instructions how to set up Google API key](../../AutoGPT/configuration/search.md)
+Allows agent to search the web. Google credentials aren't required for DuckDuckGo. [Instructions how to set up Google API key](../../classic/configuration/search.md)
 
 ### `WebSearchConfiguration`
 
