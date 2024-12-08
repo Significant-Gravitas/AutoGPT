@@ -1,3 +1,4 @@
+from enum import Enum
 from backend.data.block import BlockSchema
 from backend.data.model import SchemaField
 from pydantic import BaseModel
