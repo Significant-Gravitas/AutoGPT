@@ -16,14 +16,14 @@ from backend.blocks.twitter._serializer import (
     ResponseDataSerializer,
 )
 from backend.blocks.twitter._types import (
-    TweetExcludes,
+    TweetExcludesFilter,
     TweetExpansionInputs,
-    TweetExpansions,
-    TweetFields,
-    TweetMediaFields,
-    TweetPlaceFields,
-    TweetPollFields,
-    TweetUserFields,
+    ExpansionFilter,
+    TweetFieldsFilter,
+    TweetMediaFieldsFilter,
+    TweetPlaceFieldsFilter,
+    TweetPollFieldsFilter,
+    TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -52,19 +52,17 @@ class TwitterGetQuoteTweetsBlock(Block):
             advanced=True,
         )
 
-        exclude: list[TweetExcludes] = SchemaField(
+        exclude: TweetExcludesFilter = SchemaField(
             description="Types of tweets to exclude",
             required=False,
             advanced=True,
-            enum = TweetExcludes,
-            default=[],
         )
 
         pagination_token: str = SchemaField(
             description="Token for pagination",
             required=False,
             advanced=True,
-            default="",
+            default = ""
         )
 
     class Output(BlockSchema):
@@ -95,15 +93,8 @@ class TwitterGetQuoteTweetsBlock(Block):
             test_input={
                 "tweet_id": "1234567890",
                 "max_results": 10,
-                "exclude": [],
                 "pagination_token": "",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -137,14 +128,14 @@ class TwitterGetQuoteTweetsBlock(Block):
         credentials: TwitterCredentials,
         tweet_id: str,
         max_results: int,
-        exclude: list[TweetExcludes],
+        exclude: TweetExcludesFilter,
         pagination_token: str,
-        expansions: list[TweetExpansions],
-        media_fields: list[TweetMediaFields],
-        place_fields: list[TweetPlaceFields],
-        poll_fields: list[TweetPollFields],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: ExpansionFilter,
+        media_fields: TweetMediaFieldsFilter,
+        place_fields: TweetPlaceFieldsFilter,
+        poll_fields: TweetPollFieldsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -157,7 +148,7 @@ class TwitterGetQuoteTweetsBlock(Block):
                 "pagination_token": (
                     None if pagination_token == "" else pagination_token
                 ),
-                "exclude": None if exclude == [] else exclude,
+                "exclude": None if exclude == TweetExcludesFilter() else exclude,
                 "user_auth": False,
             }
 

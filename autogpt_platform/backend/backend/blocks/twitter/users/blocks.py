@@ -13,10 +13,10 @@ from backend.blocks.twitter._auth import (
 from backend.blocks.twitter._builders import UserExpansionsBuilder
 from backend.blocks.twitter._serializer import IncludesSerializer
 from backend.blocks.twitter._types import (
-    TweetFields,
-    TweetUserFields,
+    TweetFieldsFilter,
+    TweetUserFieldsFilter,
     UserExpansionInputs,
-    UserExpansions,
+    UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -158,9 +158,9 @@ class TwitterGetBlockedUsersBlock(Block):
         credentials: TwitterCredentials,
         max_results: int,
         pagination_token: str,
-        expansions: list[UserExpansions],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: UserExpansionsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(

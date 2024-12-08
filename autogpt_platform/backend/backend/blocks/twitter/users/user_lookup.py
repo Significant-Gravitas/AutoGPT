@@ -16,10 +16,10 @@ from backend.blocks.twitter._serializer import (
     ResponseDataSerializer,
 )
 from backend.blocks.twitter._types import (
-    TweetFields,
-    TweetUserFields,
+    TweetFieldsFilter,
+    TweetUserFieldsFilter,
     UserExpansionInputs,
-    UserExpansions,
+    UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -116,9 +116,9 @@ class TwitterGetUserBlock(Block):
         credentials: TwitterCredentials,
         user_id: str,
         username: str,
-        expansions: list[UserExpansions],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: UserExpansionsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -283,9 +283,9 @@ class TwitterGetUsersBlock(Block):
         credentials: TwitterCredentials,
         user_ids: list[str],
         usernames: list[str],
-        expansions: list[UserExpansions],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: UserExpansionsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(

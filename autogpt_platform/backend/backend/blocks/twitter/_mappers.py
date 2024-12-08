@@ -2,15 +2,15 @@
 
 # Tweet Expansions
 EXPANSION_FRONTEND_TO_BACKEND_MAPPING = {
-    "attachments_poll_ids": "attachments.poll_ids",
-    "attachments_media_keys": "attachments.media_keys",
-    "author_id": "author_id",
-    "edit_history_tweet_ids": "edit_history_tweet_ids",
-    "entities_mentions_username": "entities.mentions.username",
-    "geo_place_id": "geo.place_id",
-    "in_reply_to_user_id": "in_reply_to_user_id",
-    "referenced_tweets_id": "referenced_tweets.id",
-    "referenced_tweets_id_author_id": "referenced_tweets.id.author_id",
+    "Poll_IDs": "attachments.poll_ids",
+    "Media_Keys": "attachments.media_keys",
+    "Author_User_ID": "author_id",
+    "Edit_History_Tweet_IDs": "edit_history_tweet_ids",
+    "Mentioned_Usernames": "entities.mentions.username",
+    "Place_ID": "geo.place_id",
+    "Reply_To_User_ID": "in_reply_to_user_id",
+    "Referenced_Tweet_ID": "referenced_tweets.id",
+    "Referenced_Tweet_Author_ID": "referenced_tweets.id.author_id",
 }
 
 
@@ -23,9 +23,9 @@ def get_backend_expansion(frontend_key: str) -> str:
 
 # TweetReplySettings
 REPLY_SETTINGS_FRONTEND_TO_BACKEND_MAPPING = {
-    "mentioned_users": "mentionedUsers",
-    "following": "following",
-    "all_users": "all",
+    "Mentioned_Users_Only": "mentionedUsers",
+    "Following_Users_Only": "following",
+    "All_Users": "all",
 }
 
 
@@ -38,22 +38,22 @@ def get_backend_reply_setting(frontend_key: str) -> str:
 
 
 USER_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
-    "created_at": "created_at",
-    "description": "description",
-    "entities": "entities",
-    "id": "id",
-    "location": "location",
-    "most_recent_tweet_id": "most_recent_tweet_id",
-    "name_user": "name",
-    "pinned_tweet_id": "pinned_tweet_id",
-    "profile_image_url": "profile_image_url",
-    "protected": "protected",
-    "public_metrics": "public_metrics",
-    "url": "url",
-    "username": "username",
-    "verified": "verified",
-    "verified_type": "verified_type",
-    "withheld": "withheld",
+    "Account_Creation_Date": "created_at",
+    "User_Bio": "description",
+    "User_Entities": "entities",
+    "User_ID": "id",
+    "User_Location": "location",
+    "Latest_Tweet_ID": "most_recent_tweet_id",
+    "Display_Name": "name",
+    "Pinned_Tweet_ID": "pinned_tweet_id",
+    "Profile_Picture_URL": "profile_image_url",
+    "Is_Protected_Account": "protected",
+    "Account_Statistics": "public_metrics",
+    "Profile_URL": "url",
+    "Username": "username",
+    "Is_Verified": "verified",
+    "Verification_Type": "verified_type",
+    "Content_Withholding_Info": "withheld",
 }
 
 
@@ -66,24 +66,24 @@ def get_backend_user_field(frontend_key: str) -> str:
 
 # TweetFields
 FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
-    "attachments": "attachments",
-    "author_id": "author_id",
-    "context_annotations": "context_annotations",
-    "conversation_id": "conversation_id",
-    "created_at": "created_at",
-    "edit_controls": "edit_controls",
-    "entities": "entities",
-    "geo": "geo",
-    "id": "id",
-    "in_reply_to_user_id": "in_reply_to_user_id",
-    "lang": "lang",
-    "public_metrics": "public_metrics",
-    "possibly_sensitive": "possibly_sensitive",
-    "referenced_tweets": "referenced_tweets",
-    "reply_settings": "reply_settings",
-    "source": "source",
-    "text": "text",
-    "withheld": "withheld",
+    "Tweet_Attachments": "attachments",
+    "Author_ID": "author_id",
+    "Context_Annotations": "context_annotations",
+    "Conversation_ID": "conversation_id",
+    "Creation_Time": "created_at",
+    "Edit_Controls": "edit_controls",
+    "Tweet_Entities": "entities",
+    "Geographic_Location": "geo",
+    "Tweet_ID": "id",
+    "Reply_To_User_ID": "in_reply_to_user_id",
+    "Language": "lang",
+    "Public_Metrics": "public_metrics",
+    "Sensitive_Content_Flag": "possibly_sensitive",
+    "Referenced_Tweets": "referenced_tweets",
+    "Reply_Settings": "reply_settings",
+    "Tweet_Source": "source",
+    "Tweet_Text": "text",
+    "Withheld_Content": "withheld",
 }
 
 
@@ -96,11 +96,11 @@ def get_backend_field(frontend_key: str) -> str:
 
 # TweetPollFields
 POLL_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
-    "duration_minutes": "duration_minutes",
-    "end_datetime": "end_datetime",
-    "id": "id",
-    "options": "options",
-    "voting_status": "voting_status",
+    "Duration_Minutes": "duration_minutes",
+    "End_DateTime": "end_datetime",
+    "Poll_ID": "id",
+    "Poll_Options": "options",
+    "Voting_Status": "voting_status",
 }
 
 
@@ -112,14 +112,14 @@ def get_backend_poll_field(frontend_key: str) -> str:
 
 
 PLACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
-    "contained_within": "contained_within",
-    "country": "country",
-    "country_code": "country_code",
-    "full_name": "full_name",
-    "geo": "geo",
-    "id": "id",
-    "place_name": "name",
-    "place_type": "place_type",
+    "Contained_Within_Places": "contained_within",
+    "Country": "country",
+    "Country_Code": "country_code",
+    "Full_Location_Name": "full_name",
+    "Geographic_Coordinates": "geo",
+    "Place_ID": "id",
+    "Place_Name": "name",
+    "Place_Type": "place_type",
 }
 
 
@@ -132,19 +132,19 @@ def get_backend_place_field(frontend_key: str) -> str:
 
 # TweetMediaFields
 MEDIA_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
-    "duration_ms": "duration_ms",
-    "height": "height",
-    "media_key": "media_key",
-    "preview_image_url": "preview_image_url",
-    "type": "type",
-    "url": "url",
-    "width": "width",
-    "public_metrics": "public_metrics",
-    "non_public_metrics": "non_public_metrics",
-    "organic_metrics": "organic_metrics",
-    "promoted_metrics": "promoted_metrics",
-    "alt_text": "alt_text",
-    "variants": "variants",
+    "Duration_in_Milliseconds": "duration_ms",
+    "Height": "height",
+    "Media_Key": "media_key",
+    "Preview_Image_URL": "preview_image_url",
+    "Media_Type": "type",
+    "Media_URL": "url",
+    "Width": "width",
+    "Public_Metrics": "public_metrics",
+    "Non_Public_Metrics": "non_public_metrics",
+    "Organic_Metrics": "organic_metrics",
+    "Promoted_Metrics": "promoted_metrics",
+    "Alternative_Text": "alt_text",
+    "Media_Variants": "variants",
 }
 
 
@@ -159,11 +159,11 @@ def get_backend_media_field(frontend_key: str) -> str:
 
 # SpaceExpansions
 EXPANSION_FRONTEND_TO_BACKEND_MAPPING_SPACE = {
-    "invited_user_ids": "invited_user_ids",
-    "speaker_ids": "speaker_ids",
-    "creator_id": "creator_id",
-    "host_ids": "host_ids",
-    "topic_ids": "topic_ids",
+    "Invited_Users": "invited_user_ids",
+    "Speakers": "speaker_ids",
+    "Creator": "creator_id",
+    "Hosts": "host_ids",
+    "Topics": "topic_ids",
 }
 
 
@@ -176,22 +176,22 @@ def get_backend_space_expansion(frontend_key: str) -> str:
 
 # SpaceFields
 SPACE_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
-    "id": "id",
-    "state": "state",
-    "created_at": "created_at",
-    "ended_at": "ended_at",
-    "host_ids": "host_ids",
-    "lang": "lang",
-    "is_ticketed": "is_ticketed",
-    "invited_user_ids": "invited_user_ids",
-    "participant_count": "participant_count",
-    "subscriber_count": "subscriber_count",
-    "scheduled_start": "scheduled_start",
-    "speaker_ids": "speaker_ids",
-    "started_at": "started_at",
-    "title_": "title",
-    "topic_ids": "topic_ids",
-    "updated_at": "updated_at",
+    "Space_ID": "id",
+    "Space_State": "state",
+    "Creation_Time": "created_at",
+    "End_Time": "ended_at",
+    "Host_User_IDs": "host_ids",
+    "Language": "lang",
+    "Is_Ticketed": "is_ticketed",
+    "Invited_User_IDs": "invited_user_ids",
+    "Participant_Count": "participant_count",
+    "Subscriber_Count": "subscriber_count",
+    "Scheduled_Start_Time": "scheduled_start",
+    "Speaker_User_IDs": "speaker_ids",
+    "Start_Time": "started_at",
+    "Space_Title": "title",
+    "Topic_IDs": "topic_ids",
+    "Last_Updated_Time": "updated_at",
 }
 
 
@@ -205,7 +205,7 @@ def get_backend_space_field(frontend_key: str) -> str:
 # -------------- List Expansions -----------------
 
 # ListExpansions
-LIST_EXPANSION_FRONTEND_TO_BACKEND_MAPPING = {"owner_id": "owner_id"}
+LIST_EXPANSION_FRONTEND_TO_BACKEND_MAPPING = {"List_Owner_ID": "owner_id"}
 
 
 def get_backend_list_expansion(frontend_key: str) -> str:
@@ -216,14 +216,14 @@ def get_backend_list_expansion(frontend_key: str) -> str:
 
 
 LIST_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
-    "id": "id",
-    "list_name": "name",
-    "created_at": "created_at",
-    "description": "description",
-    "follower_count": "follower_count",
-    "member_count": "member_count",
-    "private": "private",
-    "owner_id": "owner_id",
+    "List_ID": "id",
+    "List_Name": "name",
+    "Creation_Date": "created_at",
+    "Description": "description",
+    "Follower_Count": "follower_count",
+    "Member_Count": "member_count",
+    "Is_Private": "private",
+    "Owner_ID": "owner_id",
 }
 
 

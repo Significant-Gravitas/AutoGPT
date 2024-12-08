@@ -20,14 +20,14 @@ from backend.blocks.twitter._serializer import (
 )
 from backend.blocks.twitter._types import (
     TweetExpansionInputs,
-    TweetExpansions,
-    TweetFields,
-    TweetMediaFields,
-    TweetPlaceFields,
-    TweetPollFields,
-    TweetUserFields,
+    ExpansionFilter,
+    TweetFieldsFilter,
+    TweetMediaFieldsFilter,
+    TweetPlaceFieldsFilter,
+    TweetPollFieldsFilter,
+    TweetUserFieldsFilter,
     UserExpansionInputs,
-    UserExpansions,
+    UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -192,9 +192,9 @@ class TwitterGetLikingUsersBlock(Block):
         tweet_id: str,
         max_results: int,
         pagination_token: str,
-        expansions: list[UserExpansions],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: UserExpansionsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -386,12 +386,12 @@ class TwitterGetLikedTweetsBlock(Block):
         user_id: str,
         max_results: int,
         pagination_token: str,
-        expansions: list[TweetExpansions],
-        media_fields: list[TweetMediaFields],
-        place_fields: list[TweetPlaceFields],
-        poll_fields: list[TweetPollFields],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: ExpansionFilter,
+        media_fields: TweetMediaFieldsFilter,
+        place_fields: TweetPlaceFieldsFilter,
+        poll_fields: TweetPollFieldsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(

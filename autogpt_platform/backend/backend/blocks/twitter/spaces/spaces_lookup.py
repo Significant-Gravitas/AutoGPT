@@ -21,17 +21,17 @@ from backend.blocks.twitter._serializer import (
 )
 from backend.blocks.twitter._types import (
     SpaceExpansionInputs,
-    SpaceExpansions,
-    SpaceFields,
+    SpaceExpansionsFilter,
+    SpaceFieldsFilter,
     TweetExpansionInputs,
-    TweetExpansions,
-    TweetFields,
-    TweetMediaFields,
-    TweetPlaceFields,
-    TweetPollFields,
-    TweetUserFields,
+    ExpansionFilter,
+    TweetFieldsFilter,
+    TweetMediaFieldsFilter,
+    TweetPlaceFieldsFilter,
+    TweetPollFieldsFilter,
+    TweetUserFieldsFilter,
     UserExpansionInputs,
-    UserExpansions,
+    UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -125,9 +125,9 @@ class TwitterGetSpacesBlock(Block):
         credentials: TwitterCredentials,
         space_ids: list[str],
         user_ids: list[str],
-        expansions: list[SpaceExpansions],
-        space_fields: list[SpaceFields],
-        user_fields: list[TweetUserFields],
+        expansions: SpaceExpansionsFilter,
+        space_fields: SpaceFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -270,9 +270,9 @@ class TwitterGetSpaceByIdBlock(Block):
     def get_space(
         credentials: TwitterCredentials,
         space_id: str,
-        expansions: list[SpaceExpansions],
-        space_fields: list[SpaceFields],
-        user_fields: list[TweetUserFields],
+        expansions: SpaceExpansionsFilter,
+        space_fields: SpaceFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -418,8 +418,8 @@ class TwitterGetSpaceBuyersBlock(Block):
     def get_space_buyers(
         credentials: TwitterCredentials,
         space_id: str,
-        expansions: list[UserExpansions],
-        user_fields: list[TweetUserFields],
+        expansions: UserExpansionsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -549,12 +549,12 @@ class TwitterGetSpaceTweetsBlock(Block):
     def get_space_tweets(
         credentials: TwitterCredentials,
         space_id: str,
-        expansions: list[TweetExpansions],
-        media_fields: list[TweetMediaFields],
-        place_fields: list[TweetPlaceFields],
-        poll_fields: list[TweetPollFields],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: ExpansionFilter,
+        media_fields: TweetMediaFieldsFilter,
+        place_fields: TweetPlaceFieldsFilter,
+        poll_fields: TweetPollFieldsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(

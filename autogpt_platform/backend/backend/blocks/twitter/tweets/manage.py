@@ -21,15 +21,15 @@ from backend.blocks.twitter._serializer import (
     ResponseDataSerializer,
 )
 from backend.blocks.twitter._types import (
+    ExpansionFilter,
     TweetExpansionInputs,
-    TweetExpansions,
-    TweetFields,
-    TweetMediaFields,
-    TweetPlaceFields,
-    TweetPollFields,
-    TweetReplySettings,
+    TweetFieldsFilter,
+    TweetMediaFieldsFilter,
+    TweetPlaceFieldsFilter,
+    TweetPollFieldsFilter,
     TweetTimeWindowInputs,
-    TweetUserFields,
+    TweetUserFieldsFilter,
+    TweetReplySettingsFilter
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -116,11 +116,11 @@ class TwitterPostTweetBlock(Block):
             advanced=True,
         )
 
-        reply_settings: TweetReplySettings = SchemaField(
+        reply_settings: TweetReplySettingsFilter = SchemaField(
             description="Who can reply to the Tweet (mentionedUsers or following)",
             placeholder="Enter reply settings",
             advanced=True,
-            default=TweetReplySettings.all_users,
+            default=TweetReplySettingsFilter(All_Users=True),
         )
 
     class Output(BlockSchema):
@@ -148,7 +148,7 @@ class TwitterPostTweetBlock(Block):
                 "quote_tweet_id": "",
                 "exclude_reply_user_ids": [],
                 "in_reply_to_tweet_id": "",
-                "reply_settings": TweetReplySettings.all_users,
+                "reply_settings": TweetReplySettingsFilter(All_Users=True),
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -177,7 +177,7 @@ class TwitterPostTweetBlock(Block):
         quote_tweet_id: str,
         exclude_reply_user_ids: list,
         in_reply_to_tweet_id: str,
-        reply_settings: TweetReplySettings,
+        reply_settings: TweetReplySettingsFilter,
     ):
         try:
             client = tweepy.Client(
@@ -444,12 +444,12 @@ class TwitterSearchRecentTweetsBlock(Block):
         until_id: str,
         sort_order: str,
         pagination: str,
-        expansions: list[TweetExpansions],
-        media_fields: list[TweetMediaFields],
-        place_fields: list[TweetPlaceFields],
-        poll_fields: list[TweetPollFields],
-        tweet_fields: list[TweetFields],
-        user_fields: list[TweetUserFields],
+        expansions: ExpansionFilter,
+        media_fields: TweetMediaFieldsFilter,
+        place_fields: TweetPlaceFieldsFilter,
+        poll_fields: TweetPollFieldsFilter,
+        tweet_fields: TweetFieldsFilter,
+        user_fields: TweetUserFieldsFilter,
     ):
         try:
             client = tweepy.Client(
