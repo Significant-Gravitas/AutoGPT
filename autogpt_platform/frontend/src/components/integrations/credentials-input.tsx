@@ -79,7 +79,6 @@ export const providerIcons: Record<
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
   hubspot: fallbackIcon,
-  twitter: FaTwitter,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
