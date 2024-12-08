@@ -293,7 +293,6 @@ class GraphModel(Graph):
                     ) or (
                         "default" in field_schema
                         and field_schema["default"] is not None
-                        and str(field_schema["default"]).strip() != ""
                     )
                     must_have_value = field_name in required_fields
 

@@ -414,11 +414,8 @@ export default function useAgentGraph(
 
             // Check if dependent field has value
             const hasValue =
-              (inputData[key] != null &&
-                String(inputData[key]).trim() !== "") ||
-              ("default" in schema &&
-                schema.default != null &&
-                String(schema.default).trim() !== "");
+              inputData[key] != null ||
+              ("default" in schema && schema.default != null);
 
             const mustHaveValue = node.data.inputSchema.required?.includes(key);
 
