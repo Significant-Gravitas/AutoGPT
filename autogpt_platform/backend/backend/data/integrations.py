@@ -94,7 +94,7 @@ async def get_all_webhooks_by_creds(credentials_id: str) -> list[Webhook]:
     return [Webhook.from_db(webhook) for webhook in webhooks]
 
 
-async def find_webhook(
+async def find_webhook_by_credentials_and_props(
     credentials_id: str, webhook_type: str, resource: str, events: list[str]
 ) -> Webhook | None:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
@@ -104,6 +104,22 @@ async def find_webhook(
             "webhookType": webhook_type,
             "resource": resource,
             "events": {"has_every": events},
+        },
+        include=INTEGRATION_WEBHOOK_INCLUDE,
+    )
+    return Webhook.from_db(webhook) if webhook else None
+
+
+async def find_webhook_by_graph_and_props(
+    graph_id: str, provider: str, webhook_type: str, events: list[str]
+) -> Webhook | None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    webhook = await IntegrationWebhook.prisma().find_first(
+        where={
+            "provider": provider,
+            "webhookType": webhook_type,
+            "events": {"has_every": events},
+            "AgentNodes": {"some": {"graphId": graph_id}},
         },
         include=INTEGRATION_WEBHOOK_INCLUDE,
     )

@@ -26,7 +26,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
 
     WebhookType: WT
 
-    async def get_suitable_webhook(
+    async def get_suitable_auto_webhook(
         self,
         user_id: str,
         credentials: Credentials,
@@ -39,12 +39,30 @@ class BaseWebhooksManager(ABC, Generic[WT]):
                 "PLATFORM_BASE_URL must be set to use Webhook functionality"
             )
 
-        if webhook := await integrations.find_webhook(
+        if webhook := await integrations.find_webhook_by_credentials_and_props(
             credentials.id, webhook_type, resource, events
         ):
             return webhook
         return await self._create_webhook(
-            user_id, webhook_type, resource, events, credentials
+            user_id, webhook_type, events, resource, credentials
+        )
+
+    async def get_manual_webhook(
+        self,
+        user_id: str,
+        graph_id: str,
+        webhook_type: WT,
+        events: list[str],
+    ):
+        if current_webhook := await integrations.find_webhook_by_graph_and_props(
+            graph_id, self.PROVIDER_NAME, webhook_type, events
+        ):
+            return current_webhook
+        return await self._create_webhook(
+            user_id,
+            webhook_type,
+            events,
+            register=False,
         )
 
     async def prune_webhook_if_dangling(
@@ -137,8 +155,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         self,
         user_id: str,
         webhook_type: WT,
-        resource: str,
         events: list[str],
+        resource: str = "",
         credentials: Optional[Credentials] = None,
         register: bool = True,
     ) -> integrations.Webhook:
