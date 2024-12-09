@@ -75,12 +75,9 @@ export const FlowRunInfo: React.FC<
 
   // Fetch graph and execution data
   useEffect(() => {
-    if (!isOutputOpen || blockOutputs.length > 0) {
-      return;
-    }
-
+    if (!isOutputOpen) return;
     fetchBlockResults();
-  }, [isOutputOpen, blockOutputs, fetchBlockResults]);
+  }, [isOutputOpen, fetchBlockResults]);
 
   if (flowRun.graphID != flow.id) {
     throw new Error(

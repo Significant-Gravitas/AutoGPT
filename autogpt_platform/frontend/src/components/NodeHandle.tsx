@@ -49,7 +49,7 @@ const NodeHandle: FC<HandleProps> = ({
       : "border-gray-300 dark:border-gray-600";
     return (
       <div
-        className={`${className} ${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300 dark:bg-slate-800 dark:group-hover:bg-gray-700`}
+        className={`${className} ${color} m-1 h-6 w-6 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300 dark:bg-slate-800 dark:group-hover:bg-gray-700`}
       />
     );
   };

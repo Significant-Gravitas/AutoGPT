@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
 import { User } from "@supabase/supabase-js";
+import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-provider";
 
 export function Providers({
   children,
@@ -19,7 +20,9 @@ export function Providers({
       <SupabaseProvider initialUser={initialUser}>
         <BackendAPIProvider>
           <CredentialsProvider>
-            <TooltipProvider>{children}</TooltipProvider>
+            <LaunchDarklyProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+            </LaunchDarklyProvider>
           </CredentialsProvider>
         </BackendAPIProvider>
       </SupabaseProvider>
