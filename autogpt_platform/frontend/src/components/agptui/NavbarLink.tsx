@@ -42,7 +42,7 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
           className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
         />
       )}
-      {href === "/library" && (
+      {href === "/monitoring" && (
         <IconLibrary
           className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
         />
