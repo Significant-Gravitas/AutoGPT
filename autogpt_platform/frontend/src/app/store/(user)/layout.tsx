@@ -17,7 +17,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen w-screen max-w-[1360px] flex-col lg:flex-row">
       <Sidebar linkGroups={sidebarLinkGroups} />
-      {children}
+      <div className="pl-4">
+        {children}
+      </div>
     </div>
   );
 }

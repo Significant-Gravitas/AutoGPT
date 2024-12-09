@@ -64,12 +64,14 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             />
           </button>
         </div>
-        <h2 className="mb-2 text-center font-['Poppins'] text-xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100 sm:text-2xl">
-          Publish Agent
-        </h2>
-        <p className="text-center font-['Geist'] text-sm font-normal leading-7 text-neutral-600 dark:text-neutral-400 sm:text-base">
-          Select your project that you&apos;d like to publish
-        </p>
+        <div className="text-center">
+          <h3 className="font-poppins text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+            Publish Agent
+          </h3>
+          <p className="font-geist text-sm font-normal text-neutral-600 dark:text-neutral-400">
+            Select your project that you'd like to publish
+          </p>
+        </div>
       </div>
 
       {agents.length === 0 ? (
@@ -133,12 +135,12 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         />
                       </div>
                       <div className="p-3">
-                        <h3 className="font-['Geist'] text-sm font-medium leading-normal text-neutral-800 dark:text-neutral-100 sm:text-base">
+                        <p className="font-poppins text-base font-medium leading-normal text-neutral-800 dark:text-neutral-100 sm:text-base">
                           {agent.name}
-                        </h3>
-                        <p className="font-['Geist'] text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
-                          Edited {agent.lastEdited}
                         </p>
+                        <small className="font-geist text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
+                          Edited {agent.lastEdited}
+                        </small>
                       </div>
                     </div>
                   ))}
