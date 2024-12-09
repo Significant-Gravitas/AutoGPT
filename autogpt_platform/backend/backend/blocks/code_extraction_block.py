@@ -20,7 +20,7 @@ class CodeExtractionBlock(Block):
         java: str = SchemaField(description="Extracted Java code")
         cpp: str = SchemaField(description="Extracted C++ code")
         csharp: str = SchemaField(description="Extracted C# code")
-        js_code: str = SchemaField(description="Extracted JSON code")
+        json_code: str = SchemaField(description="Extracted JSON code")
         bash: str = SchemaField(description="Extracted Bash code")
         php: str = SchemaField(description="Extracted PHP code")
         ruby: str = SchemaField(description="Extracted Ruby code")
@@ -60,7 +60,7 @@ class CodeExtractionBlock(Block):
             "java": ["java"],
             "cpp": ["cpp", "c++"],
             "csharp": ["csharp", "c#", "cs"],
-            "js_code": ["json"],
+            "json_code": ["json"],
             "bash": ["bash", "shell", "sh"],
             "php": ["php"],
             "ruby": ["ruby", "rb"],
@@ -95,8 +95,10 @@ class CodeExtractionBlock(Block):
             yield "remaining_text", remaining_text
 
     def extract_code(self, text: str, language: str) -> str:
+        # Escape special regex characters in the language string
+        language = re.escape(language)
         # Extract all code blocks enclosed in ```language``` blocks
-        pattern = re.compile(rf"```{language}\n(.*?)```", re.DOTALL | re.IGNORECASE)
+        pattern = re.compile(rf"```{language}\s+(.*?)```", re.DOTALL | re.IGNORECASE)
         matches = pattern.finditer(text)
         # Combine all code blocks for this language with newlines between them
         code_blocks = [match.group(1).strip() for match in matches]
