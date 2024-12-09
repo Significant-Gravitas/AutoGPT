@@ -90,6 +90,8 @@ class CodeExtractionBlock(Block):
         ) + r")\s+[\s\S]*?```"
         
         remaining_text = re.sub(pattern, "", input_data.text).strip()
+        remaining_text = re.sub(r'\n\s*\n', '\n', remaining_text)
+        
         if remaining_text:  # Only yield if there's remaining text
             yield "remaining_text", remaining_text
 
