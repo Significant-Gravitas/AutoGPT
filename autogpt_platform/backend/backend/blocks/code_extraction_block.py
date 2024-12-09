@@ -83,14 +83,13 @@ class CodeExtractionBlock(Block):
                 yield canonical_name, code
 
         # Remove all code blocks from the text to get remaining text
-        all_aliases_pattern = "|".join(
-            alias 
+        pattern = r"```(?:" + "|".join(
+            re.escape(alias) 
             for aliases in language_aliases.values() 
             for alias in aliases
-        )
-        remaining_text = re.sub(
-            rf"```({all_aliases_pattern})[\s\S]*?```", "", input_data.text
-        ).strip()
+        ) + r")\s+[\s\S]*?```"
+        
+        remaining_text = re.sub(pattern, "", input_data.text).strip()
         if remaining_text:  # Only yield if there's remaining text
             yield "remaining_text", remaining_text
 
