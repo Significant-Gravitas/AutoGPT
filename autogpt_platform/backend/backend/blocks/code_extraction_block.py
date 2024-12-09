@@ -20,7 +20,7 @@ class CodeExtractionBlock(Block):
         java: str = SchemaField(description="Extracted Java code")
         cpp: str = SchemaField(description="Extracted C++ code")
         csharp: str = SchemaField(description="Extracted C# code")
-        json: str = SchemaField(description="Extracted JSON code")
+        json_code: str = SchemaField(description="Extracted JSON code")
         bash: str = SchemaField(description="Extracted Bash code")
         php: str = SchemaField(description="Extracted PHP code")
         ruby: str = SchemaField(description="Extracted Ruby code")
@@ -60,7 +60,7 @@ class CodeExtractionBlock(Block):
             "java": ["java"],
             "cpp": ["cpp", "c++"],
             "csharp": ["csharp", "c#", "cs"],
-            "json": ["json"],
+            "json_code": ["json"],
             "bash": ["bash", "shell", "sh"],
             "php": ["php"],
             "ruby": ["ruby", "rb"],
