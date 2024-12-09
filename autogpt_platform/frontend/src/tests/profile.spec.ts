@@ -1,4 +1,3 @@
-// profile.spec.ts
 import { test } from "./fixtures";
 import { ProfilePage } from "./pages/profile.page";
 

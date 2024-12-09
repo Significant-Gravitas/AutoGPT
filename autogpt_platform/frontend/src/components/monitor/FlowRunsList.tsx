@@ -35,10 +35,13 @@ export const FlowRunsList: React.FC<{
             <TableHead>Duration</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody data-testid="flow-runs-list-body">
           {runs.map((run) => (
             <TableRow
               key={run.id}
+              data-testid={`flow-run-${run.id}-graph-${run.graphID}`}
+              data-runid={run.id}
+              data-graphid={run.graphID}
               className="cursor-pointer"
               onClick={() => onSelectRun(run)}
               data-state={selectedRun?.id == run.id ? "selected" : null}
