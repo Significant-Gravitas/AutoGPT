@@ -36,9 +36,7 @@ async function getProfileData() {
   }
 }
 
-export default async function Page({
-}: {
-}) {
+export default async function Page({}: {}) {
   const { profile } = await getProfileData();
 
   if (!profile) {
