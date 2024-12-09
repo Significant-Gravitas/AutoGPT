@@ -28,7 +28,7 @@ const CreditsCard = ({ credits }: CreditsCardProps) => {
         <span className="p-ui-semibold text-base leading-7 text-neutral-900 dark:text-neutral-50">
           {currentCredits.toLocaleString()}
         </span>
-        <span className="pl-1 p-ui text-base leading-7 text-neutral-900 dark:text-neutral-50">
+        <span className="p-ui pl-1 text-base leading-7 text-neutral-900 dark:text-neutral-50">
           credits
         </span>
       </div>
