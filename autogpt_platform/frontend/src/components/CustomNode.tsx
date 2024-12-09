@@ -18,8 +18,8 @@ import {
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
-  useBackendAPI,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   beautifyString,
   cn,
