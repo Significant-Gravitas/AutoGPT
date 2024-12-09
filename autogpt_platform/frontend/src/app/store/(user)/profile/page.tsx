@@ -37,9 +37,7 @@ async function getProfileData() {
 }
 
 export default async function Page({
-  params: { lang },
 }: {
-  params: { lang: string };
 }) {
   const { profile } = await getProfileData();
 

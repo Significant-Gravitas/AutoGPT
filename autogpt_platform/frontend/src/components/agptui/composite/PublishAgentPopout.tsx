@@ -16,7 +16,7 @@ import {
   MyAgentsResponse,
 } from "@/lib/autogpt-server-api";
 import { createClient } from "@/lib/supabase/client";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
+import { AutoGPTServerAPI } from "@/lib/autogpt-server-api/client";
 import { useRouter } from "next/navigation";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;

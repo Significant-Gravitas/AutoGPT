@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
-import { ThemeProviderProps } from "next-themes";
+import { ThemeProviderProps } from "next-themes/dist/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
@@ -14,11 +14,11 @@ export function Providers({
   ...props
 }: ThemeProviderProps & { initialUser: User | null }) {
   return (
-    <NextThemesProvider {...props} forcedTheme="light">
+    <NextThemesProvider {...props}>
       <SupabaseProvider initialUser={initialUser}>
-        {/* <CredentialsProvider> */}
-        <TooltipProvider>{children}</TooltipProvider>
-        {/* </CredentialsProvider> */}
+          <CredentialsProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </CredentialsProvider>
       </SupabaseProvider>
     </NextThemesProvider>
   );
