@@ -1,13 +1,11 @@
-import re
 from typing import Any, List
-
-from jinja2 import BaseLoader, Environment
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 from backend.util.mock import MockObject
+from backend.util.text import TextFormatter
 
-jinja = Environment(loader=BaseLoader())
+formatter = TextFormatter()
 
 
 class StoreValueBlock(Block):
@@ -304,9 +302,9 @@ class AgentOutputBlock(Block):
         """
         if input_data.format:
             try:
-                fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
-                template = jinja.from_string(fmt)
-                yield "output", template.render({input_data.name: input_data.value})
+                yield "output", formatter.format_string(
+                    input_data.format, {input_data.name: input_data.value}
+                )
             except Exception as e:
                 yield "output", f"Error: {e}, {input_data.value}"
         else:

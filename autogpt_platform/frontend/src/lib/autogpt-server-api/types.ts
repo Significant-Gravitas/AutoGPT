@@ -84,6 +84,7 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   enum?: string[];
   secret?: true;
   default?: string;
+  format?: string;
 };
 
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
@@ -103,6 +104,7 @@ export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
   D_ID: "d_id",
   DISCORD: "discord",
+  E2B: "e2b",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
@@ -116,10 +118,12 @@ export const PROVIDER_NAMES = {
   OPENWEATHERMAP: "openweathermap",
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
+  SLANT3D: "slant3d",
   REPLICATE: "replicate",
   FAL: "fal",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  EXA: "exa",
   HUBSPOT: "hubspot",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
@@ -168,6 +172,7 @@ export type Node = {
     position: { x: number; y: number };
     [key: string]: any;
   };
+  webhook_id?: string;
 };
 
 /* Mirror of backend/data/graph.py:Link */

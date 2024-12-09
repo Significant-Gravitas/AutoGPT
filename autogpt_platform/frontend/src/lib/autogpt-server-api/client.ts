@@ -1,7 +1,7 @@
 import { createClient } from "../supabase/client";
 import BaseAutoGPTServerAPI from "./baseClient";
 
-export default class AutoGPTServerAPI extends BaseAutoGPTServerAPI {
+export class AutoGPTServerAPI extends BaseAutoGPTServerAPI {
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
       "http://localhost:8006/api",
