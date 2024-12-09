@@ -46,17 +46,16 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col items-start justify-start self-stretch">
-        <div className="mb-1 self-stretch font-['Poppins'] text-2xl font-semibold leading-loose text-neutral-800 dark:text-neutral-200">
+      <div className="flex flex-col gap-2">
+        <h3 className="font-poppins text-2xl font-semibold leading-tight text-neutral-900 dark:text-neutral-100">
           {creatorName}
-        </div>
-        <div className="line-clamp-2 self-stretch font-['Geist'] text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
+        </h3>
+        <p className="font-geist text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {bio}
+        </p>
+        <div className="font-geist text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+          {agentsUploaded} agents
         </div>
-      </div>
-
-      <div className="self-stretch font-['Geist'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
-        {agentsUploaded} agents
       </div>
     </div>
   );

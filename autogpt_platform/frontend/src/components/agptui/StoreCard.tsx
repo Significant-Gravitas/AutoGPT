@@ -71,27 +71,27 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       {/* Content Section */}
       <div className="w-full px-2 py-4">
         {/* Title and Creator */}
-        <h3 className="mb-2 font-['Poppins'] text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
+        <h3 className="mb-2 font-poppins text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (
-          <p className="mb-4 font-['Geist'] text-base font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="mb-4 font-lead text-base font-normal text-neutral-600 dark:text-neutral-400">
             by {creatorName}
           </p>
         )}
 
         {/* Description */}
-        <p className="mb-4 line-clamp-3 font-['Geist'] text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+        <p className="mb-4 line-clamp-3 font-geist text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {description}
         </p>
 
         {/* Stats Row */}
         <div className="flex items-center justify-between">
-          <div className="font-['Geist'] text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+          <div className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-['Geist'] text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+            <span className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {rating.toFixed(1)}
             </span>
             <div

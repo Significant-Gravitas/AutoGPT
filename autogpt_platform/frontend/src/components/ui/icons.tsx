@@ -936,6 +936,99 @@ export const IconMarketplace = createIcon((props) => (
 ));
 
 /**
+ * Shopping Cart icon component.
+ *
+ * @component IconShoppingCart
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The shopping cart icon.
+ */
+export const IconShoppingCart = createIcon((props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="25"
+    height="24"
+    viewBox="0 0 25 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-label="Shopping Cart Icon"
+    {...props}
+  >
+    <title>Shopping Cart</title>
+    <path d="M8.8696 22C9.42188 22 9.8696 21.5523 9.8696 21C9.8696 20.4477 9.42188 20 8.8696 20C8.31731 20 7.8696 20.4477 7.8696 21C7.8696 21.5523 8.31731 22 8.8696 22Z" />
+    <path d="M19.8696 22C20.4219 22 20.8696 21.5523 20.8696 21C20.8696 20.4477 20.4219 20 19.8696 20C19.3173 20 18.8696 20.4477 18.8696 21C18.8696 21.5523 19.3173 22 19.8696 22Z" />
+    <path d="M2.91959 2.04999H4.91959L7.57959 14.47C7.67716 14.9248 7.93026 15.3315 8.2953 15.6198C8.66034 15.9082 9.11449 16.0603 9.57959 16.05H19.3596C19.8148 16.0493 20.2561 15.8933 20.6106 15.6078C20.9652 15.3224 21.2117 14.9245 21.3096 14.48L22.9596 7.04999H5.98959" />
+  </svg>
+));
+
+/**
+ * Laptop icon component.
+ *
+ * @component IconLaptop
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The laptop icon.
+ */
+export const IconLaptop = createIcon((props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="25"
+    height="24"
+    viewBox="0 0 25 24"
+    fill="none"
+    aria-label="Laptop Icon"
+    {...props}
+  >
+    <title>Laptop</title>
+    <g id="icon/laptop">
+      <path
+        id="Vector"
+        d="M20.8696 16V7C20.8696 6.46957 20.6589 5.96086 20.2838 5.58579C19.9087 5.21071 19.4 5 18.8696 5H6.8696C6.33917 5 5.83046 5.21071 5.45539 5.58579C5.08032 5.96086 4.8696 6.46957 4.8696 7V16M20.8696 16H4.8696M20.8696 16L22.1496 18.55C22.2267 18.703 22.2632 18.8732 22.2556 19.0444C22.248 19.2155 22.1966 19.3818 22.1062 19.5274C22.0159 19.6729 21.8897 19.7928 21.7397 19.8756C21.5897 19.9584 21.4209 20.0012 21.2496 20H4.4896C4.31829 20.0012 4.14955 19.9584 3.99955 19.8756C3.84955 19.7928 3.72333 19.6729 3.63298 19.5274C3.54264 19.3818 3.4912 19.2155 3.4836 19.0444C3.47601 18.8732 3.51251 18.703 3.5896 18.55L4.8696 16"
+      />
+    </g>
+  </svg>
+));
+
+
+/**
+ * Boxes icon component.
+ *
+ * @component IconBoxes
+ * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
+ * @returns {JSX.Element} - The boxes icon.
+ */
+export const IconBoxes = createIcon((props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="25"
+    height="24"
+    viewBox="0 0 25 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-label="Boxes Icon"
+    {...props}
+  >
+    <title>Boxes</title>
+    <path d="M3.8396 12.92C3.54436 13.0974 3.29993 13.348 3.12999 13.6476C2.96005 13.9472 2.87035 14.2856 2.8696 14.63V17.87C2.87035 18.2144 2.96005 18.5528 3.12999 18.8524C3.29993 19.152 3.54436 19.4026 3.8396 19.58L6.8396 21.38C7.15066 21.5669 7.50671 21.6656 7.8696 21.6656C8.23249 21.6656 8.58853 21.5669 8.8996 21.38L12.8696 19V13.5L7.8696 10.5L3.8396 12.92Z" />
+    <path d="M7.8696 16.5L3.1296 13.65" />
+    <path d="M7.8696 16.5L12.8696 13.5" />
+    <path d="M7.8696 16.5V21.67" />
+    <path d="M12.8696 13.5V19L16.8396 21.38C17.1507 21.5669 17.5067 21.6656 17.8696 21.6656C18.2325 21.6656 18.5885 21.5669 18.8996 21.38L21.8996 19.58C22.1948 19.4026 22.4393 19.152 22.6092 18.8524C22.7792 18.5528 22.8688 18.2144 22.8696 17.87V14.63C22.8688 14.2856 22.7792 13.9472 22.6092 13.6476C22.4393 13.348 22.1948 13.0974 21.8996 12.92L17.8696 10.5L12.8696 13.5Z" />
+    <path d="M17.8696 16.5L12.8696 13.5" />
+    <path d="M17.8696 16.5L22.6096 13.65" />
+    <path d="M17.8696 16.5V21.67" />
+    <path d="M8.8396 4.41997C8.54436 4.59735 8.29993 4.84797 8.12999 5.14756C7.96005 5.44714 7.87035 5.78554 7.8696 6.12997V10.5L12.8696 13.5L17.8696 10.5V6.12997C17.8688 5.78554 17.7792 5.44714 17.6092 5.14756C17.4393 4.84797 17.1948 4.59735 16.8996 4.41997L13.8996 2.61997C13.5885 2.43308 13.2325 2.33435 12.8696 2.33435C12.5067 2.33435 12.1507 2.43308 11.8396 2.61997L8.8396 4.41997Z" />
+    <path d="M12.8696 8.00002L8.1296 5.15002" />
+    <path d="M12.8696 8.00002L17.6096 5.15002" />
+    <path d="M12.8696 13.5V8" />
+  </svg>
+));
+
+/**
  * Library icon component.
  *
  * @component IconLibrary

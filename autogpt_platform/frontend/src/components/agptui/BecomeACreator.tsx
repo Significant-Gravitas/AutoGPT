@@ -21,14 +21,14 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
   };
 
   return (
-    <div className="relative mx-auto h-auto min-h-[300px] w-full max-w-[1360px] px-4 md:min-h-[400px] md:px-6 lg:h-[459px] lg:px-8">
+    <div className="relative mx-auto h-auto min-h-[300px] w-full max-w-[1360px] md:min-h-[400px] lg:h-[459px]">
       {/* Top border */}
       <div className="left-0 top-0 h-px w-full bg-gray-200 dark:bg-gray-700" />
 
       {/* Title */}
-      <div className="left-4 top-[26px] mb-4 pt-4 font-['Poppins'] text-base font-semibold leading-7 text-neutral-800 dark:text-neutral-200 md:left-6 md:text-lg lg:left-8">
+      <h2 className="mt-6 mb-8 text-2xl leading-7 text-neutral-800 dark:text-neutral-200">
         {title}
-      </div>
+      </h2>
 
       {/* Content Container */}
       <div className="absolute left-1/2 top-1/2 w-full max-w-[900px] -translate-x-1/2 -translate-y-1/2 px-4 pt-16 text-center md:px-6 md:pt-10 lg:px-0">
