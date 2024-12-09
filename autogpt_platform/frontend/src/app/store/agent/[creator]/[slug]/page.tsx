@@ -1,4 +1,5 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
 import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 import { AgentInfo } from "@/components/agptui/AgentInfo";
 import { AgentImages } from "@/components/agptui/AgentImages";
@@ -43,6 +44,11 @@ export default async function Page({
     search_query: agent.categories[0],
   });
 
+  const api_server = new AutoGPTServerAPIServerSide();
+  const userReview = await api_server.getParticularUserReview(
+    agent.store_listing_version_id,
+  );
+
   const breadcrumbs = [
     { name: "Store", link: "/store" },
     { name: agent.creator, link: `/store/creator/${agent.creator}` },
@@ -58,6 +64,7 @@ export default async function Page({
           <div className="w-full md:w-auto md:shrink-0">
             <AgentInfo
               name={agent.agent_name}
+              userReview={userReview}
               creator={agent.creator}
               shortDescription={agent.description}
               longDescription={agent.description}
@@ -87,10 +94,12 @@ export default async function Page({
         />
 
         <div className="fixed bottom-8 right-8">
-          <RatingCard
-            agentName={agent.agent_name}
-            storeListingVersionId={agent.store_listing_version_id}
-          />
+          {!userReview && (
+            <RatingCard
+              agentName={agent.agent_name}
+              storeListingVersionId={agent.store_listing_version_id}
+            />
+          )}
         </div>
       </main>
     </div>

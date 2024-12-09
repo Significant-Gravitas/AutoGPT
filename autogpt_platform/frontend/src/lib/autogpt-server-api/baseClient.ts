@@ -388,6 +388,10 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/schedules`);
   }
 
+  getParticularUserReview(agentId: string): Promise<StoreReview> {
+    return this._get(`/store/agents/${agentId}/particular_user/review`);
+  }
+
   private async _uploadFile(path: string, file: File): Promise<string> {
     // Get session with retry logic
     let token = "no-token-found";

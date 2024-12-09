@@ -707,3 +707,59 @@ async def get_my_agents(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch my agents"
         ) from e
+
+async def get_store_agent_review(
+    agent_id: str,
+    user_id: str,
+) -> backend.server.v2.store.model.StoreReview | None:
+    logger.debug(f"Getting store agent review for {agent_id} by user {user_id}")
+
+    try:
+        store_agent = await prisma.models.StoreAgent.prisma().find_first(
+            where={"storeListingVersionId": agent_id},
+        )
+
+        if not store_agent or not store_agent.listing_id:
+            logger.warning("Store Agent not found")
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(
+                "Store Agent not found"
+            )
+
+        # Get store listing
+        listing_id = store_agent.listing_id
+
+        store_listing_version = await prisma.models.StoreListingVersion.prisma().find_first(
+                where={"storeListingId": listing_id},
+                include={
+                    "StoreListingReview": {
+                    "where": {
+                        "reviewByUserId": user_id
+                    }
+                }
+            }
+        )
+
+        if not store_listing_version:
+            logger.warning(f"Store listing version not found, listing_id : {listing_id}")
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(
+                f"Store listing version not found, listing_id : {listing_id}"
+            )
+
+        # Check if there are any reviews by the user
+        if not store_listing_version.StoreListingReview or len(store_listing_version.StoreListingReview) == 0:
+            return None
+
+        review = store_listing_version.StoreListingReview[0]
+
+        return backend.server.v2.store.model.StoreReview(
+            score=review.score,
+            comments=review.comments or "",
+        )
+
+    except backend.server.v2.store.exceptions.AgentNotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting store agent review: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to get store agent review"
+        ) from e

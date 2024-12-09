@@ -4,7 +4,7 @@ import * as React from "react";
 import { Cross1Icon } from "@radix-ui/react-icons";
 import { IconStar, IconStarFilled } from "@/components/ui/icons";
 import { createClient } from "@/lib/supabase/client";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api/client";
+import { AutoGPTServerAPI } from "@/lib/autogpt-server-api/client";
 
 interface RatingCardProps {
   agentName: string;
