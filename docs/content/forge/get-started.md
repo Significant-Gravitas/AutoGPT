@@ -3,7 +3,7 @@
 ## 🛠️ Build your own Agent 🛠️
 
 !!! warning
-    If you are trying to use AutoGPT this is not the tutorial for you! You need to use [this one](../AutoGPT/setup/index.md)
+    If you are trying to use AutoGPT this is not the tutorial for you! You need to use [this one](../classic/setup/index.md)
 
 Forge is a ready-to-go template for *your* agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart.
 

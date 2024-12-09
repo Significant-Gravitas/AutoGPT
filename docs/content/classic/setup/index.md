@@ -14,7 +14,7 @@
 ### Windows (WSL)
 
 - WSL 2
-  - See also the [requirements for Linux](#linux--macos)
+  - See also the [requirements for Linux](#linux-macos)
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
 
 ### Windows

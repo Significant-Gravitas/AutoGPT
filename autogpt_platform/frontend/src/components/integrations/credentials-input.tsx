@@ -48,6 +48,7 @@ export const providerIcons: Record<
   React.FC<{ className?: string }>
 > = {
   anthropic: fallbackIcon,
+  e2b: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
   groq: fallbackIcon,
@@ -63,10 +64,12 @@ export const providerIcons: Record<
   openweathermap: fallbackIcon,
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
+  slant3d: fallbackIcon,
   replicate: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  exa: fallbackIcon,
   hubspot: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
