@@ -56,7 +56,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
             className="rounded-xl transition-opacity duration-200 group-hover:opacity-0"
           />
           <div className="absolute inset-0 overflow-y-auto rounded-xl bg-white p-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:bg-neutral-700">
-            <div className="font-['Geist'] text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
+            <div className="font-geist text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
               {description}
             </div>
           </div>
@@ -74,11 +74,11 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
         </div>
 
         <div className="inline-flex items-center justify-between self-stretch">
-          <div className="font-['Large-Geist'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+          <div className="font-large-geist text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center justify-start gap-[5px]">
-            <div className="font-['Large-Geist'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+            <div className="font-large-geist text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
               {rating.toFixed(1)}
             </div>
             <div
