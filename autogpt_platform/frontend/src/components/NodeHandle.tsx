@@ -10,6 +10,7 @@ type HandleProps = {
   isConnected: boolean;
   isRequired?: boolean;
   side: "left" | "right";
+  title?: string;
 };
 
 const NodeHandle: FC<HandleProps> = ({
@@ -18,6 +19,7 @@ const NodeHandle: FC<HandleProps> = ({
   isConnected,
   isRequired,
   side,
+  title,
 }) => {
   const typeName: Record<string, string> = {
     string: "text",
@@ -34,7 +36,7 @@ const NodeHandle: FC<HandleProps> = ({
   const label = (
     <div className="flex flex-grow flex-row">
       <span className="text-m green flex items-end pr-2 text-gray-900">
-        {schema.title || beautifyString(keyName.toLowerCase())}
+        {title || schema.title || beautifyString(keyName.toLowerCase())}
         {isRequired ? "*" : ""}
       </span>
       <span className={`${typeClass} flex items-end`}>
