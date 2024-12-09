@@ -259,6 +259,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="", description="Twitter/X OAuth client secret"
     )
 
+    slack_bot_client_id: str = Field(default="", description="Slack OAuth client ID")
+    slack_bot_client_secret: str = Field(
+        default="", description="Slack OAuth client secret"
+    )
+
+    slack_user_client_id: str = Field(default="", description="Slack OAuth client ID")
+    slack_user_client_secret: str = Field(
+        default="", description="Slack OAuth client secret"
+    )
+
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")

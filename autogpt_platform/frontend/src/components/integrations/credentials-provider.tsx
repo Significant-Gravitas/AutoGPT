@@ -42,6 +42,8 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   replicate: "Replicate",
   fal: "FAL",
   revid: "Rev.ID",
+  slack_bot: "Slack Bot",
+  slack_user: "Slack User",
   twitter: "Twitter",
   unreal_speech: "Unreal Speech",
   exa: "Exa",

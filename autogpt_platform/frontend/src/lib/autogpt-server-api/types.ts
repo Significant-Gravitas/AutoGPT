@@ -124,6 +124,8 @@ export const PROVIDER_NAMES = {
   UNREAL_SPEECH: "unreal_speech",
   EXA: "exa",
   HUBSPOT: "hubspot",
+  SLACK_BOT: "slack_bot",
+  SLACK_USER: "slack_user",
   TWITTER: "twitter",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]

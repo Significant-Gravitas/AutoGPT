@@ -17,6 +17,8 @@ HANDLERS_BY_NAME: dict["ProviderName", type["BaseOAuthHandler"]] = {
         GoogleOAuthHandler,
         NotionOAuthHandler,
         TwitterOAuthHandler,
+        SlackBotOAuthHandler,
+        SlackUserOAuthHandler
     ]
 }
 # --8<-- [end:HANDLERS_BY_NAMEExample]

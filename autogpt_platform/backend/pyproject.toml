@@ -52,6 +52,8 @@ cryptography = "^43.0.3"
 sqlalchemy = "^2.0.36"
 psycopg2-binary = "^2.9.10"
 launchdarkly-server-sdk = "^9.8.0"
+slack-sdk = "^3.33.5"
+slack-bolt = "^1.21.3"
 tweepy = "^4.14.0"
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.31.0"
