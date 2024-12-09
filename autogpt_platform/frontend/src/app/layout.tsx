@@ -56,7 +56,7 @@ export default async function RootLayout({
                 },
                 {
                   name: "Library",
-                  href: "/library",
+                  href: "/monitoring",
                 },
                 {
                   name: "Build",
