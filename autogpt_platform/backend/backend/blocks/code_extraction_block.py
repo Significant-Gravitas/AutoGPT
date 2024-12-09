@@ -43,8 +43,8 @@ class CodeExtractionBlock(Block):
                 "text": "Here's a Python example:\n```python\nprint('Hello World')\n```\nAnd some HTML:\n```html\n<h1>Title</h1>\n```"
             },
             test_output=[
-                ("python", "print('Hello World')"),
                 ("html", "<h1>Title</h1>"),
+                ("python", "print('Hello World')"),
                 ("remaining_text", "Here's a Python example:\nAnd some HTML:")
             ]
         )
