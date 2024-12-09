@@ -31,22 +31,22 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
       {/* Title */}
-      <div className="mb-3 w-full font-['Poppins'] text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
+      <div className="mb-3 w-full font-poppins text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
         {name}
       </div>
 
       {/* Creator */}
       <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <div className="font-['Geist'] text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
+        <div className="font-geist text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           by
         </div>
-        <div className="font-['Geist'] text-base font-medium text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
+        <div className="font-geist text-base font-medium text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           {creator}
         </div>
       </div>
 
       {/* Short Description */}
-      <div className="mb-4 line-clamp-2 w-full font-['Geist'] text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
+      <div className="mb-4 line-clamp-2 w-full font-geist text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
         {shortDescription}
       </div>
 
@@ -54,7 +54,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       <div className="mb-4 w-full lg:mb-6">
         <button className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4">
           <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-          <span className="font-['Poppins'] text-base font-medium text-neutral-50 sm:text-lg">
+          <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
             Run agent
           </span>
         </button>
@@ -63,12 +63,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       {/* Rating and Runs */}
       <div className="mb-4 flex w-full items-center justify-between lg:mb-6">
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="whitespace-nowrap font-['Geist'] text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+          <span className="whitespace-nowrap font-geist text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
             {rating.toFixed(1)}
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <div className="whitespace-nowrap font-['Geist'] text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+        <div className="whitespace-nowrap font-geist text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
           {runs.toLocaleString()} runs
         </div>
       </div>
@@ -81,7 +81,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         <div className="mb-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:mb-2 sm:text-sm">
           Description
         </div>
-        <div className="w-full whitespace-pre-line font-['Geist'] text-sm font-normal text-neutral-600 dark:text-neutral-300 sm:text-base">
+        <div className="w-full whitespace-pre-line font-geist text-sm font-normal text-neutral-600 dark:text-neutral-300 sm:text-base">
           {longDescription}
         </div>
       </div>
@@ -99,21 +99,6 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
             >
               {category}
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Rate Agent */}
-      <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-6">
-        <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
-          Rate agent
-        </div>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <IconStar
-              key={star}
-              className="h-4 w-4 cursor-pointer text-neutral-300 hover:text-neutral-800 dark:text-neutral-500 dark:hover:text-neutral-200 sm:h-5 sm:w-5"
-            />
           ))}
         </div>
       </div>

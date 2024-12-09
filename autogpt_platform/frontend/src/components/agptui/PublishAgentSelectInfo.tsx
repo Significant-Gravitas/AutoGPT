@@ -142,10 +142,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             />
           </button>
         </div>
-        <h2 className="text-center font-['Poppins'] text-2xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100">
+        <h3 className="text-center h3-poppins text-2xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100">
           Publish Agent
-        </h2>
-        <p className="text-center font-['Geist'] text-base font-normal leading-7 text-neutral-600 dark:text-neutral-400">
+        </h3>
+        <p className="text-center p text-base font-normal leading-7 text-neutral-600 dark:text-neutral-400">
           Write a bit of details about your agent
         </p>
       </div>
@@ -154,7 +154,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="title"
-            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
           >
             Title
           </label>
@@ -164,14 +164,14 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Agent name"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 p-ui-medium text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
         <div className="space-y-1.5">
           <label
             htmlFor="subheader"
-            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
           >
             Subheader
           </label>
@@ -188,7 +188,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="slug"
-            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
           >
             Slug
           </label>
@@ -203,7 +203,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-2.5">
-          <label className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+          <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
             Thumbnail images
           </label>
           <div className="flex h-[350px] items-center justify-center overflow-hidden rounded-[20px] border border-neutral-300 p-2.5 dark:border-neutral-600">
@@ -295,11 +295,11 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+          <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
             AI image generator
           </label>
           <div className="flex items-center justify-between">
-            <p className="font-['Geist'] text-base font-normal leading-normal text-slate-700 dark:text-slate-400">
+            <p className="text-base font-normal leading-normal text-slate-700 dark:text-slate-400">
               You can use AI to generate a cover image for you
             </p>
             <Button
@@ -315,7 +315,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="youtube"
-            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
           >
             YouTube video link
           </label>
@@ -332,7 +332,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="category"
-            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
           >
             Category
           </label>
@@ -351,7 +351,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="description"
-            className="font-['Geist'] text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
           >
             Description
           </label>
