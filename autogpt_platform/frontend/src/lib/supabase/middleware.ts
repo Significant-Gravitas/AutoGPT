@@ -84,9 +84,7 @@ export async function updateSession(request: NextRequest) {
     if (
       user &&
       userRole != "admin" &&
-      ADMIN_PAGES.some((page) =>
-        request.nextUrl.pathname.startsWith(`${page}`),
-      )
+      ADMIN_PAGES.some((page) => request.nextUrl.pathname.startsWith(`${page}`))
     ) {
       // no user, potentially respond by redirecting the user to the login page
       url.pathname = `/store`;

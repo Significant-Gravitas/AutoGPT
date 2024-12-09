@@ -142,10 +142,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             />
           </button>
         </div>
-        <h3 className="text-center h3-poppins text-2xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100">
+        <h3 className="h3-poppins text-center text-2xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100">
           Publish Agent
         </h3>
-        <p className="text-center p text-base font-normal leading-7 text-neutral-600 dark:text-neutral-400">
+        <p className="p text-center text-base font-normal leading-7 text-neutral-600 dark:text-neutral-400">
           Write a bit of details about your agent
         </p>
       </div>
@@ -164,7 +164,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Agent name"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 p-ui-medium text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="p-ui-medium w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 

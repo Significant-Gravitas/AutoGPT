@@ -990,7 +990,6 @@ export const IconLaptop = createIcon((props) => (
   </svg>
 ));
 
-
 /**
  * Boxes icon component.
  *

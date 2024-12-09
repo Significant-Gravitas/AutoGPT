@@ -84,7 +84,6 @@ export default async function Page({
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
         />
-
       </main>
     </div>
   );

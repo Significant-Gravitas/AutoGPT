@@ -157,9 +157,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function Page({
-}: {
-}) {
+export default async function Page({}: {}) {
   // Get data server-side
   const { featuredAgents, topAgents, featuredCreators } = await getStoreData();
 
