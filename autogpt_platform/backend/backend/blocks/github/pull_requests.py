@@ -504,8 +504,11 @@ class GithubListPRReviewersBlock(Block):
 
 
 def prepare_pr_api_url(pr_url: str, path: str) -> str:
-    if (match := re.match(r"(.+)(/pull/)+?(.+)", pr_url)) is not None and len(
-        match.groups()
-    ) == 3:
-        return f"{match.groups()[0]}/pulls/{match.groups()[2]}/{path}"
-    raise ValueError("There is some issue with the PR Url")
+    # Pattern to capture the base repository URL and the pull request number
+    pattern = r"^(?:https?://)?([^/]+/[^/]+/[^/]+)/pull/(\d+)"
+    match = re.match(pattern, pr_url)
+    if not match:
+        return pr_url
+
+    base_url, pr_number = match.groups()
+    return f"{base_url}/pulls/{pr_number}/{path}"
