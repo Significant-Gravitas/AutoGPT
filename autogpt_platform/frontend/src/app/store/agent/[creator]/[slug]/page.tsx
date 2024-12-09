@@ -28,14 +28,13 @@ export async function generateMetadata({
 //   return agents.agents.map((agent) => ({
 //     creator: agent.creator,
 //     slug: agent.slug,
-//     lang: "en",
 //   }));
 // }
 
 export default async function Page({
   params,
 }: {
-  params: { lang: string; creator: string; slug: string };
+  params: { creator: string; slug: string };
 }) {
   const api = new AutoGPTServerAPI();
   const agent = await api.getStoreAgent(params.creator, params.slug);

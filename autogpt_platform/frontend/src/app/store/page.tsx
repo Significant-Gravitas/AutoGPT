@@ -158,9 +158,7 @@ export const metadata: Metadata = {
 };
 
 export default async function Page({
-  params: { lang },
 }: {
-  params: { lang: string };
 }) {
   // Get data server-side
   const { featuredAgents, topAgents, featuredCreators } = await getStoreData();

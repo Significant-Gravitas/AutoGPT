@@ -24,7 +24,6 @@
   ],
   "dependencies": {
     "@faker-js/faker": "^9.2.0",
-    "@formatjs/intl-localematcher": "^0.5.5",
     "@hookform/resolvers": "^3.9.1",
     "@next/third-parties": "^15.0.3",
     "@radix-ui/react-alert-dialog": "^1.1.2",
@@ -64,7 +63,6 @@
     "geist": "^1.3.1",
     "lucide-react": "^0.460.0",
     "moment": "^2.30.1",
-    "negotiator": "^1.0.0",
     "next": "^14.2.13",
     "next-themes": "^0.4.3",
     "react": "^18",

@@ -50,9 +50,7 @@ async function getDashboardData() {
 }
 
 export default function Page({
-  params: { lang },
 }: {
-  params: { lang: string };
 }) {
   const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();
   const [openPopout, setOpenPopout] = useState<boolean>(false);

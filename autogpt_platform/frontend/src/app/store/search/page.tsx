@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import AutoGPTServerAPIClient from "@/lib/autogpt-server-api/client";
+import { AutoGPTServerAPI } from "@/lib/autogpt-server-api/client";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
@@ -10,10 +10,8 @@ import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
 import { SortDropdown } from "@/components/agptui/SortDropdown";
 
 export default function Page({
-  params,
   searchParams,
 }: {
-  params: { lang: string };
   searchParams: { searchTerm?: string; sort?: string };
 }) {
   return (
@@ -40,7 +38,7 @@ function SearchResults({
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const api = new AutoGPTServerAPIClient();
+      const api = new AutoGPTServerAPI();
 
       try {
         const [agentsRes, creatorsRes] = await Promise.all([
