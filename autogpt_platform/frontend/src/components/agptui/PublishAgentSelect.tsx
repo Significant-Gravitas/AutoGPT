@@ -69,7 +69,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             Publish Agent
           </h3>
           <p className="font-geist text-sm font-normal text-neutral-600 dark:text-neutral-400">
-            Select your project that you'd like to publish
+            Select your project that you&apos;d like to publish
           </p>
         </div>
       </div>

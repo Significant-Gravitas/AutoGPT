@@ -49,9 +49,7 @@ async function getDashboardData() {
   }
 }
 
-export default function Page({
-}: {
-}) {
+export default function Page({}: {}) {
   const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();
   const [openPopout, setOpenPopout] = useState<boolean>(false);
   const [submissionData, setSubmissionData] =

@@ -31,7 +31,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
       {/* Title */}
-      <div className="mb-3 w-full font-poppins text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
+      <div className="font-poppins mb-3 w-full text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
         {name}
       </div>
 
@@ -46,7 +46,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       </div>
 
       {/* Short Description */}
-      <div className="mb-4 line-clamp-2 w-full font-geist text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
+      <div className="font-geist mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
         {shortDescription}
       </div>
 
@@ -63,12 +63,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       {/* Rating and Runs */}
       <div className="mb-4 flex w-full items-center justify-between lg:mb-6">
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="whitespace-nowrap font-geist text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+          <span className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
             {rating.toFixed(1)}
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <div className="whitespace-nowrap font-geist text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+        <div className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
           {runs.toLocaleString()} runs
         </div>
       </div>
@@ -81,7 +81,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         <div className="mb-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:mb-2 sm:text-sm">
           Description
         </div>
-        <div className="w-full whitespace-pre-line font-geist text-sm font-normal text-neutral-600 dark:text-neutral-300 sm:text-base">
+        <div className="font-geist w-full whitespace-pre-line text-sm font-normal text-neutral-600 dark:text-neutral-300 sm:text-base">
           {longDescription}
         </div>
       </div>

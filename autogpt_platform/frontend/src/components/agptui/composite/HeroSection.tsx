@@ -33,7 +33,7 @@ export const HeroSection: React.FC = () => {
             </span>
           </h1>
         </div>
-        <h3 className="mb:text-2xl mb-6 text-center font-geist text-xl font-normal leading-loose text-neutral-700 dark:text-neutral-300 md:mb-12">
+        <h3 className="mb:text-2xl font-geist mb-6 text-center text-xl font-normal leading-loose text-neutral-700 dark:text-neutral-300 md:mb-12">
           Bringing you AI agents designed by thinkers from around the world
         </h3>
         <div className="mb-4 flex justify-center sm:mb-5 md:mb-6">
