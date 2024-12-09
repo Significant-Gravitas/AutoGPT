@@ -45,8 +45,8 @@ class CodeExtractionBlock(Block):
             test_output=[
                 ("html", "<h1>Title</h1>"),
                 ("python", "print('Hello World')"),
-                ("remaining_text", "Here's a Python example:\nAnd some HTML:")
-            ]
+                ("remaining_text", "Here's a Python example:\nAnd some HTML:"),
+            ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -78,20 +78,24 @@ class CodeExtractionBlock(Block):
                 code_for_alias = self.extract_code(input_data.text, alias)
                 if code_for_alias:
                     code = code + "\n\n" + code_for_alias if code else code_for_alias
-            
+
             if code:  # Only yield if there's actual code content
                 yield canonical_name, code
 
         # Remove all code blocks from the text to get remaining text
-        pattern = r"```(?:" + "|".join(
-            re.escape(alias) 
-            for aliases in language_aliases.values() 
-            for alias in aliases
-        ) + r")\s+[\s\S]*?```"
-        
+        pattern = (
+            r"```(?:"
+            + "|".join(
+                re.escape(alias)
+                for aliases in language_aliases.values()
+                for alias in aliases
+            )
+            + r")\s+[\s\S]*?```"
+        )
+
         remaining_text = re.sub(pattern, "", input_data.text).strip()
-        remaining_text = re.sub(r'\n\s*\n', '\n', remaining_text)
-        
+        remaining_text = re.sub(r"\n\s*\n", "\n", remaining_text)
+
         if remaining_text:  # Only yield if there's remaining text
             yield "remaining_text", remaining_text
 
