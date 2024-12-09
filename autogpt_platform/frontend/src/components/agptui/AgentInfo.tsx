@@ -103,21 +103,6 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         </div>
       </div>
 
-      {/* Rate Agent */}
-      <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-6">
-        <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
-          Rate agent
-        </div>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <IconStar
-              key={star}
-              className="h-4 w-4 cursor-pointer text-neutral-300 hover:text-neutral-800 dark:text-neutral-500 dark:hover:text-neutral-200 sm:h-5 sm:w-5"
-            />
-          ))}
-        </div>
-      </div>
-
       {/* Version History */}
       <div className="flex w-full flex-col gap-0.5 sm:gap-1">
         <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
