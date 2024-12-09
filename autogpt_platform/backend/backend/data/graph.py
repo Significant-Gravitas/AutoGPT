@@ -353,17 +353,15 @@ async def get_node(node_id: str) -> Node:
 async def get_graphs(
     user_id: str,
     include_executions: bool = False,
-    filter_by: Literal["all", "active", "template"] | None = "active",
+    filter_by: Literal["active", "template"] | None = "active",
 ) -> list[Graph]:
     """
     Retrieves graph metadata objects.
     Default behaviour is to get all currently active graphs.
-    When filter_by="all", retrieves all versions of graphs.
 
     Args:
         include_executions: Whether to include executions in the graph metadata.
-        filter_by: An optional filter to either select all versions,
-            templates or active graphs. Defaults to "active".
+        filter_by: An optional filter to either select templates or active graphs.
         user_id: The ID of the user that owns the graph.
 
     Returns:
@@ -379,20 +377,12 @@ async def get_graphs(
     graph_include = AGENT_GRAPH_INCLUDE
     graph_include["AgentGraphExecution"] = include_executions
 
-    # For "all" return all versions
-    if filter_by == "all":
-        graphs = await AgentGraph.prisma().find_many(
-            where=where_clause,
-            order={"version": "desc"},
-            include=graph_include,
-        )
-    else:
-        graphs = await AgentGraph.prisma().find_many(
-            where=where_clause,
-            distinct=["id"],
-            order={"version": "desc"},
-            include=graph_include,
-        )
+    graphs = await AgentGraph.prisma().find_many(
+        where=where_clause,
+        distinct=["id"],
+        order={"version": "desc"},
+        include=graph_include,
+    )
 
     return [Graph.from_db(graph) for graph in graphs]
 

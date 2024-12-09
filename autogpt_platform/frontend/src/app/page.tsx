@@ -44,47 +44,9 @@ const Monitor = () => {
   );
 
   const fetchAgents = useCallback(() => {
-    api.listGraphsWithRuns().then((agents) => {
-      // Group graphs by ID
-      const graphsById = agents.reduce(
-        (acc, graph) => {
-          if (!acc[graph.id]) {
-            // Initialize with the first version we see
-            acc[graph.id] = {
-              ...graph,
-              executions: [],
-            };
-          }
-
-          // Combine executions from all versions
-          if (graph.executions) {
-            acc[graph.id].executions = [
-              ...(acc[graph.id].executions || []),
-              ...graph.executions,
-            ];
-          }
-
-          // Always keep the latest version's metadata
-          if (!acc[graph.id].version || graph.version > acc[graph.id].version) {
-            // Update metadata while preserving combined executions
-            const executions = acc[graph.id].executions;
-            acc[graph.id] = {
-              ...graph,
-              executions,
-            };
-          }
-
-          return acc;
-        },
-        {} as Record<string, GraphMetaWithRuns>,
-      );
-
-      // Convert back to array
-      const combinedGraphs = Object.values(graphsById);
-      setFlows(combinedGraphs);
-
-      // Create flow runs with version information
-      const flowRuns = agents.flatMap((graph) =>
+    api.listGraphsWithRuns().then((agent) => {
+      setFlows(agent);
+      const flowRuns = agent.flatMap((graph) =>
         graph.executions != null
           ? graph.executions.map((execution) =>
               flowRunFromExecutionMeta(graph, execution),
