@@ -134,8 +134,8 @@ export const FlowRunInfo: React.FC<
             {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
-            <strong>Duration (run time):</strong> {execution.duration} (
-            {execution.total_run_time}) seconds
+            <strong>Duration (run time):</strong> {execution.duration.toFixed(1)} (
+            {execution.total_run_time.toFixed(1)}) seconds
           </p>
         </CardContent>
       </Card>
