@@ -47,7 +47,7 @@ export const FlowRunsList: React.FC<{
             >
               <TableCell>
                 <TextRenderer
-                  value={flows.find((f) => f.id == execution.graph_id)!.name}
+                  value={flows.find((f) => f.id == execution.graph_id)?.name}
                   truncateLengthLimit={30}
                 />
               </TableCell>

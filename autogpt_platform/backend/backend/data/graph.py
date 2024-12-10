@@ -453,10 +453,6 @@ async def get_executions(user_id: str) -> list[GraphExecution]:
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_clause,
         order={"createdAt": "desc"},
-        include={
-            "AgentGraph": True,
-            "AgentNodeExecutions": True
-        }
     )
     
     return [GraphExecution.from_db(execution) for execution in executions]

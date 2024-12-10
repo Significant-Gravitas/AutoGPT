@@ -404,7 +404,7 @@ async def stop_graph_run(
 )
 async def get_executions(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.AgentGraphExecution]:
+) -> list[graph_db.GraphExecution]:
     return await graph_db.get_executions(user_id=user_id)
 
 

@@ -196,7 +196,7 @@ export type ExecutionMeta = {
   ended_at: number;
   duration: number;
   total_run_time: number;
-  status: "running" | "waiting" | "success" | "failed";
+  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
   graph_id: string;
   graph_version: number;
 };

@@ -104,7 +104,7 @@ export const FlowRunInfo: React.FC<
             </p>
           </div>
           <div className="flex space-x-2">
-            {execution.status === "running" && (
+            {execution.status === "RUNNING" && (
               <Button onClick={handleStopRun} variant="destructive">
                 <IconSquare className="mr-2" /> Stop Run
               </Button>
