@@ -1,6 +1,5 @@
 import React from "react";
-import { GraphMeta } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
+import { ExecutionMeta, GraphMeta } from "@/lib/autogpt-server-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -15,11 +14,11 @@ import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
 
 export const FlowRunsList: React.FC<{
   flows: GraphMeta[];
-  runs: FlowRun[];
+  executions: ExecutionMeta[];
   className?: string;
-  selectedRun?: FlowRun | null;
-  onSelectRun: (r: FlowRun) => void;
-}> = ({ flows, runs, selectedRun, onSelectRun, className }) => (
+  selectedRun?: ExecutionMeta | null;
+  onSelectRun: (r: ExecutionMeta) => void;
+}> = ({ flows, executions, selectedRun, onSelectRun, className }) => (
   <Card className={className}>
     <CardHeader>
       <CardTitle>Runs</CardTitle>
@@ -35,21 +34,21 @@ export const FlowRunsList: React.FC<{
           </TableRow>
         </TableHeader>
         <TableBody>
-          {runs.map((run) => (
+          {executions.map((execution) => (
             <TableRow
-              key={run.id}
+              key={execution.execution_id}
               className="cursor-pointer"
-              onClick={() => onSelectRun(run)}
-              data-state={selectedRun?.id == run.id ? "selected" : null}
+              onClick={() => onSelectRun(execution)}
+              data-state={selectedRun?.execution_id == execution.execution_id ? "selected" : null}
             >
               <TableCell>
-                {flows.find((f) => f.id == run.graphID)!.name}
+                {flows.find((f) => f.id == execution.graph_id)!.name}
               </TableCell>
-              <TableCell>{moment(run.startTime).format("HH:mm")}</TableCell>
+              <TableCell>{moment(execution.started_at).format("HH:mm")}</TableCell>
               <TableCell>
-                <FlowRunStatusBadge status={run.status} />
+                <FlowRunStatusBadge status={execution.status} />
               </TableCell>
-              <TableCell>{formatDuration(run.duration)}</TableCell>
+              <TableCell>{formatDuration(execution.duration)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

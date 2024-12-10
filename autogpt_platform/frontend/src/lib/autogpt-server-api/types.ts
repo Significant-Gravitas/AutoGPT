@@ -181,6 +181,7 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 };
 
 /* Mirror of backend/data/graph.py:ExecutionMeta */
+//TODO kcze - this is actually just Execution in the backend
 export type ExecutionMeta = {
   execution_id: string;
   started_at: number;
@@ -188,9 +189,12 @@ export type ExecutionMeta = {
   duration: number;
   total_run_time: number;
   status: "running" | "waiting" | "success" | "failed";
+  graph_id: string;
+  graph_version: number;
 };
 
 /* Mirror of backend/data/graph.py:GraphMeta */
+//TODO kcze - there's no GraphMeta in the backend
 export type GraphMeta = {
   id: string;
   version: number;

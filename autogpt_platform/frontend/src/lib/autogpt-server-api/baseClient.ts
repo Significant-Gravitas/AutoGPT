@@ -74,6 +74,10 @@ export default class BaseAutoGPTServerAPI {
     return graphs.map(parseGraphMetaWithRuns);
   }
 
+  getExecutions(): Promise<ExecutionMeta[]> {
+    return this._get(`/executions`);
+  }
+
   listTemplates(): Promise<GraphMeta[]> {
     return this._get("/templates");
   }

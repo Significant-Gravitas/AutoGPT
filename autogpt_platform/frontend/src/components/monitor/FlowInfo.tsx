@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
+  ExecutionMeta,
   Graph,
   GraphMeta,
   safeCopyGraph,
 } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -33,11 +33,11 @@ import {
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    flowRuns: FlowRun[];
+    executions: ExecutionMeta[];
     flowVersion?: number | "all";
     refresh: () => void;
   }
-> = ({ flow, flowRuns, flowVersion, refresh, ...props }) => {
+> = ({ flow, executions, flowVersion, refresh, ...props }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
@@ -137,10 +137,10 @@ export const FlowInfo: React.FC<
       <CardContent>
         <FlowRunsStats
           flows={[selectedFlowVersion ?? flow]}
-          flowRuns={flowRuns.filter(
-            (r) =>
-              r.graphID == flow.id &&
-              (selectedVersion == "all" || r.graphVersion == selectedVersion),
+          executions={executions.filter(
+            (execution) =>
+              execution.graph_id == flow.id &&
+              (selectedVersion == "all" || execution.graph_version == selectedVersion),
           )}
         />
       </CardContent>

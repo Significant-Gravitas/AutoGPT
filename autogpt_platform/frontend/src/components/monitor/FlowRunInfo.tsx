@@ -1,12 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
-  BlockIORootSchema,
-  Graph,
+  ExecutionMeta,
   GraphMeta,
   NodeExecutionResult,
   SpecialBlockID,
 } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -19,9 +17,9 @@ import RunnerOutputUI, { BlockOutput } from "../runner-ui/RunnerOutputUI";
 export const FlowRunInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    flowRun: FlowRun;
+    execution: ExecutionMeta;
   }
-> = ({ flow, flowRun, ...props }) => {
+> = ({ flow, execution, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);
   const [blockOutputs, setBlockOutputs] = useState<BlockOutput[]>([]);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
@@ -29,7 +27,7 @@ export const FlowRunInfo: React.FC<
   const fetchBlockResults = useCallback(async () => {
     const executionResults = await api.getGraphExecutionInfo(
       flow.id,
-      flowRun.id,
+      execution.execution_id,
     );
 
     // Create a map of the latest COMPLETED execution results of output nodes by node_id
@@ -71,7 +69,7 @@ export const FlowRunInfo: React.FC<
         result: result.output_data?.output || undefined,
       })),
     );
-  }, [api, flow.id, flow.version, flowRun.id]);
+  }, [api, flow.id, flow.version, execution.execution_id]);
 
   // Fetch graph and execution data
   useEffect(() => {
@@ -82,15 +80,15 @@ export const FlowRunInfo: React.FC<
     fetchBlockResults();
   }, [isOutputOpen, blockOutputs]);
 
-  if (flowRun.graphID != flow.id) {
+  if (execution.graph_id != flow.id) {
     throw new Error(
-      `FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`,
+      `FlowRunInfo can't be used with non-matching execution.graph_id and flow.id`,
     );
   }
 
   const handleStopRun = useCallback(() => {
-    api.stopGraphExecution(flow.id, flowRun.id);
-  }, [flow.id, flowRun.id]);
+    api.stopGraphExecution(flow.id, execution.execution_id);
+  }, [flow.id, execution.execution_id]);
 
   return (
     <>
@@ -99,17 +97,17 @@ export const FlowRunInfo: React.FC<
           <div>
             <CardTitle>
               {flow.name}{" "}
-              <span className="font-light">v{flowRun.graphVersion}</span>
+              <span className="font-light">v{execution.graph_version}</span>
             </CardTitle>
             <p className="mt-2">
               Agent ID: <code>{flow.id}</code>
             </p>
             <p className="mt-1">
-              Run ID: <code>{flowRun.id}</code>
+              Run ID: <code>{execution.execution_id}</code>
             </p>
           </div>
           <div className="flex space-x-2">
-            {flowRun.status === "running" && (
+            {execution.status === "running" && (
               <Button onClick={handleStopRun} variant="destructive">
                 <IconSquare className="mr-2" /> Stop Run
               </Button>
@@ -128,19 +126,19 @@ export const FlowRunInfo: React.FC<
         <CardContent>
           <div>
             <strong>Status:</strong>{" "}
-            <FlowRunStatusBadge status={flowRun.status} />
+            <FlowRunStatusBadge status={execution.status} />
           </div>
           <p>
             <strong>Started:</strong>{" "}
-            {moment(flowRun.startTime).format("YYYY-MM-DD HH:mm:ss")}
+            {moment(execution.started_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
             <strong>Finished:</strong>{" "}
-            {moment(flowRun.endTime).format("YYYY-MM-DD HH:mm:ss")}
+            {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
-            <strong>Duration (run time):</strong> {flowRun.duration} (
-            {flowRun.totalRunTime}) seconds
+            <strong>Duration (run time):</strong> {execution.duration} (
+            {execution.total_run_time}) seconds
           </p>
         </CardContent>
       </Card>

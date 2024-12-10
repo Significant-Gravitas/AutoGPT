@@ -7,7 +7,7 @@ from typing import Any, Literal, Type
 
 import prisma
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
-from prisma.types import AgentGraphWhereInput
+from prisma.types import AgentGraphWhereInput, AgentGraphExecutionWhereInput
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -15,7 +15,7 @@ from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockInput, BlockType, get_block, get_blocks
 from backend.data.db import BaseDbModel, transaction
 from backend.data.execution import ExecutionStatus
-from backend.data.includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
+from backend.data.includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from backend.util import json
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,8 @@ class GraphExecution(BaseDbModel):
     duration: float
     total_run_time: float
     status: ExecutionStatus
+    graph_id: str
+    graph_version: int
 
     @staticmethod
     def from_db(execution: AgentGraphExecution):
@@ -97,6 +99,8 @@ class GraphExecution(BaseDbModel):
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(execution.executionStatus),
+            graph_id=execution.agentGraphId,
+            graph_version=execution.agentGraphVersion,
         )
 
 
@@ -385,6 +389,21 @@ async def get_graphs(
     )
 
     return [Graph.from_db(graph) for graph in graphs]
+
+
+async def get_executions(user_id: str) -> list[GraphExecution]:
+    where_clause: AgentGraphExecutionWhereInput = {"userId": user_id}
+    
+    executions = await AgentGraphExecution.prisma().find_many(
+        where=where_clause,
+        order={"createdAt": "desc"},
+        include={
+            "AgentGraph": True,
+            "AgentNodeExecutions": True
+        }
+    )
+    
+    return [GraphExecution.from_db(execution) for execution in executions]
 
 
 async def get_graph(
