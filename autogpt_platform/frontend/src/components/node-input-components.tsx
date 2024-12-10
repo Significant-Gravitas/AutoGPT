@@ -1,3 +1,11 @@
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { format } from "date-fns";
+import { CalendarIcon, Clock } from "lucide-react";
 import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
 import {
@@ -20,6 +28,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import {
+  MultiSelector,
+  MultiSelectorContent,
+  MultiSelectorInput,
+  MultiSelectorItem,
+  MultiSelectorList,
+  MultiSelectorTrigger,
+} from "./ui/multiselect";
 import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
@@ -85,6 +101,83 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
 
 export default NodeObjectInputTree;
 
+const NodeDateTimeInput: FC<{
+  selfKey: string;
+  schema: BlockIOStringSubSchema;
+  value?: string;
+  error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value = "",
+  error,
+  handleInputChange,
+  className,
+  displayName,
+}) => {
+  const date = value ? new Date(value) : new Date();
+  const [timeInput, setTimeInput] = useState(
+    value ? format(date, "HH:mm") : "00:00",
+  );
+
+  const handleDateSelect = (newDate: Date | undefined) => {
+    if (!newDate) return;
+
+    const [hours, minutes] = timeInput.split(":").map(Number);
+    newDate.setHours(hours, minutes);
+    handleInputChange(selfKey, newDate.toISOString());
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = e.target.value;
+    setTimeInput(newTime);
+
+    if (value) {
+      const [hours, minutes] = newTime.split(":").map(Number);
+      const newDate = new Date(value);
+      newDate.setHours(hours, minutes);
+      handleInputChange(selfKey, newDate.toISOString());
+    }
+  };
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal",
+              !value && "text-muted-foreground",
+            )}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {value ? format(date, "PPP") : <span>Pick a date</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={handleDateSelect}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+      <LocalValuedInput
+        type="time"
+        value={timeInput}
+        onChange={handleTimeChange}
+        className="w-full"
+      />
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
+
 export const NodeGenericInputField: FC<{
   nodeId: string;
   propKey: string;
@@ -133,6 +226,37 @@ export const NodeGenericInputField: FC<{
   }
 
   if ("properties" in propSchema) {
+    // Render a multi-select for all-boolean sub-schemas with more than 3 properties
+    if (
+      Object.values(propSchema.properties).every(
+        (subSchema) => "type" in subSchema && subSchema.type == "boolean",
+      ) &&
+      Object.keys(propSchema.properties).length >= 3
+    ) {
+      const options = Object.keys(propSchema.properties);
+      const selectedKeys = Object.entries(currentValue || {})
+        .filter(([_, v]) => v)
+        .map(([k, _]) => k);
+      return (
+        <NodeMultiSelectInput
+          selfKey={propKey}
+          schema={propSchema}
+          selection={selectedKeys}
+          error={errors[propKey]}
+          className={className}
+          displayName={displayName}
+          handleInputChange={(key, selection) => {
+            handleInputChange(
+              key,
+              Object.fromEntries(
+                options.map((option) => [option, selection.includes(option)]),
+              ),
+            );
+          }}
+        />
+      );
+    }
+
     return (
       <NodeObjectInputTree
         nodeId={nodeId}
@@ -213,6 +337,19 @@ export const NodeGenericInputField: FC<{
 
   switch (propSchema.type) {
     case "string":
+      if ("format" in propSchema && propSchema.format === "date-time") {
+        return (
+          <NodeDateTimeInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      }
       return (
         <NodeStringInput
           selfKey={propKey}
@@ -595,6 +732,56 @@ const NodeArrayInput: FC<{
   );
 };
 
+const NodeMultiSelectInput: FC<{
+  selfKey: string;
+  schema: BlockIOObjectSubSchema; // TODO: Support BlockIOArraySubSchema
+  selection?: string[];
+  error?: string;
+  className?: string;
+  displayName?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+}> = ({
+  selfKey,
+  schema,
+  selection = [],
+  error,
+  className,
+  displayName,
+  handleInputChange,
+}) => {
+  const options = Object.keys(schema.properties);
+
+  return (
+    <div className={cn("flex flex-col", className)}>
+      <MultiSelector
+        className="nodrag"
+        values={selection}
+        onValuesChange={(v) => handleInputChange(selfKey, v)}
+      >
+        <MultiSelectorTrigger>
+          <MultiSelectorInput
+            placeholder={
+              schema.placeholder ?? `Select ${displayName || schema.title}...`
+            }
+          />
+        </MultiSelectorTrigger>
+        <MultiSelectorContent className="nowheel">
+          <MultiSelectorList>
+            {options
+              .map((key) => ({ ...schema.properties[key], key }))
+              .map(({ key, title, description }) => (
+                <MultiSelectorItem key={key} value={key} title={description}>
+                  {title ?? key}
+                </MultiSelectorItem>
+              ))}
+          </MultiSelectorList>
+        </MultiSelectorContent>
+      </MultiSelector>
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
+
 const NodeStringInput: FC<{
   selfKey: string;
   schema: BlockIOStringSubSchema;
@@ -783,7 +970,7 @@ const NodeBooleanInput: FC<{
           defaultChecked={value}
           onCheckedChange={(v) => handleInputChange(selfKey, v)}
         />
-        <span className="ml-3">{displayName}</span>
+        {displayName && <span className="ml-3">{displayName}</span>}
       </div>
       {error && <span className="error-message">{error}</span>}
     </div>

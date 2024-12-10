@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useRef,
   useContext,
+  useMemo,
 } from "react";
 import { NodeProps, useReactFlow, Node, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -12,12 +13,14 @@ import InputModalComponent from "./InputModalComponent";
 import OutputModalComponent from "./OutputModalComponent";
 import {
   BlockIORootSchema,
+  BlockIOSubSchema,
   BlockIOStringSubSchema,
   Category,
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
-} from "@/lib/autogpt-server-api/types";
+  useBackendAPI,
+} from "@/lib/autogpt-server-api";
 import {
   beautifyString,
   cn,
@@ -28,6 +31,7 @@ import {
 } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
@@ -38,6 +42,7 @@ import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
 import NodeOutputs from "./NodeOutputs";
+import SchemaTooltip from "./SchemaTooltip";
 import { IconCoin } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -66,6 +71,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
+  webhookId?: string;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -102,6 +108,7 @@ export function CustomNode({
   >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
+  const api = useBackendAPI();
   let nodeFlowId = "";
 
   if (data.uiType === BlockUIType.AGENT) {
@@ -161,17 +168,38 @@ export function CustomNode({
       nodeType === BlockUIType.NOTE
     )
       return null;
-    const keys = Object.keys(schema.properties);
-    return keys.map((key) => (
-      <div key={key}>
-        <NodeHandle
-          keyName={key}
-          isConnected={isHandleConnected(key)}
-          schema={schema.properties[key]}
-          side="right"
-        />
-      </div>
-    ));
+
+    const renderHandles = (
+      propSchema: { [key: string]: BlockIOSubSchema },
+      keyPrefix = "",
+      titlePrefix = "",
+    ) => {
+      return Object.keys(propSchema).map((propKey) => {
+        const fieldSchema = propSchema[propKey];
+        const fieldTitle =
+          titlePrefix + (fieldSchema.title || beautifyString(propKey));
+
+        return (
+          <div key={propKey}>
+            <NodeHandle
+              title={fieldTitle}
+              keyName={`${keyPrefix}${propKey}`}
+              isConnected={isOutputHandleConnected(propKey)}
+              schema={fieldSchema}
+              side="right"
+            />
+            {"properties" in fieldSchema &&
+              renderHandles(
+                fieldSchema.properties,
+                `${keyPrefix}${propKey}_#_`,
+                `${fieldTitle}.`,
+              )}
+          </div>
+        );
+      });
+    };
+
+    return renderHandles(schema.properties);
   };
 
   const generateInputHandles = (
@@ -205,16 +233,18 @@ export function CustomNode({
 
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
+          const isHidden = propSchema.hidden;
           const isConnectable =
+            // No input connection handles on INPUT and WEBHOOK blocks
+            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
-            // No input connection handles on INPUT blocks
-            nodeType !== BlockUIType.INPUT &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
             !(nodeType == BlockUIType.OUTPUT && propKey == "name");
+          const isConnected = isInputHandleConnected(propKey);
           return (
+            !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
                 {isConnectable ? (
@@ -227,15 +257,15 @@ export function CustomNode({
                   />
                 ) : (
                   propKey != "credentials" && (
-                    <span
-                      className="text-m green mb-0 text-gray-900"
-                      title={propSchema.description}
-                    >
-                      {propSchema.title || beautifyString(propKey)}
-                    </span>
+                    <div className="flex gap-1">
+                      <span className="text-m green mb-0 text-gray-900">
+                        {propSchema.title || beautifyString(propKey)}
+                      </span>
+                      <SchemaTooltip description={propSchema.description} />
+                    </div>
                   )
                 )}
-                {!isConnected && (
+                {isConnected || (
                   <NodeGenericInputField
                     nodeId={id}
                     propKey={getInputPropKey(propKey)}
@@ -298,21 +328,28 @@ export function CustomNode({
     setErrors({ ...errors });
   };
 
-  const isHandleConnected = (key: string) => {
+  const isInputHandleConnected = (key: string) => {
     return (
       data.connections &&
       data.connections.some((conn: any) => {
         if (typeof conn === "string") {
-          const [source, target] = conn.split(" -> ");
-          return (
-            (target.includes(key) && target.includes(data.title)) ||
-            (source.includes(key) && source.includes(data.title))
-          );
+          const [_source, target] = conn.split(" -> ");
+          return target.includes(key) && target.includes(data.title);
         }
-        return (
-          (conn.target === id && conn.targetHandle === key) ||
-          (conn.source === id && conn.sourceHandle === key)
-        );
+        return conn.target === id && conn.targetHandle === key;
+      })
+    );
+  };
+
+  const isOutputHandleConnected = (key: string) => {
+    return (
+      data.connections &&
+      data.connections.some((conn: any) => {
+        if (typeof conn === "string") {
+          const [source, _target] = conn.split(" -> ");
+          return source.includes(key) && source.includes(data.title);
+        }
+        return conn.source === id && conn.sourceHandle === key;
       })
     );
   };
@@ -480,15 +517,78 @@ export function CustomNode({
     });
 
   const inputValues = data.hardcodedValues;
+
+  const isCostFilterMatch = (costFilter: any, inputValues: any): boolean => {
+    /*
+      Filter rules:
+      - If costFilter is an object, then check if costFilter is the subset of inputValues
+      - Otherwise, check if costFilter is equal to inputValues.
+      - Undefined, null, and empty string are considered as equal.
+    */
+    return typeof costFilter === "object" && typeof inputValues === "object"
+      ? Object.entries(costFilter).every(
+          ([k, v]) =>
+            (!v && !inputValues[k]) || isCostFilterMatch(v, inputValues[k]),
+        )
+      : costFilter === inputValues;
+  };
+
   const blockCost =
     data.blockCosts &&
     data.blockCosts.find((cost) =>
-      Object.entries(cost.cost_filter).every(
-        // Undefined, null, or empty values are considered equal
-        ([key, value]) =>
-          value === inputValues[key] || (!value && !inputValues[key]),
-      ),
+      isCostFilterMatch(cost.cost_filter, inputValues),
     );
+
+  const [webhookStatus, setWebhookStatus] = useState<
+    "works" | "exists" | "broken" | "none" | "pending" | null
+  >(null);
+
+  useEffect(() => {
+    if (data.uiType != BlockUIType.WEBHOOK) return;
+    if (!data.webhookId) {
+      setWebhookStatus("none");
+      return;
+    }
+
+    setWebhookStatus("pending");
+    api
+      .pingWebhook(data.webhookId)
+      .then((pinged) => setWebhookStatus(pinged ? "works" : "exists"))
+      .catch((error: Error) =>
+        error.message.includes("ping timed out")
+          ? setWebhookStatus("broken")
+          : setWebhookStatus("none"),
+      );
+  }, [data.uiType, data.webhookId, api, setWebhookStatus]);
+
+  const webhookStatusDot = useMemo(
+    () =>
+      webhookStatus && (
+        <div
+          className={cn(
+            "size-4 rounded-full border-2",
+            {
+              pending: "animate-pulse border-gray-300 bg-gray-400",
+              works: "border-green-300 bg-green-400",
+              exists: "border-green-200 bg-green-300",
+              broken: "border-red-400 bg-red-500",
+              none: "border-gray-300 bg-gray-400",
+            }[webhookStatus],
+          )}
+          title={
+            {
+              pending: "Checking connection status...",
+              works: "Connected",
+              exists:
+                "Connected (but we could not verify the real-time status)",
+              broken: "The connected webhook is not working",
+              none: "Not connected. Fill out all the required block inputs and save the agent to connect.",
+            }[webhookStatus]
+          }
+        />
+      ),
+    [webhookStatus],
+  );
 
   const LineSeparator = () => (
     <div className="bg-white pt-6">
@@ -543,54 +643,75 @@ export function CustomNode({
       className={`${blockClasses} ${errorClass} ${statusClass}`}
       data-id={`custom-node-${id}`}
       z-index={1}
+      data-blockid={data.block_id}
+      data-blockname={data.title}
+      data-blocktype={data.blockType}
+      data-nodetype={data.uiType}
+      data-category={data.categories[0]?.category.toLowerCase() || ""}
+      data-inputs={JSON.stringify(
+        Object.keys(data.inputSchema?.properties || {}),
+      )}
+      data-outputs={JSON.stringify(
+        Object.keys(data.outputSchema?.properties || {}),
+      )}
     >
       {/* Header */}
       <div
-        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} items-center rounded-t-xl`}
+        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} space-x-1 rounded-t-xl`}
       >
         {/* Color Stripe */}
         <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
 
-        <div className="flex w-full flex-col">
-          <div className="flex flex-row items-center justify-between">
-            <div className="font-roboto flex items-center px-3 text-lg font-semibold">
-              {beautifyString(
-                data.blockType?.replace(/Block$/, "") || data.title,
-              )}
-              <div className="px-2 text-xs text-gray-500">
-                #{id.split("-")[0]}
-              </div>
-            </div>
+        <div className="flex w-full flex-col justify-start space-y-2.5 px-4 pt-4">
+          <div className="flex flex-row items-center space-x-2 font-semibold">
+            <h3 className="font-roboto text-lg">
+              <TextRenderer
+                value={beautifyString(
+                  data.blockType?.replace(/Block$/, "") || data.title,
+                )}
+                truncateLengthLimit={80}
+              />
+            </h3>
+            <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
+
+            <div className="w-auto grow" />
+
+            {webhookStatusDot}
+            <button
+              aria-label="Options"
+              className="cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
+              onClick={onContextButtonTrigger}
+            >
+              <DotsVerticalIcon className="h-5 w-5" />
+            </button>
           </div>
-          {blockCost && (
-            <div className="px-3 text-base font-light">
-              <span className="ml-auto flex items-center">
-                <IconCoin />{" "}
-                <span className="m-1 font-medium">{blockCost.cost_amount}</span>{" "}
-                credits/{blockCost.cost_type}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center space-x-2">
+            {blockCost && (
+              <div className="mr-3 text-base font-light">
+                <span className="ml-auto flex items-center">
+                  <IconCoin />{" "}
+                  <span className="mx-1 font-medium">
+                    {blockCost.cost_amount}
+                  </span>{" "}
+                  credits/{blockCost.cost_type}
+                </span>
+              </div>
+            )}
+            {data.categories.map((category) => (
+              <Badge
+                key={category.category}
+                variant="outline"
+                className={`${getPrimaryCategoryColor([category])} h-6 whitespace-nowrap rounded-full border border-gray-300 opacity-50`}
+              >
+                {beautifyString(category.category.toLowerCase())}
+              </Badge>
+            ))}
+          </div>
         </div>
-        {data.categories.map((category) => (
-          <Badge
-            key={category.category}
-            variant="outline"
-            className={`mr-5 ${getPrimaryCategoryColor([category])} whitespace-nowrap rounded-xl border border-gray-300 opacity-50`}
-          >
-            {beautifyString(category.category.toLowerCase())}
-          </Badge>
-        ))}
-        <button
-          aria-label="Options"
-          className="mr-2 cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
-          onClick={onContextButtonTrigger}
-        >
-          <DotsVerticalIcon className="h-5 w-5" />
-        </button>
 
         <ContextMenuContent />
       </div>
+
       {/* Body */}
       <div className="ml-5 mt-6 rounded-b-xl">
         {/* Input Handles */}

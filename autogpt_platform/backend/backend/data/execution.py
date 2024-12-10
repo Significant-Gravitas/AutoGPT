@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, Generic, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
 
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
@@ -14,7 +14,9 @@ from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
+from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.util import json, mock
+from backend.util.settings import Config
 
 
 class GraphExecution(BaseModel):
@@ -271,7 +273,6 @@ async def update_graph_execution_stats(
     graph_exec_id: str,
     stats: dict[str, Any],
 ) -> ExecutionResult:
-
     status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
@@ -471,3 +472,42 @@ async def get_incomplete_executions(
         include=EXECUTION_RESULT_INCLUDE,
     )
     return [ExecutionResult.from_db(execution) for execution in executions]
+
+
+# --------------------- Event Bus --------------------- #
+
+config = Config()
+
+
+class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
+    Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
+
+    def publish(self, res: ExecutionResult):
+        self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+
+    def listen(
+        self, graph_id: str = "*", graph_exec_id: str = "*"
+    ) -> Generator[ExecutionResult, None, None]:
+        for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield execution_result
+
+
+class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
+    Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
+
+    async def publish(self, res: ExecutionResult):
+        await self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+
+    async def listen(
+        self, graph_id: str = "*", graph_exec_id: str = "*"
+    ) -> AsyncGenerator[ExecutionResult, None]:
+        async for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield execution_result

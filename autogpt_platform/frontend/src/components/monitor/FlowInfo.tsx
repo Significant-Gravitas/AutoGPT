@@ -115,6 +115,7 @@ export const FlowInfo: React.FC<
             variant="outline"
             className="px-2.5"
             title="Export to a JSON-file"
+            data-testid="export-button"
             onClick={async () =>
               exportAsJSONFile(
                 safeCopyGraph(
@@ -129,7 +130,11 @@ export const FlowInfo: React.FC<
           >
             <ExitIcon className="mr-2" /> Export
           </Button>
-          <Button variant="outline" onClick={() => setIsDeleteModalOpen(true)}>
+          <Button
+            variant="outline"
+            onClick={() => setIsDeleteModalOpen(true)}
+            data-testid="delete-button"
+          >
             <Trash2Icon className="h-full" />
           </Button>
         </div>

@@ -2,12 +2,16 @@ from enum import Enum
 from typing import Literal
 
 import replicate
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 from replicate.helpers import FileOutput
 
 from backend.data.block import Block, BlockCategory, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
 
 class ImageSize(str, Enum):

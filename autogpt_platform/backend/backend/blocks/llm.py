@@ -5,7 +5,6 @@ from json import JSONDecodeError
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 if TYPE_CHECKING:
@@ -17,18 +16,16 @@ import openai
 from groq import Groq
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
-
-# LlmApiKeys = {
-#     "openai": BlockSecret("openai_api_key"),
-#     "anthropic": BlockSecret("anthropic_api_key"),
-#     "groq": BlockSecret("groq_api_key"),
-#     "ollama": BlockSecret(value=""),
-# }
 
 LLMProviderName = Literal["anthropic", "groq", "openai", "ollama", "open_router"]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
@@ -110,7 +107,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     # OpenRouter models
     GEMINI_FLASH_1_5_8B = "google/gemini-flash-1.5"
-    GEMINI_FLASH_1_5_EXP = "google/gemini-flash-1.5-exp"
     GROK_BETA = "x-ai/grok-beta"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
@@ -120,6 +116,14 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
         "perplexity/llama-3.1-sonar-large-128k-online"
     )
+    QWEN_QWQ_32B_PREVIEW = "qwen/qwq-32b-preview"
+    NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
+    NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
+    AMAZON_NOVA_LITE_V1 = "amazon/nova-lite-v1"
+    AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
+    AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
+    MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
+    GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -155,7 +159,6 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
     LlmModel.GEMINI_FLASH_1_5_8B: ModelMetadata("open_router", 8192),
-    LlmModel.GEMINI_FLASH_1_5_EXP: ModelMetadata("open_router", 8192),
     LlmModel.GROK_BETA: ModelMetadata("open_router", 8192),
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 4000),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 4000),
@@ -165,6 +168,14 @@ MODEL_METADATA = {
     LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
         "open_router", 8192
     ),
+    LlmModel.QWEN_QWQ_32B_PREVIEW: ModelMetadata("open_router", 4000),
+    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata("open_router", 4000),
+    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: ModelMetadata("open_router", 4000),
+    LlmModel.AMAZON_NOVA_LITE_V1: ModelMetadata("open_router", 4000),
+    LlmModel.AMAZON_NOVA_MICRO_V1: ModelMetadata("open_router", 4000),
+    LlmModel.AMAZON_NOVA_PRO_V1: ModelMetadata("open_router", 4000),
+    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata("open_router", 4000),
+    LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata("open_router", 4000),
 }
 
 for model in LlmModel:
@@ -526,7 +537,7 @@ class AIStructuredResponseGeneratorBlock(Block):
 class AITextGeneratorBlock(Block):
     class Input(BlockSchema):
         prompt: str = SchemaField(
-            description="The prompt to send to the language model.",
+            description="The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces.",
             placeholder="Enter your prompt here...",
         )
         model: LlmModel = SchemaField(

@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
+import { TextRenderer } from "../ui/render";
 
 export const FlowRunsList: React.FC<{
   flows: GraphMeta[];
@@ -33,16 +34,22 @@ export const FlowRunsList: React.FC<{
             <TableHead>Duration</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody data-testid="flow-runs-list-body">
           {executions.map((execution) => (
             <TableRow
               key={execution.execution_id}
+              data-testid={`flow-run-${execution.execution_id}-graph-${execution.graph_id}`}
+              data-runid={execution.execution_id}
+              data-graphid={execution.graph_id}
               className="cursor-pointer"
               onClick={() => onSelectRun(execution)}
               data-state={selectedRun?.execution_id == execution.execution_id ? "selected" : null}
             >
               <TableCell>
-                {flows.find((f) => f.id == execution.graph_id)!.name}
+                <TextRenderer
+                  value={flows.find((f) => f.id == execution.graph_id)!.name}
+                  truncateLengthLimit={30}
+                />
               </TableCell>
               <TableCell>{moment(execution.started_at).format("HH:mm")}</TableCell>
               <TableCell>

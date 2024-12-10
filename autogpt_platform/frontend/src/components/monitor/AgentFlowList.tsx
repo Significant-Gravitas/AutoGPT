@@ -2,6 +2,7 @@ import AutoGPTServerAPI, { ExecutionMeta, GraphMeta } from "@/lib/autogpt-server
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { TextRenderer } from "@/components/ui/render";
 import Link from "next/link";
 import {
   Dialog,
@@ -66,6 +67,7 @@ export const AgentFlowList = ({
                 <Button
                   variant="outline"
                   className={"rounded-l-none border-l-0 px-2"}
+                  data-testid="create-agent-dropdown"
                 >
                   <ChevronDownIcon />
                 </Button>
@@ -73,7 +75,7 @@ export const AgentFlowList = ({
 
               <DropdownMenuContent>
                 <DialogTrigger asChild>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem data-testid="import-agent-from-file">
                     <EnterIcon className="mr-2" /> Import from file
                   </DropdownMenuItem>
                 </DialogTrigger>
@@ -93,7 +95,10 @@ export const AgentFlowList = ({
                             });
                         }}
                       >
-                        {template.name}
+                        <TextRenderer
+                          value={template.name}
+                          truncateLengthLimit={30}
+                        />
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -129,7 +134,7 @@ export const AgentFlowList = ({
               {executions && <TableHead>Last run</TableHead>}
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody data-testid="agent-flow-list-body">
             {flows
               .map((flow) => {
                 let runCount = 0,
@@ -157,11 +162,15 @@ export const AgentFlowList = ({
               .map(({ flow, runCount, lastRun }) => (
                 <TableRow
                   key={flow.id}
+                  data-testid={flow.id}
+                  data-name={flow.name}
                   className="cursor-pointer"
                   onClick={() => onSelectFlow(flow)}
                   data-state={selectedFlow?.id == flow.id ? "selected" : null}
                 >
-                  <TableCell>{flow.name}</TableCell>
+                  <TableCell>
+                    <TextRenderer value={flow.name} truncateLengthLimit={30} />
+                  </TableCell>
                   {/* <TableCell><FlowStatusBadge status={flow.status ?? "active"} /></TableCell> */}
                   {/* <TableCell>
                   {flow.updatedAt ?? "???"}

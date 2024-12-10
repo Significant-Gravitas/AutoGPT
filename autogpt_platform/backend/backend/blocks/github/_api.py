@@ -35,9 +35,9 @@ def _get_headers(credentials: GithubCredentials) -> dict[str, str]:
     }
 
 
-def get_api(credentials: GithubCredentials) -> Requests:
+def get_api(credentials: GithubCredentials, convert_urls: bool = True) -> Requests:
     return Requests(
         trusted_origins=["https://api.github.com", "https://github.com"],
-        extra_url_validator=_convert_to_api_url,
+        extra_url_validator=_convert_to_api_url if convert_urls else None,
         extra_headers=_get_headers(credentials),
     )

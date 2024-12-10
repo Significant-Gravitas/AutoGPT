@@ -56,6 +56,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  hidden?: boolean;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
@@ -82,6 +83,7 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   enum?: string[];
   secret?: true;
   default?: string;
+  format?: string;
 };
 
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
@@ -101,6 +103,7 @@ export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
   D_ID: "d_id",
   DISCORD: "discord",
+  E2B: "e2b",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
@@ -114,9 +117,13 @@ export const PROVIDER_NAMES = {
   OPENWEATHERMAP: "openweathermap",
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
+  SLANT3D: "slant3d",
   REPLICATE: "replicate",
+  FAL: "fal",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  EXA: "exa",
+  HUBSPOT: "hubspot",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
@@ -164,6 +171,7 @@ export type Node = {
     position: { x: number; y: number };
     [key: string]: any;
   };
+  webhook_id?: string;
 };
 
 /* Mirror of backend/data/graph.py:Link */
@@ -263,6 +271,7 @@ export type NodeExecutionResult = {
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
+  provider: CredentialsProviderName;
   type: CredentialsType;
   title?: string;
   scopes?: Array<string>;
@@ -275,6 +284,13 @@ export type CredentialsDeleteResponse = {
   revoked: boolean | null;
 };
 
+/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+export type CredentialsDeleteNeedConfirmationResponse = {
+  deleted: false;
+  need_confirmation: true;
+  message: string;
+};
+
 /* Mirror of backend/data/model.py:CredentialsMetaInput */
 export type CredentialsMetaInput = {
   id: string;
@@ -283,15 +299,15 @@ export type CredentialsMetaInput = {
   provider: string;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:_BaseCredentials */
+/* Mirror of backend/backend/data/model.py:_BaseCredentials */
 type BaseCredentials = {
   id: string;
   type: CredentialsType;
   title?: string;
-  provider: string;
+  provider: CredentialsProviderName;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:OAuth2Credentials */
+/* Mirror of backend/backend/data/model.py:OAuth2Credentials */
 export type OAuth2Credentials = BaseCredentials & {
   type: "oauth2";
   scopes: string[];
@@ -303,7 +319,7 @@ export type OAuth2Credentials = BaseCredentials & {
   metadata: Record<string, any>;
 };
 
-/* Mirror of autogpt_libs/supabase_integration_credentials_store/types.py:APIKeyCredentials */
+/* Mirror of backend/backend/data/model.py:APIKeyCredentials */
 export type APIKeyCredentials = BaseCredentials & {
   type: "api_key";
   title: string;
@@ -321,6 +337,7 @@ export enum BlockUIType {
   INPUT = "Input",
   OUTPUT = "Output",
   NOTE = "Note",
+  WEBHOOK = "Webhook",
   AGENT = "Agent",
 }
 
