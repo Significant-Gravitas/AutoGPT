@@ -44,10 +44,10 @@ export const HeroSection: React.FC = () => {
             <FilterChips
               badges={[
                 "Marketing",
-                "Sales",
-                "Content creation",
-                "Coding",
-                "Lorem ipsum",
+                "SEO",
+                "Content Creation",
+                "Automation",
+                "Fun",
               ]}
               onFilterChange={onFilterChange}
               multiSelect={false}

@@ -14,13 +14,15 @@ import {
   FeaturedCreator,
 } from "@/components/agptui/composite/FeaturedCreators";
 import { Separator } from "@/components/ui/separator";
-import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
+import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
 import { Metadata } from "next";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   StoreAgentsResponse,
   CreatorsResponse,
 } from "@/lib/autogpt-server-api/types";
+
+export const dynamic = "force-dynamic";
 
 async function getStoreData() {
   try {
