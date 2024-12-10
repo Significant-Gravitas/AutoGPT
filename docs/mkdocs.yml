@@ -8,13 +8,21 @@ nav:
   - Home: index.md
 
   - The AutoGPT Platform 🆕: 
-    - Getting Started: platform/getting-started.md
+    - Getting Started: 
+        - Setup AutoGPT (Local-Host): platform/getting-started.md
+        - Edit an Agent: platform/edit-agent.md
+        - Delete an Agent: platform/delete-agent.md
+        - Download & Import and Agent: platform/download-agent-from-marketplace-local.md 
+        - Create a Basic Agent: platform/create-basic-agent.md
+        - Submit an Agent to the Marketplace: platform/submit-agent-to-marketplace.md   
     - Advanced Setup: platform/advanced_setup.md
+    - Agent Blocks: platform/agent-blocks.md
     - Build your own Blocks: platform/new_blocks.md
     - Using Ollama: platform/ollama.md
     - Using D-ID: platform/d_id.md
     - Blocks: platform/blocks/blocks.md
-
+    - Contributing:
+        - Tests: platform/contributing/tests.md
   - AutoGPT Classic:
       - Introduction: classic/index.md
       - Setup:
@@ -153,7 +161,6 @@ plugins:
   - search
   - git-revision-date-localized:
       enable_creation_date: true
-
 
 extra:
   social:

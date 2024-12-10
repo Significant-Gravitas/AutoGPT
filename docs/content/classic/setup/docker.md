@@ -14,7 +14,7 @@
 
 ## Basic Setup
 
-1. Make sure you have Docker installed, see [requirements](#requirements)
+1. Make sure you have Docker installed, see [requirements](./index.md#requirements)
 2. Create a project directory for AutoGPT
 
     ```shell
@@ -80,7 +80,7 @@
 
 
 1. Download [`.env.template`][.env.template] and save it as `.env` in the AutoGPT folder.
-2. Follow the standard [configuration instructions](../index.md#completing-the-setup),
+2. Follow the standard [configuration instructions](./index.md#completing-the-setup),
    from step 3 onwards and excluding `poetry install` steps.
 3. Pull the latest image from [Docker Hub]
 
@@ -105,7 +105,7 @@
     changes to the codebase.
 
 1. Copy `.env.template` to `.env`.
-2. Follow the standard [configuration instructions](../index.md#completing-the-setup),
+2. Follow the standard [configuration instructions](./index.md#completing-the-setup),
    from step 3 onwards and excluding `poetry install` steps.
 
 ## Running AutoGPT with Docker

@@ -6,6 +6,8 @@ class ProviderName(str, Enum):
     ANTHROPIC = "anthropic"
     DISCORD = "discord"
     D_ID = "d_id"
+    E2B = "e2b"
+    EXA = "exa"
     FAL = "fal"
     GITHUB = "github"
     GOOGLE = "google"
@@ -23,5 +25,6 @@ class ProviderName(str, Enum):
     PINECONE = "pinecone"
     REPLICATE = "replicate"
     REVID = "revid"
+    SLANT3D = "slant3d"
     UNREAL_SPEECH = "unreal_speech"
     # --8<-- [end:ProviderName]

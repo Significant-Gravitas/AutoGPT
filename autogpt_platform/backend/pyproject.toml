@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "autogpt-platform-backend"
-version = "0.3.3"
+version = "0.3.4"
 description = "A platform for building AI-powered agentic workflows"
 authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
@@ -16,6 +16,7 @@ autogpt-libs = { path = "../autogpt_libs", develop = true }
 click = "^8.1.7"
 croniter = "^5.0.1"
 discord-py = "^2.4.0"
+e2b-code-interpreter = "^1.0.1"
 fastapi = "^0.115.5"
 feedparser = "^6.0.11"
 flake8 = "^7.0.0"
@@ -90,3 +91,6 @@ ignore_patterns = []
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py310"

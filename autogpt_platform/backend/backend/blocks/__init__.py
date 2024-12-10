@@ -15,10 +15,10 @@ modules = [
     if f.is_file() and f.name != "__init__.py"
 ]
 for module in modules:
-    if not re.match("^[a-z_.]+$", module):
+    if not re.match("^[a-z0-9_.]+$", module):
         raise ValueError(
             f"Block module {module} error: module name must be lowercase, "
-            "separated by underscores, and contain only alphabet characters"
+            "and contain only alphanumeric characters and underscores."
         )
 
     importlib.import_module(f".{module}", package=__name__)

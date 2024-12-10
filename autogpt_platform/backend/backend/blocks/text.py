@@ -1,13 +1,11 @@
 import re
 from typing import Any
 
-from jinja2 import BaseLoader, Environment
-
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util import json
+from backend.util import json, text
 
-jinja = Environment(loader=BaseLoader())
+formatter = text.TextFormatter()
 
 
 class MatchTextPatternBlock(Block):
@@ -146,19 +144,20 @@ class FillTextTemplateBlock(Block):
                     "values": {"list": ["Hello", " World!"]},
                     "format": "{% for item in list %}{{ item }}{% endfor %}",
                 },
+                {
+                    "values": {},
+                    "format": "{% set name = 'Alice' %}Hello, World! {{ name }}",
+                },
             ],
             test_output=[
                 ("output", "Hello, World! Alice"),
                 ("output", "Hello World!"),
+                ("output", "Hello, World! Alice"),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # For python.format compatibility: replace all {...} with {{..}}.
-        # But avoid replacing {{...}} to {{{...}}}.
-        fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
-        template = jinja.from_string(fmt)
-        yield "output", template.render(**input_data.values)
+        yield "output", formatter.format_string(input_data.format, input_data.values)
 
 
 class CombineTextsBlock(Block):
