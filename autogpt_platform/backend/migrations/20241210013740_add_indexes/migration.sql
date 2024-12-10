@@ -38,4 +38,4 @@ CREATE INDEX "AnalyticsMetrics_userId_idx" ON "AnalyticsMetrics"("userId");
 CREATE INDEX "IntegrationWebhook_userId_idx" ON "IntegrationWebhook"("userId");
 
 -- CreateIndex
-CREATE INDEX "UserBlockCredit_userId_idx" ON "UserBlockCredit"("userId");
+CREATE INDEX "UserBlockCredit_userId_createdAt_idx" ON "UserBlockCredit"("userId", "createdAt");
