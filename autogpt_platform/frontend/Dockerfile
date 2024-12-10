@@ -7,9 +7,10 @@ RUN --mount=type=cache,target=/usr/local/share/.cache yarn install --frozen-lock
 # Dev stage
 FROM base AS dev
 ENV NODE_ENV=development
+ENV HOSTNAME=0.0.0.0
 COPY autogpt_platform/frontend/ .
 EXPOSE 3000
-CMD ["yarn", "run", "dev"]
+CMD ["yarn", "run", "dev", "--hostname", "0.0.0.0"]
 
 # Build stage for prod
 FROM base AS build
@@ -20,6 +21,7 @@ RUN yarn build
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs
