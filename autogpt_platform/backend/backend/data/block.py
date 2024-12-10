@@ -22,10 +22,10 @@ from backend.util import json
 from backend.util.settings import Config
 
 from .model import (
-    CREDENTIALS_FIELD_NAME,
     ContributorDetails,
     Credentials,
     CredentialsMetaInput,
+    is_credentials_field_name,
 )
 
 app_config = Config()
@@ -140,13 +140,35 @@ class BlockSchema(BaseModel):
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
         """Validates the schema definition. Rules:
-        - Only one `CredentialsMetaInput` field may be present.
-          - This field MUST be called `credentials`.
-        - A field that is called `credentials` MUST be a `CredentialsMetaInput`.
+        - Fields with annotation `CredentialsMetaInput` MUST be
+          named `credentials` or `*_credentials`
+        - Fields named `credentials` or `*_credentials` MUST be
+          of type `CredentialsMetaInput`
         """
         super().__pydantic_init_subclass__(**kwargs)
-        credentials_fields = [
-            field_name
+
+        credentials_fields = cls.get_credentials_fields()
+
+        for field_name in cls.get_fields():
+            if is_credentials_field_name(field_name):
+                if field_name not in credentials_fields:
+                    raise TypeError(
+                        f"Credentials field '{field_name}' on {cls.__qualname__} "
+                        f"is not of type {CredentialsMetaInput.__name__}"
+                    )
+
+                credentials_fields[field_name].validate_credentials_field_schema(cls)
+
+            elif field_name in credentials_fields:
+                raise KeyError(
+                    f"Credentials field '{field_name}' on {cls.__qualname__} "
+                    "has invalid name: must be 'credentials' or *_credentials"
+                )
+
+    @classmethod
+    def get_credentials_fields(cls) -> dict[str, type[CredentialsMetaInput]]:
+        return {
+            field_name: info.annotation
             for field_name, info in cls.model_fields.items()
             if (
                 inspect.isclass(info.annotation)
@@ -155,32 +177,7 @@ class BlockSchema(BaseModel):
                     CredentialsMetaInput,
                 )
             )
-        ]
-        if len(credentials_fields) > 1:
-            raise ValueError(
-                f"{cls.__qualname__} can only have one CredentialsMetaInput field"
-            )
-        elif (
-            len(credentials_fields) == 1
-            and credentials_fields[0] != CREDENTIALS_FIELD_NAME
-        ):
-            raise ValueError(
-                f"CredentialsMetaInput field on {cls.__qualname__} "
-                "must be named 'credentials'"
-            )
-        elif (
-            len(credentials_fields) == 0
-            and CREDENTIALS_FIELD_NAME in cls.model_fields.keys()
-        ):
-            raise TypeError(
-                f"Field 'credentials' on {cls.__qualname__} "
-                f"must be of type {CredentialsMetaInput.__name__}"
-            )
-        if credentials_field := cls.model_fields.get(CREDENTIALS_FIELD_NAME):
-            credentials_input_type = cast(
-                CredentialsMetaInput, credentials_field.annotation
-            )
-            credentials_input_type.validate_credentials_field_schema(cls)
+        }
 
 
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
@@ -238,7 +235,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockData | list[BlockData] | None = None,
         test_mock: dict[str, Any] | None = None,
-        test_credentials: Optional[Credentials] = None,
+        test_credentials: Optional[Credentials | dict[str, Credentials]] = None,
         disabled: bool = False,
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
@@ -293,6 +290,12 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 raise NotImplementedError(
                     f"{self.name} has an invalid webhook event selector: "
                     "field must be a BaseModel and all its fields must be boolean"
+                )
+
+            # Disallow multiple credentials inputs on webhook blocks
+            if len(self.input_schema.get_credentials_fields()) > 1:
+                raise ValueError(
+                    "Multiple credentials input fields not supported on webhook blocks"
                 )
 
             # Enforce presence of 'payload' input
