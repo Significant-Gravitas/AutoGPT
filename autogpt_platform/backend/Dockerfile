@@ -1,10 +1,12 @@
-FROM python:3.11-slim-buster AS builder
+FROM python:3.11.10-slim-bookworm AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 WORKDIR /app
+
+RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;\n' > /etc/apt/apt.conf.d/99fixbadproxy
 
 # Install build dependencies
 RUN apt-get update \
@@ -35,7 +37,7 @@ COPY autogpt_platform/backend/schema.prisma ./
 RUN poetry config virtualenvs.create false \
     && poetry run prisma generate
 
-FROM python:3.11-slim-buster AS server_dependencies
+FROM python:3.11.10-slim-bookworm AS server_dependencies
 
 WORKDIR /app
 
