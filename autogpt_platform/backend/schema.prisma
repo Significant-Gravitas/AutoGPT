@@ -21,13 +21,13 @@ model User {
   integrations String   @default("")
 
   // Relations
-  AgentGraphs                  AgentGraph[]
-  AgentGraphExecutions         AgentGraphExecution[]
-  IntegrationWebhooks          IntegrationWebhook[]
-  AnalyticsDetails             AnalyticsDetails[]
-  AnalyticsMetrics             AnalyticsMetrics[]
-  UserBlockCredit              UserBlockCredit[]
-  APIKeys                      APIKey[]
+  AgentGraphs          AgentGraph[]
+  AgentGraphExecutions AgentGraphExecution[]
+  IntegrationWebhooks  IntegrationWebhook[]
+  AnalyticsDetails     AnalyticsDetails[]
+  AnalyticsMetrics     AnalyticsMetrics[]
+  UserBlockCredit      UserBlockCredit[]
+  APIKeys              APIKey[]
 
   @@index([id])
   @@index([email])
@@ -49,10 +49,11 @@ model AgentGraph {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  AgentNodes                  AgentNode[]
-  AgentGraphExecution         AgentGraphExecution[]
+  AgentNodes          AgentNode[]
+  AgentGraphExecution AgentGraphExecution[]
 
   @@id(name: "graphVersionId", [id, version])
+  @@index([userId, isActive])
 }
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
@@ -83,6 +84,10 @@ model AgentNode {
   metadata String @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([agentBlockId])
+  @@index([webhookId])
 }
 
 // This model describes the link between two AgentNodes.
@@ -101,6 +106,9 @@ model AgentNodeLink {
 
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
   isStatic Boolean @default(false)
+
+  @@index([agentNodeSourceId])
+  @@index([agentNodeSinkId])
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -147,6 +155,9 @@ model AgentGraphExecution {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stats String? // JSON serialized object
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([userId])
 }
 
 // This model describes the execution of an AgentNode.
@@ -171,6 +182,9 @@ model AgentNodeExecution {
   endedTime       DateTime?
 
   stats String? // JSON serialized object
+
+  @@index([agentGraphExecutionId])
+  @@index([agentNodeId])
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -189,6 +203,7 @@ model AgentNodeExecutionInputOutput {
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
+  @@index([referencedByOutputExecId])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
@@ -211,6 +226,8 @@ model IntegrationWebhook {
   providerWebhookId String // Webhook ID assigned by the provider
 
   AgentNodes AgentNode[]
+
+  @@index([userId])
 }
 
 model AnalyticsDetails {
@@ -254,6 +271,8 @@ model AnalyticsMetrics {
   // Link to User model
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum UserBlockCreditType {
@@ -278,6 +297,7 @@ model UserBlockCredit {
   metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+  @@index([userId, createdAt])
 }
 
 enum APIKeyPermission {
@@ -290,7 +310,7 @@ enum APIKeyPermission {
 model APIKey {
   id          String             @id @default(uuid())
   name        String
-  prefix      String             // First 8 chars for identification
+  prefix      String // First 8 chars for identification
   postfix     String
   key         String             @unique // Hashed key
   status      APIKeyStatus       @default(ACTIVE)
