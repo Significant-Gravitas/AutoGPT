@@ -84,8 +84,8 @@ export const FlowRunInfo: React.FC<
   }
 
   const handleStopRun = useCallback(() => {
-    api.stopGraphExecution(flow.id,  execution.execution_id);
-  }, [api, flow.id,  execution.execution_id]);
+    api.stopGraphExecution(flow.id, execution.execution_id);
+  }, [api, flow.id, execution.execution_id]);
 
   return (
     <>
@@ -134,7 +134,8 @@ export const FlowRunInfo: React.FC<
             {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
-            <strong>Duration (run time):</strong> {execution.duration.toFixed(1)} (
+            <strong>Duration (run time):</strong>{" "}
+            {execution.duration.toFixed(1)} (
             {execution.total_run_time.toFixed(1)}) seconds
           </p>
         </CardContent>

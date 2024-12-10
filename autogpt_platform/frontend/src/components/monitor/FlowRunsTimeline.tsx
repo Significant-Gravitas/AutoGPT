@@ -111,7 +111,11 @@ export const FlowRunsTimeline = ({
           dataKey="_duration"
           data={[
             { ...execution, time: execution.started_at, _duration: 0 },
-            { ...execution, time: execution.ended_at, _duration: execution.total_run_time },
+            {
+              ...execution,
+              time: execution.ended_at,
+              _duration: execution.total_run_time,
+            },
           ]}
           stroke={`hsl(${(hashString(execution.graph_id) * 137.5) % 360}, 70%, 50%)`}
           strokeWidth={2}

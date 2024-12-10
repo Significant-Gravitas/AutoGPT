@@ -1,4 +1,7 @@
-import AutoGPTServerAPI, { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
+import AutoGPTServerAPI, {
+  GraphExecution,
+  GraphMeta,
+} from "@/lib/autogpt-server-api";
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

@@ -145,7 +145,8 @@ export const FlowInfo: React.FC<
           executions={executions.filter(
             (execution) =>
               execution.graph_id == flow.id &&
-              (selectedVersion == "all" || execution.graph_version == selectedVersion),
+              (selectedVersion == "all" ||
+                execution.graph_version == selectedVersion),
           )}
         />
       </CardContent>

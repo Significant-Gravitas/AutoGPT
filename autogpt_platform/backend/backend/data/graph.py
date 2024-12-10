@@ -7,7 +7,7 @@ from typing import Any, Literal, Optional, Type
 
 import prisma
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
-from prisma.types import AgentGraphWhereInput, AgentGraphExecutionWhereInput
+from prisma.types import AgentGraphExecutionWhereInput, AgentGraphWhereInput
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -449,12 +449,12 @@ async def get_graphs(
 
 async def get_executions(user_id: str) -> list[GraphExecution]:
     where_clause: AgentGraphExecutionWhereInput = {"userId": user_id}
-    
+
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_clause,
         order={"createdAt": "desc"},
     )
-    
+
     return [GraphExecution.from_db(execution) for execution in executions]
 
 

@@ -21,9 +21,7 @@ const Monitor = () => {
   const [flows, setFlows] = useState<GraphMeta[]>([]);
   const [executions, setExecutions] = useState<GraphExecution[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(
-    null,
-  );
+  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
   const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -103,11 +101,15 @@ const Monitor = () => {
             : executions),
         ].sort((a, b) => Number(b.started_at) - Number(a.started_at))}
         selectedRun={selectedRun}
-        onSelectRun={(r) => setSelectedRun(r.execution_id == selectedRun?.execution_id ? null : r)}
+        onSelectRun={(r) =>
+          setSelectedRun(r.execution_id == selectedRun?.execution_id ? null : r)
+        }
       />
       {(selectedRun && (
         <FlowRunInfo
-          flow={selectedFlow || flows.find((f) => f.id == selectedRun.graph_id)!}
+          flow={
+            selectedFlow || flows.find((f) => f.id == selectedRun.graph_id)!
+          }
           execution={selectedRun}
           className={column3}
         />

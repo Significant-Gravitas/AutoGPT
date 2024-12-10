@@ -43,7 +43,11 @@ export const FlowRunsList: React.FC<{
               data-graphid={execution.graph_id}
               className="cursor-pointer"
               onClick={() => onSelectRun(execution)}
-              data-state={selectedRun?.execution_id == execution.execution_id ? "selected" : null}
+              data-state={
+                selectedRun?.execution_id == execution.execution_id
+                  ? "selected"
+                  : null
+              }
             >
               <TableCell>
                 <TextRenderer
@@ -51,7 +55,9 @@ export const FlowRunsList: React.FC<{
                   truncateLengthLimit={30}
                 />
               </TableCell>
-              <TableCell>{moment(execution.started_at).format("HH:mm")}</TableCell>
+              <TableCell>
+                {moment(execution.started_at).format("HH:mm")}
+              </TableCell>
               <TableCell>
                 <FlowRunStatusBadge status={execution.status} />
               </TableCell>

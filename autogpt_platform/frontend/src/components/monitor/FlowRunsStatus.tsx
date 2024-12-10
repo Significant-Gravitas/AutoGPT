@@ -104,7 +104,10 @@ export const FlowRunsStatus: React.FC<{
         </p>
         <p>
           <strong>Total run time:</strong>{" "}
-          {filteredFlowRuns.reduce((total, run) => total + run.total_run_time, 0)}{" "}
+          {filteredFlowRuns.reduce(
+            (total, run) => total + run.total_run_time,
+            0,
+          )}{" "}
           seconds
         </p>
         {/* <p><strong>Total cost:</strong> €1,23</p> */}
