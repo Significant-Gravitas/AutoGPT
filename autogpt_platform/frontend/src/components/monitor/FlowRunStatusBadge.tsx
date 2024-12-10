@@ -1,10 +1,10 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { ExecutionMeta } from "@/lib/autogpt-server-api";
+import { GraphExecution } from "@/lib/autogpt-server-api";
 
 export const FlowRunStatusBadge: React.FC<{
-  status: ExecutionMeta["status"];
+  status: GraphExecution["status"];
   className?: string;
 }> = ({ status, className }) => (
   <Badge

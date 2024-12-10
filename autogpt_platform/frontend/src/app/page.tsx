@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import AutoGPTServerAPI, {
   GraphMetaWithRuns,
-  ExecutionMeta,
+  GraphExecution,
   Schedule,
   GraphMeta,
 } from "@/lib/autogpt-server-api";
@@ -20,12 +20,12 @@ import { SchedulesTable } from "@/components/monitor/scheduleTable";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<GraphMeta[]>([]);
-  const [executions, setExecutions] = useState<ExecutionMeta[]>([]);
+  const [executions, setExecutions] = useState<GraphExecution[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<GraphMetaWithRuns | null>(
     null,
   );
-  const [selectedRun, setSelectedRun] = useState<ExecutionMeta | null>(null);
+  const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 

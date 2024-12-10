@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
-  ExecutionMeta,
+  GraphExecution,
   GraphMeta,
   NodeExecutionResult,
   SpecialBlockID,
@@ -17,7 +17,7 @@ import RunnerOutputUI, { BlockOutput } from "../runner-ui/RunnerOutputUI";
 export const FlowRunInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    execution: ExecutionMeta;
+    execution: GraphExecution;
   }
 > = ({ flow, execution, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);

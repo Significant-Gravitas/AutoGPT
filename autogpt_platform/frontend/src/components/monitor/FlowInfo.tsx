@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
-  ExecutionMeta,
+  GraphExecution,
   Graph,
   GraphMeta,
   safeCopyGraph,
@@ -33,7 +33,7 @@ import {
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    executions: ExecutionMeta[];
+    executions: GraphExecution[];
     flowVersion?: number | "all";
     refresh: () => void;
   }

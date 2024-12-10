@@ -1,4 +1,4 @@
-import AutoGPTServerAPI, { ExecutionMeta, GraphMeta } from "@/lib/autogpt-server-api";
+import AutoGPTServerAPI, { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ export const AgentFlowList = ({
   className,
 }: {
   flows: GraphMeta[];
-  executions?: ExecutionMeta[];
+  executions?: GraphExecution[];
   selectedFlow: GraphMeta | null;
   onSelectFlow: (f: GraphMeta) => void;
   className?: string;
@@ -138,7 +138,7 @@ export const AgentFlowList = ({
             {flows
               .map((flow) => {
                 let runCount = 0,
-                  lastRun: ExecutionMeta | null = null;
+                  lastRun: GraphExecution | null = null;
                 if (executions) {
                   const _flowRuns = executions.filter(
                     (r) => r.graph_id == flow.id,

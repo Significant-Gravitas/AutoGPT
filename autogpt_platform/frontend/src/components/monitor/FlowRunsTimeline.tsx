@@ -1,4 +1,4 @@
-import { ExecutionMeta, GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
 import {
   ComposedChart,
   DefaultLegendContentProps,
@@ -23,7 +23,7 @@ export const FlowRunsTimeline = ({
   className,
 }: {
   flows: GraphMeta[];
-  executions: ExecutionMeta[];
+  executions: GraphExecution[];
   dataMin: "dataMin" | number;
   className?: string;
 }) => (
@@ -60,7 +60,7 @@ export const FlowRunsTimeline = ({
       <Tooltip
         content={({ payload, label }) => {
           if (payload && payload.length) {
-            const data: ExecutionMeta & { time: number; _duration: number } =
+            const data: GraphExecution & { time: number; _duration: number } =
               payload[0].payload;
             const flow = flows.find((f) => f.id === data.graph_id);
             return (

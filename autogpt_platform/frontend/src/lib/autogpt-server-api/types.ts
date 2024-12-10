@@ -190,7 +190,7 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 
 /* Mirror of backend/data/graph.py:ExecutionMeta */
 //TODO kcze - this is actually just Execution in the backend
-export type ExecutionMeta = {
+export type GraphExecution = {
   execution_id: string;
   started_at: number;
   ended_at: number;
@@ -215,7 +215,7 @@ export type GraphMeta = {
 };
 
 export type GraphMetaWithRuns = GraphMeta & {
-  executions: ExecutionMeta[];
+  executions: GraphExecution[];
 };
 
 /* Mirror of backend/data/graph.py:Graph */
