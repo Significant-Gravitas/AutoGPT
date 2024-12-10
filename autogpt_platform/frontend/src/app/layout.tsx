@@ -12,10 +12,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 import { createServerClient } from "@/lib/supabase/server";
 
-// Import Fonts
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
-
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -56,7 +52,7 @@ export default async function RootLayout({
                 },
                 {
                   name: "Library",
-                  href: "/library",
+                  href: "/monitoring",
                 },
                 {
                   name: "Build",

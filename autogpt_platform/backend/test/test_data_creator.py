@@ -388,13 +388,22 @@ async def main():
     # Insert StoreListingReviews
     print(f"Inserting {NUM_USERS * MAX_REVIEWS_PER_VERSION} store listing reviews")
     for version in store_listing_versions:
-        num_reviews = random.randint(MIN_REVIEWS_PER_VERSION, MAX_REVIEWS_PER_VERSION)
-        for _ in range(num_reviews):
-            user = random.choice(users)
+        # Create a copy of users list and shuffle it to avoid duplicates
+        available_reviewers = users.copy()
+        random.shuffle(available_reviewers)
+        
+        # Limit number of reviews to available unique reviewers
+        num_reviews = min(
+            random.randint(MIN_REVIEWS_PER_VERSION, MAX_REVIEWS_PER_VERSION),
+            len(available_reviewers)
+        )
+        
+        # Take only the first num_reviews reviewers
+        for reviewer in available_reviewers[:num_reviews]:
             await db.storelistingreview.create(
                 data={
                     "storeListingVersionId": version.id,
-                    "reviewByUserId": user.id,
+                    "reviewByUserId": reviewer.id,
                     "score": random.randint(1, 5),
                     "comments": faker.text(),
                 }

@@ -1,3 +1,11 @@
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { format } from "date-fns";
+import { CalendarIcon, Clock } from "lucide-react";
 import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
 import {
@@ -92,6 +100,83 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
 };
 
 export default NodeObjectInputTree;
+
+const NodeDateTimeInput: FC<{
+  selfKey: string;
+  schema: BlockIOStringSubSchema;
+  value?: string;
+  error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value = "",
+  error,
+  handleInputChange,
+  className,
+  displayName,
+}) => {
+  const date = value ? new Date(value) : new Date();
+  const [timeInput, setTimeInput] = useState(
+    value ? format(date, "HH:mm") : "00:00",
+  );
+
+  const handleDateSelect = (newDate: Date | undefined) => {
+    if (!newDate) return;
+
+    const [hours, minutes] = timeInput.split(":").map(Number);
+    newDate.setHours(hours, minutes);
+    handleInputChange(selfKey, newDate.toISOString());
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = e.target.value;
+    setTimeInput(newTime);
+
+    if (value) {
+      const [hours, minutes] = newTime.split(":").map(Number);
+      const newDate = new Date(value);
+      newDate.setHours(hours, minutes);
+      handleInputChange(selfKey, newDate.toISOString());
+    }
+  };
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal",
+              !value && "text-muted-foreground",
+            )}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {value ? format(date, "PPP") : <span>Pick a date</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={handleDateSelect}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+      <LocalValuedInput
+        type="time"
+        value={timeInput}
+        onChange={handleTimeChange}
+        className="w-full"
+      />
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
 
 export const NodeGenericInputField: FC<{
   nodeId: string;
@@ -252,6 +337,19 @@ export const NodeGenericInputField: FC<{
 
   switch (propSchema.type) {
     case "string":
+      if ("format" in propSchema && propSchema.format === "date-time") {
+        return (
+          <NodeDateTimeInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      }
       return (
         <NodeStringInput
           selfKey={propKey}

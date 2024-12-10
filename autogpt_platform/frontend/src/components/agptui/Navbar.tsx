@@ -1,13 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import {
-  IconType,
-  IconLogIn,
-  IconBuilder,
-  IconMarketplace,
-  IconLibrary,
-} from "@/components/ui/icons";
+import { IconType, IconLogIn } from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 import CreditsCard from "./CreditsCard";
@@ -116,7 +110,9 @@ export const Navbar = async ({
                           ? IconType.Library
                           : link.name === "Build"
                             ? IconType.Builder
-                            : IconType.LayoutDashboard,
+                            : link.name === "Monitor"
+                              ? IconType.Library
+                              : IconType.LayoutDashboard,
                     text: link.name,
                     href: link.href,
                   })),

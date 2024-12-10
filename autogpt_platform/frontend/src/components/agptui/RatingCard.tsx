@@ -19,12 +19,16 @@ export const RatingCard: React.FC<RatingCardProps> = ({
   const [hoveredRating, setHoveredRating] = React.useState<number>(0);
   const [isVisible, setIsVisible] = React.useState(true);
 
-  const supabase = createClient();
+  const supabase = React.useMemo(() => createClient(), []);
 
-  const api = new AutoGPTServerAPI(
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-    supabase,
+  const api = React.useMemo(
+    () =>
+      new AutoGPTServerAPI(
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+        supabase,
+      ),
+    [supabase],
   );
 
   const handleClose = () => {

@@ -1,5 +1,6 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useEffect, useState, useMemo, useCallback } from "react";
 
 import AutoGPTServerAPI, {
   GraphMetaWithRuns,
@@ -84,7 +85,10 @@ const Monitor = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10">
+    <div
+      className="grid h-full w-screen grid-cols-1 gap-4 px-8 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10"
+      data-testid="monitor-page"
+    >
       <AgentFlowList
         className={column1}
         flows={flows}

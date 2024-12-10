@@ -175,3 +175,4 @@ autogpt_platform/backend/settings.py
 /autogpt_platform/frontend/.auth
 
 *.ign.*
+.test-contents
