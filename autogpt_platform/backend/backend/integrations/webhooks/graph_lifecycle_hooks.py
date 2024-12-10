@@ -203,7 +203,7 @@ async def on_node_deactivate(
             logger.warning(
                 f"Cannot deregister webhook #{webhook.id}: credentials "
                 f"#{webhook.credentials_id} not available "
-                f"({webhook.provider} webhook ID: {webhook.provider_webhook_id})"
+                f"({webhook.provider.value} webhook ID: {webhook.provider_webhook_id})"
             )
         return updated_node
 
