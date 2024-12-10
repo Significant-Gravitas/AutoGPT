@@ -40,7 +40,7 @@ COPY autogpt_platform/backend/schema.prisma ./
 RUN poetry config virtualenvs.create false \
     && poetry run prisma generate
 
-FROM python:3.11-slim-bookworm AS server_dependencies
+FROM python:3.11.10-slim-bookworm AS server_dependencies
 
 WORKDIR /app
 
