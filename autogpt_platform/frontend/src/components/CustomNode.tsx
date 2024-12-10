@@ -240,6 +240,7 @@ export function CustomNode({
             ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
+            !propKey.endsWith("_credentials") &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
             !(nodeType == BlockUIType.OUTPUT && propKey == "name");
           const isConnected = isInputHandleConnected(propKey);
@@ -256,7 +257,8 @@ export function CustomNode({
                     side="left"
                   />
                 ) : (
-                  propKey != "credentials" && (
+                  propKey != "credentials" &&
+                  !propKey.endsWith("_credentials") && (
                     <div className="flex gap-1">
                       <span className="text-m green mb-0 text-gray-900">
                         {propSchema.title || beautifyString(propKey)}
