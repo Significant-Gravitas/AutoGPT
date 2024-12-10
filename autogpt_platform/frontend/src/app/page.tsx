@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import AutoGPTServerAPI, {
-  GraphMetaWithRuns,
   GraphExecution,
   Schedule,
   GraphMeta,
@@ -22,7 +21,7 @@ const Monitor = () => {
   const [flows, setFlows] = useState<GraphMeta[]>([]);
   const [executions, setExecutions] = useState<GraphExecution[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<GraphMetaWithRuns | null>(
+  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(
     null,
   );
   const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);

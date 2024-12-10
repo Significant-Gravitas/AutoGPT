@@ -7,7 +7,7 @@ import {
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
-  ExecutionMeta,
+  GraphExecution,
   Graph,
   GraphCreatable,
   GraphExecuteResponse,
@@ -74,7 +74,7 @@ export default class BaseAutoGPTServerAPI {
     return graphs.map(parseGraphMetaWithRuns);
   }
 
-  getExecutions(): Promise<ExecutionMeta[]> {
+  getExecutions(): Promise<GraphExecution[]> {
     return this._get(`/executions`);
   }
 
@@ -531,19 +531,9 @@ function parseGraphMetaWithRuns(result: any): GraphMetaWithRuns {
   };
 }
 
-function parseExecutionMetaTimestamps(result: any): ExecutionMeta {
-  let status: "running" | "waiting" | "success" | "failed" = "success";
-  if (result.status === "FAILED") {
-    status = "failed";
-  } else if (["QUEUED", "RUNNING"].includes(result.status)) {
-    status = "running";
-  } else if (result.status === "INCOMPLETE") {
-    status = "waiting";
-  }
-
+function parseExecutionMetaTimestamps(result: any): GraphExecution {
   return {
     ...result,
-    status,
     started_at: new Date(result.started_at).getTime(),
     ended_at: result.ended_at ? new Date(result.ended_at).getTime() : undefined,
   };

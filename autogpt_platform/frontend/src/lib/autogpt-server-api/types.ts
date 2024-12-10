@@ -188,8 +188,7 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of backend/data/graph.py:ExecutionMeta */
-//TODO kcze - this is actually just Execution in the backend
+/* Mirror of backend/data/graph.py:GraphExecution */
 export type GraphExecution = {
   execution_id: string;
   started_at: number;
@@ -201,8 +200,7 @@ export type GraphExecution = {
   graph_version: number;
 };
 
-/* Mirror of backend/data/graph.py:GraphMeta */
-//TODO kcze - there's no GraphMeta in the backend
+/* backend/data/graph.py:Graph = GraphMeta & GraphMetaWithRuns & Graph */
 export type GraphMeta = {
   id: string;
   version: number;
@@ -218,7 +216,6 @@ export type GraphMetaWithRuns = GraphMeta & {
   executions: GraphExecution[];
 };
 
-/* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
