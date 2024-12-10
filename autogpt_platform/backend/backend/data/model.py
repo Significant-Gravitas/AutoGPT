@@ -277,7 +277,7 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 
         if (
             len(schema_extra.credentials_provider) > 1
-            and not schema_extra.credentials_provider
+            and not schema_extra.discriminator
         ):
             raise TypeError("Multi-provider CredentialsField requires discriminator!")
 
