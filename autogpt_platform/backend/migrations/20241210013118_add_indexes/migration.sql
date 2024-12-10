@@ -11,6 +11,12 @@ CREATE INDEX "AgentGraphExecution_userId_idx" ON "AgentGraphExecution"("userId")
 CREATE INDEX "AgentNode_agentGraphId_agentGraphVersion_idx" ON "AgentNode"("agentGraphId", "agentGraphVersion");
 
 -- CreateIndex
+CREATE INDEX "AgentNode_agentBlockId_idx" ON "AgentNode"("agentBlockId");
+
+-- CreateIndex
+CREATE INDEX "AgentNode_webhookId_idx" ON "AgentNode"("webhookId");
+
+-- CreateIndex
 CREATE INDEX "AgentNodeExecution_agentGraphExecutionId_idx" ON "AgentNodeExecution"("agentGraphExecutionId");
 
 -- CreateIndex

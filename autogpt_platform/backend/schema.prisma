@@ -86,6 +86,8 @@ model AgentNode {
   ExecutionHistory AgentNodeExecution[]
 
   @@index([agentGraphId, agentGraphVersion])
+  @@index([agentBlockId])
+  @@index([webhookId])
 }
 
 // This model describes the link between two AgentNodes.
