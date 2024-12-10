@@ -89,10 +89,6 @@ export default class BaseAutoGPTServerAPI {
     return graphs.map(parseGraphMetaWithRuns);
   }
 
-  listTemplates(): Promise<GraphMeta[]> {
-    return this._get("/templates");
-  }
-
   getGraph(
     id: string,
     version?: number,
@@ -108,53 +104,25 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/graphs/${id}`, query);
   }
 
-  getTemplate(id: string, version?: number): Promise<Graph> {
-    const query = version !== undefined ? `?version=${version}` : "";
-    return this._get(`/templates/${id}` + query);
-  }
 
   getGraphAllVersions(id: string): Promise<Graph[]> {
     return this._get(`/graphs/${id}/versions`);
   }
 
-  getTemplateAllVersions(id: string): Promise<Graph[]> {
-    return this._get(`/templates/${id}/versions`);
-  }
 
   createGraph(graphCreateBody: GraphCreatable): Promise<Graph>;
-  createGraph(fromTemplateID: string, templateVersion: number): Promise<Graph>;
-  createGraph(
-    graphOrTemplateID: GraphCreatable | string,
-    templateVersion?: number,
-  ): Promise<Graph> {
-    let requestBody: GraphCreateRequestBody;
 
-    if (typeof graphOrTemplateID == "string") {
-      if (templateVersion == undefined) {
-        throw new Error("templateVersion not specified");
-      }
-      requestBody = {
-        template_id: graphOrTemplateID,
-        template_version: templateVersion,
-      };
-    } else {
-      requestBody = { graph: graphOrTemplateID };
-    }
+  createGraph(
+    graphID: GraphCreatable | string,
+  ): Promise<Graph> {
+    let requestBody = { graph: graphID } as GraphCreateRequestBody;
 
     return this._request("POST", "/graphs", requestBody);
   }
 
-  createTemplate(templateCreateBody: GraphCreatable): Promise<Graph> {
-    const requestBody: GraphCreateRequestBody = { graph: templateCreateBody };
-    return this._request("POST", "/templates", requestBody);
-  }
 
   updateGraph(id: string, graph: GraphUpdateable): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}`, graph);
-  }
-
-  updateTemplate(id: string, template: GraphUpdateable): Promise<Graph> {
-    return this._request("PUT", `/templates/${id}`, template);
   }
 
   deleteGraph(id: string): Promise<void> {
@@ -647,11 +615,11 @@ export default class BaseAutoGPTServerAPI {
         callCount == 0
           ? this.sendWebSocketMessage(method, data, callCount + 1)
           : setTimeout(
-              () => {
-                this.sendWebSocketMessage(method, data, callCount + 1);
-              },
-              2 ** (callCount - 1) * 1000,
-            );
+            () => {
+              this.sendWebSocketMessage(method, data, callCount + 1);
+            },
+            2 ** (callCount - 1) * 1000,
+          );
       });
     }
   }
@@ -674,14 +642,9 @@ export default class BaseAutoGPTServerAPI {
 
 /* *** UTILITY TYPES *** */
 
-type GraphCreateRequestBody =
-  | {
-      template_id: string;
-      template_version: number;
-    }
-  | {
-      graph: GraphCreatable;
-    };
+type GraphCreateRequestBody = {
+  graph: GraphCreatable;
+};
 
 type WebsocketMessageTypeMap = {
   subscribe: { graph_id: string };
