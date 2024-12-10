@@ -50,13 +50,15 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
       title: "Saving and opening a new agent...",
       duration: 2000,
     });
+
     const apiUrl =
       process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
       "http://localhost:8015/api/v1/market";
-    const api = new MarketplaceAPI(apiUrl);
+
 
     const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
     const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
+    
     try {
       console.debug(`Installing agent with id: ${id}`);
       let agent = await api.downloadAgent(id);
@@ -65,13 +67,12 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
         id: agent.id,
         version: agent.version,
         is_active: true,
-        is_template: false,
         name: agent.name,
         description: agent.description,
         nodes: agent.graph.nodes,
         links: agent.graph.links,
       };
-      const result = await serverAPI.createTemplate(data);
+      const result = await serverAPI.createGraph(data);
       makeAnalyticsEvent({
         event_name: "agent_installed_from_marketplace",
         event_data: {
