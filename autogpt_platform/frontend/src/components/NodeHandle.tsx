@@ -51,7 +51,7 @@ const NodeHandle: FC<HandleProps> = ({
       : "border-gray-300";
     return (
       <div
-        className={`${className} ${color} m-1 h-6 w-6 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
+        className={`${className} ${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
       />
     );
   };
@@ -64,7 +64,7 @@ const NodeHandle: FC<HandleProps> = ({
           data-testid={`input-handle-${keyName}`}
           position={Position.Left}
           id={keyName}
-          className="-ml-[26px]"
+          className="group -ml-[26px]"
         >
           <div className="pointer-events-none flex items-center">
             <Dot className={`-ml-2 mr-2`} />
