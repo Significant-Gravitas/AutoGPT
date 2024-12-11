@@ -5,6 +5,7 @@ from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials, OAuth2Credentials
+from backend.integrations.providers import ProviderName
 
 from .base import BaseWebhooksManager
 
@@ -16,9 +17,7 @@ class CompassWebhookType(StrEnum):
     TASK = "task"
 
 
-class SimpleWebhooksManager(BaseWebhooksManager):
-    PROVIDER_NAME = "simple_hook_manager"
-
+class SimpleWebhooksManagerBase(BaseWebhooksManager):
     DEFAULT_HEADERS = {"Accept": "application/json"}
 
     async def _register_webhook(
@@ -42,9 +41,9 @@ class SimpleWebhooksManager(BaseWebhooksManager):
         pass
 
 
-class CompassWebhookManager(SimpleWebhooksManager):
+class CompassWebhookManager(SimpleWebhooksManagerBase):
     WebhookType = CompassWebhookType
-    PROVIDER_NAME = "compass"
+    PROVIDER_NAME = ProviderName.COMPASS
 
     @classmethod
     async def validate_payload(

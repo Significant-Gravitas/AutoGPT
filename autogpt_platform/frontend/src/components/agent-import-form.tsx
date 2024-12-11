@@ -132,6 +132,7 @@ export const AgentImportForm: React.FC<
                 <Input
                   type="file"
                   accept="application/json"
+                  data-testid="import-agent-file-input"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -181,7 +182,7 @@ export const AgentImportForm: React.FC<
             <FormItem>
               <FormLabel>Agent name</FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input {...field} data-testid="agent-name-input" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -195,7 +196,7 @@ export const AgentImportForm: React.FC<
             <FormItem>
               <FormLabel>Agent description</FormLabel>
               <FormControl>
-                <Textarea {...field} />
+                <Textarea {...field} data-testid="agent-description-input" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -218,6 +219,7 @@ export const AgentImportForm: React.FC<
                     Agent
                   </span>
                   <Switch
+                    data-testid="import-as-template-switch"
                     disabled={field.disabled}
                     checked={field.value}
                     onCheckedChange={field.onChange}
@@ -235,7 +237,12 @@ export const AgentImportForm: React.FC<
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full" disabled={!agentObject}>
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={!agentObject}
+          data-testid="import-agent-submit"
+        >
           <EnterIcon className="mr-2" /> Import & Edit
         </Button>
       </form>

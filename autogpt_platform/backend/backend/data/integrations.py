@@ -7,6 +7,7 @@ from pydantic import Field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
+from backend.integrations.providers import ProviderName
 
 from .db import BaseDbModel
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class Webhook(BaseDbModel):
     user_id: str
-    provider: str
+    provider: ProviderName
     credentials_id: str
     webhook_type: str
     resource: str
@@ -37,7 +38,7 @@ class Webhook(BaseDbModel):
         return Webhook(
             id=webhook.id,
             user_id=webhook.userId,
-            provider=webhook.provider,
+            provider=ProviderName(webhook.provider),
             credentials_id=webhook.credentialsId,
             webhook_type=webhook.webhookType,
             resource=webhook.resource,
@@ -61,7 +62,7 @@ async def create_webhook(webhook: Webhook) -> Webhook:
         data={
             "id": webhook.id,
             "userId": webhook.user_id,
-            "provider": webhook.provider,
+            "provider": webhook.provider.value,
             "credentialsId": webhook.credentials_id,
             "webhookType": webhook.webhook_type,
             "resource": webhook.resource,

@@ -9,6 +9,7 @@ from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import Credentials
+from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
@@ -21,7 +22,7 @@ WT = TypeVar("WT", bound=StrEnum)
 
 class BaseWebhooksManager(ABC, Generic[WT]):
     # --8<-- [start:BaseWebhooksManager1]
-    PROVIDER_NAME: ClassVar[str]
+    PROVIDER_NAME: ClassVar[ProviderName]
     # --8<-- [end:BaseWebhooksManager1]
 
     WebhookType: WT

@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
+  GraphExecution,
   Graph,
   GraphMeta,
   safeCopyGraph,
 } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -33,11 +33,11 @@ import {
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    flowRuns: FlowRun[];
+    executions: GraphExecution[];
     flowVersion?: number | "all";
     refresh: () => void;
   }
-> = ({ flow, flowRuns, flowVersion, refresh, ...props }) => {
+> = ({ flow, executions, flowVersion, refresh, ...props }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
@@ -115,6 +115,7 @@ export const FlowInfo: React.FC<
             variant="outline"
             className="px-2.5"
             title="Export to a JSON-file"
+            data-testid="export-button"
             onClick={async () =>
               exportAsJSONFile(
                 safeCopyGraph(
@@ -129,7 +130,11 @@ export const FlowInfo: React.FC<
           >
             <ExitIcon className="mr-2" /> Export
           </Button>
-          <Button variant="outline" onClick={() => setIsDeleteModalOpen(true)}>
+          <Button
+            variant="outline"
+            onClick={() => setIsDeleteModalOpen(true)}
+            data-testid="delete-button"
+          >
             <Trash2Icon className="h-full" />
           </Button>
         </div>
@@ -137,10 +142,11 @@ export const FlowInfo: React.FC<
       <CardContent>
         <FlowRunsStats
           flows={[selectedFlowVersion ?? flow]}
-          flowRuns={flowRuns.filter(
-            (r) =>
-              r.graphID == flow.id &&
-              (selectedVersion == "all" || r.graphVersion == selectedVersion),
+          executions={executions.filter(
+            (execution) =>
+              execution.graph_id == flow.id &&
+              (selectedVersion == "all" ||
+                execution.graph_version == selectedVersion),
           )}
         />
       </CardContent>

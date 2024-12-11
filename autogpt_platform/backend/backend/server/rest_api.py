@@ -25,15 +25,26 @@ logger = logging.getLogger(__name__)
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 
 
+@contextlib.contextmanager
+def launch_darkly_context():
+    if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
+        initialize_launchdarkly()
+        try:
+            yield
+        finally:
+            shutdown_launchdarkly()
+    else:
+        yield
+
+
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    initialize_launchdarkly()
-    yield
-    shutdown_launchdarkly()
+    with launch_darkly_context():
+        yield
     await backend.data.db.disconnect()
 
 
@@ -106,17 +117,17 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_create_graph(
         create_graph: backend.server.routers.v1.CreateGraph,
         user_id: str,
-        is_template=False,
     ):
         return await backend.server.routers.v1.create_new_graph(create_graph, user_id)
 
     @staticmethod
-    async def test_get_graph_run_status(
-        graph_id: str, graph_exec_id: str, user_id: str
-    ):
-        return await backend.server.routers.v1.get_graph_run_status(
-            graph_id, graph_exec_id, user_id
+    async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
+        execution = await backend.data.graph.get_execution(
+            user_id=user_id, execution_id=graph_exec_id
         )
+        if not execution:
+            raise ValueError(f"Execution {graph_exec_id} not found")
+        return execution.status
 
     @staticmethod
     async def test_get_graph_run_node_execution_results(
