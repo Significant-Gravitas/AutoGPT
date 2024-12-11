@@ -198,29 +198,6 @@ export const AgentImportForm: React.FC<
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="importAsTemplate"
-          disabled={!agentObject}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Import as</FormLabel>
-              <FormControl>
-                <div className="flex items-center space-x-2">
-                  <span
-                    className={
-                      field.value ? "text-gray-400 dark:text-gray-600" : ""
-                    }
-                  >
-                    Agent
-                  </span>
-    
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
         <Button
           type="submit"
           className="w-full"

@@ -1,5 +1,5 @@
 import AutoGPTServerAPI, { GraphMeta } from "@/lib/autogpt-server-api";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextRenderer } from "@/components/ui/render";
@@ -14,8 +14,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDownIcon, EnterIcon } from "@radix-ui/react-icons";
@@ -45,11 +43,7 @@ export const AgentFlowList = ({
   onSelectFlow: (f: GraphMeta) => void;
   className?: string;
 }) => {
-  const [templates, setTemplates] = useState<GraphMeta[]>([]);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
-  useEffect(() => {
-    api.listTemplates().then((templates) => setTemplates(templates));
-  }, [api]);
 
   return (
     <Card className={className}>
@@ -80,30 +74,6 @@ export const AgentFlowList = ({
                     <EnterIcon className="mr-2" /> Import from file
                   </DropdownMenuItem>
                 </DialogTrigger>
-                {templates.length > 0 && (
-                  <>
-                    {/* List of templates */}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Use a template</DropdownMenuLabel>
-                    {templates.map((template) => (
-                      <DropdownMenuItem
-                        key={template.id}
-                        onClick={() => {
-                          api
-                            .createGraph(template.id, template.version)
-                            .then((newGraph) => {
-                              window.location.href = `/build?flowID=${newGraph.id}`;
-                            });
-                        }}
-                      >
-                        <TextRenderer
-                          value={template.name}
-                          truncateLengthLimit={30}
-                        />
-                      </DropdownMenuItem>
-                    ))}
-                  </>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -111,7 +81,7 @@ export const AgentFlowList = ({
               <DialogHeader>
                 <DialogTitle className="sr-only">Import Agent</DialogTitle>
                 <h2 className="text-lg font-semibold">
-                  Import an Agent (template) from a file
+                  Import an Agent from a file
                 </h2>
               </DialogHeader>
               <AgentImportForm />
