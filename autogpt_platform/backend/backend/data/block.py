@@ -65,7 +65,7 @@ class BlockCategory(Enum):
 
 
 class BlockSchema(BaseModel):
-    cached_jsonschema: ClassVar[dict[str, Any]] = {}
+    cached_jsonschema: ClassVar[dict[str, Any]]
 
     @classmethod
     def jsonschema(cls) -> dict[str, Any]:
@@ -146,6 +146,9 @@ class BlockSchema(BaseModel):
           of type `CredentialsMetaInput`
         """
         super().__pydantic_init_subclass__(**kwargs)
+
+        # Reset cached JSON schema to prevent inheriting it from parent class
+        cls.cached_jsonschema = {}
 
         credentials_fields = cls.get_credentials_fields()
 

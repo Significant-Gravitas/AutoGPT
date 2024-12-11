@@ -60,9 +60,7 @@ async def wait_execution(
     timeout: int = 20,
 ) -> Sequence[ExecutionResult]:
     async def is_execution_completed():
-        status = await AgentServer().test_get_graph_run_status(
-            graph_id, graph_exec_id, user_id
-        )
+        status = await AgentServer().test_get_graph_run_status(graph_exec_id, user_id)
         log.info(f"Execution status: {status}")
         if status == ExecutionStatus.FAILED:
             log.info("Execution failed")
