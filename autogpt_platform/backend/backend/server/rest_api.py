@@ -117,17 +117,17 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_create_graph(
         create_graph: backend.server.routers.v1.CreateGraph,
         user_id: str,
-        is_template=False,
     ):
         return await backend.server.routers.v1.create_new_graph(create_graph, user_id)
 
     @staticmethod
-    async def test_get_graph_run_status(
-        graph_id: str, graph_exec_id: str, user_id: str
-    ):
-        return await backend.server.routers.v1.get_graph_run_status(
-            graph_id, graph_exec_id, user_id
+    async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
+        execution = await backend.data.graph.get_execution(
+            user_id=user_id, execution_id=graph_exec_id
         )
+        if not execution:
+            raise ValueError(f"Execution {graph_exec_id} not found")
+        return execution.status
 
     @staticmethod
     async def test_get_graph_run_node_execution_results(

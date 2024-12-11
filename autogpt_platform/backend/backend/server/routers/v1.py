@@ -149,12 +149,9 @@ class DeleteGraphResponse(TypedDict):
 
 @v1_router.get(path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)])
 async def get_graphs(
-    user_id: Annotated[str, Depends(get_user_id)],
-    with_runs: bool = False,
+    user_id: Annotated[str, Depends(get_user_id)]
 ) -> Sequence[graph_db.Graph]:
-    return await graph_db.get_graphs(
-        include_executions=with_runs, filter_by="active", user_id=user_id
-    )
+    return await graph_db.get_graphs(filter_by="active", user_id=user_id)
 
 
 @v1_router.get(
@@ -386,7 +383,7 @@ def execute_graph(
 async def stop_graph_run(
     graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Sequence[execution_db.ExecutionResult]:
-    if not await execution_db.get_graph_execution(graph_exec_id, user_id):
+    if not await graph_db.get_execution(user_id=user_id, execution_id=graph_exec_id):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
 
     await asyncio.to_thread(
@@ -409,26 +406,6 @@ async def get_executions(
 
 
 @v1_router.get(
-    path="/graphs/{graph_id}/executions",
-    tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def list_graph_runs(
-    graph_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
-    graph_version: int | None = None,
-) -> Sequence[str]:
-    graph = await graph_db.get_graph(graph_id, graph_version, user_id=user_id)
-    if not graph:
-        rev = "" if graph_version is None else f" v{graph_version}"
-        raise HTTPException(
-            status_code=404, detail=f"Agent #{graph_id}{rev} not found."
-        )
-
-    return await execution_db.list_executions(graph_id, graph_version)
-
-
-@v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
@@ -443,25 +420,6 @@ async def get_graph_run_node_execution_results(
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     return await execution_db.get_execution_results(graph_exec_id)
-
-
-# NOTE: This is used for testing
-async def get_graph_run_status(
-    graph_id: str,
-    graph_exec_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
-) -> execution_db.ExecutionStatus:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
-    execution = await execution_db.get_graph_execution(graph_exec_id, user_id)
-    if not execution:
-        raise HTTPException(
-            status_code=404, detail=f"Execution #{graph_exec_id} not found."
-        )
-
-    return execution.executionStatus
 
 
 ########################################################
