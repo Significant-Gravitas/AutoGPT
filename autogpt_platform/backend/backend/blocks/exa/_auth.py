@@ -3,10 +3,11 @@ from typing import Literal
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 ExaCredentials = APIKeyCredentials
 ExaCredentialsInput = CredentialsMetaInput[
-    Literal["exa"],
+    Literal[ProviderName.EXA],
     Literal["api_key"],
 ]
 
@@ -28,8 +29,4 @@ TEST_CREDENTIALS_INPUT = {
 
 def ExaCredentialsField() -> ExaCredentialsInput:
     """Creates an Exa credentials input on a block."""
-    return CredentialsField(
-        provider="exa",
-        supported_credential_types={"api_key"},
-        description="The Exa integration requires an API Key.",
-    )
+    return CredentialsField(description="The Exa integration requires an API Key.")
