@@ -249,6 +249,13 @@ async def do_create_graph(
 async def delete_graph(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> DeleteGraphResponse:
+    if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
+
+        def get_credentials(credentials_id: str) -> "Credentials | None":
+            return integration_creds_manager.get(user_id, credentials_id)
+
+        await on_graph_deactivate(active_version, get_credentials)
+
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
 
 
