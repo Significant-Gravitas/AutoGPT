@@ -23,6 +23,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -44,17 +45,6 @@ jobs:
         browser: [chromium, firefox, webkit]
 
     steps:
-      # - name: Free Disk Space (Ubuntu)
-      #   uses: jlumbroso/free-disk-space@main
-      #   with:
-      #     tool-cache: false
-      #     android: false
-      #     dotnet: false
-      #     haskell: false
-      #     large-packages: true
-      #     docker-images: true
-      #     swap-storage: true
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -64,6 +54,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "21"
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
 
       - name: Copy default supabase .env
         run: |
@@ -85,7 +80,7 @@ jobs:
         run: |
           cp .env.example .env
 
-      - name: Install Playwright Browser
+      - name: Install Browser '${{ matrix.browser }}'
         run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
