@@ -244,7 +244,9 @@ export const CredentialsInput: FC<{
     return (
       <>
         <div className="mb-2 flex gap-1">
-          <span className="text-m green text-gray-900">Credentials</span>
+          <span className="text-m green text-gray-900">
+            {providerName} Credentials
+          </span>
           <SchemaTooltip description={schema.description} />
         </div>
         <div className={cn("flex flex-row space-x-2", className)}>
@@ -314,7 +316,7 @@ export const CredentialsInput: FC<{
     <>
       <div className="flex gap-1">
         <span className="text-m green mb-0 text-gray-900">
-          {schema.title || beautifyString(selfKey)}
+          {providerName} Credentials
         </span>
         <SchemaTooltip description={schema.description} />
       </div>
