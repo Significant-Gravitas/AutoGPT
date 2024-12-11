@@ -8,7 +8,7 @@ from backend.data.block import (
     BlockSchema,
 )
 from backend.data.model import SchemaField
-from backend.integrations.webhooks.simple_webhook_manager import CompassWebhookType
+from backend.integrations.webhooks.compass import CompassWebhookType
 
 
 class Transcription(BaseModel):

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from backend.data.graph import GraphModel, NodeModel
     from backend.data.model import Credentials
 
-    from .base import BaseWebhooksManager
+    from ._base import BaseWebhooksManager
 
 logger = logging.getLogger(__name__)
 

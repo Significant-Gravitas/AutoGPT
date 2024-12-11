@@ -6,7 +6,7 @@ from fastapi import Request
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.base import BaseWebhooksManager
+from backend.integrations.webhooks._base import BaseWebhooksManager
 
 logger = logging.getLogger(__name__)
 
