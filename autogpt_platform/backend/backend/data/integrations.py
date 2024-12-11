@@ -3,11 +3,12 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks.utils import webhook_ingress_url
 
 from .db import BaseDbModel
 
@@ -30,6 +31,11 @@ class Webhook(BaseDbModel):
     provider_webhook_id: str
 
     attached_nodes: Optional[list["NodeModel"]] = None
+
+    @computed_field
+    @property
+    def url(self) -> str:
+        return webhook_ingress_url(self.provider.value, self.id)
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
@@ -120,7 +126,7 @@ async def find_webhook_by_graph_and_props(
             "provider": provider,
             "webhookType": webhook_type,
             "events": {"has_every": events},
-            "AgentNodes": {"some": {"graphId": graph_id}},
+            "AgentNodes": {"some": {"agentGraphId": graph_id}},
         },
         include=INTEGRATION_WEBHOOK_INCLUDE,
     )

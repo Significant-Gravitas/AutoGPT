@@ -273,7 +273,9 @@ class GraphModel(Graph):
                 if (
                     name not in provided_inputs
                     and not (
-                        name == "payload" and block.block_type == BlockType.WEBHOOK
+                        name == "payload"
+                        and block.block_type
+                        in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
                     )
                     and (
                         for_run  # Skip input completion validation, unless when executing.

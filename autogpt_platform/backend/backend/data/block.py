@@ -42,6 +42,7 @@ class BlockType(Enum):
     OUTPUT = "Output"
     NOTE = "Note"
     WEBHOOK = "Webhook"
+    WEBHOOK_MANUAL = "Webhook (manual)"
     AGENT = "Agent"
 
 
@@ -293,19 +294,20 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.contributors = contributors or set()
         self.disabled = disabled
         self.static_output = static_output
-        self.block_type = block_type if not webhook_config else BlockType.WEBHOOK
+        self.block_type = block_type
         self.webhook_config = webhook_config
         self.execution_stats = {}
 
         if self.webhook_config:
-            # Enforce presence of credentials field on auto-setup webhook blocks
-            if (
-                isinstance(self.webhook_config, BlockWebhookConfig)
-                and CREDENTIALS_FIELD_NAME not in self.input_schema.model_fields
-            ):
-                raise TypeError(
-                    "credentials field is required on auto-setup webhook blocks"
-                )
+            if isinstance(self.webhook_config, BlockWebhookConfig):
+                # Enforce presence of credentials field on auto-setup webhook blocks
+                if CREDENTIALS_FIELD_NAME not in self.input_schema.model_fields:
+                    raise TypeError(
+                        "credentials field is required on auto-setup webhook blocks"
+                    )
+                self.block_type = BlockType.WEBHOOK
+            else:
+                self.block_type = BlockType.WEBHOOK_MANUAL
 
             # Enforce shape of webhook event filter, if present
             if self.webhook_config.event_filter_input:

@@ -170,7 +170,7 @@ export default function useAgentGraph(
               inputSchema: block.inputSchema,
               outputSchema: block.outputSchema,
               hardcodedValues: node.input_default,
-              webhookId: node.webhook_id,
+              webhook: node.webhook,
               uiType: block.uiType,
               connections: graph.links
                 .filter((l) => [l.source_id, l.sink_id].includes(node.id))
@@ -777,7 +777,7 @@ export default function useAgentGraph(
                     ),
                     status: undefined,
                     backend_id: backendNode.id,
-                    webhookId: backendNode.webhook_id,
+                    webhook: backendNode.webhook,
                     executionResults: [],
                   },
                 }

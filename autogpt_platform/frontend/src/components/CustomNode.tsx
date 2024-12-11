@@ -6,7 +6,7 @@ import React, {
   useContext,
   useMemo,
 } from "react";
-import { NodeProps, useReactFlow, Node, Edge } from "@xyflow/react";
+import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./customnode.css";
 import InputModalComponent from "./InputModalComponent";
@@ -16,6 +16,7 @@ import {
   BlockIOSubSchema,
   BlockIOStringSubSchema,
   Category,
+  Node,
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
@@ -71,7 +72,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
-  webhookId?: string;
+  webhook?: Node["webhook"];
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -87,7 +88,7 @@ export type CustomNodeData = {
   uiType: BlockUIType;
 };
 
-export type CustomNode = Node<CustomNodeData, "custom">;
+export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export function CustomNode({
   data,
@@ -237,7 +238,11 @@ export function CustomNode({
           const isHidden = propSchema.hidden;
           const isConnectable =
             // No input connection handles on INPUT and WEBHOOK blocks
-            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
+            ![
+              BlockUIType.INPUT,
+              BlockUIType.WEBHOOK,
+              BlockUIType.WEBHOOK_MANUAL,
+            ].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
@@ -544,22 +549,23 @@ export function CustomNode({
   >(null);
 
   useEffect(() => {
-    if (data.uiType != BlockUIType.WEBHOOK) return;
-    if (!data.webhookId) {
+    if (!(data.uiType in [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL]))
+      return;
+    if (!data.webhook) {
       setWebhookStatus("none");
       return;
     }
 
     setWebhookStatus("pending");
     api
-      .pingWebhook(data.webhookId)
+      .pingWebhook(data.webhook.id)
       .then((pinged) => setWebhookStatus(pinged ? "works" : "exists"))
       .catch((error: Error) =>
         error.message.includes("ping timed out")
           ? setWebhookStatus("broken")
           : setWebhookStatus("none"),
       );
-  }, [data.uiType, data.webhookId, api, setWebhookStatus]);
+  }, [data.uiType, data.webhook, api, setWebhookStatus]);
 
   const webhookStatusDot = useMemo(
     () =>
@@ -721,6 +727,17 @@ export function CustomNode({
             data-id="input-handles"
           >
             <div>
+              {data.uiType === BlockUIType.WEBHOOK_MANUAL &&
+                (data.webhook ? (
+                  <p className="nodrag">
+                    Webhook URL: <br />
+                    <code className="select-all">{data.webhook.url}</code>
+                  </p>
+                ) : (
+                  <p className="italic text-gray-500">
+                    (A Webhook URL will be generated when you save the agent)
+                  </p>
+                ))}
               {data.inputSchema &&
                 generateInputHandles(data.inputSchema, data.uiType)}
             </div>
