@@ -58,7 +58,8 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          large-packages: false  # slow
+          docker-images: false  # limited benefit
 
       - name: Copy default supabase .env
         run: |
