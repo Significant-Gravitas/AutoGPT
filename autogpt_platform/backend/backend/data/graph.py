@@ -7,7 +7,7 @@ from typing import Any, Literal, Optional, Type
 
 import prisma
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
-from prisma.types import AgentGraphExecutionWhereInput, AgentGraphWhereInput
+from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -143,7 +143,6 @@ class Graph(BaseDbModel):
     is_template: bool = False
     name: str
     description: str
-    executions: list[GraphExecution] = []
     nodes: list[Node] = []
     links: list[Link] = []
 
@@ -329,11 +328,6 @@ class GraphModel(Graph):
 
     @staticmethod
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
-        executions = [
-            GraphExecution.from_db(execution)
-            for execution in graph.AgentGraphExecution or []
-        ]
-
         return GraphModel(
             id=graph.id,
             user_id=graph.userId,
@@ -342,7 +336,6 @@ class GraphModel(Graph):
             is_template=graph.isTemplate,
             name=graph.name or "",
             description=graph.description or "",
-            executions=executions,
             nodes=[
                 GraphModel._process_node(node, hide_credentials)
                 for node in graph.AgentNodes or []
@@ -412,7 +405,6 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
 
 async def get_graphs(
     user_id: str,
-    include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
 ) -> list[GraphModel]:
     """
@@ -420,7 +412,6 @@ async def get_graphs(
     Default behaviour is to get all currently active graphs.
 
     Args:
-        include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
         user_id: The ID of the user that owns the graph.
 
@@ -434,28 +425,29 @@ async def get_graphs(
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    graph_include = AGENT_GRAPH_INCLUDE
-    graph_include["AgentGraphExecution"] = include_executions
-
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=graph_include,
+        include=AGENT_GRAPH_INCLUDE,
     )
 
     return [GraphModel.from_db(graph) for graph in graphs]
 
 
 async def get_executions(user_id: str) -> list[GraphExecution]:
-    where_clause: AgentGraphExecutionWhereInput = {"userId": user_id}
-
     executions = await AgentGraphExecution.prisma().find_many(
-        where=where_clause,
+        where={"userId": user_id},
         order={"createdAt": "desc"},
     )
-
     return [GraphExecution.from_db(execution) for execution in executions]
+
+
+async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": user_id}
+    )
+    return GraphExecution.from_db(execution) if execution else None
 
 
 async def get_graph(
