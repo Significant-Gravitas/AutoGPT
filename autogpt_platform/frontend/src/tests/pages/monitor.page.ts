@@ -30,11 +30,6 @@ interface Schedule {
   actions: string[];
 }
 
-enum ImportType {
-  AGENT = "agent",
-  TEMPLATE = "template",
-}
-
 export class MonitorPage extends BasePage {
   constructor(page: Page) {
     super(page);
@@ -177,10 +172,9 @@ export class MonitorPage extends BasePage {
     file: string,
     name?: string,
     description?: string,
-    importType: ImportType = ImportType.AGENT,
   ) {
     console.log(
-      `importing from directory: ${directory} file: ${file} name: ${name} description: ${description} importType: ${importType}`,
+      `importing from directory: ${directory} file: ${file} name: ${name} description: ${description}`,
     );
     await this.page.getByTestId("create-agent-dropdown").click();
     await this.page.getByTestId("import-agent-from-file").click();
@@ -195,10 +189,6 @@ export class MonitorPage extends BasePage {
     if (description) {
       console.log(`filling agent description: ${description}`);
       await this.page.getByTestId("agent-description-input").fill(description);
-    }
-    if (importType === ImportType.TEMPLATE) {
-      console.log(`clicking import as template switch`);
-      await this.page.getByTestId("import-as-template-switch").click();
     }
     console.log(`clicking import agent submit`);
     await this.page.getByTestId("import-agent-submit").click();

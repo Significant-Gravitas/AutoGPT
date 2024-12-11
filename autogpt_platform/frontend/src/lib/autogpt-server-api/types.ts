@@ -196,7 +196,6 @@ export type GraphMeta = {
   id: string;
   version: number;
   is_active: boolean;
-  is_template: boolean;
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;

@@ -24,11 +24,7 @@ import { GraphMeta } from "@/lib/autogpt-server-api";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
-export default function useAgentGraph(
-  flowID?: string,
-  template?: boolean,
-  passDataToBeads?: boolean,
-) {
+export default function useAgentGraph(flowID?: string, passDataToBeads?: boolean) {
   const { toast } = useToast();
   const [router, searchParams, pathname] = [
     useRouter(),
@@ -333,13 +329,11 @@ export default function useAgentGraph(
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
-      (graph) => {
-        console.debug("Loading graph");
-        loadGraph(graph);
-      },
-    );
-  }, [flowID, template, availableNodes, api, loadGraph]);
+    api.getGraph(flowID).then((graph) => {
+      console.debug("Loading graph");
+      loadGraph(graph);
+    });
+  }, [flowID, availableNodes, api, loadGraph]);
 
   // Update nodes with execution data
   useEffect(() => {
@@ -644,7 +638,7 @@ export default function useAgentGraph(
   );
 
   const _saveAgent = useCallback(
-    async (asTemplate: boolean = false) => {
+    async () => {
       //FIXME frontend ids should be resolved better (e.g. returned from the server)
       // currently this relays on block_id and position
       const blockIdToNodeIdMap: Record<string, string> = {};
@@ -737,12 +731,8 @@ export default function useAgentGraph(
         setNodesSyncedWithSavedAgent(false);
 
         newSavedAgent = savedAgent
-          ? await (savedAgent.is_template
-              ? api.updateTemplate(savedAgent.id, payload)
-              : api.updateGraph(savedAgent.id, payload))
-          : await (asTemplate
-              ? api.createTemplate(payload)
-              : api.createGraph(payload));
+          ? await api.updateGraph(savedAgent.id, payload)
+          : await api.createGraph(payload);
 
         console.debug("Response from the API:", newSavedAgent);
       }
@@ -814,9 +804,9 @@ export default function useAgentGraph(
   );
 
   const saveAgent = useCallback(
-    async (asTemplate: boolean = false) => {
+    async () => {
       try {
-        await _saveAgent(asTemplate);
+        await _saveAgent();
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -832,8 +822,8 @@ export default function useAgentGraph(
   );
 
   const requestSave = useCallback(
-    (asTemplate: boolean) => {
-      saveAgent(asTemplate);
+    () => {
+      saveAgent();
       setSaveRunRequest({
         request: "save",
         state: "saving",
