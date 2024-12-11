@@ -398,6 +398,17 @@ async def stop_graph_run(
 
 
 @v1_router.get(
+    path="/executions",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_executions(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> list[graph_db.GraphExecution]:
+    return await graph_db.get_executions(user_id=user_id)
+
+
+@v1_router.get(
     path="/graphs/{graph_id}/executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],

@@ -188,17 +188,19 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of autogpt_server/data/graph.py:ExecutionMeta */
-export type ExecutionMeta = {
+/* Mirror of backend/data/graph.py:GraphExecution */
+export type GraphExecution = {
   execution_id: string;
   started_at: number;
   ended_at: number;
   duration: number;
   total_run_time: number;
-  status: "running" | "waiting" | "success" | "failed";
+  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  graph_id: string;
+  graph_version: number;
 };
 
-/* Mirror of backend/data/graph.py:GraphMeta */
+/* backend/data/graph.py:Graph = GraphMeta & GraphMetaWithRuns & Graph */
 export type GraphMeta = {
   id: string;
   version: number;
@@ -211,10 +213,9 @@ export type GraphMeta = {
 };
 
 export type GraphMetaWithRuns = GraphMeta & {
-  executions: ExecutionMeta[];
+  executions: GraphExecution[];
 };
 
-/* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;

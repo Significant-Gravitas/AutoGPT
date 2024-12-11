@@ -7,7 +7,7 @@ from typing import Any, Literal, Optional, Type
 
 import prisma
 from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
-from prisma.types import AgentGraphWhereInput
+from prisma.types import AgentGraphExecutionWhereInput, AgentGraphWhereInput
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -105,6 +105,8 @@ class GraphExecution(BaseDbModel):
     duration: float
     total_run_time: float
     status: ExecutionStatus
+    graph_id: str
+    graph_version: int
 
     @staticmethod
     def from_db(execution: AgentGraphExecution):
@@ -130,6 +132,8 @@ class GraphExecution(BaseDbModel):
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(execution.executionStatus),
+            graph_id=execution.agentGraphId,
+            graph_version=execution.agentGraphVersion,
         )
 
 
@@ -423,14 +427,12 @@ async def get_graphs(
     Returns:
         list[GraphModel]: A list of objects representing the retrieved graphs.
     """
-    where_clause: AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
     elif filter_by == "template":
         where_clause["isTemplate"] = True
-
-    where_clause["userId"] = user_id
 
     graph_include = AGENT_GRAPH_INCLUDE
     graph_include["AgentGraphExecution"] = include_executions
@@ -443,6 +445,17 @@ async def get_graphs(
     )
 
     return [GraphModel.from_db(graph) for graph in graphs]
+
+
+async def get_executions(user_id: str) -> list[GraphExecution]:
+    where_clause: AgentGraphExecutionWhereInput = {"userId": user_id}
+
+    executions = await AgentGraphExecution.prisma().find_many(
+        where=where_clause,
+        order={"createdAt": "desc"},
+    )
+
+    return [GraphExecution.from_db(execution) for execution in executions]
 
 
 async def get_graph(
