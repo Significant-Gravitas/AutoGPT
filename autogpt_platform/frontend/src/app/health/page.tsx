@@ -1,7 +1,3 @@
 export default function HealthPage() {
-  return (
-    <div>
-      Yay im healthy
-    </div>
-  );
+  return <div>Yay im healthy</div>;
 }

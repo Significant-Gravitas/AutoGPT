@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, Download, Calendar, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
 import "@xyflow/react/dist/style.css";

@@ -55,7 +55,6 @@ export const SaveControl = ({
     onSave();
   }, [onSave]);
 
-
   const { toast } = useToast();
 
   useEffect(() => {
