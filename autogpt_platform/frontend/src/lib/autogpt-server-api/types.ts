@@ -200,7 +200,6 @@ export type GraphExecution = {
   graph_version: number;
 };
 
-/* backend/data/graph.py:Graph = GraphMeta & Graph */
 export type GraphMeta = {
   id: string;
   version: number;
