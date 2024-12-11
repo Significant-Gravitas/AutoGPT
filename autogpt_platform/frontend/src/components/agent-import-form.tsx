@@ -98,8 +98,8 @@ export const AgentImportForm: React.FC<
       is_active: !values.importAsTemplate,
     };
 
-    (api.createGraph(payload)
-  )
+    api
+      .createGraph(payload)
       .then((response) => {
         const qID = "flowID";
         window.location.href = `/build?${qID}=${response.id}`;

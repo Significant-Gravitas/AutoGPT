@@ -104,22 +104,17 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/graphs/${id}`, query);
   }
 
-
   getGraphAllVersions(id: string): Promise<Graph[]> {
     return this._get(`/graphs/${id}/versions`);
   }
 
-
   createGraph(graphCreateBody: GraphCreatable): Promise<Graph>;
 
-  createGraph(
-    graphID: GraphCreatable | string,
-  ): Promise<Graph> {
+  createGraph(graphID: GraphCreatable | string): Promise<Graph> {
     let requestBody = { graph: graphID } as GraphCreateRequestBody;
 
     return this._request("POST", "/graphs", requestBody);
   }
-
 
   updateGraph(id: string, graph: GraphUpdateable): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}`, graph);
@@ -615,11 +610,11 @@ export default class BaseAutoGPTServerAPI {
         callCount == 0
           ? this.sendWebSocketMessage(method, data, callCount + 1)
           : setTimeout(
-            () => {
-              this.sendWebSocketMessage(method, data, callCount + 1);
-            },
-            2 ** (callCount - 1) * 1000,
-          );
+              () => {
+                this.sendWebSocketMessage(method, data, callCount + 1);
+              },
+              2 ** (callCount - 1) * 1000,
+            );
       });
     }
   }

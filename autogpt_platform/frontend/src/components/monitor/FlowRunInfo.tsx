@@ -97,12 +97,7 @@ export const FlowRunInfo: React.FC<
             <CardTitle>
               {flow.name} <span className="font-light">v{flow.version}</span>
             </CardTitle>
-            <p className="mt-2">
-              Agent ID: <code>{flow.id}</code>
-            </p>
-            <p className="mt-1">
-              Run ID: <code>{flowRun.id}</code>
-            </p>
+
           </div>
           <div className="flex space-x-2">
             {flowRun.status === "running" && (
@@ -122,6 +117,12 @@ export const FlowRunInfo: React.FC<
           </div>
         </CardHeader>
         <CardContent>
+          <p className="hidden">
+            <strong>Agent ID:</strong> <code>{flow.id}</code>
+          </p>
+          <p className="hidden">
+            <strong>Run ID:</strong> <code>{flowRun.id}</code>
+          </p>
           <div>
             <strong>Status:</strong>{" "}
             <FlowRunStatusBadge status={flowRun.status} />
@@ -138,6 +139,7 @@ export const FlowRunInfo: React.FC<
             <strong>Duration (run time):</strong> {flowRun.duration} (
             {flowRun.totalRunTime}) seconds
           </p>
+
         </CardContent>
       </Card>
       <RunnerOutputUI
