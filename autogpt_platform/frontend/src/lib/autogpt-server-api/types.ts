@@ -200,7 +200,7 @@ export type GraphExecution = {
   graph_version: number;
 };
 
-/* backend/data/graph.py:Graph = GraphMeta & GraphMetaWithRuns & Graph */
+/* backend/data/graph.py:Graph = GraphMeta & Graph */
 export type GraphMeta = {
   id: string;
   version: number;
@@ -210,10 +210,6 @@ export type GraphMeta = {
   description: string;
   input_schema: BlockIOObjectSubSchema;
   output_schema: BlockIOObjectSubSchema;
-};
-
-export type GraphMetaWithRuns = GraphMeta & {
-  executions: GraphExecution[];
 };
 
 export type Graph = GraphMeta & {

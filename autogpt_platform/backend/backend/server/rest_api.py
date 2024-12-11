@@ -125,7 +125,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_get_graph_run_status(
         graph_id: str, graph_exec_id: str, user_id: str
     ):
-        return await backend.server.routers.v1.get_graph_run_status(
+        return await backend.server.routers.v1.__test__get_graph_run_status(
             graph_id, graph_exec_id, user_id
         )
 
