@@ -372,7 +372,7 @@ export const startTutorial = (
     title: "Check the Output",
     text: "Check here to see the output of the block after running the flow.",
     attachTo: { element: '[data-id="latest-output"]', on: "top" },
-    beforeShowPromise: () => 
+    beforeShowPromise: () =>
       new Promise((resolve) => {
         setTimeout(() => {
           waitForElement('[data-id="latest-output"]').then(resolve);
