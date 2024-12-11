@@ -422,26 +422,6 @@ async def get_graph_run_node_execution_results(
     return await execution_db.get_execution_results(graph_exec_id)
 
 
-async def __test__get_graph_run_status(
-    graph_id: str,
-    graph_exec_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
-) -> execution_db.ExecutionStatus:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
-    execution = await graph_db.get_execution(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-    if not execution:
-        raise HTTPException(
-            status_code=404, detail=f"Execution #{graph_exec_id} not found."
-        )
-
-    return execution.status
-
-
 ########################################################
 ##################### Templates ########################
 ########################################################
