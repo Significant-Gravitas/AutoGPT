@@ -45,13 +45,13 @@ const NodeHandle: FC<HandleProps> = ({
     </div>
   );
 
-  const Dot = ({ className = "" }) => {
+  const Dot = () => {
     const color = isConnected
       ? getTypeBgColor(schema.type || "any")
       : "border-gray-300";
     return (
       <div
-        className={`${className} ${color} m-1 h-6 w-6 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
+        className={`${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
       />
     );
   };
@@ -64,10 +64,10 @@ const NodeHandle: FC<HandleProps> = ({
           data-testid={`input-handle-${keyName}`}
           position={Position.Left}
           id={keyName}
-          className="-ml-[26px]"
+          className="group -ml-[38px]"
         >
           <div className="pointer-events-none flex items-center">
-            <Dot className={`-ml-2 mr-2`} />
+            <Dot />
             {label}
           </div>
         </Handle>
