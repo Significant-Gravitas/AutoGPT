@@ -211,6 +211,7 @@ export type GraphMeta = {
   output_schema: BlockIOObjectSubSchema;
 };
 
+/* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
