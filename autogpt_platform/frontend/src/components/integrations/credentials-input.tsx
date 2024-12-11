@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cn } from "@/lib/utils";
+import { beautifyString, cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -87,12 +87,13 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 );
 
 export const CredentialsInput: FC<{
+  selfKey: string;
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
-}> = ({ className, selectedCredentials, onSelectCredentials }) => {
+}> = ({ selfKey, className, selectedCredentials, onSelectCredentials }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
-  const credentials = useCredentials();
+  const credentials = useCredentials(selfKey);
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
@@ -209,6 +210,7 @@ export const CredentialsInput: FC<{
     <>
       {supportsApiKey && (
         <APIKeyCredentialsModal
+          credentialsFieldName={selfKey}
           open={isAPICredentialsModalOpen}
           onClose={() => setAPICredentialsModalOpen(false)}
           onCredentialsCreate={(credsMeta) => {
@@ -310,7 +312,12 @@ export const CredentialsInput: FC<{
   // Saved credentials exist
   return (
     <>
-      <span className="text-m green mb-0 text-gray-900">Credentials</span>
+      <div className="flex gap-1">
+        <span className="text-m green mb-0 text-gray-900">
+          {schema.title || beautifyString(selfKey)}
+        </span>
+        <SchemaTooltip description={schema.description} />
+      </div>
       <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={schema.placeholder} />
@@ -353,11 +360,12 @@ export const CredentialsInput: FC<{
 };
 
 export const APIKeyCredentialsModal: FC<{
+  credentialsFieldName: string;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials();
+}> = ({ credentialsFieldName, open, onClose, onCredentialsCreate }) => {
+  const credentials = useCredentials(credentialsFieldName);
 
   const formSchema = z.object({
     apiKey: z.string().min(1, "API Key is required"),

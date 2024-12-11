@@ -446,6 +446,7 @@ const NodeCredentialsInput: FC<{
   return (
     <div className={cn("flex flex-col", className)}>
       <CredentialsInput
+        selfKey={selfKey}
         onSelectCredentials={(credsMeta) =>
           handleInputChange(selfKey, credsMeta)
         }
