@@ -38,23 +38,22 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
 
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          # this might remove tools that are actually needed,
-          # if set to "true" but frees about 6 GB
-          tool-cache: false
-
-          # all of these default to true, but feel free to set to
-          # "false" if necessary for your workflow
-          android: false
-          dotnet: false
-          haskell: false
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+      # - name: Free Disk Space (Ubuntu)
+      #   uses: jlumbroso/free-disk-space@main
+      #   with:
+      #     tool-cache: false
+      #     android: false
+      #     dotnet: false
+      #     haskell: false
+      #     large-packages: true
+      #     docker-images: true
+      #     swap-storage: true
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,16 +85,16 @@ jobs:
         run: |
           cp .env.example .env
 
-      - name: Install Playwright Browsers
-        run: yarn playwright install --with-deps
+      - name: Install Playwright Browser
+        run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
         run: |
-          yarn test
+          yarn test --project=${{ matrix.browser }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: playwright-report/
           retention-days: 30
