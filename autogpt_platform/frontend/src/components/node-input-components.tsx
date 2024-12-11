@@ -308,6 +308,21 @@ export const NodeGenericInputField: FC<{
           handleInputClick={handleInputClick}
         />
       );
+    } else if (
+      (types.includes("integer") || types.includes("number")) &&
+      types.includes("null")
+    ) {
+      return (
+        <NodeNumberInput
+          selfKey={propKey}
+          schema={{ ...propSchema, type: "integer" } as BlockIONumberSubSchema}
+          value={currentValue}
+          error={errors[propKey]}
+          className={className}
+          displayName={displayName}
+          handleInputChange={handleInputChange}
+        />
+      );
     }
   }
 
@@ -541,7 +556,7 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          /* 
+          /*
           The `index` is used as a DOM key instead of the actual `key`
           because the `key` can change with each input, causing the input to lose focus.
           */
