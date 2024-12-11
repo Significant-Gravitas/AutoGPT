@@ -87,9 +87,7 @@ const Monitor = () => {
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
-          setSelectedFlow(
-            f.id == selectedFlow?.id ? null : (f as GraphMetaWithRuns),
-          );
+          setSelectedFlow(f.id == selectedFlow?.id ? null : (f as GraphMeta));
         }}
       />
       <FlowRunsList
