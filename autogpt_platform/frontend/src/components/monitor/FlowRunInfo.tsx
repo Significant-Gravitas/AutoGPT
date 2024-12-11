@@ -97,7 +97,6 @@ export const FlowRunInfo: React.FC<
             <CardTitle>
               {flow.name} <span className="font-light">v{flow.version}</span>
             </CardTitle>
-
           </div>
           <div className="flex space-x-2">
             {flowRun.status === "running" && (
@@ -139,7 +138,6 @@ export const FlowRunInfo: React.FC<
             <strong>Duration (run time):</strong> {flowRun.duration} (
             {flowRun.totalRunTime}) seconds
           </p>
-
         </CardContent>
       </Card>
       <RunnerOutputUI
