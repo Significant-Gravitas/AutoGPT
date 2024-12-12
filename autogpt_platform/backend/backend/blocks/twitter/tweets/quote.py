@@ -16,9 +16,9 @@ from backend.blocks.twitter._serializer import (
     ResponseDataSerializer,
 )
 from backend.blocks.twitter._types import (
+    ExpansionFilter,
     TweetExcludesFilter,
     TweetExpansionInputs,
-    ExpansionFilter,
     TweetFieldsFilter,
     TweetMediaFieldsFilter,
     TweetPlaceFieldsFilter,
@@ -62,7 +62,7 @@ class TwitterGetQuoteTweetsBlock(Block):
             description="Token for pagination",
             required=False,
             advanced=True,
-            default = ""
+            default="",
         )
 
     class Output(BlockSchema):

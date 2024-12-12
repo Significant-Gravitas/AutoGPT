@@ -3,8 +3,8 @@ import urllib.parse
 from typing import ClassVar, Optional
 
 import requests
-from backend.data.model import OAuth2Credentials
 
+from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 
 
