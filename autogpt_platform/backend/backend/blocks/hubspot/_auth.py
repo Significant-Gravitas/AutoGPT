@@ -3,10 +3,11 @@ from typing import Literal
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 HubSpotCredentials = APIKeyCredentials
 HubSpotCredentialsInput = CredentialsMetaInput[
-    Literal["hubspot"],
+    Literal[ProviderName.HUBSPOT],
     Literal["api_key"],
 ]
 
@@ -14,8 +15,6 @@ HubSpotCredentialsInput = CredentialsMetaInput[
 def HubSpotCredentialsField() -> HubSpotCredentialsInput:
     """Creates a HubSpot credentials input on a block."""
     return CredentialsField(
-        provider="hubspot",
-        supported_credential_types={"api_key"},
         description="The HubSpot integration requires an API Key.",
     )
 
