@@ -505,7 +505,9 @@ class CreateDictionaryBlock(Block):
         dictionary: dict[str, Any] = SchemaField(
             description="The created dictionary containing the specified key-value pairs"
         )
-        error: str = SchemaField(description="Error message if dictionary creation failed")
+        error: str = SchemaField(
+            description="Error message if dictionary creation failed"
+        )
 
     def __init__(self):
         super().__init__(
@@ -541,11 +543,12 @@ class CreateDictionaryBlock(Block):
         except Exception as e:
             yield "error", f"Failed to create dictionary: {str(e)}"
 
+
 class CreateListBlock(Block):
     class Input(BlockSchema):
         values: List[Any] = SchemaField(
             description="A list of values to be combined into a new list.",
-            placeholder="e.g., ['Alice', 25, True]"
+            placeholder="e.g., ['Alice', 25, True]",
         )
 
     class Output(BlockSchema):
