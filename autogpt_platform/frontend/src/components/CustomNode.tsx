@@ -13,6 +13,7 @@ import InputModalComponent from "./InputModalComponent";
 import OutputModalComponent from "./OutputModalComponent";
 import {
   BlockIORootSchema,
+  BlockIOSubSchema,
   BlockIOStringSubSchema,
   Category,
   NodeExecutionResult,
@@ -167,17 +168,38 @@ export function CustomNode({
       nodeType === BlockUIType.NOTE
     )
       return null;
-    const keys = Object.keys(schema.properties);
-    return keys.map((key) => (
-      <div key={key}>
-        <NodeHandle
-          keyName={key}
-          isConnected={isOutputHandleConnected(key)}
-          schema={schema.properties[key]}
-          side="right"
-        />
-      </div>
-    ));
+
+    const renderHandles = (
+      propSchema: { [key: string]: BlockIOSubSchema },
+      keyPrefix = "",
+      titlePrefix = "",
+    ) => {
+      return Object.keys(propSchema).map((propKey) => {
+        const fieldSchema = propSchema[propKey];
+        const fieldTitle =
+          titlePrefix + (fieldSchema.title || beautifyString(propKey));
+
+        return (
+          <div key={propKey}>
+            <NodeHandle
+              title={fieldTitle}
+              keyName={`${keyPrefix}${propKey}`}
+              isConnected={isOutputHandleConnected(propKey)}
+              schema={fieldSchema}
+              side="right"
+            />
+            {"properties" in fieldSchema &&
+              renderHandles(
+                fieldSchema.properties,
+                `${keyPrefix}${propKey}_#_`,
+                `${fieldTitle}.`,
+              )}
+          </div>
+        );
+      });
+    };
+
+    return renderHandles(schema.properties);
   };
 
   const generateInputHandles = (

@@ -3,6 +3,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
 from backend.util.request import requests
 
 from .base import BaseOAuthHandler
@@ -23,7 +24,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
       access token *with no refresh token*.
     """  # noqa
 
-    PROVIDER_NAME = "github"
+    PROVIDER_NAME = ProviderName.GITHUB
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
