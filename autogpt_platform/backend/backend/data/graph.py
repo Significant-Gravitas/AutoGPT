@@ -105,6 +105,8 @@ class GraphExecution(BaseDbModel):
     duration: float
     total_run_time: float
     status: ExecutionStatus
+    graph_id: str
+    graph_version: int
 
     @staticmethod
     def from_db(execution: AgentGraphExecution):
@@ -130,6 +132,8 @@ class GraphExecution(BaseDbModel):
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(execution.executionStatus),
+            graph_id=execution.agentGraphId,
+            graph_version=execution.agentGraphVersion,
         )
 
 
@@ -139,7 +143,6 @@ class Graph(BaseDbModel):
     is_template: bool = False
     name: str
     description: str
-    executions: list[GraphExecution] = []
     nodes: list[Node] = []
     links: list[Link] = []
 
@@ -357,11 +360,6 @@ class GraphModel(Graph):
 
     @staticmethod
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
-        executions = [
-            GraphExecution.from_db(execution)
-            for execution in graph.AgentGraphExecution or []
-        ]
-
         return GraphModel(
             id=graph.id,
             user_id=graph.userId,
@@ -370,7 +368,6 @@ class GraphModel(Graph):
             is_template=graph.isTemplate,
             name=graph.name or "",
             description=graph.description or "",
-            executions=executions,
             nodes=[
                 GraphModel._process_node(node, hide_credentials)
                 for node in graph.AgentNodes or []
@@ -440,7 +437,6 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
 
 async def get_graphs(
     user_id: str,
-    include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
 ) -> list[GraphModel]:
     """
@@ -448,33 +444,42 @@ async def get_graphs(
     Default behaviour is to get all currently active graphs.
 
     Args:
-        include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
         user_id: The ID of the user that owns the graph.
 
     Returns:
         list[GraphModel]: A list of objects representing the retrieved graphs.
     """
-    where_clause: AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    where_clause["userId"] = user_id
-
-    graph_include = AGENT_GRAPH_INCLUDE
-    graph_include["AgentGraphExecution"] = include_executions
-
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=graph_include,
+        include=AGENT_GRAPH_INCLUDE,
     )
 
     return [GraphModel.from_db(graph) for graph in graphs]
+
+
+async def get_executions(user_id: str) -> list[GraphExecution]:
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={"userId": user_id},
+        order={"createdAt": "desc"},
+    )
+    return [GraphExecution.from_db(execution) for execution in executions]
+
+
+async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": user_id}
+    )
+    return GraphExecution.from_db(execution) if execution else None
 
 
 async def get_graph(

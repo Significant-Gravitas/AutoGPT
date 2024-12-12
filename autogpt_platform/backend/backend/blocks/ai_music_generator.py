@@ -13,6 +13,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     SchemaField,
 )
+from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +55,11 @@ class NormalizationStrategy(str, Enum):
 
 class AIMusicGeneratorBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="replicate",
-                supported_credential_types={"api_key"},
-                description="The Replicate integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
-            )
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REPLICATE], Literal["api_key"]
+        ] = CredentialsField(
+            description="The Replicate integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
         )
         prompt: str = SchemaField(
             description="A description of the music you want to generate",

@@ -13,6 +13,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     SchemaField,
 )
+from backend.integrations.providers import ProviderName
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -54,13 +55,11 @@ class ImageType(str, Enum):
 
 class ReplicateFluxAdvancedModelBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["replicate"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="replicate",
-                supported_credential_types={"api_key"},
-                description="The Replicate integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
-            )
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REPLICATE], Literal["api_key"]
+        ] = CredentialsField(
+            description="The Replicate integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
         )
         prompt: str = SchemaField(
             description="Text prompt for image generation",

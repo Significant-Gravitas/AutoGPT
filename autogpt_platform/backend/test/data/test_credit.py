@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import pytest
-from prisma.models import UserBlockCredit
+from prisma.models import CreditTransaction
 
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.credit import UserCredit
@@ -82,7 +82,7 @@ async def test_block_credit_reset(server: SpinTestServer):
 @pytest.mark.asyncio(scope="session")
 async def test_credit_refill(server: SpinTestServer):
     # Clear all transactions within the month
-    await UserBlockCredit.prisma().update_many(
+    await CreditTransaction.prisma().update_many(
         where={
             "userId": DEFAULT_USER_ID,
             "createdAt": {
