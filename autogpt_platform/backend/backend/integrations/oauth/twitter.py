@@ -4,12 +4,12 @@ from typing import ClassVar, Optional
 
 import requests
 
-from backend.data.model import OAuth2Credentials
+from backend.data.model import OAuth2Credentials, ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler
 
 
 class TwitterOAuthHandler(BaseOAuthHandler):
-    PROVIDER_NAME: ClassVar[str] = "twitter"
+    PROVIDER_NAME = ProviderName.TWITTER
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "tweet.read",
         "tweet.write",
