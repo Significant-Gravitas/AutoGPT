@@ -12,18 +12,10 @@ serviceAccount:
 
 service:
   type: ClusterIP
-  port: 8006
-  pyroDaemonPort: 8004
+  port: 8000
+  targetPort: 8000
   annotations:
     cloud.google.com/neg: '{"ingress": true}'
-    beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
-
-serviceExecutor:
-  type: ClusterIP
-  port: 8002
-  targetPort: 8002
-  annotations:
-    beta.cloud.google.com/backend-config: '{"default": "autogpt-server-backend-config"}'
 
 ingress:
   enabled: true
@@ -41,12 +33,12 @@ ingress:
       backend:
         service:
           name: autogpt-server
-          port: 8006
+          port: 8000
   defaultBackend:
     service:
       name: autogpt-server
       port:
-        number: 8006
+        number: 8000
 
 resources:
   requests:
@@ -54,12 +46,12 @@ resources:
     memory: 256Mi
   limits:
     cpu: 2
-    memory: 10Gi
+    memory: 2Gi
 
 livenessProbe:
   httpGet:
     path: /docs
-    port: 8006
+    port: 8000
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5
@@ -67,7 +59,7 @@ livenessProbe:
 readinessProbe:
   httpGet:
     path: /docs
-    port: 8006
+    port: 8000
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5
@@ -75,39 +67,28 @@ readinessProbe:
 
 domain: "dev-server.agpt.co"
 
-cors:
-  allowOrigin: "https://dev-builder.agpt.co"
-  allowMethods:
-    - "GET"
-    - "POST"
-    - "PUT"
-    - "DELETE"
-    - "OPTIONS"
-  allowHeaders:
-    - "Content-Type"
-    - "Authorization"
-  maxAge: 3600
-  allowCredentials: true
+cloudSqlProxy:
+  image:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: 2.11.4
+  instanceConnectionName: "agpt-dev:us-central1:agpt-server-dev"
+  port: 5432
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
 
 env:
   APP_ENV: "dev"
   PYRO_HOST: "0.0.0.0"
-  ENABLE_AUTH: "true"
+  NUM_GRAPH_WORKERS: 100
+  NUM_NODE_WORKERS: 5
   REDIS_HOST: "redis-dev-master.redis-dev.svc.cluster.local"
   REDIS_PORT: "6379"
-  OPENAI_API_KEY: ""
-  SUPABASE_JWT_SECRET: ""
-  REDIS_PASSWORD: "password"
-  NUM_GRAPH_WORKERS: 10
-  NUM_NODE_WORKERS: 5
-  DATABASE_URL: ""
-  SENTRY_DSN: ""
-  ENABLE_CREDIT: "true"
   BACKEND_CORS_ALLOW_ORIGINS: '["https://dev-builder.agpt.co"]'
   SUPABASE_SERVICE_ROLE_KEY: ""
   GITHUB_CLIENT_ID: ""
   GITHUB_CLIENT_SECRET: ""
-  FRONTEND_BASE_URL: "https://dev-builder.agpt.co/"
-  SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co"
-  AGENTSERVER_HOST: "autogpt-server.dev-agpt.svc.cluster.local"
-  EXECUTIONMANAGER_HOST: "autogpt-server-executor.dev-agpt.svc.cluster.local"
+  FRONTEND_BASE_URL: ""
+  SUPABASE_URL: ""
+  SUPABASE_JWT_SECRET: ""
