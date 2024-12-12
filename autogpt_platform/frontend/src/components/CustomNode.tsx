@@ -729,10 +729,26 @@ export function CustomNode({
             <div>
               {data.uiType === BlockUIType.WEBHOOK_MANUAL &&
                 (data.webhook ? (
-                  <p className="nodrag">
-                    Webhook URL: <br />
-                    <code className="select-all">{data.webhook.url}</code>
-                  </p>
+                  <div className="nodrag mr-5 flex flex-col gap-1">
+                    Webhook URL:
+                    <div className="flex gap-2 rounded-md bg-gray-50 p-2">
+                      <code className="select-all text-sm">
+                        {data.webhook.url}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-7 flex-none"
+                        onClick={() =>
+                          data.webhook &&
+                          navigator.clipboard.writeText(data.webhook.url)
+                        }
+                        title="Copy webhook URL"
+                      >
+                        <CopyIcon className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <p className="italic text-gray-500">
                     (A Webhook URL will be generated when you save the agent)
