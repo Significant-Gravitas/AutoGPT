@@ -78,6 +78,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
+          data-testid="profile-popout-menu-trigger"
         >
           <Avatar className="h-10 w-10">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />

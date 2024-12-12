@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-
+import random
 import prisma.enums
 import prisma.errors
 import prisma.models
@@ -526,7 +526,7 @@ async def get_user_profile(
                 data=prisma.types.ProfileCreateInput(
                     userId=user_id,
                     name="No Profile Data",
-                    username="No Profile Data",
+                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}",
                     description="No Profile Data",
                     links=[],
                     avatarUrl="",
