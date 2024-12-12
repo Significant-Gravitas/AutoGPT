@@ -42,6 +42,7 @@ from backend.server.model import (
     CreateGraph,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
+    RequestTopUp,
 )
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
@@ -136,6 +137,13 @@ async def get_user_credits(
 ) -> dict[str, int]:
     # Credits can go negative, so ensure it's at least 0 for user to see.
     return {"credits": max(await _user_credit_model.get_or_refill_credit(user_id), 0)}
+
+
+@v1_router.post(path="/credits", dependencies=[Depends(auth_middleware)])
+async def request_top_up(
+    user_id: Annotated[str, Depends(get_user_id)], request: RequestTopUp
+):
+    pass
 
 
 ########################################################

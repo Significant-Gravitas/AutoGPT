@@ -60,6 +60,10 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/credits`);
   }
 
+  requestTopUp(amount: number): Promise<void> {
+    return this._request("POST", "/credits", { amount });
+  }
+
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
   }
