@@ -1,4 +1,4 @@
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
 import {
   ComposedChart,
   DefaultLegendContentProps,
@@ -14,17 +14,16 @@ import moment from "moment/moment";
 import { Card } from "@/components/ui/card";
 import { cn, hashString } from "@/lib/utils";
 import React from "react";
-import { FlowRun } from "@/lib/types";
 import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
 
 export const FlowRunsTimeline = ({
   flows,
-  flowRuns,
+  executions,
   dataMin,
   className,
 }: {
   flows: GraphMeta[];
-  flowRuns: FlowRun[];
+  executions: GraphExecution[];
   dataMin: "dataMin" | number;
   className?: string;
 }) => (
@@ -61,9 +60,9 @@ export const FlowRunsTimeline = ({
       <Tooltip
         content={({ payload, label }) => {
           if (payload && payload.length) {
-            const data: FlowRun & { time: number; _duration: number } =
+            const data: GraphExecution & { time: number; _duration: number } =
               payload[0].payload;
-            const flow = flows.find((f) => f.id === data.graphID);
+            const flow = flows.find((f) => f.id === data.graph_id);
             return (
               <Card className="p-2 text-xs leading-normal">
                 <p>
@@ -78,12 +77,12 @@ export const FlowRunsTimeline = ({
                 </div>
                 <p>
                   <strong>Started:</strong>{" "}
-                  {moment(data.startTime).format("YYYY-MM-DD HH:mm:ss")}
+                  {moment(data.started_at).format("YYYY-MM-DD HH:mm:ss")}
                 </p>
                 <p>
                   <strong>Duration / run time:</strong>{" "}
                   {formatDuration(data.duration)} /{" "}
-                  {formatDuration(data.totalRunTime)}
+                  {formatDuration(data.total_run_time)}
                 </p>
               </Card>
             );
@@ -94,27 +93,31 @@ export const FlowRunsTimeline = ({
       {flows.map((flow) => (
         <Scatter
           key={flow.id}
-          data={flowRuns
-            .filter((fr) => fr.graphID == flow.id)
-            .map((fr) => ({
-              ...fr,
-              time: fr.startTime + fr.totalRunTime * 1000,
-              _duration: fr.totalRunTime,
+          data={executions
+            .filter((e) => e.graph_id == flow.id)
+            .map((e) => ({
+              ...e,
+              time: e.started_at + e.total_run_time * 1000,
+              _duration: e.total_run_time,
             }))}
           name={flow.name}
           fill={`hsl(${(hashString(flow.id) * 137.5) % 360}, 70%, 50%)`}
         />
       ))}
-      {flowRuns.map((run) => (
+      {executions.map((execution) => (
         <Line
-          key={run.id}
+          key={execution.execution_id}
           type="linear"
           dataKey="_duration"
           data={[
-            { ...run, time: run.startTime, _duration: 0 },
-            { ...run, time: run.endTime, _duration: run.totalRunTime },
+            { ...execution, time: execution.started_at, _duration: 0 },
+            {
+              ...execution,
+              time: execution.ended_at,
+              _duration: execution.total_run_time,
+            },
           ]}
-          stroke={`hsl(${(hashString(run.graphID) * 137.5) % 360}, 70%, 50%)`}
+          stroke={`hsl(${(hashString(execution.graph_id) * 137.5) % 360}, 70%, 50%)`}
           strokeWidth={2}
           dot={false}
           legendType="none"
