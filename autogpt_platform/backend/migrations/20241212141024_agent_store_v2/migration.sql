@@ -8,10 +8,10 @@ ALTER TABLE "AgentGraphExecution" ADD COLUMN     "agentPresetId" TEXT;
 ALTER TABLE "AgentNodeExecutionInputOutput" ADD COLUMN     "agentPresetId" TEXT;
 
 -- AlterTable
-ALTER TABLE "AnalyticsDetails" ALTER COLUMN "id" DROP DEFAULT;
+ALTER TABLE "AnalyticsMetrics" ALTER COLUMN "id" DROP DEFAULT;
 
 -- AlterTable
-ALTER TABLE "AnalyticsMetrics" ALTER COLUMN "id" DROP DEFAULT;
+ALTER TABLE "CreditTransaction" RENAME CONSTRAINT "UserBlockCredit_pkey" TO "CreditTransaction_pkey";
 
 -- CreateTable
 CREATE TABLE "AgentPreset" (
@@ -43,23 +43,6 @@ CREATE TABLE "UserAgent" (
     "isDeleted" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "UserAgent_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "AgentGraphExecutionSchedule" (
-    "id" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3),
-    "agentGraphId" TEXT NOT NULL,
-    "agentGraphVersion" INTEGER NOT NULL DEFAULT 1,
-    "schedule" TEXT NOT NULL,
-    "isEnabled" BOOLEAN NOT NULL DEFAULT true,
-    "inputData" TEXT NOT NULL,
-    "lastUpdated" TIMESTAMP(3) NOT NULL,
-    "userId" TEXT NOT NULL,
-    "agentPresetId" TEXT,
-
-    CONSTRAINT "AgentGraphExecutionSchedule_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -149,9 +132,6 @@ CREATE INDEX "AgentPreset_userId_idx" ON "AgentPreset"("userId");
 CREATE INDEX "UserAgent_userId_idx" ON "UserAgent"("userId");
 
 -- CreateIndex
-CREATE INDEX "AgentGraphExecutionSchedule_isEnabled_idx" ON "AgentGraphExecutionSchedule"("isEnabled");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Profile_username_key" ON "Profile"("username");
 
 -- CreateIndex
@@ -176,16 +156,22 @@ CREATE INDEX "StoreListingVersion_agentId_agentVersion_isApproved_idx" ON "Store
 CREATE UNIQUE INDEX "StoreListingVersion_agentId_agentVersion_key" ON "StoreListingVersion"("agentId", "agentVersion");
 
 -- CreateIndex
+CREATE INDEX "StoreListingReview_storeListingVersionId_idx" ON "StoreListingReview"("storeListingVersionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StoreListingReview_storeListingVersionId_reviewByUserId_key" ON "StoreListingReview"("storeListingVersionId", "reviewByUserId");
+
+-- CreateIndex
 CREATE INDEX "StoreListingSubmission_storeListingId_idx" ON "StoreListingSubmission"("storeListingId");
 
 -- CreateIndex
 CREATE INDEX "StoreListingSubmission_Status_idx" ON "StoreListingSubmission"("Status");
 
--- CreateIndex
-CREATE INDEX "StoreListingReview_storeListingVersionId_idx" ON "StoreListingReview"("storeListingVersionId");
+-- RenameForeignKey
+ALTER TABLE "CreditTransaction" RENAME CONSTRAINT "UserBlockCredit_blockId_fkey" TO "CreditTransaction_blockId_fkey";
 
--- CreateIndex
-CREATE UNIQUE INDEX "StoreListingReview_storeListingVersionId_reviewByUserId_key" ON "StoreListingReview"("storeListingVersionId", "reviewByUserId");
+-- RenameForeignKey
+ALTER TABLE "CreditTransaction" RENAME CONSTRAINT "UserBlockCredit_userId_fkey" TO "CreditTransaction_userId_fkey";
 
 -- AddForeignKey
 ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -207,15 +193,6 @@ ALTER TABLE "AgentGraphExecution" ADD CONSTRAINT "AgentGraphExecution_agentPrese
 
 -- AddForeignKey
 ALTER TABLE "AgentNodeExecutionInputOutput" ADD CONSTRAINT "AgentNodeExecutionInputOutput_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSchedule_agentGraphId_agentGraphVersion_fkey" FOREIGN KEY ("agentGraphId", "agentGraphVersion") REFERENCES "AgentGraph"("id", "version") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSchedule_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AgentGraphExecutionSchedule" ADD CONSTRAINT "AgentGraphExecutionSchedule_agentPresetId_fkey" FOREIGN KEY ("agentPresetId") REFERENCES "AgentPreset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Profile" ADD CONSTRAINT "Profile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -246,3 +223,6 @@ ALTER TABLE "StoreListingSubmission" ADD CONSTRAINT "StoreListingSubmission_stor
 
 -- AddForeignKey
 ALTER TABLE "StoreListingSubmission" ADD CONSTRAINT "StoreListingSubmission_reviewerId_fkey" FOREIGN KEY ("reviewerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- RenameIndex
+ALTER INDEX "UserBlockCredit_userId_createdAt_idx" RENAME TO "CreditTransaction_userId_createdAt_idx";
