@@ -2,13 +2,11 @@ import logging
 import os
 import uuid
 
-import dotenv
 import fastapi
 from google.cloud import storage
 
 import backend.server.v2.store.exceptions
-
-dotenv.load_dotenv()
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +16,14 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
-    # Check required environment variables first before doing any file processing
-    if not os.environ.get("MEDIA_GCS_BUCKET_NAME") or not os.environ.get(
-        "GOOGLE_APPLICATION_CREDENTIALS"
+    settings = Settings()
+
+    # Check required settings first before doing any file processing
+    if (
+        not settings.config.media_gcs_bucket_name
+        or not settings.config.google_application_credentials
     ):
-        logger.error("Missing required GCS environment variables")
+        logger.error("Missing required GCS settings")
         raise backend.server.v2.store.exceptions.StorageConfigError(
             "Missing storage configuration"
         )
@@ -73,7 +74,7 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
 
         try:
             storage_client = storage.Client()
-            bucket = storage_client.bucket(os.environ["MEDIA_GCS_BUCKET_NAME"])
+            bucket = storage_client.bucket(settings.config.media_gcs_bucket_name)
             blob = bucket.blob(storage_path)
             blob.content_type = content_type
 

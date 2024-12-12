@@ -1,5 +1,8 @@
-import AutoGPTServerAPI, { GraphMeta } from "@/lib/autogpt-server-api";
-import React, { useEffect, useMemo, useState } from "react";
+import AutoGPTServerAPI, {
+  GraphExecution,
+  GraphMeta,
+} from "@/lib/autogpt-server-api";
+import React, { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextRenderer } from "@/components/ui/render";
@@ -14,8 +17,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDownIcon, EnterIcon } from "@radix-ui/react-icons";
@@ -29,27 +30,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import moment from "moment/moment";
-import { FlowRun } from "@/lib/types";
 import { DialogTitle } from "@/components/ui/dialog";
 
 export const AgentFlowList = ({
   flows,
-  flowRuns,
+  executions,
   selectedFlow,
   onSelectFlow,
   className,
 }: {
   flows: GraphMeta[];
-  flowRuns?: FlowRun[];
+  executions?: GraphExecution[];
   selectedFlow: GraphMeta | null;
   onSelectFlow: (f: GraphMeta) => void;
   className?: string;
 }) => {
-  const [templates, setTemplates] = useState<GraphMeta[]>([]);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
-  useEffect(() => {
-    api.listTemplates().then((templates) => setTemplates(templates));
-  }, [api]);
 
   return (
     <Card className={className}>
@@ -80,30 +76,6 @@ export const AgentFlowList = ({
                     <EnterIcon className="mr-2" /> Import from file
                   </DropdownMenuItem>
                 </DialogTrigger>
-                {templates.length > 0 && (
-                  <>
-                    {/* List of templates */}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Use a template</DropdownMenuLabel>
-                    {templates.map((template) => (
-                      <DropdownMenuItem
-                        key={template.id}
-                        onClick={() => {
-                          api
-                            .createGraph(template.id, template.version)
-                            .then((newGraph) => {
-                              window.location.href = `/build?flowID=${newGraph.id}`;
-                            });
-                        }}
-                      >
-                        <TextRenderer
-                          value={template.name}
-                          truncateLengthLimit={30}
-                        />
-                      </DropdownMenuItem>
-                    ))}
-                  </>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -111,7 +83,7 @@ export const AgentFlowList = ({
               <DialogHeader>
                 <DialogTitle className="sr-only">Import Agent</DialogTitle>
                 <h2 className="text-lg font-semibold">
-                  Import an Agent (template) from a file
+                  Import an Agent from a file
                 </h2>
               </DialogHeader>
               <AgentImportForm />
@@ -127,29 +99,29 @@ export const AgentFlowList = ({
               <TableHead>Name</TableHead>
               {/* <TableHead>Status</TableHead> */}
               {/* <TableHead>Last updated</TableHead> */}
-              {flowRuns && (
+              {executions && (
                 <TableHead className="md:hidden lg:table-cell">
                   # of runs
                 </TableHead>
               )}
-              {flowRuns && <TableHead>Last run</TableHead>}
+              {executions && <TableHead>Last run</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody data-testid="agent-flow-list-body">
             {flows
               .map((flow) => {
                 let runCount = 0,
-                  lastRun: FlowRun | null = null;
-                if (flowRuns) {
-                  const _flowRuns = flowRuns.filter(
-                    (r) => r.graphID == flow.id,
+                  lastRun: GraphExecution | null = null;
+                if (executions) {
+                  const _flowRuns = executions.filter(
+                    (r) => r.graph_id == flow.id,
                   );
                   runCount = _flowRuns.length;
                   lastRun =
                     runCount == 0
                       ? null
                       : _flowRuns.reduce((a, c) =>
-                          a.startTime > c.startTime ? a : c,
+                          a.started_at > c.started_at ? a : c,
                         );
                 }
                 return { flow, runCount, lastRun };
@@ -158,7 +130,7 @@ export const AgentFlowList = ({
                 if (!a.lastRun && !b.lastRun) return 0;
                 if (!a.lastRun) return 1;
                 if (!b.lastRun) return -1;
-                return b.lastRun.startTime - a.lastRun.startTime;
+                return b.lastRun.started_at - a.lastRun.started_at;
               })
               .map(({ flow, runCount, lastRun }) => (
                 <TableRow
@@ -176,17 +148,17 @@ export const AgentFlowList = ({
                   {/* <TableCell>
                   {flow.updatedAt ?? "???"}
                 </TableCell> */}
-                  {flowRuns && (
+                  {executions && (
                     <TableCell className="md:hidden lg:table-cell">
                       {runCount}
                     </TableCell>
                   )}
-                  {flowRuns &&
+                  {executions &&
                     (!lastRun ? (
                       <TableCell />
                     ) : (
-                      <TableCell title={moment(lastRun.startTime).toString()}>
-                        {moment(lastRun.startTime).fromNow()}
+                      <TableCell title={moment(lastRun.started_at).toString()}>
+                        {moment(lastRun.started_at).fromNow()}
                       </TableCell>
                     ))}
                 </TableRow>

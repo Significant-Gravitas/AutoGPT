@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
 from prisma import Json
-from prisma.enums import UserBlockCreditType
+from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
-from prisma.models import UserBlockCredit
+from prisma.models import CreditTransaction
 
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
@@ -76,7 +76,7 @@ class UserCredit(UserCreditBase):
             else cur_month.replace(year=cur_month.year + 1, month=1)
         )
 
-        user_credit = await UserBlockCredit.prisma().group_by(
+        user_credit = await CreditTransaction.prisma().group_by(
             by=["userId"],
             sum={"amount": True},
             where={
@@ -93,10 +93,10 @@ class UserCredit(UserCreditBase):
         key = f"MONTHLY-CREDIT-TOP-UP-{cur_month}"
 
         try:
-            await UserBlockCredit.prisma().create(
+            await CreditTransaction.prisma().create(
                 data={
                     "amount": self.num_user_credits_refill,
-                    "type": UserBlockCreditType.TOP_UP,
+                    "type": CreditTransactionType.TOP_UP,
                     "userId": user_id,
                     "transactionKey": key,
                     "createdAt": self.time_now(),
@@ -184,11 +184,11 @@ class UserCredit(UserCreditBase):
         if validate_balance and user_credit < cost:
             raise ValueError(f"Insufficient credit: {user_credit} < {cost}")
 
-        await UserBlockCredit.prisma().create(
+        await CreditTransaction.prisma().create(
             data={
                 "userId": user_id,
                 "amount": -cost,
-                "type": UserBlockCreditType.USAGE,
+                "type": CreditTransactionType.USAGE,
                 "blockId": block.id,
                 "metadata": Json(
                     {
@@ -202,11 +202,11 @@ class UserCredit(UserCreditBase):
         return cost
 
     async def top_up_credits(self, user_id: str, amount: int):
-        await UserBlockCredit.prisma().create(
+        await CreditTransaction.prisma().create(
             data={
                 "userId": user_id,
                 "amount": amount,
-                "type": UserBlockCreditType.TOP_UP,
+                "type": CreditTransactionType.TOP_UP,
                 "createdAt": self.time_now(),
             }
         )

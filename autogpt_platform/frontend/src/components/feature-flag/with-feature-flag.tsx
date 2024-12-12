@@ -18,13 +18,13 @@ export function withFeatureFlag<P extends object>(
       if (flags && flagKey in flags) {
         setHasFlagLoaded(true);
       }
-    }, [flags, flagKey]);
+    }, [flags]);
 
     useEffect(() => {
       if (hasFlagLoaded && !flags[flagKey]) {
         router.push("/404");
       }
-    }, [hasFlagLoaded, flags, flagKey, router]);
+    }, [hasFlagLoaded, flags, router]);
 
     // Show loading state until flags loaded
     if (!hasFlagLoaded) {

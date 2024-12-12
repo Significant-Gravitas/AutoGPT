@@ -21,17 +21,17 @@ interface SaveControlProps {
   agentMeta: GraphMeta | null;
   agentName: string;
   agentDescription: string;
-  onSave: (isTemplate: boolean | undefined) => void;
+  onSave: () => void;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
   pinSavePopover: boolean;
 }
 
 /**
- * A SaveControl component to be used within the ControlPanel. It allows the user to save the agent / template.
+ * A SaveControl component to be used within the ControlPanel. It allows the user to save the agent.
  * @param {Object} SaveControlProps - The properties of the SaveControl component.
  * @param {GraphMeta | null} SaveControlProps.agentMeta - The agent's metadata, or null if creating a new agent.
- * @param {(isTemplate: boolean | undefined) => void} SaveControlProps.onSave - Function to save the agent or template.
+ * @param {() => void} SaveControlProps.onSave - Function to save the agent.
  * @param {(name: string) => void} SaveControlProps.onNameChange - Function to handle name changes.
  * @param {(description: string) => void} SaveControlProps.onDescriptionChange - Function to handle description changes.
  * @returns The SaveControl component.
@@ -51,15 +51,9 @@ export const SaveControl = ({
    * We should migrate this to be handled with form controls and a form library.
    */
 
-  // Determines if we're saving a template or an agent
-  let isTemplate = agentMeta?.is_template ? true : undefined;
   const handleSave = useCallback(() => {
-    onSave(isTemplate);
-  }, [onSave, isTemplate]);
-
-  const getType = () => {
-    return agentMeta?.is_template ? "template" : "agent";
-  };
+    onSave();
+  }, [onSave]);
 
   const { toast } = useToast();
 
@@ -159,7 +153,7 @@ export const SaveControl = ({
               data-id="save-control-save-agent"
               data-testid="save-control-save-agent-button"
             >
-              Save {getType()}
+              Save Agent
             </Button>
           </CardFooter>
         </Card>

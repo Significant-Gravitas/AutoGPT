@@ -9,6 +9,7 @@ from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
 
 from .base import BaseOAuthHandler
 
@@ -21,7 +22,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
     Based on the documentation at https://developers.google.com/identity/protocols/oauth2/web-server
     """  # noqa
 
-    PROVIDER_NAME = "google"
+    PROVIDER_NAME = ProviderName.GOOGLE
     EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
     DEFAULT_SCOPES = [
         "https://www.googleapis.com/auth/userinfo.email",

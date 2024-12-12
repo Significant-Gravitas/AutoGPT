@@ -188,30 +188,26 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of autogpt_server/data/graph.py:ExecutionMeta */
-export type ExecutionMeta = {
+/* Mirror of backend/data/graph.py:GraphExecution */
+export type GraphExecution = {
   execution_id: string;
   started_at: number;
   ended_at: number;
   duration: number;
   total_run_time: number;
-  status: "running" | "waiting" | "success" | "failed";
+  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  graph_id: string;
+  graph_version: number;
 };
 
-/* Mirror of backend/data/graph.py:GraphMeta */
 export type GraphMeta = {
   id: string;
   version: number;
   is_active: boolean;
-  is_template: boolean;
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;
   output_schema: BlockIOObjectSubSchema;
-};
-
-export type GraphMetaWithRuns = GraphMeta & {
-  executions: ExecutionMeta[];
 };
 
 /* Mirror of backend/data/graph.py:Graph */
@@ -222,16 +218,10 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  | "version"
-  | "is_active"
-  | "is_template"
-  | "links"
-  | "input_schema"
-  | "output_schema"
+  "version" | "is_active" | "links" | "input_schema" | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;
-  is_template?: boolean;
   links: Array<LinkCreatable>;
   input_schema?: BlockIOObjectSubSchema;
   output_schema?: BlockIOObjectSubSchema;

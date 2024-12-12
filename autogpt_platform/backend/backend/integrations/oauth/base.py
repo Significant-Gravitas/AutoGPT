@@ -4,13 +4,14 @@ from abc import ABC, abstractmethod
 from typing import ClassVar
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 
 
 class BaseOAuthHandler(ABC):
     # --8<-- [start:BaseOAuthHandler1]
-    PROVIDER_NAME: ClassVar[str]
+    PROVIDER_NAME: ClassVar[ProviderName]
     DEFAULT_SCOPES: ClassVar[list[str]] = []
     # --8<-- [end:BaseOAuthHandler1]
 
@@ -76,6 +77,8 @@ class BaseOAuthHandler(ABC):
         """Handles the default scopes for the provider"""
         # If scopes are empty, use the default scopes for the provider
         if not scopes:
-            logger.debug(f"Using default scopes for provider {self.PROVIDER_NAME}")
+            logger.debug(
+                f"Using default scopes for provider {self.PROVIDER_NAME.value}"
+            )
             scopes = self.DEFAULT_SCOPES
         return scopes

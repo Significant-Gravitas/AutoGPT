@@ -391,13 +391,13 @@ async def main():
         # Create a copy of users list and shuffle it to avoid duplicates
         available_reviewers = users.copy()
         random.shuffle(available_reviewers)
-        
+
         # Limit number of reviews to available unique reviewers
         num_reviews = min(
             random.randint(MIN_REVIEWS_PER_VERSION, MAX_REVIEWS_PER_VERSION),
-            len(available_reviewers)
+            len(available_reviewers),
         )
-        
+
         # Take only the first num_reviews reviewers
         for reviewer in available_reviewers[:num_reviews]:
             await db.storelistingreview.create(

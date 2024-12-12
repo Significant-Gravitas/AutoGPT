@@ -70,9 +70,8 @@ export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
   flowID?: string;
-  template?: boolean;
   className?: string;
-}> = ({ flowID, template, className }) => {
+}> = ({ flowID, className }) => {
   const {
     addNodes,
     addEdges,
@@ -106,7 +105,7 @@ const FlowEditor: React.FC<{
     setNodes,
     edges,
     setEdges,
-  } = useAgentGraph(flowID, template, visualizeBeads !== "no");
+  } = useAgentGraph(flowID, visualizeBeads !== "no");
 
   const router = useRouter();
   const pathname = usePathname();
