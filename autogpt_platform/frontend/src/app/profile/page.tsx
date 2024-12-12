@@ -31,6 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import useCredits from "@/hooks/useCredits";
+import { Input } from "@/components/ui/input";
 
 export default function PrivatePage() {
   const { user, isLoading, error } = useUser();
@@ -38,6 +40,8 @@ export default function PrivatePage() {
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
+  const { credits } = useCredits();
+  const [amount, setAmount] = useState(5);
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
     | {
@@ -115,6 +119,10 @@ export default function PrivatePage() {
     [],
   );
 
+  const handleTopUp = useCallback(() => {
+
+  }, []);
+
   if (isLoading || !providers) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -150,6 +158,28 @@ export default function PrivatePage() {
           <LogOutIcon className="mr-1.5 size-4" />
           Log out
         </Button>
+      </div>
+      <Separator className="my-6" />
+      <h2 className="mb-4 text-lg">Top-up Credits</h2>
+      <div className="w-full max-w-md space-y-4">
+        <div className="text-md">
+          Current credits: <b>{credits}</b> <br />1 USD = 100 credits, 5 USD is
+          a minimum top-up
+        </div>
+        <div className="flex gap-2">
+          <Input
+            type="number"
+            placeholder="Top up amount $"
+            value={amount}
+            onChange={(e) => setAmount(parseInt(e.target.value))}
+            className="flex-1"
+            min="5"
+            step="1"
+          />
+          <Button onClick={handleTopUp} className="whitespace-nowrap">
+            Top-Up
+          </Button>
+        </div>
       </div>
       <Separator className="my-6" />
       <h2 className="mb-4 text-lg">Connections & Credentials</h2>
