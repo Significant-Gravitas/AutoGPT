@@ -31,13 +31,13 @@ class CompassAITriggerBlock(Block):
 
     class Output(BlockSchema):
         transcription: str = SchemaField(
-            description="The transcription of the compass transcription."
+            description="The contents of the compass transcription."
         )
 
     def __init__(self):
         super().__init__(
             id="9464a020-ed1d-49e1-990f-7f2ac924a2b7",
-            description="This block forwards an input value as output, allowing reuse without change.",
+            description="This block will output the contents of the compass transcription.",
             categories={BlockCategory.HARDWARE},
             input_schema=CompassAITriggerBlock.Input,
             output_schema=CompassAITriggerBlock.Output,
