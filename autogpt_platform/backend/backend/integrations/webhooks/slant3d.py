@@ -1,11 +1,11 @@
 import logging
-from typing import ClassVar
 
 import requests
 from fastapi import Request
 
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
+from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.base import BaseWebhooksManager
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class Slant3DWebhooksManager(BaseWebhooksManager):
     """Manager for Slant3D webhooks"""
 
-    PROVIDER_NAME: ClassVar[str] = "slant3d"
+    PROVIDER_NAME = ProviderName.SLANT3D
     BASE_URL = "https://www.slant3dapi.com/api"
 
     async def _register_webhook(

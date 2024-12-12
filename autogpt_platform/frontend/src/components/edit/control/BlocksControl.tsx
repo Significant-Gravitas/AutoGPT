@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TextRenderer } from "@/components/ui/render";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { CustomNode } from "@/components/CustomNode";
 import { beautifyString } from "@/lib/utils";
 import {
   Popover,
@@ -31,6 +32,7 @@ interface BlocksControlProps {
   ) => void;
   pinBlocksPopover: boolean;
   flows: GraphMeta[];
+  nodes: CustomNode[];
 }
 
 /**
@@ -47,15 +49,23 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   addBlock,
   pinBlocksPopover,
   flows,
+  nodes,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const getFilteredBlockList = (): Block[] => {
+  const graphHasWebhookNodes = nodes.some(
+    (n) => n.data.uiType == BlockUIType.WEBHOOK,
+  );
+  const graphHasInputNodes = nodes.some(
+    (n) => n.data.uiType == BlockUIType.INPUT,
+  );
+
+  const filteredAvailableBlocks = useMemo(() => {
     const blockList = blocks
       .filter((b) => b.uiType !== BlockUIType.AGENT)
       .sort((a, b) => a.name.localeCompare(b.name));
-    const agentList = flows.map(
+    const agentBlockList = flows.map(
       (flow) =>
         ({
           id: SpecialBlockID.AGENT,
@@ -80,7 +90,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
     );
 
     return blockList
-      .concat(agentList)
+      .concat(agentBlockList)
       .filter(
         (block: Block) =>
           (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -92,8 +102,29 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               .includes(searchQuery.toLowerCase())) &&
           (!selectedCategory ||
             block.categories.some((cat) => cat.category === selectedCategory)),
-      );
-  };
+      )
+      .map((block) => ({
+        ...block,
+        notAvailable:
+          (block.uiType == BlockUIType.WEBHOOK &&
+            graphHasWebhookNodes &&
+            "Agents can only have one webhook-triggered block") ||
+          (block.uiType == BlockUIType.WEBHOOK &&
+            graphHasInputNodes &&
+            "Webhook-triggered blocks can't be used together with input blocks") ||
+          (block.uiType == BlockUIType.INPUT &&
+            graphHasWebhookNodes &&
+            "Input blocks can't be used together with a webhook-triggered block") ||
+          null,
+      }));
+  }, [
+    blocks,
+    flows,
+    searchQuery,
+    selectedCategory,
+    graphHasInputNodes,
+    graphHasWebhookNodes,
+  ]);
 
   const resetFilters = React.useCallback(() => {
     setSearchQuery("");
@@ -190,14 +221,20 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               className="h-[60vh]"
               data-id="blocks-control-scroll-area"
             >
-              {getFilteredBlockList().map((block) => (
+              {filteredAvailableBlocks.map((block) => (
                 <Card
                   key={block.uiKey || block.id}
-                  className="m-2 my-4 flex h-20 cursor-pointer shadow-none hover:shadow-lg"
+                  className={`m-2 my-4 flex h-20 shadow-none ${
+                    block.notAvailable
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer hover:shadow-lg"
+                  }`}
                   data-id={`block-card-${block.id}`}
                   onClick={() =>
+                    !block.notAvailable &&
                     addBlock(block.id, block.name, block?.hardcodedValues || {})
                   }
+                  title={block.notAvailable ?? undefined}
                 >
                   <div
                     className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(block.categories)}`}
