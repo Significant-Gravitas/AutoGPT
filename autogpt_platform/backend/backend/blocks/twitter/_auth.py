@@ -2,7 +2,12 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
+from backend.data.model import (
+    CredentialsField,
+    CredentialsMetaInput,
+    OAuth2Credentials,
+    ProviderName,
+)
 from backend.integrations.oauth.twitter import TwitterOAuthHandler
 from backend.util.settings import Secrets
 
@@ -14,7 +19,9 @@ TWITTER_OAUTH_IS_CONFIGURED = bool(
 # --8<-- [end:TwitterOAuthIsConfigured]
 
 TwitterCredentials = OAuth2Credentials
-TwitterCredentialsInput = CredentialsMetaInput[Literal["twitter"], Literal["oauth2"]]
+TwitterCredentialsInput = CredentialsMetaInput[
+    Literal[ProviderName.TWITTER], Literal["oauth2"]
+]
 
 
 # Currently, We are getting all the permission from the Twitter API initally
@@ -27,10 +34,8 @@ def TwitterCredentialsField(scopes: list[str]) -> TwitterCredentialsInput:
         scopes: The authorization scopes needed for the block to work.
     """
     return CredentialsField(
-        provider="twitter",
-        supported_credential_types={"oauth2"},
         # required_scopes=set(scopes),
-        required_scopes=set(TwitterOAuthHandler.DEFAULT_SCOPES),
+        required_scopes=set(TwitterOAuthHandler.DEFAULT_SCOPES + scopes),
         description="The Twitter integration requires OAuth2 authentication.",
     )
 
