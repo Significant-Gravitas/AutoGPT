@@ -483,6 +483,11 @@ export class BuildPage extends BasePage {
     );
   }
 
+  async waitForRunTutorialButton(): Promise<void> {
+    console.log(`waiting for run tutorial button`);
+    await this.page.waitForSelector('[id="press-run-label"]');
+  }
+
   async getBlocksInAgent(): Promise<string[]> {
     throw new Error("Not Tested to be correct");
     console.log(`getting blocks in agent`);

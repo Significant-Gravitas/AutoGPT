@@ -68,6 +68,7 @@ test.describe("Tutorial", () => {
     await buildPage.nextTutorialStep();
     await buildPage.saveAgent("Test Tutorial Agent");
     await buildPage.waitForSaveDialogClose();
+    await buildPage.waitForRunTutorialButton();
     await buildPage.runAgent();
 
     // await buildPage.saveAgent("Test Tutorial Agent");
@@ -114,10 +115,12 @@ test.describe("Tutorial", () => {
       dataId2 as string,
       true,
     );
+    
+    await buildPage.runAgent();
     await buildPage.nextTutorialStep();
     await buildPage.runAgent();
     // Congratulations
-    await buildPage.finishTutorial();
+    await buildPage.nextTutorialStep();
     expect(await buildPage.isThereTutorialDialog()).toBe(false);
   });
 });
