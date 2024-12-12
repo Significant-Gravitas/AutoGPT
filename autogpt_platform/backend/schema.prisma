@@ -26,7 +26,7 @@ model User {
   AgentGraphExecutions AgentGraphExecution[]
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
-  UserBlockCredit      UserBlockCredit[]
+  CreditTransaction    CreditTransaction[]
 
   AgentPreset AgentPreset[]
   UserAgent   UserAgent[]
@@ -36,7 +36,6 @@ model User {
   StoreListingReview          StoreListingReview[]
   StoreListingSubmission      StoreListingSubmission[]
   APIKeys                     APIKey[]
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
   IntegrationWebhooks         IntegrationWebhook[]
 
   @@index([id])
@@ -68,9 +67,9 @@ model AgentGraph {
   UserAgent                   UserAgent[]
   StoreListing                StoreListing[]
   StoreListingVersion         StoreListingVersion?
-  AgentGraphExecutionSchedule AgentGraphExecutionSchedule[]
 
   @@id(name: "graphVersionId", [id, version])
+  @@index([userId, isActive])
 }
 
 //////////////////////////////////////////////////////////// 
@@ -104,7 +103,6 @@ model AgentPreset {
 
   InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
   UserAgents             UserAgent[]
-  AgentExecutionSchedule AgentGraphExecutionSchedule[]
   AgentExecution         AgentGraphExecution[]
 
   @@index([userId])
@@ -235,6 +233,9 @@ model AgentGraphExecution {
   stats         String? // JSON serialized object
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
   agentPresetId String?
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([userId])
 }
 
 // This model describes the execution of an AgentNode.
@@ -280,32 +281,7 @@ model AgentNodeExecutionInputOutput {
 
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
-}
-
-// This model describes the recurring execution schedule of an Agent.
-model AgentGraphExecutionSchedule {
-  id        String    @id
-  createdAt DateTime  @default(now())
-  updatedAt DateTime? @updatedAt
-
-  agentGraphId      String
-  agentGraphVersion Int        @default(1)
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
-
-  schedule  String // cron expression
-  isEnabled Boolean @default(true)
-  inputData String // JSON serialized object
-
-  // default and set the value on each update, lastUpdated field has no time zone.
-  lastUpdated DateTime @updatedAt
-
-  // Link to User model
-  userId        String
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
-  agentPresetId String?
-
-  @@index([isEnabled])
+  @@index([referencedByOutputExecId])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
@@ -333,7 +309,7 @@ model IntegrationWebhook {
 model AnalyticsDetails {
   // PK uses gen_random_uuid() to allow the db inserts to happen outside of prisma
   // typical uuid() inserts are handled by prisma
-  id String @id @default(uuid())
+  id String @id @default(dbgenerated("gen_random_uuid()"))
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -388,7 +364,7 @@ enum UserBlockCreditType {
 ////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
 //////////////////////////////////////////////////////////// 
 //////////////////////////////////////////////////////////// 
-model UserBlockCredit {
+model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
 
@@ -405,6 +381,7 @@ model UserBlockCredit {
   metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+  @@index([userId, createdAt])
 }
 
 //////////////////////////////////////////////////////////// 
@@ -450,9 +427,9 @@ view Creator {
 }
 
 view StoreAgent {
-  listing_id               String   @id
-  storeListingVersionId    String
-  updated_at               DateTime
+  listing_id            String   @id
+  storeListingVersionId String
+  updated_at            DateTime
 
   slug        String
   agent_name  String
@@ -574,8 +551,8 @@ model StoreListingReview {
   score    Int
   comments String?
 
-  @@index([storeListingVersionId])
   @@unique([storeListingVersionId, reviewByUserId])
+  @@index([storeListingVersionId])
 }
 
 enum SubmissionStatus {
