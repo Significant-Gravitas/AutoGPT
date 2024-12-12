@@ -13,13 +13,14 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id           String   @id // This should match the Supabase user ID
-  email        String   @unique
-  name         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  metadata     Json     @default("{}")
-  integrations String   @default("")
+  id               String   @id // This should match the Supabase user ID
+  email            String   @unique
+  name             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  metadata         Json     @default("{}")
+  integrations     String   @default("")
+  stripeCustomerId String?
 
   // Relations
   AgentGraphs          AgentGraph[]
@@ -169,6 +170,10 @@ model AgentNode {
   metadata String @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([agentBlockId])
+  @@index([webhookId])
 }
 
 // This model describes the link between two AgentNodes.
@@ -187,6 +192,9 @@ model AgentNodeLink {
 
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
   isStatic Boolean @default(false)
+
+  @@index([agentNodeSourceId])
+  @@index([agentNodeSinkId])
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -201,7 +209,7 @@ model AgentBlock {
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
-  UserBlockCredit       UserBlockCredit[]
+  CreditTransaction     CreditTransaction[]
 }
 
 // This model describes the status of an AgentGraphExecution or AgentNodeExecution.
@@ -259,6 +267,9 @@ model AgentNodeExecution {
   endedTime       DateTime?
 
   stats String? // JSON serialized object
+
+  @@index([agentGraphExecutionId])
+  @@index([agentNodeId])
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -328,6 +339,8 @@ model IntegrationWebhook {
   providerWebhookId String // Webhook ID assigned by the provider
 
   AgentNodes AgentNode[]
+
+  @@index([userId])
 }
 
 model AnalyticsDetails {
@@ -376,9 +389,11 @@ model AnalyticsMetrics {
   // Link to User model
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
-enum UserBlockCreditType {
+enum CreditTransactionType {
   TOP_UP
   USAGE
 }
@@ -399,7 +414,7 @@ model UserBlockCredit {
   block   AgentBlock? @relation(fields: [blockId], references: [id])
 
   amount Int
-  type   UserBlockCreditType
+  type   CreditTransactionType
 
   isActive Boolean @default(true)
   metadata Json?
@@ -616,6 +631,7 @@ enum APIKeyPermission {
 model APIKey {
   id          String             @id @default(uuid())
   name        String
+  prefix      String // First 8 chars for identification
   prefix      String // First 8 chars for identification
   postfix     String
   key         String             @unique // Hashed key

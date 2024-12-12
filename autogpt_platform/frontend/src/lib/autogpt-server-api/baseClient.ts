@@ -7,12 +7,11 @@ import {
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
-  ExecutionMeta,
+  GraphExecution,
   Graph,
   GraphCreatable,
   GraphExecuteResponse,
   GraphMeta,
-  GraphMetaWithRuns,
   GraphUpdateable,
   NodeExecutionResult,
   MyAgentsResponse,
@@ -84,9 +83,8 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/graphs`);
   }
 
-  async listGraphsWithRuns(): Promise<GraphMetaWithRuns[]> {
-    let graphs = await this._get(`/graphs?with_runs=true`);
-    return graphs.map(parseGraphMetaWithRuns);
+  getExecutions(): Promise<GraphExecution[]> {
+    return this._get(`/executions`);
   }
 
   getGraph(
@@ -135,12 +133,6 @@ export default class BaseAutoGPTServerAPI {
     inputData: { [key: string]: any } = {},
   ): Promise<GraphExecuteResponse> {
     return this._request("POST", `/graphs/${id}/execute`, inputData);
-  }
-
-  listGraphRunIDs(graphID: string, graphVersion?: number): Promise<string[]> {
-    const query =
-      graphVersion !== undefined ? `?graph_version=${graphVersion}` : "";
-    return this._get(`/graphs/${graphID}/executions` + query);
   }
 
   async getGraphExecutionInfo(
@@ -663,32 +655,5 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
     queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
     start_time: result.start_time ? new Date(result.start_time) : undefined,
     end_time: result.end_time ? new Date(result.end_time) : undefined,
-  };
-}
-
-function parseGraphMetaWithRuns(result: any): GraphMetaWithRuns {
-  return {
-    ...result,
-    executions: result.executions
-      ? result.executions.map(parseExecutionMetaTimestamps)
-      : [],
-  };
-}
-
-function parseExecutionMetaTimestamps(result: any): ExecutionMeta {
-  let status: "running" | "waiting" | "success" | "failed" = "success";
-  if (result.status === "FAILED") {
-    status = "failed";
-  } else if (["QUEUED", "RUNNING"].includes(result.status)) {
-    status = "running";
-  } else if (result.status === "INCOMPLETE") {
-    status = "waiting";
-  }
-
-  return {
-    ...result,
-    status,
-    started_at: new Date(result.started_at).getTime(),
-    ended_at: result.ended_at ? new Date(result.ended_at).getTime() : undefined,
   };
 }

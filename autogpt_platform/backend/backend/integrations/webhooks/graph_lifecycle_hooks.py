@@ -95,11 +95,18 @@ async def on_node_activate(
     if not block.webhook_config:
         return node
 
+    provider = block.webhook_config.provider
+    if provider not in WEBHOOK_MANAGERS_BY_NAME:
+        raise ValueError(
+            f"Block #{block.id} has webhook_config for provider {provider} "
+            "which does not support webhooks"
+        )
+
     logger.debug(
         f"Activating webhook node #{node.id} with config {block.webhook_config}"
     )
 
-    webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[block.webhook_config.provider]()
+    webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
 
     try:
         resource = block.webhook_config.resource_format.format(**node.input_default)
@@ -167,7 +174,14 @@ async def on_node_deactivate(
     if not block.webhook_config:
         return node
 
-    webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[block.webhook_config.provider]()
+    provider = block.webhook_config.provider
+    if provider not in WEBHOOK_MANAGERS_BY_NAME:
+        raise ValueError(
+            f"Block #{block.id} has webhook_config for provider {provider} "
+            "which does not support webhooks"
+        )
+
+    webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
 
     if node.webhook_id:
         logger.debug(f"Node #{node.id} has webhook_id {node.webhook_id}")
@@ -189,7 +203,7 @@ async def on_node_deactivate(
             logger.warning(
                 f"Cannot deregister webhook #{webhook.id}: credentials "
                 f"#{webhook.credentials_id} not available "
-                f"({webhook.provider} webhook ID: {webhook.provider_webhook_id})"
+                f"({webhook.provider.value} webhook ID: {webhook.provider_webhook_id})"
             )
         return updated_node
 

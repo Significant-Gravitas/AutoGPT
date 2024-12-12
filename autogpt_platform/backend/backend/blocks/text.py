@@ -71,6 +71,7 @@ class ExtractTextInformationBlock(Block):
             description="Case sensitive match", default=True
         )
         dot_all: bool = SchemaField(description="Dot matches all", default=True)
+        find_all: bool = SchemaField(description="Find all matches", default=False)
 
     class Output(BlockSchema):
         positive: str = SchemaField(description="Extracted text")
@@ -88,12 +89,27 @@ class ExtractTextInformationBlock(Block):
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 0},
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 2},
                 {"text": "Hello, World!", "pattern": "hello,", "case_sensitive": False},
+                {
+                    "text": "Hello, World!! Hello, Earth!!",
+                    "pattern": "Hello, (\\S+)",
+                    "group": 1,
+                    "find_all": False,
+                },
+                {
+                    "text": "Hello, World!! Hello, Earth!!",
+                    "pattern": "Hello, (\\S+)",
+                    "group": 1,
+                    "find_all": True,
+                },
             ],
             test_output=[
                 ("positive", "World!"),
                 ("positive", "Hello, World!"),
                 ("negative", "Hello, World!"),
                 ("positive", "Hello,"),
+                ("positive", "World!!"),
+                ("positive", "World!!"),
+                ("positive", "Earth!!"),
             ],
         )
 
@@ -105,15 +121,21 @@ class ExtractTextInformationBlock(Block):
             flags = flags | re.DOTALL
 
         if isinstance(input_data.text, str):
-            text = input_data.text
+            txt = input_data.text
         else:
-            text = json.dumps(input_data.text)
+            txt = json.dumps(input_data.text)
 
-        match = re.search(input_data.pattern, text, flags)
-        if match and input_data.group <= len(match.groups()):
-            yield "positive", match.group(input_data.group)
-        else:
-            yield "negative", text
+        matches = [
+            match.group(input_data.group)
+            for match in re.finditer(input_data.pattern, txt, flags)
+            if input_data.group <= len(match.groups())
+        ]
+        for match in matches:
+            yield "positive", match
+            if not input_data.find_all:
+                return
+        if not matches:
+            yield "negative", input_data.text
 
 
 class FillTextTemplateBlock(Block):
