@@ -43,7 +43,8 @@ export const FlowInfo: React.FC<
     flowVersion?: number | "all";
     refresh: () => void;
   }
-  > = ({ flow, executions, flowVersion, refresh, ...props }) => {  const {
+> = ({ flow, executions, flowVersion, refresh, ...props }) => {
+  const {
     agentName,
     setAgentName,
     agentDescription,
@@ -64,7 +65,6 @@ export const FlowInfo: React.FC<
     edges,
     setEdges,
   } = useAgentGraph(flow.id, false);
-
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const { toast } = useToast();
