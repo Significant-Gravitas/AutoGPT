@@ -236,11 +236,11 @@ class AIStructuredResponseGeneratorBlock(Block):
         prompt_values: dict[str, str] = SchemaField(
             advanced=False, default={}, description="Values used to fill in the prompt."
         )
-       max_tokens: int | None = SchemaField(
+        max_tokens: int | None = SchemaField(
             advanced=True,
             default=None,
             description="The maximum number of tokens to generate in the chat completion.",
-       )
+        )
 
         ollama_host: str = SchemaField(
             advanced=True,
@@ -288,17 +288,17 @@ class AIStructuredResponseGeneratorBlock(Block):
 
     @staticmethod
     def llm_call(
-        api_key: str,
-        model: LlmModel,
+        credentials: APIKeyCredentials,
+        llm_model: LlmModel,
         prompt: list[dict],
         json_format: bool,
         max_tokens: int | None = None,
-        ollama_host: str,
-    )  -> tuple[str, int, int]:
-      """
+        ollama_host: str = "localhost:11434",
+    ) -> tuple[str, int, int]:
+        """
         Args:
             api_key: API key for the LLM provider.
-            llm_model: The LLM model to use.
+            model: The LLM model to use.
             prompt: The prompt to send to the LLM.
             json_format: Whether the response should be in JSON format.
             max_tokens: The maximum number of tokens to generate in the chat completion.
@@ -309,7 +309,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             The number of tokens used in the prompt.
             The number of tokens used in the completion.
         """
-        provider = llm_model.metadata.provider
+        provider = model.metadata.provider
 
         if provider == "openai":
             oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
@@ -435,7 +435,6 @@ class AIStructuredResponseGeneratorBlock(Block):
             )
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
-
 
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -886,6 +885,7 @@ class AIConversationBlock(Block):
 
         yield "response", response
 
+
 class AIListGeneratorBlock(Block):
     class Input(BlockSchema):
         focus: str | None = SchemaField(
@@ -917,6 +917,11 @@ class AIListGeneratorBlock(Block):
             advanced=True,
             default=None,
             description="The maximum number of tokens to generate in the chat completion.",
+        )
+        ollama_host: str = SchemaField(
+            advanced=True,
+            default="localhost:11434",
+            description="Ollama host for local  models",
         )
 
     class Output(BlockSchema):
