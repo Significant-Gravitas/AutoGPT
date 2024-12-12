@@ -298,7 +298,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         """
         Args:
             api_key: API key for the LLM provider.
-            model: The LLM model to use.
+            llm_model: The LLM model to use.
             prompt: The prompt to send to the LLM.
             json_format: Whether the response should be in JSON format.
             max_tokens: The maximum number of tokens to generate in the chat completion.
@@ -309,7 +309,7 @@ class AIStructuredResponseGeneratorBlock(Block):
             The number of tokens used in the prompt.
             The number of tokens used in the completion.
         """
-        provider = model.metadata.provider
+        provider = llm_model.metadata.provider
 
         if provider == "openai":
             oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
