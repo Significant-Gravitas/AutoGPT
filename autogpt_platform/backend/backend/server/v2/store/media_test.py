@@ -7,12 +7,16 @@ import starlette.datastructures
 
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.media
+from backend.util.settings import Settings
 
 
 @pytest.fixture
-def mock_env_vars(monkeypatch):
-    monkeypatch.setenv("GCS_BUCKET_NAME", "test-bucket")
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "test-credentials")
+def mock_settings(monkeypatch):
+    settings = Settings()
+    settings.config.media_gcs_bucket_name = "test-bucket"
+    settings.config.google_application_credentials = "test-credentials"
+    monkeypatch.setattr("backend.server.v2.store.media.Settings", lambda: settings)
+    return settings
 
 
 @pytest.fixture
@@ -30,7 +34,7 @@ def mock_storage_client(mocker):
     return mock_client
 
 
-async def test_upload_media_success(mock_env_vars, mock_storage_client):
+async def test_upload_media_success(mock_settings, mock_storage_client):
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
         file=io.BytesIO(b"test data"),
@@ -45,7 +49,7 @@ async def test_upload_media_success(mock_env_vars, mock_storage_client):
     mock_blob.upload_from_string.assert_called_once()
 
 
-async def test_upload_media_invalid_type(mock_env_vars, mock_storage_client):
+async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
     test_file = fastapi.UploadFile(
         filename="test.txt",
         file=io.BytesIO(b"test data"),
@@ -61,7 +65,10 @@ async def test_upload_media_invalid_type(mock_env_vars, mock_storage_client):
 
 
 async def test_upload_media_missing_credentials(monkeypatch):
-    monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
+    settings = Settings()
+    settings.config.media_gcs_bucket_name = ""
+    settings.config.google_application_credentials = ""
+    monkeypatch.setattr("backend.server.v2.store.media.Settings", lambda: settings)
 
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
@@ -73,7 +80,7 @@ async def test_upload_media_missing_credentials(monkeypatch):
         await backend.server.v2.store.media.upload_media("test-user", test_file)
 
 
-async def test_upload_media_video_type(mock_env_vars, mock_storage_client):
+async def test_upload_media_video_type(mock_settings, mock_storage_client):
     test_file = fastapi.UploadFile(
         filename="test.mp4",
         file=io.BytesIO(b"test video data"),
@@ -88,7 +95,7 @@ async def test_upload_media_video_type(mock_env_vars, mock_storage_client):
     mock_blob.upload_from_string.assert_called_once()
 
 
-async def test_upload_media_file_too_large(mock_env_vars, mock_storage_client):
+async def test_upload_media_file_too_large(mock_settings, mock_storage_client):
     large_data = b"x" * (50 * 1024 * 1024 + 1)  # 50MB + 1 byte
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
