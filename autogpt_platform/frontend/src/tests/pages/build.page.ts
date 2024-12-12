@@ -251,7 +251,6 @@ export class BuildPage extends BasePage {
     endBlockInputName: string,
     startDataId?: string,
     endDataId?: string,
-    tutorialMode: boolean = false,
   ): Promise<void> {
     console.log(
       `connecting block output ${startBlockOutputName} of block ${startBlockId} to block input ${endBlockInputName} of block ${endBlockId}`,
@@ -269,45 +268,9 @@ export class BuildPage extends BasePage {
     console.log("Start block selector:", startBlockOutputSelector);
     console.log("End block selector:", endBlockInputSelector);
 
-    if (tutorialMode) {
-      // Get the elements
-      const startHandle = this.page.locator(startBlockOutputSelector);
-      const endHandle = this.page.locator(endBlockInputSelector);
-
-      // Get the positions of both elements
-      const startBox = await startHandle.boundingBox();
-      const endBox = await endHandle.boundingBox();
-
-      if (!startBox || !endBox) {
-        throw new Error("Could not get element positions");
-      }
-
-      // Calculate center points
-      const startX = startBox.x + startBox.width / 2;
-      const startY = startBox.y + startBox.height / 2;
-      const endX = endBox.x + endBox.width / 2;
-      const endY = endBox.y + endBox.height / 2;
-
-      // Perform the mouse events sequence
-      // await startHandle.hover();
-      await this.page.mouse.move(startX, startY);
-      await this.page.mouse.click(startX, startY);
-
-      // Move to end position (can add intermediate points if needed)
-      await this.page.mouse.move(endX, endY);
-      // await endHandle.hover();
-
-      // Release at destination
-      await this.page.mouse.click(endX, endY);
-
-      // Small delay to ensure connection is registered
-      await this.page.waitForTimeout(100);
-    } else {
-      // Use standard dragTo for non-tutorial mode
-      await this.page
-        .locator(startBlockOutputSelector)
-        .dragTo(this.page.locator(endBlockInputSelector));
-    }
+    await this.page
+      .locator(startBlockOutputSelector)
+      .dragTo(this.page.locator(endBlockInputSelector));
   }
 
   async isLoaded(): Promise<boolean> {
