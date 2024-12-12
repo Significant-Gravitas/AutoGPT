@@ -3,7 +3,7 @@ name: Repo - Pull Request auto-label
 on:
   # So that PRs touching the same files as the push are updated
   push:
-    branches: [ master, development, release-* ]
+    branches: [ master, dev, release-* ]
     paths-ignore:
       - 'classic/forge/tests/vcr_cassettes'
       - 'classic/benchmark/reports/**'

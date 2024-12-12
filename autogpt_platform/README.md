@@ -46,9 +46,9 @@ To run the AutoGPT Platform, follow these steps:
 
 6. Run the following command: 
    ```
-   cp .env.example .env
+   cp .env.example .env.local
    ```
-   This command will copy the `.env.example` file to `.env` in the `frontend` directory. You can modify the `.env` within this folder to add your own environment variables for the frontend application.
+   This command will copy the `.env.example` file to `.env.local` in the `frontend` directory. You can modify the `.env.local` within this folder to add your own environment variables for the frontend application.
 
 7. Run the following command:
    ```
@@ -149,6 +149,3 @@ To persist data for PostgreSQL and Redis, you can modify the `docker-compose.yml
 3. Save the file and run `docker compose up -d` to apply the changes.
 
 This configuration will create named volumes for PostgreSQL and Redis, ensuring that your data persists across container restarts.
-
-
-

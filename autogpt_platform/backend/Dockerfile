@@ -1,4 +1,4 @@
-FROM python:3.11-slim-buster AS builder
+FROM python:3.11.10-slim-bookworm AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update \
-    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev postgresql-client git \
+    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev libpq5 gettext libz-dev libssl-dev postgresql-client git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,7 +35,7 @@ COPY autogpt_platform/backend/schema.prisma ./
 RUN poetry config virtualenvs.create false \
     && poetry run prisma generate
 
-FROM python:3.11-slim-buster AS server_dependencies
+FROM python:3.11.10-slim-bookworm AS server_dependencies
 
 WORKDIR /app
 

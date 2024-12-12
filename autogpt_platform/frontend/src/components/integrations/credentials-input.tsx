@@ -3,22 +3,18 @@ import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import SchemaTooltip from "@/components/SchemaTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
-import { FaGithub, FaGoogle } from "react-icons/fa";
+import { FaDiscord, FaGithub, FaGoogle, FaMedium, FaKey } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
 import {
-  APIKeyCredentials,
   CredentialsMetaInput,
+  CredentialsProviderName,
 } from "@/lib/autogpt-server-api/types";
-import {
-  IconKey,
-  IconKeyPlus,
-  IconUser,
-  IconUserPlus,
-} from "@/components/ui/icons";
+import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {
   Dialog,
   DialogContent,
@@ -44,11 +40,39 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const providerIcons: Record<string, React.FC<{ className?: string }>> = {
+const fallbackIcon = FaKey;
+
+// --8<-- [start:ProviderIconsEmbed]
+export const providerIcons: Record<
+  CredentialsProviderName,
+  React.FC<{ className?: string }>
+> = {
+  anthropic: fallbackIcon,
+  e2b: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
+  groq: fallbackIcon,
   notion: NotionLogoIcon,
+  discord: FaDiscord,
+  d_id: fallbackIcon,
+  google_maps: FaGoogle,
+  jina: fallbackIcon,
+  ideogram: fallbackIcon,
+  medium: FaMedium,
+  ollama: fallbackIcon,
+  openai: fallbackIcon,
+  openweathermap: fallbackIcon,
+  open_router: fallbackIcon,
+  pinecone: fallbackIcon,
+  slant3d: fallbackIcon,
+  replicate: fallbackIcon,
+  fal: fallbackIcon,
+  revid: fallbackIcon,
+  unreal_speech: fallbackIcon,
+  exa: fallbackIcon,
+  hubspot: fallbackIcon,
 };
+// --8<-- [end:ProviderIconsEmbed]
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {
@@ -65,7 +89,7 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 export const CredentialsInput: FC<{
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
-  onSelectCredentials: (newValue: CredentialsMetaInput) => void;
+  onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
 }> = ({ className, selectedCredentials, onSelectCredentials }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const credentials = useCredentials();
@@ -74,13 +98,10 @@ export const CredentialsInput: FC<{
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupController, setOAuthPopupController] =
     useState<AbortController | null>(null);
+  const [oAuthError, setOAuthError] = useState<string | null>(null);
 
-  if (!credentials) {
+  if (!credentials || credentials.isLoading) {
     return null;
-  }
-
-  if (credentials.isLoading) {
-    return <div>Loading...</div>;
   }
 
   const {
@@ -95,6 +116,7 @@ export const CredentialsInput: FC<{
   } = credentials;
 
   async function handleOAuthLogin() {
+    setOAuthError(null);
     const { login_url, state_token } = await api.oAuthLogin(
       provider,
       schema.credentials_scopes,
@@ -102,46 +124,81 @@ export const CredentialsInput: FC<{
     setOAuth2FlowInProgress(true);
     const popup = window.open(login_url, "_blank", "popup=true");
 
+    if (!popup) {
+      throw new Error(
+        "Failed to open popup window. Please allow popups for this site.",
+      );
+    }
+
     const controller = new AbortController();
     setOAuthPopupController(controller);
     controller.signal.onabort = () => {
+      console.debug("OAuth flow aborted");
       setOAuth2FlowInProgress(false);
-      popup?.close();
+      popup.close();
     };
-    popup?.addEventListener(
-      "message",
-      async (e: MessageEvent<OAuthPopupResultMessage>) => {
-        if (
-          typeof e.data != "object" ||
-          !(
-            "message_type" in e.data &&
-            e.data.message_type == "oauth_popup_result"
-          )
-        )
-          return;
 
-        if (!e.data.success) {
-          console.error("OAuth flow failed:", e.data.message);
-          return;
-        }
+    const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
+      console.debug("Message received:", e.data);
+      if (
+        typeof e.data != "object" ||
+        !("message_type" in e.data) ||
+        e.data.message_type !== "oauth_popup_result"
+      ) {
+        console.debug("Ignoring irrelevant message");
+        return;
+      }
 
-        if (e.data.state !== state_token) return;
+      if (!e.data.success) {
+        console.error("OAuth flow failed:", e.data.message);
+        setOAuthError(`OAuth flow failed: ${e.data.message}`);
+        setOAuth2FlowInProgress(false);
+        return;
+      }
 
+      if (e.data.state !== state_token) {
+        console.error("Invalid state token received");
+        setOAuthError("Invalid state token received");
+        setOAuth2FlowInProgress(false);
+        return;
+      }
+
+      try {
+        console.debug("Processing OAuth callback");
         const credentials = await oAuthCallback(e.data.code, e.data.state);
+        console.debug("OAuth callback processed successfully");
         onSelectCredentials({
           id: credentials.id,
           type: "oauth2",
           title: credentials.title,
           provider,
         });
+      } catch (error) {
+        console.error("Error in OAuth callback:", error);
+        setOAuthError(
+          // type of error is unkown so we need to use String(error)
+          `Error in OAuth callback: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      } finally {
+        console.debug("Finalizing OAuth flow");
+        setOAuth2FlowInProgress(false);
         controller.abort("success");
-      },
-      { signal: controller.signal },
-    );
+      }
+    };
+
+    console.debug("Adding message event listener");
+    window.addEventListener("message", handleMessage, {
+      signal: controller.signal,
+    });
 
     setTimeout(
       () => {
+        console.debug("OAuth flow timed out");
         controller.abort("timeout");
+        setOAuth2FlowInProgress(false);
+        setOAuthError("OAuth flow timed out");
       },
       5 * 60 * 1000,
     );
@@ -170,10 +227,24 @@ export const CredentialsInput: FC<{
     </>
   );
 
+  // Deselect credentials if they do not exist (e.g. provider was changed)
+  if (
+    selectedCredentials &&
+    !savedApiKeys
+      .concat(savedOAuthCredentials)
+      .some((c) => c.id === selectedCredentials.id)
+  ) {
+    onSelectCredentials(undefined);
+  }
+
   // No saved credentials yet
   if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
     return (
       <>
+        <div className="mb-2 flex gap-1">
+          <span className="text-m green text-gray-900">Credentials</span>
+          <SchemaTooltip description={schema.description} />
+        </div>
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
             <Button onClick={handleOAuthLogin}>
@@ -189,8 +260,30 @@ export const CredentialsInput: FC<{
           )}
         </div>
         {modals}
+        {oAuthError && (
+          <div className="mt-2 text-red-500">Error: {oAuthError}</div>
+        )}
       </>
     );
+  }
+
+  const singleCredential =
+    savedApiKeys.length === 1 && savedOAuthCredentials.length === 0
+      ? savedApiKeys[0]
+      : savedOAuthCredentials.length === 1 && savedApiKeys.length === 0
+        ? savedOAuthCredentials[0]
+        : null;
+
+  if (singleCredential) {
+    if (!selectedCredentials) {
+      onSelectCredentials({
+        id: singleCredential.id,
+        type: singleCredential.type,
+        provider,
+        title: singleCredential.title,
+      });
+    }
+    return null;
   }
 
   function handleValueChange(newValue: string) {
@@ -208,7 +301,7 @@ export const CredentialsInput: FC<{
       onSelectCredentials({
         id: selectedCreds.id,
         type: selectedCreds.type,
-        provider: schema.credentials_provider,
+        provider: provider,
         // title: customTitle, // TODO: add input for title
       });
     }
@@ -217,6 +310,7 @@ export const CredentialsInput: FC<{
   // Saved credentials exist
   return (
     <>
+      <span className="text-m green mb-0 text-gray-900">Credentials</span>
       <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={schema.placeholder} />
@@ -251,6 +345,9 @@ export const CredentialsInput: FC<{
         </SelectContent>
       </Select>
       {modals}
+      {oAuthError && (
+        <div className="mt-2 text-red-500">Error: {oAuthError}</div>
+      )}
     </>
   );
 };

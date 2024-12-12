@@ -67,7 +67,16 @@ export type AgentWithRank = Agent & {
   rank: number;
 };
 
-export type AgentListResponse = AgentList;
+export type ListResponse<T> = {
+  items: T[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
+export type AgentListResponse = ListResponse<Agent>;
+export type AgentWithRankListResponse = ListResponse<AgentWithRank>;
 
 export type AgentDetailResponse = AgentDetail;
 

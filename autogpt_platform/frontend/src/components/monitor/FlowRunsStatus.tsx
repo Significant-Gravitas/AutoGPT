@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { GraphMeta } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
+import { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
 import { CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,13 +12,14 @@ import { FlowRunsTimeline } from "@/components/monitor/FlowRunsTimeline";
 
 export const FlowRunsStatus: React.FC<{
   flows: GraphMeta[];
-  flowRuns: FlowRun[];
+  executions: GraphExecution[];
   title?: string;
   className?: string;
-}> = ({ flows, flowRuns, title, className }) => {
+}> = ({ flows, executions: executions, title, className }) => {
   /* "dateMin": since the first flow in the dataset
    * number > 0: custom date (unix timestamp)
    * number < 0: offset relative to Date.now() (in seconds) */
+  const [selected, setSelected] = useState<Date>();
   const [statsSince, setStatsSince] = useState<number | "dataMin">(-24 * 3600);
   const statsSinceTimestamp = // unix timestamp or null
     typeof statsSince == "string"
@@ -29,8 +29,8 @@ export const FlowRunsStatus: React.FC<{
         : statsSince;
   const filteredFlowRuns =
     statsSinceTimestamp != null
-      ? flowRuns.filter((fr) => fr.startTime > statsSinceTimestamp)
-      : flowRuns;
+      ? executions.filter((fr) => fr.started_at > statsSinceTimestamp)
+      : executions;
 
   return (
     <div className={className}>
@@ -74,10 +74,11 @@ export const FlowRunsStatus: React.FC<{
             <PopoverContent className="w-auto p-0" align="start">
               <Calendar
                 mode="single"
-                onSelect={(_, selectedDay) =>
-                  setStatsSince(selectedDay.getTime())
-                }
-                initialFocus
+                selected={selected}
+                onSelect={(_, selectedDay) => {
+                  setSelected(selectedDay);
+                  setStatsSince(selectedDay.getTime());
+                }}
               />
             </PopoverContent>
           </Popover>
@@ -92,7 +93,7 @@ export const FlowRunsStatus: React.FC<{
       </div>
       <FlowRunsTimeline
         flows={flows}
-        flowRuns={flowRuns}
+        executions={executions}
         dataMin={statsSince}
         className="mt-3"
       />
@@ -103,7 +104,10 @@ export const FlowRunsStatus: React.FC<{
         </p>
         <p>
           <strong>Total run time:</strong>{" "}
-          {filteredFlowRuns.reduce((total, run) => total + run.totalRunTime, 0)}{" "}
+          {filteredFlowRuns.reduce(
+            (total, run) => total + run.total_run_time,
+            0,
+          )}{" "}
           seconds
         </p>
         {/* <p><strong>Total cost:</strong> €1,23</p> */}

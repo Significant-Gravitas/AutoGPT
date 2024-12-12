@@ -1,13 +1,33 @@
 import logging
 import time
 from enum import Enum
-from typing import Optional
+from typing import Literal
 
-import requests
-from pydantic import Field
+from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
+from backend.integrations.providers import ProviderName
+from backend.util.request import requests
+
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="revid",
+    api_key=SecretStr("mock-revid-api-key"),
+    title="Mock Revid API key",
+    expires_at=None,
+)
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.type,
+}
 
 
 class AudioTrack(str, Enum):
@@ -121,18 +141,23 @@ logger = logging.getLogger(__name__)
 
 class AIShortformVideoCreatorBlock(Block):
     class Input(BlockSchema):
-        api_key: BlockSecret = SecretField(
-            key="revid_api_key",
-            description="Your revid.ai API key",
-            placeholder="Enter your revid.ai API key",
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REVID], Literal["api_key"]
+        ] = CredentialsField(
+            description="The revid.ai integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
         )
         script: str = SchemaField(
             description="""1. Use short and punctuated sentences\n\n2. Use linebreaks to create a new clip\n\n3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat.""",
             placeholder="[close-up of a cat] Meow!",
         )
-        ratio: str = Field(description="Aspect ratio of the video", default="9 / 16")
-        resolution: str = Field(description="Resolution of the video", default="720p")
-        frame_rate: int = Field(description="Frame rate of the video", default=60)
+        ratio: str = SchemaField(
+            description="Aspect ratio of the video", default="9 / 16"
+        )
+        resolution: str = SchemaField(
+            description="Resolution of the video", default="720p"
+        )
+        frame_rate: int = SchemaField(description="Frame rate of the video", default=60)
         generation_preset: GenerationPreset = SchemaField(
             description="Generation preset for visual style - only effects AI generated visuals",
             default=GenerationPreset.LEONARDO,
@@ -155,8 +180,8 @@ class AIShortformVideoCreatorBlock(Block):
         )
 
     class Output(BlockSchema):
-        video_url: str = Field(description="The URL of the created video")
-        error: Optional[str] = Field(description="Error message if the request failed")
+        video_url: str = SchemaField(description="The URL of the created video")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -166,7 +191,7 @@ class AIShortformVideoCreatorBlock(Block):
             input_schema=AIShortformVideoCreatorBlock.Input,
             output_schema=AIShortformVideoCreatorBlock.Output,
             test_input={
-                "api_key": "test_api_key",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "script": "[close-up of a cat] Meow!",
                 "ratio": "9 / 16",
                 "resolution": "720p",
@@ -188,35 +213,37 @@ class AIShortformVideoCreatorBlock(Block):
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
                 "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/video.mp4",
             },
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def create_webhook(self):
         url = "https://webhook.site/token"
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
         response = requests.post(url, headers=headers)
-        response.raise_for_status()
         webhook_data = response.json()
         return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
 
-    def create_video(self, api_key: str, payload: dict) -> dict:
+    def create_video(self, api_key: SecretStr, payload: dict) -> dict:
         url = "https://www.revid.ai/api/public/v2/render"
-        headers = {"key": api_key}
+        headers = {"key": api_key.get_secret_value()}
         response = requests.post(url, json=payload, headers=headers)
         logger.debug(
             f"API Response Status Code: {response.status_code}, Content: {response.text}"
         )
-        response.raise_for_status()
         return response.json()
 
-    def check_video_status(self, api_key: str, pid: str) -> dict:
+    def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
         url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
-        headers = {"key": api_key}
+        headers = {"key": api_key.get_secret_value()}
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
         return response.json()
 
     def wait_for_video(
-        self, api_key: str, pid: str, webhook_token: str, max_wait_time: int = 1000
+        self,
+        api_key: SecretStr,
+        pid: str,
+        webhook_token: str,
+        max_wait_time: int = 1000,
     ) -> str:
         start_time = time.time()
         while time.time() - start_time < max_wait_time:
@@ -238,70 +265,59 @@ class AIShortformVideoCreatorBlock(Block):
         logger.error("Video creation timed out")
         raise TimeoutError("Video creation timed out")
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # Create a new Webhook.site URL
-            webhook_token, webhook_url = self.create_webhook()
-            logger.debug(f"Webhook URL: {webhook_url}")
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        # Create a new Webhook.site URL
+        webhook_token, webhook_url = self.create_webhook()
+        logger.debug(f"Webhook URL: {webhook_url}")
 
-            audio_url = input_data.background_music.audio_url
+        audio_url = input_data.background_music.audio_url
 
-            payload = {
-                "frameRate": input_data.frame_rate,
-                "resolution": input_data.resolution,
-                "frameDurationMultiplier": 18,
-                "webhook": webhook_url,
-                "creationParams": {
-                    "mediaType": input_data.video_style,
-                    "captionPresetName": "Wrap 1",
-                    "selectedVoice": input_data.voice.voice_id,
-                    "hasEnhancedGeneration": True,
-                    "generationPreset": input_data.generation_preset.name,
-                    "selectedAudio": input_data.background_music,
-                    "origin": "/create",
-                    "inputText": input_data.script,
-                    "flowType": "text-to-video",
-                    "slug": "create-tiktok-video",
-                    "hasToGenerateVoice": True,
-                    "hasToTranscript": False,
-                    "hasToSearchMedia": True,
-                    "hasAvatar": False,
-                    "hasWebsiteRecorder": False,
-                    "hasTextSmallAtBottom": False,
-                    "ratio": input_data.ratio,
-                    "sourceType": "contentScraping",
-                    "selectedStoryStyle": {"value": "custom", "label": "Custom"},
-                    "hasToGenerateVideos": input_data.video_style
-                    != VisualMediaType.STOCK_VIDEOS,
-                    "audioUrl": audio_url,
-                },
-            }
+        payload = {
+            "frameRate": input_data.frame_rate,
+            "resolution": input_data.resolution,
+            "frameDurationMultiplier": 18,
+            "webhook": webhook_url,
+            "creationParams": {
+                "mediaType": input_data.video_style,
+                "captionPresetName": "Wrap 1",
+                "selectedVoice": input_data.voice.voice_id,
+                "hasEnhancedGeneration": True,
+                "generationPreset": input_data.generation_preset.name,
+                "selectedAudio": input_data.background_music,
+                "origin": "/create",
+                "inputText": input_data.script,
+                "flowType": "text-to-video",
+                "slug": "create-tiktok-video",
+                "hasToGenerateVoice": True,
+                "hasToTranscript": False,
+                "hasToSearchMedia": True,
+                "hasAvatar": False,
+                "hasWebsiteRecorder": False,
+                "hasTextSmallAtBottom": False,
+                "ratio": input_data.ratio,
+                "sourceType": "contentScraping",
+                "selectedStoryStyle": {"value": "custom", "label": "Custom"},
+                "hasToGenerateVideos": input_data.video_style
+                != VisualMediaType.STOCK_VIDEOS,
+                "audioUrl": audio_url,
+            },
+        }
 
-            logger.debug("Creating video...")
-            response = self.create_video(input_data.api_key.get_secret_value(), payload)
-            pid = response.get("pid")
+        logger.debug("Creating video...")
+        response = self.create_video(credentials.api_key, payload)
+        pid = response.get("pid")
 
-            if not pid:
-                logger.error(
-                    f"Failed to create video: No project ID returned. API Response: {response}"
-                )
-                yield "error", "Failed to create video: No project ID returned"
-            else:
-                logger.debug(
-                    f"Video created with project ID: {pid}. Waiting for completion..."
-                )
-                video_url = self.wait_for_video(
-                    input_data.api_key.get_secret_value(), pid, webhook_token
-                )
-                logger.debug(f"Video ready: {video_url}")
-                yield "video_url", video_url
-
-        except requests.RequestException as e:
-            logger.exception("Error creating video")
-            yield "error", f"Error creating video: {str(e)}"
-        except ValueError as e:
-            logger.exception("Error in video creation process")
-            yield "error", str(e)
-        except TimeoutError as e:
-            logger.exception("Video creation timed out")
-            yield "error", str(e)
+        if not pid:
+            logger.error(
+                f"Failed to create video: No project ID returned. API Response: {response}"
+            )
+            raise RuntimeError("Failed to create video: No project ID returned")
+        else:
+            logger.debug(
+                f"Video created with project ID: {pid}. Waiting for completion..."
+            )
+            video_url = self.wait_for_video(credentials.api_key, pid, webhook_token)
+            logger.debug(f"Video ready: {video_url}")
+            yield "video_url", video_url

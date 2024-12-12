@@ -6,3 +6,6 @@ build/
 config.json
 secrets/*
 !secrets/.gitkeep
+
+*.ignore.*
+*.ign.*

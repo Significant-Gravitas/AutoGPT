@@ -27,5 +27,6 @@ def test_type_conversion():
 
     from typing import List
 
-    # assert convert("5", List[int]) == [5]
+    assert convert("5", List[int]) == [5]
     assert convert("[5,4,2]", List[int]) == [5, 4, 2]
+    assert convert([5, 4, 2], List[str]) == ["5", "4", "2"]

@@ -1,14 +1,11 @@
-import re
 from typing import Any, List
-
-from jinja2 import BaseLoader, Environment
-from pydantic import Field
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 from backend.util.mock import MockObject
+from backend.util.text import TextFormatter
 
-jinja = Environment(loader=BaseLoader())
+formatter = TextFormatter()
 
 
 class StoreValueBlock(Block):
@@ -19,18 +16,18 @@ class StoreValueBlock(Block):
     """
 
     class Input(BlockSchema):
-        input: Any = Field(
+        input: Any = SchemaField(
             description="Trigger the block to produce the output. "
             "The value is only used when `data` is None."
         )
-        data: Any = Field(
+        data: Any = SchemaField(
             description="The constant data to be retained in the block. "
             "This value is passed as `output`.",
             default=None,
         )
 
     class Output(BlockSchema):
-        output: Any
+        output: Any = SchemaField(description="The stored data retained in the block.")
 
     def __init__(self):
         super().__init__(
@@ -56,10 +53,10 @@ class StoreValueBlock(Block):
 
 class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
-        text: str
+        text: str = SchemaField(description="The text to print to the console.")
 
     class Output(BlockSchema):
-        status: str
+        status: str = SchemaField(description="The status of the print operation.")
 
     def __init__(self):
         super().__init__(
@@ -79,16 +76,18 @@ class PrintToConsoleBlock(Block):
 
 class FindInDictionaryBlock(Block):
     class Input(BlockSchema):
-        input: Any = Field(description="Dictionary to lookup from")
-        key: str | int = Field(description="Key to lookup in the dictionary")
+        input: Any = SchemaField(description="Dictionary to lookup from")
+        key: str | int = SchemaField(description="Key to lookup in the dictionary")
 
     class Output(BlockSchema):
-        output: Any = Field(description="Value found for the given key")
-        missing: Any = Field(description="Value of the input that missing the key")
+        output: Any = SchemaField(description="Value found for the given key")
+        missing: Any = SchemaField(
+            description="Value of the input that missing the key"
+        )
 
     def __init__(self):
         super().__init__(
-            id="b2g2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+            id="0e50422c-6dee-4145-83d6-3a5a392f65de",
             description="Lookup the given key in the input dictionary/object/list and return the value.",
             input_schema=FindInDictionaryBlock.Input,
             output_schema=FindInDictionaryBlock.Output,
@@ -142,11 +141,17 @@ class AgentInputBlock(Block):
     """
 
     class Input(BlockSchema):
-        value: Any = SchemaField(description="The value to be passed as input.")
         name: str = SchemaField(description="The name of the input.")
-        description: str = SchemaField(
+        value: Any = SchemaField(
+            description="The value to be passed as input.",
+            default=None,
+        )
+        title: str | None = SchemaField(
+            description="The title of the input.", default=None, advanced=True
+        )
+        description: str | None = SchemaField(
             description="The description of the input.",
-            default="",
+            default=None,
             advanced=True,
         )
         placeholder_values: List[Any] = SchemaField(
@@ -156,6 +161,16 @@ class AgentInputBlock(Block):
         )
         limit_to_placeholder_values: bool = SchemaField(
             description="Whether to limit the selection to placeholder values.",
+            default=False,
+            advanced=True,
+        )
+        advanced: bool = SchemaField(
+            description="Whether to show the input in the advanced section, if the field is not required.",
+            default=False,
+            advanced=True,
+        )
+        secret: bool = SchemaField(
+            description="Whether the input should be treated as a secret.",
             default=False,
             advanced=True,
         )
@@ -191,6 +206,7 @@ class AgentInputBlock(Block):
             ],
             categories={BlockCategory.INPUT, BlockCategory.BASIC},
             block_type=BlockType.INPUT,
+            static_output=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -201,33 +217,42 @@ class AgentOutputBlock(Block):
     """
     Records the output of the graph for users to see.
 
-    Attributes:
-        recorded_value: The value to be recorded as output.
-        name: The name of the output.
-        description: The description of the output.
-        fmt_string: The format string to be used to format the recorded_value.
-
-    Outputs:
-        output: The formatted recorded_value if fmt_string is provided and the recorded_value
-                can be formatted, otherwise the raw recorded_value.
-
     Behavior:
-        If fmt_string is provided and the recorded_value is of a type that can be formatted,
-        the block attempts to format the recorded_value using the fmt_string.
-        If formatting fails or no fmt_string is provided, the raw recorded_value is output.
+        If `format` is provided and the `value` is of a type that can be formatted,
+        the block attempts to format the recorded_value using the `format`.
+        If formatting fails or no `format` is provided, the raw `value` is output.
     """
 
     class Input(BlockSchema):
-        value: Any = SchemaField(description="The value to be recorded as output.")
+        value: Any = SchemaField(
+            description="The value to be recorded as output.",
+            default=None,
+            advanced=False,
+        )
         name: str = SchemaField(description="The name of the output.")
-        description: str = SchemaField(
+        title: str | None = SchemaField(
+            description="The title of the output.",
+            default=None,
+            advanced=True,
+        )
+        description: str | None = SchemaField(
             description="The description of the output.",
-            default="",
+            default=None,
             advanced=True,
         )
         format: str = SchemaField(
             description="The format string to be used to format the recorded_value.",
             default="",
+            advanced=True,
+        )
+        advanced: bool = SchemaField(
+            description="Whether to treat the output as advanced.",
+            default=False,
+            advanced=True,
+        )
+        secret: bool = SchemaField(
+            description="Whether the output should be treated as a secret.",
+            default=False,
             advanced=True,
         )
 
@@ -237,7 +262,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description=("Stores the output of the graph for users to see."),
+            description="Stores the output of the graph for users to see.",
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[
@@ -267,6 +292,7 @@ class AgentOutputBlock(Block):
             ],
             categories={BlockCategory.OUTPUT, BlockCategory.BASIC},
             block_type=BlockType.OUTPUT,
+            static_output=True,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -276,9 +302,9 @@ class AgentOutputBlock(Block):
         """
         if input_data.format:
             try:
-                fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
-                template = jinja.from_string(fmt)
-                yield "output", template.render({input_data.name: input_data.value})
+                yield "output", formatter.format_string(
+                    input_data.format, {input_data.name: input_data.value}
+                )
             except Exception as e:
                 yield "output", f"Error: {e}, {input_data.value}"
         else:
@@ -287,16 +313,26 @@ class AgentOutputBlock(Block):
 
 class AddToDictionaryBlock(Block):
     class Input(BlockSchema):
-        dictionary: dict | None = SchemaField(
-            default=None,
+        dictionary: dict[Any, Any] = SchemaField(
+            default={},
             description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
-            placeholder='{"key1": "value1", "key2": "value2"}',
         )
         key: str = SchemaField(
-            description="The key for the new entry.", placeholder="new_key"
+            default="",
+            description="The key for the new entry.",
+            placeholder="new_key",
+            advanced=False,
         )
         value: Any = SchemaField(
-            description="The value for the new entry.", placeholder="new_value"
+            default=None,
+            description="The value for the new entry.",
+            placeholder="new_value",
+            advanced=False,
+        )
+        entries: dict[Any, Any] = SchemaField(
+            default={},
+            description="The entries to add to the dictionary. This is the batch version of the `key` and `value` fields.",
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -319,6 +355,10 @@ class AddToDictionaryBlock(Block):
                     "value": "new_value",
                 },
                 {"key": "first_key", "value": "first_value"},
+                {
+                    "dictionary": {"existing_key": "existing_value"},
+                    "entries": {"new_key": "new_value", "first_key": "first_value"},
+                },
             ],
             test_output=[
                 (
@@ -326,41 +366,49 @@ class AddToDictionaryBlock(Block):
                     {"existing_key": "existing_value", "new_key": "new_value"},
                 ),
                 ("updated_dictionary", {"first_key": "first_value"}),
+                (
+                    "updated_dictionary",
+                    {
+                        "existing_key": "existing_value",
+                        "new_key": "new_value",
+                        "first_key": "first_value",
+                    },
+                ),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # If no dictionary is provided, create a new one
-            if input_data.dictionary is None:
-                updated_dict = {}
-            else:
-                # Create a copy of the input dictionary to avoid modifying the original
-                updated_dict = input_data.dictionary.copy()
+        updated_dict = input_data.dictionary.copy()
 
-            # Add the new key-value pair
+        if input_data.value is not None and input_data.key:
             updated_dict[input_data.key] = input_data.value
 
-            yield "updated_dictionary", updated_dict
-        except Exception as e:
-            yield "error", f"Failed to add entry to dictionary: {str(e)}"
+        for key, value in input_data.entries.items():
+            updated_dict[key] = value
+
+        yield "updated_dictionary", updated_dict
 
 
 class AddToListBlock(Block):
     class Input(BlockSchema):
-        list: List[Any] | None = SchemaField(
-            default=None,
+        list: List[Any] = SchemaField(
+            default=[],
+            advanced=False,
             description="The list to add the entry to. If not provided, a new list will be created.",
-            placeholder='[1, "string", {"key": "value"}]',
         )
         entry: Any = SchemaField(
             description="The entry to add to the list. Can be of any type (string, int, dict, etc.).",
-            placeholder='{"new_key": "new_value"}',
+            advanced=False,
+            default=None,
+        )
+        entries: List[Any] = SchemaField(
+            default=[],
+            description="The entries to add to the list. This is the batch version of the `entry` field.",
+            advanced=True,
         )
         position: int | None = SchemaField(
             default=None,
             description="The position to insert the new entry. If not provided, the entry will be appended to the end of the list.",
-            placeholder="0",
         )
 
     class Output(BlockSchema):
@@ -384,6 +432,12 @@ class AddToListBlock(Block):
                 },
                 {"entry": "first_entry"},
                 {"list": ["a", "b", "c"], "entry": "d"},
+                {
+                    "entry": "e",
+                    "entries": ["f", "g"],
+                    "list": ["a", "b"],
+                    "position": 1,
+                },
             ],
             test_output=[
                 (
@@ -397,27 +451,22 @@ class AddToListBlock(Block):
                 ),
                 ("updated_list", ["first_entry"]),
                 ("updated_list", ["a", "b", "c", "d"]),
+                ("updated_list", ["a", "f", "g", "e", "b"]),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            # If no list is provided, create a new one
-            if input_data.list is None:
-                updated_list = []
-            else:
-                # Create a copy of the input list to avoid modifying the original
-                updated_list = input_data.list.copy()
+        entries_added = input_data.entries.copy()
+        if input_data.entry:
+            entries_added.append(input_data.entry)
 
-            # Add the new entry
-            if input_data.position is None:
-                updated_list.append(input_data.entry)
-            else:
-                updated_list.insert(input_data.position, input_data.entry)
+        updated_list = input_data.list.copy()
+        if (pos := input_data.position) is not None:
+            updated_list = updated_list[:pos] + entries_added + updated_list[pos:]
+        else:
+            updated_list += entries_added
 
-            yield "updated_list", updated_list
-        except Exception as e:
-            yield "error", f"Failed to add entry to list: {str(e)}"
+        yield "updated_list", updated_list
 
 
 class NoteBlock(Block):
@@ -429,7 +478,7 @@ class NoteBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="31d1064e-7446-4693-o7d4-65e5ca9110d1",
+            id="cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
             description="This block is used to display a sticky note with the given text.",
             categories={BlockCategory.BASIC},
             input_schema=NoteBlock.Input,
@@ -443,3 +492,101 @@ class NoteBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text
+
+
+class CreateDictionaryBlock(Block):
+    class Input(BlockSchema):
+        values: dict[str, Any] = SchemaField(
+            description="Key-value pairs to create the dictionary with",
+            placeholder="e.g., {'name': 'Alice', 'age': 25}",
+        )
+
+    class Output(BlockSchema):
+        dictionary: dict[str, Any] = SchemaField(
+            description="The created dictionary containing the specified key-value pairs"
+        )
+        error: str = SchemaField(
+            description="Error message if dictionary creation failed"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="b924ddf4-de4f-4b56-9a85-358930dcbc91",
+            description="Creates a dictionary with the specified key-value pairs. Use this when you know all the values you want to add upfront.",
+            categories={BlockCategory.DATA},
+            input_schema=CreateDictionaryBlock.Input,
+            output_schema=CreateDictionaryBlock.Output,
+            test_input=[
+                {
+                    "values": {"name": "Alice", "age": 25, "city": "New York"},
+                },
+                {
+                    "values": {"numbers": [1, 2, 3], "active": True, "score": 95.5},
+                },
+            ],
+            test_output=[
+                (
+                    "dictionary",
+                    {"name": "Alice", "age": 25, "city": "New York"},
+                ),
+                (
+                    "dictionary",
+                    {"numbers": [1, 2, 3], "active": True, "score": 95.5},
+                ),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            # The values are already validated by Pydantic schema
+            yield "dictionary", input_data.values
+        except Exception as e:
+            yield "error", f"Failed to create dictionary: {str(e)}"
+
+
+class CreateListBlock(Block):
+    class Input(BlockSchema):
+        values: List[Any] = SchemaField(
+            description="A list of values to be combined into a new list.",
+            placeholder="e.g., ['Alice', 25, True]",
+        )
+
+    class Output(BlockSchema):
+        list: List[Any] = SchemaField(
+            description="The created list containing the specified values."
+        )
+        error: str = SchemaField(description="Error message if list creation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="a912d5c7-6e00-4542-b2a9-8034136930e4",
+            description="Creates a list with the specified values. Use this when you know all the values you want to add upfront.",
+            categories={BlockCategory.DATA},
+            input_schema=CreateListBlock.Input,
+            output_schema=CreateListBlock.Output,
+            test_input=[
+                {
+                    "values": ["Alice", 25, True],
+                },
+                {
+                    "values": [1, 2, 3, "four", {"key": "value"}],
+                },
+            ],
+            test_output=[
+                (
+                    "list",
+                    ["Alice", 25, True],
+                ),
+                (
+                    "list",
+                    [1, 2, 3, "four", {"key": "value"}],
+                ),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            # The values are already validated by Pydantic schema
+            yield "list", input_data.values
+        except Exception as e:
+            yield "error", f"Failed to create list: {str(e)}"

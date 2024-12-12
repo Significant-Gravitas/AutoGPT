@@ -8,14 +8,27 @@ packages = [{ include = "autogpt_libs" }]
 
 [tool.poetry.dependencies]
 colorama = "^0.4.6"
-google-cloud-logging = "^3.8.0"
-pydantic = "^2.8.2"
-pydantic-settings = "^2.5.2"
-pyjwt = "^2.8.0"
+expiringdict = "^1.2.2"
+google-cloud-logging = "^3.11.3"
+pydantic = "^2.9.2"
+pydantic-settings = "^2.6.1"
+pyjwt = "^2.10.0"
+pytest-asyncio = "^0.24.0"
+pytest-mock = "^3.14.0"
 python = ">=3.10,<4.0"
 python-dotenv = "^1.0.1"
-supabase = "^2.7.2"
+supabase = "^2.10.0"
+
+[tool.poetry.group.dev.dependencies]
+redis = "^5.2.1"
+ruff = "^0.8.2"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+extend-select = ["I"]  # sort dependencies

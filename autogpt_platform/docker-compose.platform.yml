@@ -8,7 +8,7 @@ services:
     develop:
       watch:
         - path: ./
-          target: autogpt_platform/backend/migrate
+          target: autogpt_platform/backend/migrations
           action: rebuild
     depends_on:
       db:
@@ -65,9 +65,11 @@ services:
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
+      - EXECUTIONSCHEDULER_HOST=rest_server
       - EXECUTIONMANAGER_HOST=executor
       - FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
+      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=  # DO NOT USE IN PRODUCTION!!
     ports:
       - "8006:8006"
       - "8003:8003" # execution scheduler
@@ -103,6 +105,7 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
+      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=  # DO NOT USE IN PRODUCTION!!
     ports:
       - "8002:8000"
     networks:
@@ -207,6 +210,7 @@ services:
 #      - NEXT_PUBLIC_AGPT_SERVER_URL=http://localhost:8006/api
 #      - NEXT_PUBLIC_AGPT_WS_SERVER_URL=ws://localhost:8001/ws
 #      - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
+#      - NEXT_PUBLIC_BEHAVE_AS=LOCAL
 #    ports:
 #      - "3000:3000"
 #    networks:

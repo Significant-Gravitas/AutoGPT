@@ -93,6 +93,16 @@ def stop():
     print("Server Stopped")
 
 
+@main.command()
+def gen_encrypt_key():
+    """
+    Generate a new encryption key
+    """
+    from cryptography.fernet import Fernet
+
+    print(Fernet.generate_key().decode())
+
+
 @click.group()
 def test():
     """
@@ -217,13 +227,13 @@ def websocket(server_address: str, graph_id: str):
     """
     import asyncio
 
-    import websockets
+    import websockets.asyncio.client
 
     from backend.server.ws_api import ExecutionSubscription, Methods, WsMessage
 
     async def send_message(server_address: str):
         uri = f"ws://{server_address}"
-        async with websockets.connect(uri) as websocket:
+        async with websockets.asyncio.client.connect(uri) as websocket:
             try:
                 msg = WsMessage(
                     method=Methods.SUBSCRIBE,

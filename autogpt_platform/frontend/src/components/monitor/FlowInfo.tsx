@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AutoGPTServerAPI, {
+  GraphExecution,
   Graph,
   GraphMeta,
   safeCopyGraph,
 } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -20,14 +20,24 @@ import { ClockIcon, ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import Link from "next/link";
 import { exportAsJSONFile } from "@/lib/utils";
 import { FlowRunsStats } from "@/components/monitor/index";
+import { Trash2Icon } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    flowRuns: FlowRun[];
+    executions: GraphExecution[];
     flowVersion?: number | "all";
+    refresh: () => void;
   }
-> = ({ flow, flowRuns, flowVersion, ...props }) => {
+> = ({ flow, executions, flowVersion, refresh, ...props }) => {
   const api = useMemo(() => new AutoGPTServerAPI(), []);
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
@@ -38,6 +48,8 @@ export const FlowInfo: React.FC<
     (v) =>
       v.version == (selectedVersion == "all" ? flow.version : selectedVersion),
   );
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     api.getGraphAllVersions(flow.id).then((result) => setFlowVersions(result));
@@ -93,15 +105,17 @@ export const FlowInfo: React.FC<
             </DropdownMenu>
           )}
           <Link
-            className={buttonVariants({ variant: "outline" })}
+            className={buttonVariants({ variant: "default" })}
             href={`/build?flowID=${flow.id}`}
           >
-            <Pencil2Icon className="mr-2" /> Edit
+            <Pencil2Icon className="mr-2" />
+            Open in Builder
           </Link>
           <Button
             variant="outline"
             className="px-2.5"
             title="Export to a JSON-file"
+            data-testid="export-button"
             onClick={async () =>
               exportAsJSONFile(
                 safeCopyGraph(
@@ -114,20 +128,58 @@ export const FlowInfo: React.FC<
               )
             }
           >
-            <ExitIcon />
+            <ExitIcon className="mr-2" /> Export
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsDeleteModalOpen(true)}
+            data-testid="delete-button"
+          >
+            <Trash2Icon className="h-full" />
           </Button>
         </div>
       </CardHeader>
       <CardContent>
         <FlowRunsStats
           flows={[selectedFlowVersion ?? flow]}
-          flowRuns={flowRuns.filter(
-            (r) =>
-              r.graphID == flow.id &&
-              (selectedVersion == "all" || r.graphVersion == selectedVersion),
+          executions={executions.filter(
+            (execution) =>
+              execution.graph_id == flow.id &&
+              (selectedVersion == "all" ||
+                execution.graph_version == selectedVersion),
           )}
         />
       </CardContent>
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Agent</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this agent? <br />
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                api.deleteGraph(flow.id).then(() => {
+                  setIsDeleteModalOpen(false);
+                  refresh();
+                });
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

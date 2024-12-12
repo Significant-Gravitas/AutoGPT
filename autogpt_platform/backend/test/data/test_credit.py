@@ -1,11 +1,12 @@
 from datetime import datetime
 
 import pytest
-from prisma.models import UserBlockCredit
+from prisma.models import CreditTransaction
 
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.credit import UserCredit
 from backend.data.user import DEFAULT_USER_ID
+from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
 REFILL_VALUE = 1000
@@ -19,8 +20,15 @@ async def test_block_credit_usage(server: SpinTestServer):
     spending_amount_1 = await user_credit.spend_credits(
         DEFAULT_USER_ID,
         current_credit,
-        AITextGeneratorBlock(),
-        {"model": "gpt-4-turbo"},
+        AITextGeneratorBlock().id,
+        {
+            "model": "gpt-4-turbo",
+            "credentials": {
+                "id": openai_credentials.id,
+                "provider": openai_credentials.provider,
+                "type": openai_credentials.type,
+            },
+        },
         0.0,
         0.0,
         validate_balance=False,
@@ -30,7 +38,7 @@ async def test_block_credit_usage(server: SpinTestServer):
     spending_amount_2 = await user_credit.spend_credits(
         DEFAULT_USER_ID,
         current_credit,
-        AITextGeneratorBlock(),
+        AITextGeneratorBlock().id,
         {"model": "gpt-4-turbo", "api_key": "owned_api_key"},
         0.0,
         0.0,
@@ -74,7 +82,7 @@ async def test_block_credit_reset(server: SpinTestServer):
 @pytest.mark.asyncio(scope="session")
 async def test_credit_refill(server: SpinTestServer):
     # Clear all transactions within the month
-    await UserBlockCredit.prisma().update_many(
+    await CreditTransaction.prisma().update_many(
         where={
             "userId": DEFAULT_USER_ID,
             "createdAt": {

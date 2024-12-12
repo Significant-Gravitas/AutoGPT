@@ -42,3 +42,7 @@
 .react-flow__edges > svg:has(> g.selected) {
   z-index: 10 !important;
 }
+
+.react-flow__edgelabel-renderer {
+  z-index: 11 !important;
+}

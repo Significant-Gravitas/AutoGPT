@@ -2,15 +2,18 @@ name: AutoGPT Platform - Backend CI
 
 on:
   push:
-    branches: [master, development, ci-test*]
+    branches: [master, dev, ci-test*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
+      - "autogpt_platform/autogpt_libs/**"
   pull_request:
-    branches: [master, development, release-*]
+    branches: [master, dev, release-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
+      - "autogpt_platform/autogpt_libs/**"
+  merge_group:
 
 concurrency:
   group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -31,6 +34,14 @@ jobs:
       matrix:
         python-version: ["3.10"]
     runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: bitnami/redis:6.2
+        env:
+          REDIS_PASSWORD: testpassword
+        ports:
+          - 6379:6379
 
     steps:
       - name: Checkout repository
@@ -68,6 +79,17 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
+      - name: Check poetry.lock
+        run: |
+          poetry lock --no-update
+
+          if ! git diff --quiet poetry.lock; then
+            echo "Error: poetry.lock not up to date."
+            echo
+            git diff poetry.lock
+            exit 1
+          fi
+
       - name: Install Python dependencies
         run: poetry install
 
@@ -96,9 +118,9 @@ jobs:
       - name: Run pytest with coverage
         run: |
           if [[ "${{ runner.debug }}" == "1" ]]; then
-            poetry run pytest -vv -o log_cli=true -o log_cli_level=DEBUG test
+            poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG test
           else
-            poetry run pytest -vv test
+            poetry run pytest -s -vv test
           fi
         if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
@@ -107,6 +129,10 @@ jobs:
           SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
           SUPABASE_JWT_SECRET: ${{ steps.supabase.outputs.JWT_SECRET }}
+          REDIS_HOST: 'localhost'
+          REDIS_PORT: '6379'
+          REDIS_PASSWORD: 'testpassword'
+
     env:
       CI: true
       PLAIN_OUTPUT: True

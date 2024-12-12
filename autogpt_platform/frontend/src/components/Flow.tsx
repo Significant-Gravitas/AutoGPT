@@ -26,8 +26,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import { Link } from "@/lib/autogpt-server-api";
-import { getTypeColor, filterBlocksByType } from "@/lib/utils";
+import { BlockUIType, Link } from "@/lib/autogpt-server-api";
+import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
@@ -38,12 +38,14 @@ import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
+import { useCopyPaste } from "../hooks/useCopyPaste";
+import { CronScheduler } from "./cronScheduler";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -55,6 +57,15 @@ type FlowContextType = {
   getNextNodeId: () => string;
 };
 
+export type NodeDimension = {
+  [nodeId: string]: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
+
 export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
@@ -62,11 +73,15 @@ const FlowEditor: React.FC<{
   template?: boolean;
   className?: string;
 }> = ({ flowID, template, className }) => {
-  const { addNodes, addEdges, getNode, deleteElements, updateNode } =
-    useReactFlow<CustomNode, CustomEdge>();
+  const {
+    addNodes,
+    addEdges,
+    getNode,
+    deleteElements,
+    updateNode,
+    setViewport,
+  } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
-  const [copiedNodes, setCopiedNodes] = useState<CustomNode[]>([]);
-  const [copiedEdges, setCopiedEdges] = useState<CustomEdge[]>([]);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
@@ -78,11 +93,15 @@ const FlowEditor: React.FC<{
     setAgentDescription,
     savedAgent,
     availableNodes,
+    availableFlows,
     getOutputType,
     requestSave,
     requestSaveAndRun,
     requestStopRun,
+    scheduleRunner,
     isRunning,
+    isScheduling,
+    setIsScheduling,
     nodes,
     setNodes,
     edges,
@@ -91,41 +110,53 @@ const FlowEditor: React.FC<{
 
   const router = useRouter();
   const pathname = usePathname();
+  const params = useSearchParams();
   const initialPositionRef = useRef<{
     [key: string]: { x: number; y: number };
   }>({});
   const isDragging = useRef(false);
 
-  // State to control if tutorial has started
-  const [tutorialStarted, setTutorialStarted] = useState(false);
   // State to control if blocks menu should be pinned open
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
+  // State to control if save popover should be pinned open
+  const [pinSavePopover, setPinSavePopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
 
+  const [openCron, setOpenCron] = useState(false);
+
   const { toast } = useToast();
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+  const TUTORIAL_STORAGE_KEY = "shepherd-tour";
 
-    // If resetting tutorial
+  // It stores the dimension of all nodes with position as well
+  const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
+
+  useEffect(() => {
     if (params.get("resetTutorial") === "true") {
-      localStorage.removeItem("shepherd-tour"); // Clear tutorial flag
+      localStorage.removeItem(TUTORIAL_STORAGE_KEY);
       router.push(pathname);
-    } else {
-      // Otherwise, start tutorial if conditions are met
-      const shouldStartTutorial = !localStorage.getItem("shepherd-tour");
-      if (
-        shouldStartTutorial &&
-        availableNodes.length > 0 &&
-        !tutorialStarted
-      ) {
-        startTutorial(setPinBlocksPopover);
-        setTutorialStarted(true);
-        localStorage.setItem("shepherd-tour", "yes");
-      }
+    } else if (!localStorage.getItem(TUTORIAL_STORAGE_KEY)) {
+      const emptyNodes = (forceRemove: boolean = false) =>
+        forceRemove ? (setNodes([]), setEdges([]), true) : nodes.length === 0;
+      startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
+      localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
     }
-  }, [availableNodes, tutorialStarted, router, pathname]);
+  }, [
+    availableNodes,
+    router,
+    pathname,
+    params,
+    setEdges,
+    setNodes,
+    nodes.length,
+  ]);
+
+  useEffect(() => {
+    if (params.get("open_scheduling") === "true") {
+      setOpenCron(true);
+    }
+  }, [params]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -391,24 +422,73 @@ const FlowEditor: React.FC<{
 
   const { x, y, zoom } = useViewport();
 
+  // Set the initial view port to center the canvas.
+  useEffect(() => {
+    if (nodes.length <= 0 || x !== 0 || y !== 0) {
+      return;
+    }
+
+    const topLeft = { x: Infinity, y: Infinity };
+    const bottomRight = { x: -Infinity, y: -Infinity };
+
+    nodes.forEach((node) => {
+      const { x, y } = node.position;
+      topLeft.x = Math.min(topLeft.x, x);
+      topLeft.y = Math.min(topLeft.y, y);
+      // Rough estimate of the width and height of the node: 500x400.
+      bottomRight.x = Math.max(bottomRight.x, x + 500);
+      bottomRight.y = Math.max(bottomRight.y, y + 400);
+    });
+
+    const centerX = (topLeft.x + bottomRight.x) / 2;
+    const centerY = (topLeft.y + bottomRight.y) / 2;
+    const zoom = 0.8;
+
+    setViewport({
+      x: window.innerWidth / 2 - centerX * zoom,
+      y: window.innerHeight / 2 - centerY * zoom,
+      zoom: zoom,
+    });
+  }, [nodes, setViewport, x, y]);
+
   const addNode = useCallback(
-    (blockId: string, nodeType: string) => {
+    (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
         return;
       }
 
-      // Calculate the center of the viewport considering zoom
-      const viewportCenter = {
-        x: (window.innerWidth / 2 - x) / zoom,
-        y: (window.innerHeight / 2 - y) / zoom,
-      };
+      /*
+       Calculate a position to the right of the newly added block, allowing for some margin.
+       If adding to the right side causes the new block to collide with an existing block, attempt to place it at the bottom or left.
+       Why not the top? Because the height of the new block is unknown.
+       If it still collides, run a loop to find the best position where it does not collide.
+       Then, adjust the canvas to center on the newly added block.
+       Note: The width is known, e.g., w = 300px for a note and w = 500px for others, but the height is dynamic.
+       */
+
+      // Alternative: We could also use D3 force, Intersection for this (React flow Pro examples)
+
+      const viewportCoordinates =
+        nodeDimensions && Object.keys(nodeDimensions).length > 0
+          ? // we will get all the dimension of nodes, then store
+            findNewlyAddedBlockCoordinates(
+              nodeDimensions,
+              nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
+              60,
+              1.0,
+            )
+          : // we will get all the dimension of nodes, then store
+            {
+              x: window.innerWidth / 2 - x,
+              y: window.innerHeight / 2 - y,
+            };
 
       const newNode: CustomNode = {
         id: nodeId.toString(),
         type: "custom",
-        position: viewportCenter, // Set the position to the calculated viewport center
+        position: viewportCoordinates, // Set the position to the calculated viewport center
         data: {
           blockType: nodeType,
           blockCosts: nodeSchema.costs,
@@ -417,7 +497,7 @@ const FlowEditor: React.FC<{
           categories: nodeSchema.categories,
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: {},
+          hardcodedValues: hardcodedValues,
           connections: [],
           isOutputOpen: false,
           block_id: blockId,
@@ -430,24 +510,68 @@ const FlowEditor: React.FC<{
       setNodeId((prevId) => prevId + 1);
       clearNodesStatusAndOutput(); // Clear status and output when a new node is added
 
+      setViewport(
+        {
+          // Rough estimate of the dimension of the node is: 500x400px.
+          // Though we skip shifting the X, considering the block menu side-bar.
+          x: -viewportCoordinates.x * 0.8 + (window.innerWidth - 0.0) / 2,
+          y: -viewportCoordinates.y * 0.8 + (window.innerHeight - 400) / 2,
+          zoom: 0.8,
+        },
+        { duration: 500 },
+      );
+
       history.push({
         type: "ADD_NODE",
-        payload: { node: newNode.data },
+        payload: { node: { ...newNode, ...newNode.data } },
         undo: () => deleteElements({ nodes: [{ id: newNode.id }] }),
         redo: () => addNodes(newNode),
       });
     },
     [
       nodeId,
+      setViewport,
       availableNodes,
       addNodes,
+      nodeDimensions,
       deleteElements,
       clearNodesStatusAndOutput,
       x,
       y,
-      zoom,
     ],
   );
+
+  const findNodeDimensions = useCallback(() => {
+    const newNodeDimensions: NodeDimension = nodes.reduce((acc, node) => {
+      const nodeElement = document.querySelector(
+        `[data-id="custom-node-${node.id}"]`,
+      );
+      if (nodeElement) {
+        const rect = nodeElement.getBoundingClientRect();
+        const { left, top, width, height } = rect;
+
+        // Convert screen coordinates to flow coordinates
+        const flowX = (left - x) / zoom;
+        const flowY = (top - y) / zoom;
+        const flowWidth = width / zoom;
+        const flowHeight = height / zoom;
+
+        acc[node.id] = {
+          x: flowX,
+          y: flowY,
+          width: flowWidth,
+          height: flowHeight,
+        };
+      }
+      return acc;
+    }, {} as NodeDimension);
+
+    setNodeDimensions(newNodeDimensions);
+  }, [nodes, x, y, zoom]);
+
+  useEffect(() => {
+    findNodeDimensions();
+  }, [nodes, findNodeDimensions]);
 
   const handleUndo = () => {
     history.undo();
@@ -456,6 +580,8 @@ const FlowEditor: React.FC<{
   const handleRedo = () => {
     history.redo();
   };
+
+  const handleCopyPaste = useCopyPaste(getNextNodeId);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -468,68 +594,9 @@ const FlowEditor: React.FC<{
 
       if (isAnyModalOpen || isInputField) return;
 
-      if (event.ctrlKey || event.metaKey) {
-        if (event.key === "c" || event.key === "C") {
-          // Copy selected nodes
-          const selectedNodes = nodes.filter((node) => node.selected);
-          const selectedEdges = edges.filter((edge) => edge.selected);
-          setCopiedNodes(selectedNodes);
-          setCopiedEdges(selectedEdges);
-        }
-        if (event.key === "v" || event.key === "V") {
-          // Paste copied nodes
-          if (copiedNodes.length > 0) {
-            const oldToNewNodeIDMap: Record<string, string> = {};
-            const pastedNodes = copiedNodes.map((node, index) => {
-              const newNodeId = (nodeId + index).toString();
-              oldToNewNodeIDMap[node.id] = newNodeId;
-              return {
-                ...node,
-                id: newNodeId,
-                position: {
-                  x: node.position.x + 20, // Offset pasted nodes
-                  y: node.position.y + 20,
-                },
-                data: {
-                  ...node.data,
-                  status: undefined, // Reset status
-                  executionResults: undefined, // Clear output data
-                },
-              };
-            });
-            setNodes((existingNodes) =>
-              // Deselect copied nodes
-              existingNodes.map((node) => ({ ...node, selected: false })),
-            );
-            addNodes(pastedNodes);
-            setNodeId((prevId) => prevId + copiedNodes.length);
-
-            const pastedEdges = copiedEdges.map((edge) => {
-              const newSourceId = oldToNewNodeIDMap[edge.source] ?? edge.source;
-              const newTargetId = oldToNewNodeIDMap[edge.target] ?? edge.target;
-              return {
-                ...edge,
-                id: `${newSourceId}_${edge.sourceHandle}_${newTargetId}_${edge.targetHandle}_${Date.now()}`,
-                source: newSourceId,
-                target: newTargetId,
-              };
-            });
-            addEdges(pastedEdges);
-          }
-        }
-      }
+      handleCopyPaste(event);
     },
-    [
-      isAnyModalOpen,
-      nodes,
-      edges,
-      copiedNodes,
-      setNodes,
-      addNodes,
-      copiedEdges,
-      addEdges,
-      nodeId,
-    ],
+    [isAnyModalOpen, handleCopyPaste],
   );
 
   useEffect(() => {
@@ -555,6 +622,24 @@ const FlowEditor: React.FC<{
       onClick: handleRedo,
     },
   ];
+
+  // This function is called after cron expression is created
+  // So you can collect inputs for scheduling
+  const afterCronCreation = (cronExpression: string) => {
+    runnerUIRef.current?.collectInputsForScheduling(cronExpression);
+  };
+
+  // This function Opens up form for creating cron expression
+  const handleScheduleButton = () => {
+    if (!savedAgent) {
+      toast({
+        title: `Please save the agent using the button in the left sidebar before running it.`,
+        duration: 2000,
+      });
+      return;
+    }
+    setOpenCron(true);
+  };
 
   return (
     <FlowContext.Provider
@@ -587,6 +672,8 @@ const FlowEditor: React.FC<{
                 pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
                 blocks={availableNodes}
                 addBlock={addNode}
+                flows={availableFlows}
+                nodes={nodes}
               />
             }
             botChildren={
@@ -597,6 +684,7 @@ const FlowEditor: React.FC<{
                 onDescriptionChange={setAgentDescription}
                 agentName={agentName}
                 onNameChange={setAgentName}
+                pinSavePopover={pinSavePopover}
               />
             }
           ></ControlPanel>
@@ -616,10 +704,17 @@ const FlowEditor: React.FC<{
                 requestStopRun();
               }
             }}
+            onClickScheduleButton={handleScheduleButton}
+            isScheduling={isScheduling}
             isDisabled={!savedAgent}
             isRunning={isRunning}
             requestStopRun={requestStopRun}
             runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
+          />
+          <CronScheduler
+            afterCronCreation={afterCronCreation}
+            open={openCron}
+            setOpen={setOpenCron}
           />
         </ReactFlow>
       </div>
@@ -627,7 +722,10 @@ const FlowEditor: React.FC<{
         ref={runnerUIRef}
         nodes={nodes}
         setNodes={setNodes}
+        setIsScheduling={setIsScheduling}
+        isScheduling={isScheduling}
         isRunning={isRunning}
+        scheduleRunner={scheduleRunner}
         requestSaveAndRun={requestSaveAndRun}
       />
     </FlowContext.Provider>

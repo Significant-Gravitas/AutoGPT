@@ -1,124 +1,99 @@
 "use client";
-
-import { useState } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Download,
-  Calendar,
-  Tag,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { ArrowLeft, Download, Calendar, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AgentDetailResponse,
   InstallationLocation,
 } from "@/lib/marketplace-api";
-import dynamic from "next/dynamic";
-import { Node, Edge } from "@xyflow/react";
 import MarketplaceAPI from "@/lib/marketplace-api";
 import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
-
-const ReactFlow = dynamic(
-  () => import("@xyflow/react").then((mod) => mod.ReactFlow),
-  { ssr: false },
-);
-const Controls = dynamic(
-  () => import("@xyflow/react").then((mod) => mod.Controls),
-  { ssr: false },
-);
-const Background = dynamic(
-  () => import("@xyflow/react").then((mod) => mod.Background),
-  { ssr: false },
-);
-
 import "@xyflow/react/dist/style.css";
-import { beautifyString } from "@/lib/utils";
 import { makeAnalyticsEvent } from "./actions";
-
-function convertGraphToReactFlow(graph: any): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = graph.nodes.map((node: any) => {
-    let label = node.block_id || "Unknown";
-    try {
-      label = beautifyString(label);
-    } catch (error) {
-      console.error("Error beautifying node label:", error);
-    }
-
-    return {
-      id: node.id,
-      position: node.metadata.position || { x: 0, y: 0 },
-      data: {
-        label,
-        blockId: node.block_id,
-        inputDefault: node.input_default || {},
-        ...node, // Include all other node data
-      },
-      type: "custom",
-    };
-  });
-
-  const edges: Edge[] = graph.links.map((link: any) => ({
-    id: `${link.source_id}-${link.sink_id}`,
-    source: link.source_id,
-    target: link.sink_id,
-    sourceHandle: link.source_name,
-    targetHandle: link.sink_name,
-    type: "custom",
-    data: {
-      sourceId: link.source_id,
-      targetId: link.sink_id,
-      sourceName: link.source_name,
-      targetName: link.sink_name,
-      isStatic: link.is_static,
-    },
-  }));
-
-  return { nodes, edges };
-}
-
-async function installGraph(id: string): Promise<void> {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
-    "http://localhost:8015/api/v1/market";
-  const api = new MarketplaceAPI(apiUrl);
-
-  const serverAPIUrl = process.env.AGPT_SERVER_API_URL;
-  const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
-  try {
-    console.log(`Installing agent with id: ${id}`);
-    let agent = await api.downloadAgent(id);
-    console.log(`Agent downloaded:`, agent);
-    const data: GraphCreatable = {
-      id: agent.id,
-      version: agent.version,
-      is_active: true,
-      is_template: false,
-      name: agent.name,
-      description: agent.description,
-      nodes: agent.graph.nodes,
-      links: agent.graph.links,
-    };
-    const result = await serverAPI.createTemplate(data);
-    makeAnalyticsEvent({
-      event_name: "agent_installed_from_marketplace",
-      event_data: {
-        marketplace_agent_id: id,
-        installed_agent_id: result.id,
-        installation_location: InstallationLocation.CLOUD,
-      },
-    });
-    console.log(`Agent installed successfully`, result);
-  } catch (error) {
-    console.error(`Error installing agent:`, error);
-    throw error;
-  }
-}
+import { useToast } from "../ui/use-toast";
 
 function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
-  const [isGraphExpanded, setIsGraphExpanded] = useState(false);
-  const { nodes, edges } = convertGraphToReactFlow(agent.graph);
+  const { toast } = useToast();
+
+  const downloadAgent = async (id: string): Promise<void> => {
+    const api = new MarketplaceAPI();
+    try {
+      const file = await api.downloadAgentFile(id);
+      console.debug(`Agent file downloaded:`, file);
+
+      // Create a Blob from the file content
+      const blob = new Blob([file], { type: "application/json" });
+
+      // Create a temporary URL for the Blob
+      const url = window.URL.createObjectURL(blob);
+
+      // Create a temporary anchor element
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `agent_${id}.json`; // Set the filename
+
+      // Append the anchor to the body, click it, and remove it
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Revoke the temporary URL
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(`Error downloading agent:`, error);
+      throw error;
+    }
+  };
+
+  const installGraph = async (id: string): Promise<void> => {
+    toast({
+      title: "Saving and opening a new agent...",
+      duration: 2000,
+    });
+    const apiUrl =
+      process.env.NEXT_PUBLIC_AGPT_MARKETPLACE_URL ||
+      "http://localhost:8015/api/v1/market";
+    const api = new MarketplaceAPI(apiUrl);
+
+    const serverAPIUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_API_URL;
+    const serverAPI = new AutoGPTServerAPI(serverAPIUrl);
+    try {
+      console.debug(`Installing agent with id: ${id}`);
+      let agent = await api.downloadAgent(id);
+      console.debug(`Agent downloaded:`, agent);
+      const data: GraphCreatable = {
+        id: agent.id,
+        version: agent.version,
+        is_active: true,
+        is_template: false,
+        name: agent.name,
+        description: agent.description,
+        nodes: agent.graph.nodes,
+        links: agent.graph.links,
+      };
+      const result = await serverAPI.createTemplate(data);
+      makeAnalyticsEvent({
+        event_name: "agent_installed_from_marketplace",
+        event_data: {
+          marketplace_agent_id: id,
+          installed_agent_id: result.id,
+          installation_location: InstallationLocation.CLOUD,
+        },
+      });
+      console.debug(`Agent installed successfully`, result);
+      serverAPI.createGraph(result.id, agent.version).then((newGraph) => {
+        window.location.href = `/build?flowID=${newGraph.id}`;
+      });
+    } catch (error) {
+      console.error(`Error installing agent:`, error);
+      toast({
+        title: "Error saving template",
+        variant: "destructive",
+        duration: 2000,
+      });
+      throw error;
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
@@ -130,13 +105,22 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
           <ArrowLeft className="mr-2" size={20} />
           Back to Marketplace
         </Link>
-        <Button
-          onClick={() => installGraph(agent.id)}
-          className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        >
-          <Download className="mr-2" size={16} />
-          Download Agent
-        </Button>
+        <div className="flex space-x-4">
+          <Button
+            onClick={() => installGraph(agent.id)}
+            className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            <Download className="mr-2" size={16} />
+            Save to Templates
+          </Button>
+          <Button
+            onClick={() => downloadAgent(agent.id)}
+            className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            <Download className="mr-2" size={16} />
+            Download Agent
+          </Button>
+        </div>
       </div>
       <div className="overflow-hidden bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">
@@ -145,7 +129,7 @@ function AgentDetailContent({ agent }: { agent: AgentDetailResponse }) {
             {agent.description}
           </p>
         </div>
-        <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
+        <div className="border-t border-gray-300 px-4 py-5 sm:p-0">
           <dl className="sm:divide-y sm:divide-gray-200">
             <div className="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:py-5">
               <dt className="flex items-center text-sm font-medium text-gray-500">

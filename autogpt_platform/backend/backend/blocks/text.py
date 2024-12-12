@@ -1,26 +1,26 @@
 import re
 from typing import Any
 
-from jinja2 import BaseLoader, Environment
-from pydantic import Field
-
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.util import json
+from backend.data.model import SchemaField
+from backend.util import json, text
 
-jinja = Environment(loader=BaseLoader())
+formatter = text.TextFormatter()
 
 
 class MatchTextPatternBlock(Block):
     class Input(BlockSchema):
-        text: Any = Field(description="Text to match")
-        match: str = Field(description="Pattern (Regex) to match")
-        data: Any = Field(description="Data to be forwarded to output")
-        case_sensitive: bool = Field(description="Case sensitive match", default=True)
-        dot_all: bool = Field(description="Dot matches all", default=True)
+        text: Any = SchemaField(description="Text to match")
+        match: str = SchemaField(description="Pattern (Regex) to match")
+        data: Any = SchemaField(description="Data to be forwarded to output")
+        case_sensitive: bool = SchemaField(
+            description="Case sensitive match", default=True
+        )
+        dot_all: bool = SchemaField(description="Dot matches all", default=True)
 
     class Output(BlockSchema):
-        positive: Any = Field(description="Output data if match is found")
-        negative: Any = Field(description="Output data if match is not found")
+        positive: Any = SchemaField(description="Output data if match is found")
+        negative: Any = SchemaField(description="Output data if match is not found")
 
     def __init__(self):
         super().__init__(
@@ -64,15 +64,18 @@ class MatchTextPatternBlock(Block):
 
 class ExtractTextInformationBlock(Block):
     class Input(BlockSchema):
-        text: Any = Field(description="Text to parse")
-        pattern: str = Field(description="Pattern (Regex) to parse")
-        group: int = Field(description="Group number to extract", default=0)
-        case_sensitive: bool = Field(description="Case sensitive match", default=True)
-        dot_all: bool = Field(description="Dot matches all", default=True)
+        text: Any = SchemaField(description="Text to parse")
+        pattern: str = SchemaField(description="Pattern (Regex) to parse")
+        group: int = SchemaField(description="Group number to extract", default=0)
+        case_sensitive: bool = SchemaField(
+            description="Case sensitive match", default=True
+        )
+        dot_all: bool = SchemaField(description="Dot matches all", default=True)
+        find_all: bool = SchemaField(description="Find all matches", default=False)
 
     class Output(BlockSchema):
-        positive: str = Field(description="Extracted text")
-        negative: str = Field(description="Original text")
+        positive: str = SchemaField(description="Extracted text")
+        negative: str = SchemaField(description="Original text")
 
     def __init__(self):
         super().__init__(
@@ -86,12 +89,27 @@ class ExtractTextInformationBlock(Block):
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 0},
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 2},
                 {"text": "Hello, World!", "pattern": "hello,", "case_sensitive": False},
+                {
+                    "text": "Hello, World!! Hello, Earth!!",
+                    "pattern": "Hello, (\\S+)",
+                    "group": 1,
+                    "find_all": False,
+                },
+                {
+                    "text": "Hello, World!! Hello, Earth!!",
+                    "pattern": "Hello, (\\S+)",
+                    "group": 1,
+                    "find_all": True,
+                },
             ],
             test_output=[
                 ("positive", "World!"),
                 ("positive", "Hello, World!"),
                 ("negative", "Hello, World!"),
                 ("positive", "Hello,"),
+                ("positive", "World!!"),
+                ("positive", "World!!"),
+                ("positive", "Earth!!"),
             ],
         )
 
@@ -103,24 +121,34 @@ class ExtractTextInformationBlock(Block):
             flags = flags | re.DOTALL
 
         if isinstance(input_data.text, str):
-            text = input_data.text
+            txt = input_data.text
         else:
-            text = json.dumps(input_data.text)
+            txt = json.dumps(input_data.text)
 
-        match = re.search(input_data.pattern, text, flags)
-        if match and input_data.group <= len(match.groups()):
-            yield "positive", match.group(input_data.group)
-        else:
-            yield "negative", text
+        matches = [
+            match.group(input_data.group)
+            for match in re.finditer(input_data.pattern, txt, flags)
+            if input_data.group <= len(match.groups())
+        ]
+        for match in matches:
+            yield "positive", match
+            if not input_data.find_all:
+                return
+        if not matches:
+            yield "negative", input_data.text
 
 
 class FillTextTemplateBlock(Block):
     class Input(BlockSchema):
-        values: dict[str, Any] = Field(description="Values (dict) to be used in format")
-        format: str = Field(description="Template to format the text using `values`")
+        values: dict[str, Any] = SchemaField(
+            description="Values (dict) to be used in format"
+        )
+        format: str = SchemaField(
+            description="Template to format the text using `values`"
+        )
 
     class Output(BlockSchema):
-        output: str
+        output: str = SchemaField(description="Formatted text")
 
     def __init__(self):
         super().__init__(
@@ -138,28 +166,31 @@ class FillTextTemplateBlock(Block):
                     "values": {"list": ["Hello", " World!"]},
                     "format": "{% for item in list %}{{ item }}{% endfor %}",
                 },
+                {
+                    "values": {},
+                    "format": "{% set name = 'Alice' %}Hello, World! {{ name }}",
+                },
             ],
             test_output=[
                 ("output", "Hello, World! Alice"),
                 ("output", "Hello World!"),
+                ("output", "Hello, World! Alice"),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # For python.format compatibility: replace all {...} with {{..}}.
-        # But avoid replacing {{...}} to {{{...}}}.
-        fmt = re.sub(r"(?<!{){[ a-zA-Z0-9_]+}", r"{\g<0>}", input_data.format)
-        template = jinja.from_string(fmt)
-        yield "output", template.render(**input_data.values)
+        yield "output", formatter.format_string(input_data.format, input_data.values)
 
 
 class CombineTextsBlock(Block):
     class Input(BlockSchema):
-        input: list[str] = Field(description="text input to combine")
-        delimiter: str = Field(description="Delimiter to combine texts", default="")
+        input: list[str] = SchemaField(description="text input to combine")
+        delimiter: str = SchemaField(
+            description="Delimiter to combine texts", default=""
+        )
 
     class Output(BlockSchema):
-        output: str = Field(description="Combined text")
+        output: str = SchemaField(description="Combined text")
 
     def __init__(self):
         super().__init__(

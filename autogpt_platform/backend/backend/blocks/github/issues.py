@@ -1,9 +1,11 @@
-import requests
+from urllib.parse import urlparse
+
 from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+from ._api import get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -13,6 +15,11 @@ from ._auth import (
 )
 
 
+def is_github_url(url: str) -> bool:
+    return urlparse(url).netloc == "github.com"
+
+
+# --8<-- [start:GithubCommentBlockExample]
 class GithubCommentBlock(Block):
     class Input(BlockSchema):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -39,15 +46,27 @@ class GithubCommentBlock(Block):
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubCommentBlock.Input,
             output_schema=GithubCommentBlock.Output,
-            test_input={
-                "issue_url": "https://github.com/owner/repo/issues/1",
-                "comment": "This is a test comment.",
-                "credentials": TEST_CREDENTIALS_INPUT,
-            },
+            test_input=[
+                {
+                    "issue_url": "https://github.com/owner/repo/issues/1",
+                    "comment": "This is a test comment.",
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                },
+                {
+                    "issue_url": "https://github.com/owner/repo/pull/1",
+                    "comment": "This is a test comment.",
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                },
+            ],
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("id", 1337),
                 ("url", "https://github.com/owner/repo/issues/1#issuecomment-1337"),
+                ("id", 1337),
+                (
+                    "url",
+                    "https://github.com/owner/repo/issues/1#issuecomment-1337",
+                ),
             ],
             test_mock={
                 "post_comment": lambda *args, **kwargs: (
@@ -61,27 +80,12 @@ class GithubCommentBlock(Block):
     def post_comment(
         credentials: GithubCredentials, issue_url: str, body_text: str
     ) -> tuple[int, str]:
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + "/comments"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos") + "/comments"
-            )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
         data = {"body": body_text}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        if "pull" in issue_url:
+            issue_url = issue_url.replace("pull", "issues")
+        comments_url = issue_url + "/comments"
+        response = api.post(comments_url, json=data)
         comment = response.json()
         return comment["id"], comment["html_url"]
 
@@ -92,16 +96,16 @@ class GithubCommentBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            id, url = self.post_comment(
-                credentials,
-                input_data.issue_url,
-                input_data.comment,
-            )
-            yield "id", id
-            yield "url", url
-        except Exception as e:
-            yield "error", f"Failed to post comment: {str(e)}"
+        id, url = self.post_comment(
+            credentials,
+            input_data.issue_url,
+            input_data.comment,
+        )
+        yield "id", id
+        yield "url", url
+
+
+# --8<-- [end:GithubCommentBlockExample]
 
 
 class GithubMakeIssueBlock(Block):
@@ -155,16 +159,10 @@ class GithubMakeIssueBlock(Block):
     def create_issue(
         credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> tuple[int, str]:
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
         data = {"title": title, "body": body}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        issues_url = repo_url + "/issues"
+        response = api.post(issues_url, json=data)
         issue = response.json()
         return issue["number"], issue["html_url"]
 
@@ -175,17 +173,14 @@ class GithubMakeIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            number, url = self.create_issue(
-                credentials,
-                input_data.repo_url,
-                input_data.title,
-                input_data.body,
-            )
-            yield "number", number
-            yield "url", url
-        except Exception as e:
-            yield "error", f"Failed to create issue: {str(e)}"
+        number, url = self.create_issue(
+            credentials,
+            input_data.repo_url,
+            input_data.title,
+            input_data.body,
+        )
+        yield "number", number
+        yield "url", url
 
 
 class GithubReadIssueBlock(Block):
@@ -234,21 +229,12 @@ class GithubReadIssueBlock(Block):
     def read_issue(
         credentials: GithubCredentials, issue_url: str
     ) -> tuple[str, str, str]:
-        api_url = issue_url.replace("github.com", "api.github.com/repos")
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        response = api.get(issue_url)
         data = response.json()
         title = data.get("title", "No title found")
         body = data.get("body", "No body content found")
         user = data.get("user", {}).get("login", "No user found")
-
         return title, body, user
 
     def run(
@@ -258,16 +244,16 @@ class GithubReadIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            title, body, user = self.read_issue(
-                credentials,
-                input_data.issue_url,
-            )
+        title, body, user = self.read_issue(
+            credentials,
+            input_data.issue_url,
+        )
+        if title:
             yield "title", title
+        if body:
             yield "body", body
+        if user:
             yield "user", user
-        except Exception as e:
-            yield "error", f"Failed to read issue: {str(e)}"
 
 
 class GithubListIssuesBlock(Block):
@@ -323,20 +309,13 @@ class GithubListIssuesBlock(Block):
     def list_issues(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.IssueItem]:
-        api_url = repo_url.replace("github.com", "api.github.com/repos") + "/issues"
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        issues_url = repo_url + "/issues"
+        response = api.get(issues_url)
         data = response.json()
         issues: list[GithubListIssuesBlock.Output.IssueItem] = [
             {"title": issue["title"], "url": issue["html_url"]} for issue in data
         ]
-
         return issues
 
     def run(
@@ -346,14 +325,11 @@ class GithubListIssuesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            issues = self.list_issues(
-                credentials,
-                input_data.repo_url,
-            )
-            yield from (("issue", issue) for issue in issues)
-        except Exception as e:
-            yield "error", f"Failed to list issues: {str(e)}"
+        issues = self.list_issues(
+            credentials,
+            input_data.repo_url,
+        )
+        yield from (("issue", issue) for issue in issues)
 
 
 class GithubAddLabelBlock(Block):
@@ -393,28 +369,10 @@ class GithubAddLabelBlock(Block):
 
     @staticmethod
     def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        # Convert the provided GitHub URL to the API URL
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + "/labels"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos") + "/labels"
-            )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
         data = {"labels": [label]}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        labels_url = issue_url + "/labels"
+        api.post(labels_url, json=data)
         return "Label added successfully"
 
     def run(
@@ -424,15 +382,12 @@ class GithubAddLabelBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.add_label(
-                credentials,
-                input_data.issue_url,
-                input_data.label,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to add label: {str(e)}"
+        status = self.add_label(
+            credentials,
+            input_data.issue_url,
+            input_data.label,
+        )
+        yield "status", status
 
 
 class GithubRemoveLabelBlock(Block):
@@ -474,31 +429,9 @@ class GithubRemoveLabelBlock(Block):
 
     @staticmethod
     def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
-        # Convert the provided GitHub URL to the API URL
-        if "/pull/" in issue_url:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos").replace(
-                    "/pull/", "/issues/"
-                )
-                + f"/labels/{label}"
-            )
-        else:
-            api_url = (
-                issue_url.replace("github.com", "api.github.com/repos")
-                + f"/labels/{label}"
-            )
-
-        # Log the constructed API URL for debugging
-        print(f"Constructed API URL: {api_url}")
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        response = requests.delete(api_url, headers=headers)
-        response.raise_for_status()
-
+        api = get_api(credentials)
+        label_url = issue_url + f"/labels/{label}"
+        api.delete(label_url)
         return "Label removed successfully"
 
     def run(
@@ -508,15 +441,12 @@ class GithubRemoveLabelBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.remove_label(
-                credentials,
-                input_data.issue_url,
-                input_data.label,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to remove label: {str(e)}"
+        status = self.remove_label(
+            credentials,
+            input_data.issue_url,
+            input_data.label,
+        )
+        yield "status", status
 
 
 class GithubAssignIssueBlock(Block):
@@ -564,23 +494,10 @@ class GithubAssignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        # Extracting repo path and issue number from the issue URL
-        repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
-            "/issues/"
-        )
-        api_url = (
-            f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
+        assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-
-        response = requests.post(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        api.post(assignees_url, json=data)
         return "Issue assigned successfully"
 
     def run(
@@ -590,15 +507,12 @@ class GithubAssignIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.assign_issue(
-                credentials,
-                input_data.issue_url,
-                input_data.assignee,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to assign issue: {str(e)}"
+        status = self.assign_issue(
+            credentials,
+            input_data.issue_url,
+            input_data.assignee,
+        )
+        yield "status", status
 
 
 class GithubUnassignIssueBlock(Block):
@@ -646,23 +560,10 @@ class GithubUnassignIssueBlock(Block):
         issue_url: str,
         assignee: str,
     ) -> str:
-        # Extracting repo path and issue number from the issue URL
-        repo_path, issue_number = issue_url.replace("https://github.com/", "").split(
-            "/issues/"
-        )
-        api_url = (
-            f"https://api.github.com/repos/{repo_path}/issues/{issue_number}/assignees"
-        )
-
-        headers = {
-            "Authorization": credentials.bearer(),
-            "Accept": "application/vnd.github.v3+json",
-        }
+        api = get_api(credentials)
+        assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-
-        response = requests.delete(api_url, headers=headers, json=data)
-        response.raise_for_status()
-
+        api.delete(assignees_url, json=data)
         return "Issue unassigned successfully"
 
     def run(
@@ -672,12 +573,9 @@ class GithubUnassignIssueBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            status = self.unassign_issue(
-                credentials,
-                input_data.issue_url,
-                input_data.assignee,
-            )
-            yield "status", status
-        except Exception as e:
-            yield "error", f"Failed to unassign issue: {str(e)}"
+        status = self.unassign_issue(
+            credentials,
+            input_data.issue_url,
+            input_data.assignee,
+        )
+        yield "status", status

@@ -10,7 +10,7 @@ async function AdminMarketplace() {
 
   return (
     <>
-      <AdminMarketplaceAgentList agents={reviewableAgents.agents} />
+      <AdminMarketplaceAgentList agents={reviewableAgents.items} />
       <Separator className="my-4" />
       <AdminFeaturedAgentsControl className="mt-4" />
     </>

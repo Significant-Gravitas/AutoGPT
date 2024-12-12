@@ -2,13 +2,13 @@ name: Classic - Forge CI
 
 on:
   push:
-    branches: [ master, development, ci-test* ]
+    branches: [ master, dev, ci-test* ]
     paths:
       - '.github/workflows/classic-forge-ci.yml'
       - 'classic/forge/**'
       - '!classic/forge/tests/vcr_cassettes'
   pull_request:
-    branches: [ master, development, release-* ]
+    branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-forge-ci.yml'
       - 'classic/forge/**'

@@ -3,12 +3,14 @@ import {
   AddAgentRequest,
   AgentResponse,
   ListAgentsParams,
-  AgentListResponse,
   AgentDetailResponse,
   AgentWithRank,
   FeaturedAgentResponse,
   UniqueCategoriesResponse,
   AnalyticsEvent,
+  ListResponse,
+  Agent,
+  AgentListResponse,
 } from "./types";
 
 export default class BaseMarketplaceAPI {
@@ -46,7 +48,7 @@ export default class BaseMarketplaceAPI {
   async getTopDownloadedAgents(
     page: number = 1,
     pageSize: number = 10,
-  ): Promise<AgentListResponse> {
+  ): Promise<ListResponse<Agent>> {
     return this._get(
       `/top-downloads/agents?page=${page}&page_size=${pageSize}`,
     );
@@ -55,7 +57,7 @@ export default class BaseMarketplaceAPI {
   async getFeaturedAgents(
     page: number = 1,
     pageSize: number = 10,
-  ): Promise<AgentListResponse> {
+  ): Promise<ListResponse<Agent>> {
     return this._get(`/featured/agents?page=${page}&page_size=${pageSize}`);
   }
 
@@ -67,7 +69,7 @@ export default class BaseMarketplaceAPI {
     descriptionThreshold: number = 60,
     sortBy: string = "rank",
     sortOrder: "asc" | "desc" = "desc",
-  ): Promise<AgentWithRank[]> {
+  ): Promise<ListResponse<AgentWithRank>> {
     const queryParams = new URLSearchParams({
       query,
       page: page.toString(),
@@ -126,7 +128,7 @@ export default class BaseMarketplaceAPI {
     );
   }
 
-  async getAgentSubmissions(): Promise<AgentListResponse> {
+  async getAgentSubmissions(): Promise<ListResponse<AgentResponse>> {
     return this._get("/admin/agent/submissions");
   }
 
@@ -186,7 +188,7 @@ export default class BaseMarketplaceAPI {
   async getNotFeaturedAgents(
     page: number = 1,
     pageSize: number = 10,
-  ): Promise<AgentListResponse> {
+  ): Promise<ListResponse<AgentResponse>> {
     return this._get(
       `/admin/agent/not-featured?page=${page}&page_size=${pageSize}`,
     );

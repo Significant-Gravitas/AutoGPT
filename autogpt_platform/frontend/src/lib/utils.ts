@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { Category } from "./autogpt-server-api/types";
+import { NodeDimension } from "@/components/Flow";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -26,13 +27,10 @@ export function deepEquals(x: any, y: any): boolean {
     ty = typeof y;
 
   const res =
-    x &&
-    y &&
-    tx === ty &&
-    (tx === "object"
+    x && y && tx === ty && tx === "object"
       ? ok(x).length === ok(y).length &&
         ok(x).every((key) => deepEquals(x[key], y[key]))
-      : x === y);
+      : x === y;
   return res;
 }
 
@@ -43,6 +41,7 @@ export function getTypeTextColor(type: string | null): string {
     {
       string: "text-green-500",
       number: "text-blue-500",
+      integer: "text-blue-500",
       boolean: "text-yellow-500",
       object: "text-purple-500",
       array: "text-indigo-500",
@@ -60,6 +59,7 @@ export function getTypeBgColor(type: string | null): string {
     {
       string: "border-green-500",
       number: "border-blue-500",
+      integer: "border-blue-500",
       boolean: "border-yellow-500",
       object: "border-purple-500",
       array: "border-indigo-500",
@@ -76,6 +76,7 @@ export function getTypeColor(type: string | null): string {
     {
       string: "#22c55e",
       number: "#3b82f6",
+      integer: "#3b82f6",
       boolean: "#eab308",
       object: "#a855f7",
       array: "#6366f1",
@@ -107,6 +108,8 @@ const exceptionMap: Record<string, string> = {
   Url: "URL",
   Http: "HTTP",
   Json: "JSON",
+  Ai: "AI",
+  "You Tube": "YouTube",
 };
 
 const applyExceptions = (str: string): string => {
@@ -136,12 +139,34 @@ export function exportAsJSONFile(obj: object, filename: string): void {
 }
 
 export function setNestedProperty(obj: any, path: string, value: any) {
-  const keys = path.split(/[\/.]/); // Split by / or .
+  if (!obj || typeof obj !== "object") {
+    throw new Error("Target must be a non-null object");
+  }
+
+  if (!path || typeof path !== "string") {
+    throw new Error("Path must be a non-empty string");
+  }
+
+  const keys = path.split(/[\/.]/);
+
+  for (const key of keys) {
+    if (
+      !key ||
+      key === "__proto__" ||
+      key === "constructor" ||
+      key === "prototype"
+    ) {
+      throw new Error(`Invalid property name: ${key}`);
+    }
+  }
+
   let current = obj;
 
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
-    if (!current[key] || typeof current[key] !== "object") {
+    if (!current.hasOwnProperty(key)) {
+      current[key] = {};
+    } else if (typeof current[key] !== "object" || current[key] === null) {
       current[key] = {};
     }
     current = current[key];
@@ -180,21 +205,23 @@ export function removeEmptyStringsAndNulls(obj: any): any {
 }
 
 export const categoryColorMap: Record<string, string> = {
-  AI: "bg-orange-300/[.7]",
-  SOCIAL: "bg-yellow-300/[.7]",
-  TEXT: "bg-green-300/[.7]",
-  SEARCH: "bg-blue-300/[.7]",
-  BASIC: "bg-purple-300/[.7]",
-  INPUT: "bg-cyan-300/[.7]",
-  OUTPUT: "bg-red-300/[.7]",
-  LOGIC: "bg-teal-300/[.7]",
+  AI: "bg-orange-300",
+  SOCIAL: "bg-yellow-300",
+  TEXT: "bg-green-300",
+  SEARCH: "bg-blue-300",
+  BASIC: "bg-purple-300",
+  INPUT: "bg-cyan-300",
+  OUTPUT: "bg-red-300",
+  LOGIC: "bg-teal-300",
+  DEVELOPER_TOOLS: "bg-fuchsia-300",
+  AGENT: "bg-lime-300",
 };
 
 export function getPrimaryCategoryColor(categories: Category[]): string {
   if (categories.length === 0) {
-    return "bg-gray-300/[.7]";
+    return "bg-gray-300";
   }
-  return categoryColorMap[categories[0].category] || "bg-gray-300/[.7]";
+  return categoryColorMap[categories[0].category] || "bg-gray-300";
 }
 
 export function filterBlocksByType<T>(
@@ -202,4 +229,143 @@ export function filterBlocksByType<T>(
   predicate: (block: T) => boolean,
 ): T[] {
   return blocks.filter(predicate);
+}
+
+export enum BehaveAs {
+  CLOUD = "CLOUD",
+  LOCAL = "LOCAL",
+}
+
+export function getBehaveAs(): BehaveAs {
+  return process.env.NEXT_PUBLIC_BEHAVE_AS === "CLOUD"
+    ? BehaveAs.CLOUD
+    : BehaveAs.LOCAL;
+}
+
+function rectanglesOverlap(
+  rect1: { x: number; y: number; width: number; height?: number },
+  rect2: { x: number; y: number; width: number; height?: number },
+): boolean {
+  const x1 = rect1.x,
+    y1 = rect1.y,
+    w1 = rect1.width,
+    h1 = rect1.height ?? 100;
+  const x2 = rect2.x,
+    y2 = rect2.y,
+    w2 = rect2.width,
+    h2 = rect2.height ?? 100;
+
+  // Check if the rectangles do not overlap
+  return !(x1 + w1 <= x2 || x1 >= x2 + w2 || y1 + h1 <= y2 || y1 >= y2 + h2);
+}
+
+export function findNewlyAddedBlockCoordinates(
+  nodeDimensions: NodeDimension,
+  newWidth: number,
+  margin: number,
+  zoom: number,
+) {
+  const nodeDimensionArray = Object.values(nodeDimensions);
+
+  for (let i = nodeDimensionArray.length - 1; i >= 0; i--) {
+    const lastNode = nodeDimensionArray[i];
+    const lastNodeHeight = lastNode.height ?? 100;
+
+    // Right of the last node
+    let newX = lastNode.x + lastNode.width + margin;
+    let newY = lastNode.y;
+    let newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
+
+    const collisionRight = nodeDimensionArray.some((node) =>
+      rectanglesOverlap(newRect, node),
+    );
+
+    if (!collisionRight) {
+      return { x: newX, y: newY };
+    }
+
+    // Left of the last node
+    newX = lastNode.x - newWidth - margin;
+    newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
+
+    const collisionLeft = nodeDimensionArray.some((node) =>
+      rectanglesOverlap(newRect, node),
+    );
+
+    if (!collisionLeft) {
+      return { x: newX, y: newY };
+    }
+
+    // Below the last node
+    newX = lastNode.x;
+    newY = lastNode.y + lastNodeHeight + margin;
+    newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
+
+    const collisionBelow = nodeDimensionArray.some((node) =>
+      rectanglesOverlap(newRect, node),
+    );
+
+    if (!collisionBelow) {
+      return { x: newX, y: newY };
+    }
+  }
+
+  // Default position if no space is found
+  return {
+    x: 0,
+    y: 0,
+  };
+}
+
+export function hasNonNullNonObjectValue(obj: any): boolean {
+  if (obj !== null && typeof obj === "object") {
+    return Object.values(obj).some((value) => hasNonNullNonObjectValue(value));
+  } else {
+    return obj !== null && typeof obj !== "object";
+  }
+}
+
+type ParsedKey = { key: string; index?: number };
+
+export function parseKeys(key: string): ParsedKey[] {
+  const splits = key.split(/_@_|_#_|_\$_|\./);
+  const keys: ParsedKey[] = [];
+  let currentKey: string | null = null;
+
+  splits.forEach((split) => {
+    const isInteger = /^\d+$/.test(split);
+    if (!isInteger) {
+      if (currentKey !== null) {
+        keys.push({ key: currentKey });
+      }
+      currentKey = split;
+    } else {
+      if (currentKey !== null) {
+        keys.push({ key: currentKey, index: parseInt(split, 10) });
+        currentKey = null;
+      } else {
+        throw new Error("Invalid key format: array index without a key");
+      }
+    }
+  });
+
+  if (currentKey !== null) {
+    keys.push({ key: currentKey });
+  }
+
+  return keys;
+}
+
+/**
+ * Get the value of a nested key in an object, handles arrays and objects.
+ */
+export function getValue(key: string, value: any) {
+  const keys = parseKeys(key);
+  return keys.reduce((acc, k) => {
+    if (acc === undefined) return undefined;
+    if (k.index !== undefined) {
+      return Array.isArray(acc[k.key]) ? acc[k.key][k.index] : undefined;
+    }
+    return acc[k.key];
+  }, value);
 }

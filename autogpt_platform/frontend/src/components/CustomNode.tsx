@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useRef,
   useContext,
+  useMemo,
 } from "react";
 import { NodeProps, useReactFlow, Node, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -12,30 +13,45 @@ import InputModalComponent from "./InputModalComponent";
 import OutputModalComponent from "./OutputModalComponent";
 import {
   BlockIORootSchema,
+  BlockIOSubSchema,
   BlockIOStringSubSchema,
   Category,
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
-} from "@/lib/autogpt-server-api/types";
-import { beautifyString, cn, setNestedProperty } from "@/lib/utils";
+  useBackendAPI,
+} from "@/lib/autogpt-server-api";
+import {
+  beautifyString,
+  cn,
+  getValue,
+  hasNonNullNonObjectValue,
+  parseKeys,
+  setNestedProperty,
+} from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Copy, Trash2 } from "lucide-react";
+import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
 import {
   NodeGenericInputField,
   NodeTextBoxInput,
 } from "./node-input-components";
-import SchemaTooltip from "./SchemaTooltip";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
-import DataTable from "./DataTable";
+import NodeOutputs from "./NodeOutputs";
+import SchemaTooltip from "./SchemaTooltip";
 import { IconCoin } from "./ui/icons";
-
-type ParsedKey = { key: string; index?: number };
+import * as Separator from "@radix-ui/react-separator";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import {
+  DotsVerticalIcon,
+  TrashIcon,
+  CopyIcon,
+  ExitIcon,
+} from "@radix-ui/react-icons";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -55,6 +71,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
+  webhookId?: string;
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -72,20 +89,34 @@ export type CustomNodeData = {
 
 export type CustomNode = Node<CustomNodeData, "custom">;
 
-export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
+export function CustomNode({
+  data,
+  id,
+  width,
+  height,
+  selected,
+}: NodeProps<CustomNode>) {
   const [isOutputOpen, setIsOutputOpen] = useState(data.isOutputOpen || false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [inputModalValue, setInputModalValue] = useState<string>("");
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
     CustomNode,
     Edge
   >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
+  const api = useBackendAPI();
+  let nodeFlowId = "";
+
+  if (data.uiType === BlockUIType.AGENT) {
+    // Display the graph's schema instead AgentExecutorBlock's schema.
+    data.inputSchema = data.hardcodedValues?.input_schema || {};
+    data.outputSchema = data.hardcodedValues?.output_schema || {};
+    nodeFlowId = data.hardcodedValues?.graph_id || nodeFlowId;
+  }
 
   if (!flowContext) {
     throw new Error("FlowContext consumer must be inside FlowEditor component");
@@ -137,17 +168,38 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       nodeType === BlockUIType.NOTE
     )
       return null;
-    const keys = Object.keys(schema.properties);
-    return keys.map((key) => (
-      <div key={key}>
-        <NodeHandle
-          keyName={key}
-          isConnected={isHandleConnected(key)}
-          schema={schema.properties[key]}
-          side="right"
-        />
-      </div>
-    ));
+
+    const renderHandles = (
+      propSchema: { [key: string]: BlockIOSubSchema },
+      keyPrefix = "",
+      titlePrefix = "",
+    ) => {
+      return Object.keys(propSchema).map((propKey) => {
+        const fieldSchema = propSchema[propKey];
+        const fieldTitle =
+          titlePrefix + (fieldSchema.title || beautifyString(propKey));
+
+        return (
+          <div key={propKey}>
+            <NodeHandle
+              title={fieldTitle}
+              keyName={`${keyPrefix}${propKey}`}
+              isConnected={isOutputHandleConnected(propKey)}
+              schema={fieldSchema}
+              side="right"
+            />
+            {"properties" in fieldSchema &&
+              renderHandles(
+                fieldSchema.properties,
+                `${keyPrefix}${propKey}_#_`,
+                `${fieldTitle}.`,
+              )}
+          </div>
+        );
+      });
+    };
+
+    return renderHandles(schema.properties);
   };
 
   const generateInputHandles = (
@@ -157,38 +209,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     if (!schema?.properties) return null;
     let keys = Object.entries(schema.properties);
     switch (nodeType) {
-      case BlockUIType.INPUT:
-        // For INPUT blocks, dont include connection handles
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey}>
-                <span className="text-m green -mb-1 text-gray-900">
-                  {propSchema.title || beautifyString(propKey)}
-                </span>
-                <div key={propKey} onMouseOver={() => {}}>
-                  {!isConnected && (
-                    <NodeGenericInputField
-                      className="mb-2 mt-1"
-                      propKey={propKey}
-                      propSchema={propSchema}
-                      currentValue={getValue(propKey)}
-                      connections={data.connections}
-                      handleInputChange={handleInputChange}
-                      handleInputClick={handleInputClick}
-                      errors={data.errors ?? {}}
-                      displayName={propSchema.title || beautifyString(propKey)}
-                    />
-                  )}
-                </div>
-              </div>
-            )
-          );
-        });
-
       case BlockUIType.NOTE:
         // For NOTE blocks, don't render any input handles
         const [noteKey, noteSchema] = keys[0];
@@ -198,7 +218,7 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
               className=""
               selfKey={noteKey}
               schema={noteSchema as BlockIOStringSubSchema}
-              value={getValue(noteKey)}
+              value={getValue(noteKey, data.hardcodedValues)}
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               error={data.errors?.[noteKey] ?? ""}
@@ -207,59 +227,27 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
           </div>
         );
 
-      case BlockUIType.OUTPUT:
-        // For OUTPUT blocks, only show the 'value' property
-        return keys.map(([propKey, propSchema]) => {
-          const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
-          const isAdvanced = propSchema.advanced;
-          return (
-            (isRequired || isAdvancedOpen || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
-                {propKey !== "value" ? (
-                  <span className="text-m green -mb-1 text-gray-900">
-                    {propSchema.title || beautifyString(propKey)}
-                  </span>
-                ) : (
-                  <NodeHandle
-                    keyName={propKey}
-                    isConnected={isConnected}
-                    isRequired={isRequired}
-                    schema={propSchema}
-                    side="left"
-                  />
-                )}
-                {!isConnected && (
-                  <NodeGenericInputField
-                    className="mb-2 mt-1"
-                    propKey={propKey}
-                    propSchema={propSchema}
-                    currentValue={getValue(propKey)}
-                    connections={data.connections}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                    errors={data.errors ?? {}}
-                    displayName={propSchema.title || beautifyString(propKey)}
-                  />
-                )}
-              </div>
-            )
-          );
-        });
-
       default:
+        const getInputPropKey = (key: string) =>
+          nodeType == BlockUIType.AGENT ? `data.${key}` : key;
+
         return keys.map(([propKey, propSchema]) => {
           const isRequired = data.inputSchema.required?.includes(propKey);
-          const isConnected = isHandleConnected(propKey);
           const isAdvanced = propSchema.advanced;
+          const isHidden = propSchema.hidden;
+          const isConnectable =
+            // No input connection handles on INPUT and WEBHOOK blocks
+            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
+            // No input connection handles for credentials
+            propKey !== "credentials" &&
+            // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
+            !(nodeType == BlockUIType.OUTPUT && propKey == "name");
+          const isConnected = isInputHandleConnected(propKey);
           return (
+            !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
-              <div key={propKey} onMouseOver={() => {}}>
-                {"credentials_provider" in propSchema ? (
-                  <span className="text-m green -mb-1 text-gray-900">
-                    Credentials
-                  </span>
-                ) : (
+              <div key={propKey} data-id={`input-handle-${propKey}`}>
+                {isConnectable ? (
                   <NodeHandle
                     keyName={propKey}
                     isConnected={isConnected}
@@ -267,13 +255,25 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
                     schema={propSchema}
                     side="left"
                   />
+                ) : (
+                  propKey != "credentials" && (
+                    <div className="flex gap-1">
+                      <span className="text-m green mb-0 text-gray-900">
+                        {propSchema.title || beautifyString(propKey)}
+                      </span>
+                      <SchemaTooltip description={propSchema.description} />
+                    </div>
+                  )
                 )}
-                {!isConnected && (
+                {isConnected || (
                   <NodeGenericInputField
-                    className="mb-2 mt-1"
-                    propKey={propKey}
+                    nodeId={id}
+                    propKey={getInputPropKey(propKey)}
                     propSchema={propSchema}
-                    currentValue={getValue(propKey)}
+                    currentValue={getValue(
+                      getInputPropKey(propKey),
+                      data.hardcodedValues,
+                    )}
                     connections={data.connections}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
@@ -312,8 +312,6 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
       current[lastKey.key] = value;
     }
 
-    // console.log(`Updating hardcoded values for node ${id}:`, newValues);
-
     if (!isInitialSetup.current) {
       history.push({
         type: "UPDATE_INPUT",
@@ -330,71 +328,36 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     setErrors({ ...errors });
   };
 
-  // Helper function to parse keys with array indices
-  //TODO move to utils
-  const parseKeys = (key: string): ParsedKey[] => {
-    const splits = key.split(/_@_|_#_|_\$_|\./);
-    const keys: ParsedKey[] = [];
-    let currentKey: string | null = null;
-
-    splits.forEach((split) => {
-      const isInteger = /^\d+$/.test(split);
-      if (!isInteger) {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey });
-        }
-        currentKey = split;
-      } else {
-        if (currentKey !== null) {
-          keys.push({ key: currentKey, index: parseInt(split, 10) });
-          currentKey = null;
-        } else {
-          throw new Error("Invalid key format: array index without a key");
-        }
-      }
-    });
-
-    if (currentKey !== null) {
-      keys.push({ key: currentKey });
-    }
-
-    return keys;
-  };
-
-  const getValue = (key: string) => {
-    const keys = parseKeys(key);
-    return keys.reduce((acc, k) => {
-      if (acc === undefined) return undefined;
-      if (k.index !== undefined) {
-        return Array.isArray(acc[k.key]) ? acc[k.key][k.index] : undefined;
-      }
-      return acc[k.key];
-    }, data.hardcodedValues as any);
-  };
-
-  const isHandleConnected = (key: string) => {
+  const isInputHandleConnected = (key: string) => {
     return (
       data.connections &&
       data.connections.some((conn: any) => {
         if (typeof conn === "string") {
-          const [source, target] = conn.split(" -> ");
-          return (
-            (target.includes(key) && target.includes(data.title)) ||
-            (source.includes(key) && source.includes(data.title))
-          );
+          const [_source, target] = conn.split(" -> ");
+          return target.includes(key) && target.includes(data.title);
         }
-        return (
-          (conn.target === id && conn.targetHandle === key) ||
-          (conn.source === id && conn.sourceHandle === key)
-        );
+        return conn.target === id && conn.targetHandle === key;
+      })
+    );
+  };
+
+  const isOutputHandleConnected = (key: string) => {
+    return (
+      data.connections &&
+      data.connections.some((conn: any) => {
+        if (typeof conn === "string") {
+          const [source, _target] = conn.split(" -> ");
+          return source.includes(key) && source.includes(data.title);
+        }
+        return conn.source === id && conn.sourceHandle === key;
       })
     );
   };
 
   const handleInputClick = (key: string) => {
-    console.log(`Opening modal for key: ${key}`);
+    console.debug(`Opening modal for key: ${key}`);
     setActiveKey(key);
-    const value = getValue(key);
+    const value = getValue(key, data.hardcodedValues);
     setInputModalValue(
       typeof value === "object" ? JSON.stringify(value, null, 2) : value,
     );
@@ -418,16 +381,8 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     setIsOutputModalOpen(true);
   };
 
-  const handleHovered = () => {
-    setIsHovered(true);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-  };
-
   const deleteNode = useCallback(() => {
-    console.log("Deleting node:", id);
+    console.debug("Deleting node:", id);
 
     // Remove the node
     deleteElements({ nodes: [{ id }] });
@@ -464,15 +419,13 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
 
     history.push({
       type: "ADD_NODE",
-      payload: { node: newNode },
+      payload: { node: { ...newNode, ...newNode.data } as CustomNodeData },
       undo: () => deleteElements({ nodes: [{ id: newId }] }),
       redo: () => addNodes(newNode),
     });
   }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
-  const hasConfigErrors =
-    data.errors &&
-    Object.entries(data.errors).some(([_, value]) => value !== null);
+  const hasConfigErrors = data.errors && hasNonNullNonObjectValue(data.errors);
   const outputData = data.executionResults?.at(-1)?.data;
   const hasOutputError =
     typeof outputData === "object" &&
@@ -482,8 +435,8 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
   useEffect(() => {
     if (hasConfigErrors) {
       const filteredErrors = Object.fromEntries(
-        Object.entries(data.errors || {}).filter(
-          ([_, value]) => value !== null,
+        Object.entries(data.errors || {}).filter(([, value]) =>
+          hasNonNullNonObjectValue(value),
         ),
       );
       console.error(
@@ -507,20 +460,53 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     "custom-node",
     "dark-theme",
     "rounded-xl",
-    "border",
     "bg-white/[.9]",
-    "shadow-md",
+    "border border-gray-300",
+    data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
+    data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
+    selected ? "shadow-2xl" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const errorClass =
-    hasConfigErrors || hasOutputError ? "border-red-500 border-2" : "";
+    hasConfigErrors || hasOutputError ? "border-red-200 border-2" : "";
 
-  const statusClass =
-    hasConfigErrors || hasOutputError
-      ? "failed"
-      : (data.status?.toLowerCase() ?? "");
+  const statusClass = (() => {
+    if (hasConfigErrors || hasOutputError) return "border-red-200 border-4";
+    switch (data.status?.toLowerCase()) {
+      case "completed":
+        return "border-green-200 border-4";
+      case "running":
+        return "border-yellow-200 border-4";
+      case "failed":
+        return "border-red-200 border-4";
+      case "incomplete":
+        return "border-purple-200 border-4";
+      case "queued":
+        return "border-cyan-200 border-4";
+      default:
+        return "";
+    }
+  })();
+
+  const statusBackgroundClass = (() => {
+    if (hasConfigErrors || hasOutputError) return "bg-red-200";
+    switch (data.status?.toLowerCase()) {
+      case "completed":
+        return "bg-green-200";
+      case "running":
+        return "bg-yellow-200";
+      case "failed":
+        return "bg-red-200";
+      case "incomplete":
+        return "bg-purple-200";
+      case "queued":
+        return "bg-cyan-200";
+      default:
+        return "";
+    }
+  })();
 
   const hasAdvancedFields =
     data.inputSchema &&
@@ -531,125 +517,318 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
     });
 
   const inputValues = data.hardcodedValues;
+
+  const isCostFilterMatch = (costFilter: any, inputValues: any): boolean => {
+    /*
+      Filter rules:
+      - If costFilter is an object, then check if costFilter is the subset of inputValues
+      - Otherwise, check if costFilter is equal to inputValues.
+      - Undefined, null, and empty string are considered as equal.
+    */
+    return typeof costFilter === "object" && typeof inputValues === "object"
+      ? Object.entries(costFilter).every(
+          ([k, v]) =>
+            (!v && !inputValues[k]) || isCostFilterMatch(v, inputValues[k]),
+        )
+      : costFilter === inputValues;
+  };
+
   const blockCost =
     data.blockCosts &&
     data.blockCosts.find((cost) =>
-      Object.entries(cost.cost_filter).every(
-        // Undefined, null, or empty values are considered equal
-        ([key, value]) =>
-          value === inputValues[key] || (!value && !inputValues[key]),
-      ),
+      isCostFilterMatch(cost.cost_filter, inputValues),
     );
 
-  return (
-    <div
-      className={`${data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]"} ${blockClasses} ${errorClass} ${statusClass} ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"}`}
-      onMouseEnter={handleHovered}
-      onMouseLeave={handleMouseLeave}
-      data-id={`custom-node-${id}`}
-    >
-      <div
-        className={`mb-2 p-3 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : getPrimaryCategoryColor(data.categories)} rounded-t-xl`}
-      >
-        <div className="flex items-center justify-between">
-          <div className="font-roboto p-3 text-lg font-semibold">
-            {beautifyString(
-              data.blockType?.replace(/Block$/, "") || data.title,
-            )}
-          </div>
-          <SchemaTooltip description={data.description} />
-        </div>
-        <div className="flex gap-[5px]">
-          {isHovered && (
-            <>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copyNode}
-                title="Copy node"
-              >
-                <Copy size={18} />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={deleteNode}
-                title="Delete node"
-              >
-                <Trash2 size={18} />
-              </Button>
-            </>
+  const [webhookStatus, setWebhookStatus] = useState<
+    "works" | "exists" | "broken" | "none" | "pending" | null
+  >(null);
+
+  useEffect(() => {
+    if (data.uiType != BlockUIType.WEBHOOK) return;
+    if (!data.webhookId) {
+      setWebhookStatus("none");
+      return;
+    }
+
+    setWebhookStatus("pending");
+    api
+      .pingWebhook(data.webhookId)
+      .then((pinged) => setWebhookStatus(pinged ? "works" : "exists"))
+      .catch((error: Error) =>
+        error.message.includes("ping timed out")
+          ? setWebhookStatus("broken")
+          : setWebhookStatus("none"),
+      );
+  }, [data.uiType, data.webhookId, api, setWebhookStatus]);
+
+  const webhookStatusDot = useMemo(
+    () =>
+      webhookStatus && (
+        <div
+          className={cn(
+            "size-4 rounded-full border-2",
+            {
+              pending: "animate-pulse border-gray-300 bg-gray-400",
+              works: "border-green-300 bg-green-400",
+              exists: "border-green-200 bg-green-300",
+              broken: "border-red-400 bg-red-500",
+              none: "border-gray-300 bg-gray-400",
+            }[webhookStatus],
           )}
-        </div>
-      </div>
-      {blockCost && (
-        <div className="p-3 font-semibold">
-          <span className="ml-auto flex items-center">
-            <IconCoin /> {blockCost.cost_amount} credits/{blockCost.cost_type}
-          </span>
-        </div>
+          title={
+            {
+              pending: "Checking connection status...",
+              works: "Connected",
+              exists:
+                "Connected (but we could not verify the real-time status)",
+              broken: "The connected webhook is not working",
+              none: "Not connected. Fill out all the required block inputs and save the agent to connect.",
+            }[webhookStatus]
+          }
+        />
+      ),
+    [webhookStatus],
+  );
+
+  const LineSeparator = () => (
+    <div className="bg-white pt-6">
+      <Separator.Root className="h-[1px] w-full bg-gray-300"></Separator.Root>
+    </div>
+  );
+
+  const ContextMenuContent = () => (
+    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md">
+      <ContextMenu.Item
+        onSelect={copyNode}
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+      >
+        <CopyIcon className="mr-2 h-5 w-5" />
+        <span>Copy</span>
+      </ContextMenu.Item>
+      {nodeFlowId && (
+        <ContextMenu.Item
+          onSelect={() => window.open(`/build?flowID=${nodeFlowId}`)}
+          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+        >
+          <ExitIcon className="mr-2 h-5 w-5" />
+          <span>Open agent</span>
+        </ContextMenu.Item>
       )}
-      {data.uiType !== BlockUIType.NOTE ? (
-        <div className="flex items-start justify-between p-3">
+      <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
+      <ContextMenu.Item
+        onSelect={deleteNode}
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
+      >
+        <TrashIcon className="mr-2 h-5 w-5 text-red-500" />
+        <span>Delete</span>
+      </ContextMenu.Item>
+    </ContextMenu.Content>
+  );
+
+  const onContextButtonTrigger = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+    });
+    e.currentTarget.dispatchEvent(event);
+  };
+
+  const stripeColor = getPrimaryCategoryColor(data.categories);
+
+  const nodeContent = () => (
+    <div
+      className={`${blockClasses} ${errorClass} ${statusClass}`}
+      data-id={`custom-node-${id}`}
+      z-index={1}
+      data-blockid={data.block_id}
+      data-blockname={data.title}
+      data-blocktype={data.blockType}
+      data-nodetype={data.uiType}
+      data-category={data.categories[0]?.category.toLowerCase() || ""}
+      data-inputs={JSON.stringify(
+        Object.keys(data.inputSchema?.properties || {}),
+      )}
+      data-outputs={JSON.stringify(
+        Object.keys(data.outputSchema?.properties || {}),
+      )}
+    >
+      {/* Header */}
+      <div
+        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} space-x-1 rounded-t-xl`}
+      >
+        {/* Color Stripe */}
+        <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
+
+        <div className="flex w-full flex-col justify-start space-y-2.5 px-4 pt-4">
+          <div className="flex flex-row items-center space-x-2 font-semibold">
+            <h3 className="font-roboto text-lg">
+              <TextRenderer
+                value={beautifyString(
+                  data.blockType?.replace(/Block$/, "") || data.title,
+                )}
+                truncateLengthLimit={80}
+              />
+            </h3>
+            <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
+
+            <div className="w-auto grow" />
+
+            {webhookStatusDot}
+            <button
+              aria-label="Options"
+              className="cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
+              onClick={onContextButtonTrigger}
+            >
+              <DotsVerticalIcon className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex items-center space-x-2">
+            {blockCost && (
+              <div className="mr-3 text-base font-light">
+                <span className="ml-auto flex items-center">
+                  <IconCoin />{" "}
+                  <span className="mx-1 font-medium">
+                    {blockCost.cost_amount}
+                  </span>{" "}
+                  credits/{blockCost.cost_type}
+                </span>
+              </div>
+            )}
+            {data.categories.map((category) => (
+              <Badge
+                key={category.category}
+                variant="outline"
+                className={`${getPrimaryCategoryColor([category])} h-6 whitespace-nowrap rounded-full border border-gray-300 opacity-50`}
+              >
+                {beautifyString(category.category.toLowerCase())}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
+        <ContextMenuContent />
+      </div>
+
+      {/* Body */}
+      <div className="ml-5 mt-6 rounded-b-xl">
+        {/* Input Handles */}
+        {data.uiType !== BlockUIType.NOTE ? (
+          <div
+            className="flex w-fit items-start justify-between"
+            data-id="input-handles"
+          >
+            <div>
+              {data.inputSchema &&
+                generateInputHandles(data.inputSchema, data.uiType)}
+            </div>
+          </div>
+        ) : (
           <div>
             {data.inputSchema &&
               generateInputHandles(data.inputSchema, data.uiType)}
           </div>
-          <div className="flex-none">
-            {data.outputSchema &&
-              generateOutputHandles(data.outputSchema, data.uiType)}
-          </div>
-        </div>
-      ) : (
-        <div>
-          {data.inputSchema &&
-            generateInputHandles(data.inputSchema, data.uiType)}
-        </div>
-      )}
-      {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
-        <div
-          data-id="latest-output"
-          className="nodrag m-3 break-words rounded-md border-[1.5px] p-2"
-        >
-          {(data.executionResults?.length ?? 0) > 0 ? (
-            <>
-              <DataTable
-                title="Latest Output"
-                truncateLongData
-                data={data.executionResults!.at(-1)?.data || {}}
+        )}
+
+        {/* Advanced Settings */}
+        {data.uiType !== BlockUIType.NOTE && hasAdvancedFields && (
+          <>
+            <LineSeparator />
+            <div className="flex items-center justify-between pt-6">
+              Advanced
+              <Switch
+                onCheckedChange={toggleAdvancedSettings}
+                checked={isAdvancedOpen}
+                className="mr-5"
               />
-              <div className="flex justify-end">
-                <Button variant="ghost" onClick={handleOutputClick}>
-                  View More
-                </Button>
+            </div>
+          </>
+        )}
+        {/* Output Handles */}
+        {data.uiType !== BlockUIType.NOTE && (
+          <>
+            <LineSeparator />
+            <div className="flex items-start justify-end rounded-b-xl pb-2 pr-2 pt-6">
+              <div className="flex-none">
+                {data.outputSchema &&
+                  generateOutputHandles(data.outputSchema, data.uiType)}
               </div>
-            </>
-          ) : (
-            <span>No outputs yet</span>
-          )}
-        </div>
-      )}
-      {data.uiType !== BlockUIType.NOTE && (
-        <div className="mt-2.5 flex items-center pb-4 pl-4">
-          <Switch checked={isOutputOpen} onCheckedChange={toggleOutput} />
-          <span className="m-1 mr-4">Output</span>
-          {hasAdvancedFields && (
-            <>
-              <Switch onCheckedChange={toggleAdvancedSettings} />
-              <span className="m-1">Advanced</span>
-            </>
-          )}
-          {data.status && (
-            <Badge
-              variant="outline"
-              data-id={`badge-${id}-${data.status}`}
-              className={cn(data.status.toLowerCase(), "ml-auto mr-5")}
+            </div>
+          </>
+        )}
+      </div>
+      {/* End Body */}
+      {/* Footer */}
+      <div className="flex rounded-b-xl">
+        {/* Display Outputs  */}
+        {isOutputOpen && data.uiType !== BlockUIType.NOTE && (
+          <div
+            data-id="latest-output"
+            className={cn(
+              "nodrag w-full overflow-hidden break-words",
+              statusBackgroundClass,
+            )}
+          >
+            {(data.executionResults?.length ?? 0) > 0 ? (
+              <div className="mt-0 rounded-b-xl bg-gray-50">
+                <LineSeparator />
+                <NodeOutputs
+                  title="Latest Output"
+                  truncateLongData
+                  data={data.executionResults!.at(-1)?.data || {}}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    onClick={handleOutputClick}
+                    className="border border-gray-300"
+                  >
+                    View More
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-0 min-h-4 rounded-b-xl bg-white"></div>
+            )}
+            <div
+              className={cn(
+                "flex min-h-12 items-center justify-end",
+                statusBackgroundClass,
+              )}
             >
-              {data.status}
-            </Badge>
-          )}
-        </div>
-      )}
+              <Badge
+                variant="default"
+                data-id={`badge-${id}-${data.status}`}
+                className={cn(
+                  "mr-4 flex min-w-[114px] items-center justify-center rounded-3xl text-center text-xs font-semibold",
+                  hasConfigErrors || hasOutputError
+                    ? "border-red-600 bg-red-600 text-white"
+                    : {
+                        "border-green-600 bg-green-600 text-white":
+                          data.status === "COMPLETED",
+                        "border-yellow-600 bg-yellow-600 text-white":
+                          data.status === "RUNNING",
+                        "border-red-600 bg-red-600 text-white":
+                          data.status === "FAILED",
+                        "border-blue-600 bg-blue-600 text-white":
+                          data.status === "QUEUED",
+                        "border-gray-600 bg-gray-600 font-black":
+                          data.status === "INCOMPLETE",
+                      },
+                )}
+              >
+                {hasConfigErrors || hasOutputError
+                  ? "Error"
+                  : data.status
+                    ? beautifyString(data.status)
+                    : "Not Run"}
+              </Badge>
+            </div>
+          </div>
+        )}
+      </div>
       <InputModalComponent
         title={activeKey ? `Enter ${beautifyString(activeKey)}` : undefined}
         isOpen={isModalOpen}
@@ -664,5 +843,11 @@ export function CustomNode({ data, id, width, height }: NodeProps<CustomNode>) {
         executionResults={data.executionResults?.toReversed() || []}
       />
     </div>
+  );
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger>{nodeContent()}</ContextMenu.Trigger>
+    </ContextMenu.Root>
   );
 }

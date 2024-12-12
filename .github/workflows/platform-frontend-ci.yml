@@ -2,7 +2,7 @@ name: AutoGPT Platform - Frontend CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
@@ -10,6 +10,7 @@ on:
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
+  merge_group:
 
 defaults:
   run:
@@ -22,6 +23,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,32 +31,43 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install
-
-      - name: Check formatting with Prettier
-        run: |
-          npx prettier --check .
+          yarn install --frozen-lockfile
 
       - name: Run lint
         run: |
-          npm run lint
+          yarn lint
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "21"
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          large-packages: false  # slow
+          docker-images: false  # limited benefit
+
       - name: Copy default supabase .env
         run: |
           cp ../supabase/docker/.env.example ../.env
+
+      - name: Copy backend .env
+        run: |
+          cp ../backend/.env.example ../backend/.env
 
       - name: Run docker compose
         run: |
@@ -62,22 +75,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install
+          yarn install --frozen-lockfile
 
       - name: Setup Builder .env
         run: |
           cp .env.example .env
 
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+      - name: Install Browser '${{ matrix.browser }}'
+        run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
         run: |
-          npm run test
+          yarn test --project=${{ matrix.browser }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: playwright-report/
           retention-days: 30
