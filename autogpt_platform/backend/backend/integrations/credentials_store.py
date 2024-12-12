@@ -1,6 +1,6 @@
-import secrets
-import hashlib
 import base64
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
@@ -212,7 +212,9 @@ class IntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
-    def store_state_token(self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False) -> tuple[str, str]:
+    def store_state_token(
+        self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
+    ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
@@ -221,7 +223,7 @@ class IntegrationCredentialsStore:
         state = OAuthState(
             token=token,
             provider=provider,
-            code_verifier= code_verifier,
+            code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
         )
@@ -245,11 +247,13 @@ class IntegrationCredentialsStore:
         Currently only SHA256 is supported.(In future if we want to support more methods we can add them here)
         """
         code_verifier = secrets.token_urlsafe(128)
-        sha256_hash = hashlib.sha256(code_verifier.encode('utf-8')).digest()
-        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode('utf-8')
-        return code_challenge.replace('=', ''), code_verifier
+        sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8")
+        return code_challenge.replace("=", ""), code_verifier
 
-    def verify_state_token(self, user_id: str, token: str, provider: str) -> Optional[OAuthState]:
+    def verify_state_token(
+        self, user_id: str, token: str, provider: str
+    ) -> Optional[OAuthState]:
         with self.locked_user_integrations(user_id):
             user_integrations = self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states

@@ -12,25 +12,25 @@ from backend.blocks.twitter._mappers import (
     get_backend_space_field,
     get_backend_user_field,
 )
-from backend.blocks.twitter._types import (
+from backend.blocks.twitter._types import (  # DMEventFieldFilter,
+    DMEventExpansionFilter,
+    DMEventTypeFilter,
+    DMMediaFieldFilter,
+    DMTweetFieldFilter,
     ExpansionFilter,
-    TweetMediaFieldsFilter,
-    TweetPlaceFieldsFilter,
-    TweetPollFieldsFilter,
-    TweetFieldsFilter,
-    TweetUserFieldsFilter,
-    UserExpansionsFilter,
     ListExpansionsFilter,
     ListFieldsFilter,
     SpaceExpansionsFilter,
     SpaceFieldsFilter,
-    DMEventExpansionFilter,
-    # DMEventFieldFilter,
-    DMEventTypeFilter,
-    DMMediaFieldFilter,
-    DMTweetFieldFilter,
-    TweetReplySettingsFilter
+    TweetFieldsFilter,
+    TweetMediaFieldsFilter,
+    TweetPlaceFieldsFilter,
+    TweetPollFieldsFilter,
+    TweetReplySettingsFilter,
+    TweetUserFieldsFilter,
+    UserExpansionsFilter,
 )
+
 
 # Common Builder
 class TweetExpansionsBuilder:
@@ -40,8 +40,7 @@ class TweetExpansionsBuilder:
     def add_expansions(self, expansions: ExpansionFilter):
         if expansions:
             filtered_expansions = [
-                name for name, value in expansions.dict().items()
-                if value is True
+                name for name, value in expansions.dict().items() if value is True
             ]
 
             if filtered_expansions:
@@ -55,8 +54,7 @@ class TweetExpansionsBuilder:
     def add_media_fields(self, media_fields: TweetMediaFieldsFilter):
         if media_fields:
             filtered_fields = [
-                name for name, value in media_fields.dict().items()
-                if value is True
+                name for name, value in media_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["media.fields"] = ",".join(
@@ -67,8 +65,7 @@ class TweetExpansionsBuilder:
     def add_place_fields(self, place_fields: TweetPlaceFieldsFilter):
         if place_fields:
             filtered_fields = [
-                name for name, value in place_fields.dict().items()
-                if value is True
+                name for name, value in place_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["place.fields"] = ",".join(
@@ -79,8 +76,7 @@ class TweetExpansionsBuilder:
     def add_poll_fields(self, poll_fields: TweetPollFieldsFilter):
         if poll_fields:
             filtered_fields = [
-                name for name, value in poll_fields.dict().items()
-                if value is True
+                name for name, value in poll_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["poll.fields"] = ",".join(
@@ -91,8 +87,7 @@ class TweetExpansionsBuilder:
     def add_tweet_fields(self, tweet_fields: TweetFieldsFilter):
         if tweet_fields:
             filtered_fields = [
-                name for name, value in tweet_fields.dict().items()
-                if value is True
+                name for name, value in tweet_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["tweet.fields"] = ",".join(
@@ -103,8 +98,7 @@ class TweetExpansionsBuilder:
     def add_user_fields(self, user_fields: TweetUserFieldsFilter):
         if user_fields:
             filtered_fields = [
-                name for name, value in user_fields.dict().items()
-                if value is True
+                name for name, value in user_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["user.fields"] = ",".join(
@@ -123,8 +117,7 @@ class UserExpansionsBuilder:
     def add_expansions(self, expansions: UserExpansionsFilter):
         if expansions:
             filtered_expansions = [
-                name for name, value in expansions.dict().items()
-                if value is True
+                name for name, value in expansions.dict().items() if value is True
             ]
             if filtered_expansions:
                 self.params["expansions"] = ",".join(filtered_expansions)
@@ -133,8 +126,7 @@ class UserExpansionsBuilder:
     def add_tweet_fields(self, tweet_fields: TweetFieldsFilter):
         if tweet_fields:
             filtered_fields = [
-                name for name, value in tweet_fields.dict().items()
-                if value is True
+                name for name, value in tweet_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["tweet.fields"] = ",".join(
@@ -145,8 +137,7 @@ class UserExpansionsBuilder:
     def add_user_fields(self, user_fields: TweetUserFieldsFilter):
         if user_fields:
             filtered_fields = [
-                name for name, value in user_fields.dict().items()
-                if value is True
+                name for name, value in user_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["user.fields"] = ",".join(
@@ -165,8 +156,7 @@ class ListExpansionsBuilder:
     def add_expansions(self, expansions: ListExpansionsFilter):
         if expansions:
             filtered_expansions = [
-                name for name, value in expansions.dict().items()
-                if value is True
+                name for name, value in expansions.dict().items() if value is True
             ]
             if filtered_expansions:
                 self.params["expansions"] = ",".join(
@@ -177,8 +167,7 @@ class ListExpansionsBuilder:
     def add_list_fields(self, list_fields: ListFieldsFilter):
         if list_fields:
             filtered_fields = [
-                name for name, value in list_fields.dict().items()
-                if value is True
+                name for name, value in list_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["list.fields"] = ",".join(
@@ -189,8 +178,7 @@ class ListExpansionsBuilder:
     def add_user_fields(self, user_fields: TweetUserFieldsFilter):
         if user_fields:
             filtered_fields = [
-                name for name, value in user_fields.dict().items()
-                if value is True
+                name for name, value in user_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["user.fields"] = ",".join(
@@ -209,8 +197,7 @@ class SpaceExpansionsBuilder:
     def add_expansions(self, expansions: SpaceExpansionsFilter):
         if expansions:
             filtered_expansions = [
-                name for name, value in expansions.dict().items()
-                if value is True
+                name for name, value in expansions.dict().items() if value is True
             ]
             if filtered_expansions:
                 self.params["expansions"] = ",".join(
@@ -221,8 +208,7 @@ class SpaceExpansionsBuilder:
     def add_space_fields(self, space_fields: SpaceFieldsFilter):
         if space_fields:
             filtered_fields = [
-                name for name, value in space_fields.dict().items()
-                if value is True
+                name for name, value in space_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["space.fields"] = ",".join(
@@ -233,8 +219,7 @@ class SpaceExpansionsBuilder:
     def add_user_fields(self, user_fields: TweetUserFieldsFilter):
         if user_fields:
             filtered_fields = [
-                name for name, value in user_fields.dict().items()
-                if value is True
+                name for name, value in user_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["user.fields"] = ",".join(
@@ -286,8 +271,7 @@ class DMExpansionsBuilder:
     def add_expansions(self, expansions: DMEventExpansionFilter):
         if expansions:
             filtered_expansions = [
-                name for name, value in expansions.dict().items()
-                if value is True
+                name for name, value in expansions.dict().items() if value is True
             ]
             if filtered_expansions:
                 self.params["expansions"] = ",".join(filtered_expansions)
@@ -296,8 +280,7 @@ class DMExpansionsBuilder:
     def add_event_types(self, event_types: DMEventTypeFilter):
         if event_types:
             filtered_types = [
-                name for name, value in event_types.dict().items()
-                if value is True
+                name for name, value in event_types.dict().items() if value is True
             ]
             if filtered_types:
                 self.params["event_types"] = ",".join(filtered_types)
@@ -306,8 +289,7 @@ class DMExpansionsBuilder:
     def add_media_fields(self, media_fields: DMMediaFieldFilter):
         if media_fields:
             filtered_fields = [
-                name for name, value in media_fields.dict().items()
-                if value is True
+                name for name, value in media_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["media.fields"] = ",".join(filtered_fields)
@@ -316,8 +298,7 @@ class DMExpansionsBuilder:
     def add_tweet_fields(self, tweet_fields: DMTweetFieldFilter):
         if tweet_fields:
             filtered_fields = [
-                name for name, value in tweet_fields.dict().items()
-                if value is True
+                name for name, value in tweet_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["tweet.fields"] = ",".join(filtered_fields)
@@ -326,8 +307,7 @@ class DMExpansionsBuilder:
     def add_user_fields(self, user_fields: TweetUserFieldsFilter):
         if user_fields:
             filtered_fields = [
-                name for name, value in user_fields.dict().items()
-                if value is True
+                name for name, value in user_fields.dict().items() if value is True
             ]
             if filtered_fields:
                 self.params["user.fields"] = ",".join(filtered_fields)
@@ -405,7 +385,10 @@ class TweetPostBuilder:
         return self
 
     def add_reply_settings(
-        self, exclude_user_ids: list, reply_to_id: str, settings: TweetReplySettingsFilter
+        self,
+        exclude_user_ids: list,
+        reply_to_id: str,
+        settings: TweetReplySettingsFilter,
     ):
         if exclude_user_ids:
             self.params["exclude_reply_user_ids"] = exclude_user_ids

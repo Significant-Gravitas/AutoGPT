@@ -60,6 +60,7 @@ class OAuthState(BaseModel):
     scopes: list[str]
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
 
+
 class UserMetadata(BaseModel):
     integration_credentials: list[Credentials] = Field(default_factory=list)
     integration_oauth_states: list[OAuthState] = Field(default_factory=list)

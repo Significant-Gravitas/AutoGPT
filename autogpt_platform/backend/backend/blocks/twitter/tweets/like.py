@@ -19,8 +19,8 @@ from backend.blocks.twitter._serializer import (
     ResponseDataSerializer,
 )
 from backend.blocks.twitter._types import (
-    TweetExpansionInputs,
     ExpansionFilter,
+    TweetExpansionInputs,
     TweetFieldsFilter,
     TweetMediaFieldsFilter,
     TweetPlaceFieldsFilter,

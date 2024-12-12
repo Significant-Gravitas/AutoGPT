@@ -1,9 +1,8 @@
 from typing import Literal
 
-from backend.data.model  import OAuth2Credentials
 from pydantic import SecretStr
 
-from backend.data.model import CredentialsField, CredentialsMetaInput
+from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
 from backend.integrations.oauth.twitter import TwitterOAuthHandler
 from backend.util.settings import Secrets
 
