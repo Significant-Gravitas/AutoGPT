@@ -9,6 +9,9 @@ export const loginPageFixture = base.extend<{ loginPage: LoginPage }>({
 });
 
 // Export just the fixture function
-export const createLoginPageFixture = async ({ page }: { page: Page }, use: (loginPage: LoginPage) => Promise<void>) => {
+export const createLoginPageFixture = async (
+  { page }: { page: Page },
+  use: (loginPage: LoginPage) => Promise<void>,
+) => {
   await use(new LoginPage(page));
 };
