@@ -1,14 +1,18 @@
 from enum import Enum
-from backend.data.block import BlockSchema
-from backend.data.model import SchemaField
+
 from pydantic import BaseModel
 
+from backend.data.block import BlockSchema
+from backend.data.model import SchemaField
+
 # -------------- Tweets -----------------
+
 
 class TweetReplySettingsFilter(BaseModel):
     Mentioned_Users_Only: bool = False
     Following_Users_Only: bool = False
     All_Users: bool = False
+
 
 class TweetUserFieldsFilter(BaseModel):
     Account_Creation_Date: bool = False
@@ -27,6 +31,7 @@ class TweetUserFieldsFilter(BaseModel):
     Is_Verified: bool = False
     Verification_Type: bool = False
     Content_Withholding_Info: bool = False
+
 
 class TweetFieldsFilter(BaseModel):
     Tweet_Attachments: bool = False
@@ -47,6 +52,7 @@ class TweetFieldsFilter(BaseModel):
     Tweet_Source: bool = False
     Tweet_Text: bool = False
     Withheld_Content: bool = False
+
 
 class PersonalTweetFieldsFilter(BaseModel):
     attachments: bool = False
@@ -71,12 +77,14 @@ class PersonalTweetFieldsFilter(BaseModel):
     text: bool = False
     withheld: bool = False
 
+
 class TweetPollFieldsFilter(BaseModel):
     Duration_Minutes: bool = False
     End_DateTime: bool = False
     Poll_ID: bool = False
     Poll_Options: bool = False
     Voting_Status: bool = False
+
 
 class TweetPlaceFieldsFilter(BaseModel):
     Contained_Within_Places: bool = False
@@ -87,6 +95,7 @@ class TweetPlaceFieldsFilter(BaseModel):
     Place_ID: bool = False
     Place_Name: bool = False
     Place_Type: bool = False
+
 
 class TweetMediaFieldsFilter(BaseModel):
     Duration_in_Milliseconds: bool = False
@@ -103,27 +112,33 @@ class TweetMediaFieldsFilter(BaseModel):
     Alternative_Text: bool = False
     Media_Variants: bool = False
 
+
 class ExpansionFilter(BaseModel):
-     Poll_IDs: bool = False
-     Media_Keys: bool = False
-     Author_User_ID: bool = False
-     Edit_History_Tweet_IDs: bool = False
-     Mentioned_Usernames: bool = False
-     Place_ID: bool = False
-     Reply_To_User_ID: bool = False
-     Referenced_Tweet_ID: bool = False
-     Referenced_Tweet_Author_ID: bool = False
+    Poll_IDs: bool = False
+    Media_Keys: bool = False
+    Author_User_ID: bool = False
+    Edit_History_Tweet_IDs: bool = False
+    Mentioned_Usernames: bool = False
+    Place_ID: bool = False
+    Reply_To_User_ID: bool = False
+    Referenced_Tweet_ID: bool = False
+    Referenced_Tweet_Author_ID: bool = False
+
 
 class TweetExcludesFilter(BaseModel):
     retweets: bool = False
     replies: bool = False
 
+
 # -------------- Users -----------------
+
 
 class UserExpansionsFilter(BaseModel):
     pinned_tweet_id: bool = False
 
+
 # -------------- DM's' -----------------
+
 
 class DMEventFieldFilter(BaseModel):
     id: bool = False
@@ -136,16 +151,19 @@ class DMEventFieldFilter(BaseModel):
     referenced_tweets: bool = False
     attachments: bool = False
 
+
 class DMEventTypeFilter(BaseModel):
     MessageCreate: bool = False
     ParticipantsJoin: bool = False
     ParticipantsLeave: bool = False
+
 
 class DMEventExpansionFilter(BaseModel):
     attachments_media_keys: bool = False
     referenced_tweets_id: bool = False
     sender_id: bool = False
     participant_ids: bool = False
+
 
 class DMMediaFieldFilter(BaseModel):
     duration_ms: bool = False
@@ -158,6 +176,7 @@ class DMMediaFieldFilter(BaseModel):
     public_metrics: bool = False
     alt_text: bool = False
     variants: bool = False
+
 
 class DMTweetFieldFilter(BaseModel):
     attachments: bool = False
@@ -179,7 +198,9 @@ class DMTweetFieldFilter(BaseModel):
     text: bool = False
     withheld: bool = False
 
+
 # -------------- Spaces -----------------
+
 
 class SpaceExpansionsFilter(BaseModel):
     Invited_Users: bool = False
@@ -187,6 +208,7 @@ class SpaceExpansionsFilter(BaseModel):
     Creator: bool = False
     Hosts: bool = False
     Topics: bool = False
+
 
 class SpaceFieldsFilter(BaseModel):
     Space_ID: bool = False
@@ -206,15 +228,19 @@ class SpaceFieldsFilter(BaseModel):
     Topic_IDs: bool = False
     Last_Updated_Time: bool = False
 
-class SpaceStatesFilter(str , Enum):
+
+class SpaceStatesFilter(str, Enum):
     live = "live"
     scheduled = "scheduled"
     all = "all"
 
+
 # -------------- List Expansions -----------------
+
 
 class ListExpansionsFilter(BaseModel):
     List_Owner_ID: bool = False
+
 
 class ListFieldsFilter(BaseModel):
     List_ID: bool = False
@@ -225,6 +251,7 @@ class ListFieldsFilter(BaseModel):
     Member_Count: bool = False
     Is_Private: bool = False
     Owner_ID: bool = False
+
 
 # ---------  [Input Types] -------------
 class TweetExpansionInputs(BlockSchema):
@@ -265,6 +292,7 @@ class TweetExpansionInputs(BlockSchema):
         advanced=True,
     )
 
+
 class DMEventExpansionInputs(BlockSchema):
     expansions: DMEventExpansionFilter = SchemaField(
         description="Select expansions to include related data objects in the 'includes' section.",
@@ -296,6 +324,7 @@ class DMEventExpansionInputs(BlockSchema):
         advanced=True,
     )
 
+
 class UserExpansionInputs(BlockSchema):
     expansions: UserExpansionsFilter = SchemaField(
         description="Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet.",
@@ -314,6 +343,7 @@ class UserExpansionInputs(BlockSchema):
         placeholder="Choose what user details you want to see",
         advanced=True,
     )
+
 
 class SpaceExpansionInputs(BlockSchema):
     expansions: SpaceExpansionsFilter = SchemaField(
@@ -334,6 +364,7 @@ class SpaceExpansionInputs(BlockSchema):
         placeholder="Pick what details you want to see about the users",
         advanced=True,
     )
+
 
 class ListExpansionInputs(BlockSchema):
     expansions: ListExpansionsFilter = SchemaField(
@@ -356,6 +387,7 @@ class ListExpansionInputs(BlockSchema):
         default=ListFieldsFilter(Owner_ID=True),
         advanced=True,
     )
+
 
 class TweetTimeWindowInputs(BlockSchema):
     start_time: str = SchemaField(

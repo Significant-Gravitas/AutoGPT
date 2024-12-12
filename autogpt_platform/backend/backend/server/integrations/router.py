@@ -104,7 +104,9 @@ def callback(
 
         scopes = handler.handle_default_scopes(scopes)
 
-        credentials = handler.exchange_code_for_tokens(code, scopes, valid_state.code_verifier)
+        credentials = handler.exchange_code_for_tokens(
+            code, scopes, valid_state.code_verifier
+        )
 
         logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
 

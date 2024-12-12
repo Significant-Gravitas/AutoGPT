@@ -27,9 +27,9 @@ from backend.blocks.twitter._types import (
     TweetMediaFieldsFilter,
     TweetPlaceFieldsFilter,
     TweetPollFieldsFilter,
+    TweetReplySettingsFilter,
     TweetTimeWindowInputs,
     TweetUserFieldsFilter,
-    TweetReplySettingsFilter
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
