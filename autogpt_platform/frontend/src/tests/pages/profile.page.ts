@@ -38,13 +38,13 @@ export class ProfilePage extends BasePage {
   }
 
   private async waitForPageToLoad(): Promise<void> {
-    await this.page.waitForLoadState("networkidle", { timeout: 60_000 });
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 60_000 });
 
     await this.page.locator('input[name="handle"]').waitFor({
       state: "visible",
       timeout: 10_000,
     });
 
-    await this.page.waitForLoadState("networkidle", { timeout: 60_000 });
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 60_000 });
   }
 }
