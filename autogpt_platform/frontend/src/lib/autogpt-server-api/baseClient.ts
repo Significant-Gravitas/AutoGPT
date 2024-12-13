@@ -39,8 +39,8 @@ export default class BaseAutoGPTServerAPI {
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private supabaseClient: SupabaseClient | null = null;
   heartbeatInterval: number | null = null;
-  readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
-  readonly HEARTBEAT_TIMEOUT = 10000; // 10 seconds
+  readonly HEARTBEAT_INTERVAL = 10_0000; // 30 seconds
+  readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
   heartbeatTimeoutId: number | null = null;
 
   constructor(

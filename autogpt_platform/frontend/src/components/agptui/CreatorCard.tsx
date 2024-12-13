@@ -35,14 +35,18 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
     >
       <div className="relative h-[64px] w-[64px]">
         <div className="absolute inset-0 overflow-hidden rounded-full">
-          <Image
-            src={creatorImage}
-            alt={creatorName}
-            width={64}
-            height={64}
-            className="h-full w-full object-cover"
-            priority
-          />
+          {creatorImage ? (
+            <Image
+              src={creatorImage}
+              alt={creatorName}
+              width={64}
+              height={64}
+              className="h-full w-full object-cover"
+              priority
+            />
+          ) : (
+            <div className="h-full w-full bg-neutral-300 dark:bg-neutral-600" />
+          )}
         </div>
       </div>
 

@@ -26,8 +26,11 @@ test.describe("Build", () => { //(1)!
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
   // prettier-ignore
   test("user can add a block", async ({ page }) => { //(6)!
+    // workaround for #8788
+    await buildPage.navbar.clickBuildLink();
+    await test.expect(page).toHaveURL(new RegExp("/build"));
+    await buildPage.waitForPageLoad();
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy(); //(7)!
-    await test.expect(page).toHaveURL(new RegExp("/.*build")); //(8)!
 
     await buildPage.closeTutorial(); //(9)!
     await buildPage.openBlocksPanel(); //(10)!

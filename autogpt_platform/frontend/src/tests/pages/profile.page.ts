@@ -31,7 +31,7 @@ export class ProfilePage extends BasePage {
 
     await this.page.getByTestId("profile-email").waitFor({
       state: "visible",
-      timeout: 60_000,
+      timeout: 10_000,
     });
 
     await this.page.waitForLoadState("networkidle", { timeout: 60_000 });

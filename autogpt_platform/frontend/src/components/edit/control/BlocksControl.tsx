@@ -122,8 +122,9 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               variant="ghost"
               size="icon"
               data-id="blocks-control-popover-trigger"
-              data-testid="blocks-control-blocks-button dark:hover:bg-slate-800"
+              data-testid="blocks-control-blocks-button"
               name="Blocks"
+              className="dark:hover:bg-slate-800"
             >
               <IconToyBrick />
             </Button>

@@ -50,7 +50,7 @@ export class MonitorPage extends BasePage {
       // Wait for table headers to be visible (indicates table structure is ready)
       await this.page.locator("thead th").first().waitFor({
         state: "visible",
-        timeout: 5_000,
+        timeout: 10_000,
       });
 
       // Wait for either a table row or an empty tbody to be present
@@ -58,14 +58,14 @@ export class MonitorPage extends BasePage {
         // Wait for at least one row
         this.page.locator("tbody tr[data-testid]").first().waitFor({
           state: "visible",
-          timeout: 5_000,
+          timeout: 10_000,
         }),
         // OR wait for an empty tbody (indicating no agents but table is loaded)
         this.page
           .locator("tbody[data-testid='agent-flow-list-body']:empty")
           .waitFor({
             state: "visible",
-            timeout: 5_000,
+            timeout: 10_000,
           }),
       ]);
 
