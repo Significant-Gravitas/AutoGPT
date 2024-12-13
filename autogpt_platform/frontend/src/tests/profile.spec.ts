@@ -10,7 +10,7 @@ test.describe("Profile", () => {
     // Start each test with login using worker auth
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/");
+    await test.expect(page).toHaveURL("/store");
   });
 
   test("user can view their profile information", async ({
@@ -34,9 +34,6 @@ test.describe("Profile", () => {
   test("profile navigation is accessible from navbar", async ({ page }) => {
     await profilePage.navbar.clickProfileLink();
     await test.expect(page).toHaveURL(new RegExp("/profile"));
-    // workaround for #8788
-    await page.reload();
-    await page.reload();
     await test.expect(profilePage.isLoaded()).resolves.toBeTruthy();
   });
 

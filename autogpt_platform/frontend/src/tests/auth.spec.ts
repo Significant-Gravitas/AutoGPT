@@ -24,6 +24,12 @@ test.describe("Authentication", () => {
     // Click on the profile menu trigger to open popout
     await page.getByTestId("profile-popout-menu-trigger").click();
 
+    // Wait for menu to be visible before clicking logout
+    await page.getByRole("button", { name: "Log out" }).waitFor({
+      state: "visible",
+      timeout: 5000,
+    });
+
     // Click the logout button in the popout menu
     await page.getByRole("button", { name: "Log out" }).click();
 
