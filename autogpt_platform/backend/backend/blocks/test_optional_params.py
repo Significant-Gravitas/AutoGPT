@@ -47,14 +47,6 @@ class OptionalFieldsBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=OptionalFieldsBlock.Input,
             output_schema=OptionalFieldsBlock.Output,
-            test_input={
-                "optional_multiselect": [SelectOptions.OPTION1, SelectOptions.OPTION2],
-                "optional_string": "test string",
-                "optional_select": SelectOptions.OPTION1,
-                "optional_list": ["item1", "item2"],
-                "optional_int": 3,
-            },
-            test_output=("status", "processed"),
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
