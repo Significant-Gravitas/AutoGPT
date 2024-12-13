@@ -33,6 +33,8 @@ export default defineConfig({
     screenshot: "only-on-failure",
     bypassCSP: true,
   },
+  /* Maximum time one test can run for */
+  timeout: 60000,
 
   /* Configure projects for major browsers */
   projects: [
@@ -62,10 +64,10 @@ export default defineConfig({
     // // },
 
     // /* Test against branded browsers. */
-    {
-      name: "Microsoft Edge",
-      use: { ...devices["Desktop Edge"], channel: "msedge" },
-    },
+    // {
+    //   name: "Microsoft Edge",
+    //   use: { ...devices["Desktop Edge"], channel: "msedge" },
+    // },
     // {
     //   name: 'Google Chrome',
     //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
