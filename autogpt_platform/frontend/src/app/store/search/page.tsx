@@ -128,7 +128,7 @@ function SearchResults({
             </h1>
           </div>
           <div className="flex-none">
-            <SearchBar width="w-[439px]" />
+            <SearchBar width="w-[439px]" height="h-[60px]" />
           </div>
         </div>
 
