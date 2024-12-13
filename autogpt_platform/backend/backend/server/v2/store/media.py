@@ -16,6 +16,62 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
+
+    # Get file content for deeper validation
+    try:
+        content = await file.read(1024)  # Read first 1KB for validation
+        await file.seek(0)  # Reset file pointer
+    except Exception as e:
+        logger.error(f"Error reading file content: {str(e)}")
+        raise backend.server.v2.store.exceptions.FileReadError(
+            "Failed to read file content"
+        ) from e
+
+    # Validate file signature/magic bytes
+    if file.content_type in ALLOWED_IMAGE_TYPES:
+        # Check image file signatures
+        if content.startswith(b"\xFF\xD8\xFF"):  # JPEG
+            if file.content_type != "image/jpeg":
+                raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
+            if file.content_type != "image/png":
+                raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):  # GIF
+            if file.content_type != "image/gif":
+                raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":  # WebP
+            if file.content_type != "image/webp":
+                raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        else:
+            raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                "Invalid image file signature"
+            )
+
+    elif file.content_type in ALLOWED_VIDEO_TYPES:
+        # Check video file signatures
+        if content.startswith(b"\x00\x00\x00") and (content[4:8] == b"ftyp"):  # MP4
+            if file.content_type != "video/mp4":
+                raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"\x1a\x45\xdf\xa3"):  # WebM
+            if file.content_type != "video/webm":
+                raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        else:
+            raise backend.server.v2.store.exceptions.InvalidFileTypeError(
+                "Invalid video file signature"
+            )
+
     settings = Settings()
 
     # Check required settings first before doing any file processing
