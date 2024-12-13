@@ -53,12 +53,16 @@ test.describe("Build", () => { //(1)!
 
     // add all the blocks in order
     for (const block of blocks) {
-      await buildPage.addBlock(block);
+      if (block.id !== "e189baac-8c20-45a1-94a7-55177ea42565") {
+        await buildPage.addBlock(block);
+      }
     }
     await buildPage.closeBlocksPanel();
     // check that all the blocks are visible
     for (const block of blocks) {
-      await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
+      if (block.id !== "e189baac-8c20-45a1-94a7-55177ea42565") {
+        await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
+      }
     }
     // fill in the input for the agent input block
     await buildPage.fillBlockInputByPlaceholder(

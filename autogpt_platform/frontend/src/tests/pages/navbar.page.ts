@@ -5,7 +5,7 @@ export class NavBar {
 
   async clickProfileLink() {
     await this.page.getByTestId("profile-popout-menu-trigger").click();
-    await this.page.getByText("Edit profile").click();
+    await this.page.getByRole("link", { name: "Edit profile" }).click();
   }
 
   async clickMonitorLink() {

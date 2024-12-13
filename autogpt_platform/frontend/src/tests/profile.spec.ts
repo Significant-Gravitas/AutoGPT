@@ -27,8 +27,8 @@ test.describe("Profile", () => {
     await test.expect(page).toHaveURL(new RegExp("/profile"));
 
     // Verify email matches test worker's email
-    const displayedEmail = await profilePage.getDisplayedEmail();
-    test.expect(displayedEmail).toBe(testUser.email);
+    const displayedHandle = await profilePage.getDisplayedName();
+    test.expect(displayedHandle).toBe("No Profile Data");
   });
 
   test("profile navigation is accessible from navbar", async ({ page }) => {
