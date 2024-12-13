@@ -99,7 +99,9 @@ async def test_upload_media_video_type(mock_settings, mock_storage_client):
 
 
 async def test_upload_media_file_too_large(mock_settings, mock_storage_client):
-    large_data = b"\xFF\xD8\xFF" + b"x" * (50 * 1024 * 1024 + 1)  # 50MB + 1 byte with valid JPEG signature
+    large_data = b"\xFF\xD8\xFF" + b"x" * (
+        50 * 1024 * 1024 + 1
+    )  # 50MB + 1 byte with valid JPEG signature
     test_file = fastapi.UploadFile(
         filename="laptop.jpeg",
         file=io.BytesIO(large_data),
