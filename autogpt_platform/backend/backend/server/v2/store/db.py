@@ -1,6 +1,7 @@
 import logging
-from datetime import datetime
 import random
+from datetime import datetime
+
 import prisma.enums
 import prisma.errors
 import prisma.models
