@@ -8,7 +8,7 @@ packages = [{ include = "backend" }]
 
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.13"
 aio-pika = "^9.5.0"
 anthropic = "^0.39.0"
 apscheduler = "^3.11.0"
@@ -49,8 +49,10 @@ googlemaps = "^4.10.0"
 replicate = "^1.0.4"
 pinecone = "^5.3.1"
 cryptography = "^43.0.3"
+python-multipart = "^0.0.19"
 sqlalchemy = "^2.0.36"
 psycopg2-binary = "^2.9.10"
+google-cloud-storage = "^2.18.2"
 launchdarkly-server-sdk = "^9.8.0"
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.31.0"
@@ -62,6 +64,8 @@ pyright = "^1.1.389"
 isort = "^5.13.2"
 black = "^24.10.0"
 aiohappyeyeballs = "^2.4.3"
+pytest-mock = "^3.14.0"
+faker = "^30.8.2"
 
 [build-system]
 requires = ["poetry-core"]

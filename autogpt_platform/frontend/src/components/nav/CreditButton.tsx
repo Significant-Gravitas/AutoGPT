@@ -11,8 +11,13 @@ export default function CreditButton() {
   const [credit, setCredit] = useState<number | null>(null);
 
   const fetchCredit = useCallback(async () => {
-    const response = await api.getUserCredit();
-    setCredit(response.credits);
+    try {
+      const response = await api.getUserCredit();
+      setCredit(response.credits);
+    } catch (error) {
+      console.error("Error fetching credit:", error);
+      setCredit(null);
+    }
   }, []);
 
   useEffect(() => {
