@@ -25,6 +25,29 @@ async def get_store_agents(
     logger.debug(
         f"Getting store agents. featured={featured}, creator={creator}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
+    sanitized_query = None
+    # Sanitize and validate search query by escaping special characters
+    if search_query is not None:
+        sanitized_query = search_query.strip()
+        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                "Invalid search query"
+            )
+
+        # Escape special SQL characters
+        sanitized_query = (
+            sanitized_query.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+            .replace("'", "\\'")
+            .replace('"', '\\"')
+            .replace(";", "\\;")
+            .replace("--", "\\--")
+            .replace("/*", "\\/*")
+            .replace("*/", "\\*/")
+        )
 
     where_clause = {}
     if featured:
@@ -33,10 +56,11 @@ async def get_store_agents(
         where_clause["creator_username"] = creator
     if category:
         where_clause["categories"] = {"has": category}
-    if search_query:
+
+    if sanitized_query:
         where_clause["OR"] = [
-            {"agent_name": {"contains": search_query, "mode": "insensitive"}},
-            {"description": {"contains": search_query, "mode": "insensitive"}},
+            {"agent_name": {"contains": sanitized_query, "mode": "insensitive"}},
+            {"description": {"contains": sanitized_query, "mode": "insensitive"}},
         ]
 
     order_by = []
@@ -145,40 +169,67 @@ async def get_store_creators(
         f"Getting store creators. featured={featured}, search={search_query}, sorted_by={sorted_by}, page={page}"
     )
 
-    # Build where clause
+    # Build where clause with sanitized inputs
     where = {}
 
-    # Add search filter if provided
+    # Add search filter if provided, using parameterized queries
     if search_query:
+        # Sanitize and validate search query by escaping special characters
+        sanitized_query = search_query.strip()
+        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                "Invalid search query"
+            )
+
+        # Escape special SQL characters
+        sanitized_query = (
+            sanitized_query.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+            .replace("'", "\\'")
+            .replace('"', '\\"')
+            .replace(";", "\\;")
+            .replace("--", "\\--")
+            .replace("/*", "\\/*")
+            .replace("*/", "\\*/")
+        )
+
         where["OR"] = [
-            {"username": {"contains": search_query, "mode": "insensitive"}},
-            {"name": {"contains": search_query, "mode": "insensitive"}},
-            {"description": {"contains": search_query, "mode": "insensitive"}},
+            {"username": {"contains": sanitized_query, "mode": "insensitive"}},
+            {"name": {"contains": sanitized_query, "mode": "insensitive"}},
+            {"description": {"contains": sanitized_query, "mode": "insensitive"}},
         ]
 
     try:
-        # Get total count for pagination
+        # Validate pagination parameters
+        if not isinstance(page, int) or page < 1:
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                "Invalid page number"
+            )
+        if not isinstance(page_size, int) or page_size < 1 or page_size > 100:
+            raise backend.server.v2.store.exceptions.DatabaseError("Invalid page size")
+
+        # Get total count for pagination using sanitized where clause
         total = await prisma.models.Creator.prisma().count(
             where=prisma.types.CreatorWhereInput(**where)
         )
         total_pages = (total + page_size - 1) // page_size
 
-        # Add pagination
+        # Add pagination with validated parameters
         skip = (page - 1) * page_size
         take = page_size
 
-        # Add sorting
+        # Add sorting with validated sort parameter
         order = []
-        if sorted_by == "agent_rating":
-            order.append({"agent_rating": "desc"})
-        elif sorted_by == "agent_runs":
-            order.append({"agent_runs": "desc"})
-        elif sorted_by == "num_agents":
-            order.append({"num_agents": "desc"})
+        valid_sort_fields = {"agent_rating", "agent_runs", "num_agents"}
+        if sorted_by in valid_sort_fields:
+            order.append({sorted_by: "desc"})
         else:
             order.append({"username": "asc"})
 
-        # Execute query
+        # Execute query with sanitized parameters
         creators = await prisma.models.Creator.prisma().find_many(
             where=prisma.types.CreatorWhereInput(**where),
             skip=skip,
