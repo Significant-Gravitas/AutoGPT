@@ -2,6 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  .font-neue {
+    font-family: "PP Neue Montreal TT", sans-serif;
+  }
+}
+
+@layer utilities {
+  .w-110 {
+    width: 27.5rem;
+  }
+  .h-7\.5 {
+    height: 1.1875rem;
+  }
+  .h-18 {
+    height: 4.5rem;
+  }
+  .h-238 {
+    height: 14.875rem;
+  }
+  .top-158 {
+    top: 9.875rem;
+  }
+  .top-254 {
+    top: 15.875rem;
+  }
+  .top-284 {
+    top: 17.75rem;
+  }
+  .top-360 {
+    top: 22.5rem;
+  }
+  .left-297 {
+    left: 18.5625rem;
+  }
+  .left-34 {
+    left: 2.125rem;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

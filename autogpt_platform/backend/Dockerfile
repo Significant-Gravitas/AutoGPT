@@ -6,18 +6,23 @@ ENV PYTHONUNBUFFERED 1
 
 WORKDIR /app
 
+RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;\n' > /etc/apt/apt.conf.d/99fixbadproxy
+
+RUN apt-get update --allow-releaseinfo-change --fix-missing
+
 # Install build dependencies
-RUN apt-get update \
-    && apt-get install -y build-essential curl ffmpeg wget libcurl4-gnutls-dev libexpat1-dev libpq5 gettext libz-dev libssl-dev postgresql-client git \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get install -y build-essential 
+RUN apt-get install -y libpq5
+RUN apt-get install -y libz-dev
+RUN apt-get install -y libssl-dev
+RUN apt-get install -y postgresql-client
 
-ENV POETRY_VERSION=1.8.3 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=false \
-    PATH="$POETRY_HOME/bin:$PATH"
-
+ENV POETRY_VERSION=1.8.3
+ENV POETRY_HOME=/opt/poetry
+ENV POETRY_NO_INTERACTION=1
+ENV POETRY_VIRTUALENVS_CREATE=false
+ENV PATH=/opt/poetry/bin:$PATH
+    
 # Upgrade pip and setuptools to fix security vulnerabilities
 RUN pip3 install --upgrade pip setuptools
 
@@ -39,11 +44,11 @@ FROM python:3.11.10-slim-bookworm AS server_dependencies
 
 WORKDIR /app
 
-ENV POETRY_VERSION=1.8.3 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=false \
-    PATH="$POETRY_HOME/bin:$PATH"
+ENV POETRY_VERSION=1.8.3
+ENV POETRY_HOME=/opt/poetry
+ENV POETRY_NO_INTERACTION=1
+ENV POETRY_VIRTUALENVS_CREATE=false
+ENV PATH=/opt/poetry/bin:$PATH
 
 
 # Upgrade pip and setuptools to fix security vulnerabilities

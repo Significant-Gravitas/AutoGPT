@@ -96,12 +96,6 @@ export const FlowRunInfo: React.FC<
               {flow.name}{" "}
               <span className="font-light">v{execution.graph_version}</span>
             </CardTitle>
-            <p className="mt-2">
-              Agent ID: <code>{flow.id}</code>
-            </p>
-            <p className="mt-1">
-              Run ID: <code>{execution.execution_id}</code>
-            </p>
           </div>
           <div className="flex space-x-2">
             {execution.status === "RUNNING" && (
@@ -121,6 +115,12 @@ export const FlowRunInfo: React.FC<
           </div>
         </CardHeader>
         <CardContent>
+          <p className="hidden">
+            <strong>Agent ID:</strong> <code>{flow.id}</code>
+          </p>
+          <p className="hidden">
+            <strong>Run ID:</strong> <code>{flowRun.id}</code>
+          </p>
           <div>
             <strong>Status:</strong>{" "}
             <FlowRunStatusBadge status={execution.status} />

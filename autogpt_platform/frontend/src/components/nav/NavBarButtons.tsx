@@ -7,6 +7,7 @@ import { LuLaptop, LuShoppingCart } from "react-icons/lu";
 import { BehaveAs, cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { getBehaveAs } from "@/lib/utils";
+import { IconMarketplace } from "@/components/ui/icons";
 import MarketPopup from "./MarketPopup";
 
 export function NavBarButtons({ className }: { className?: string }) {
@@ -21,6 +22,11 @@ export function NavBarButtons({ className }: { className?: string }) {
       href: "/build",
       text: "Build",
       icon: <BsBoxes />,
+    },
+    {
+      href: "/store",
+      text: "Agent Store",
+      icon: <IconMarketplace />,
     },
   ];
 

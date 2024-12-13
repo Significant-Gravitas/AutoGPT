@@ -15,7 +15,9 @@ export class BuildPage extends BasePage {
   async closeTutorial(): Promise<void> {
     console.log(`closing tutorial`);
     try {
-      await this.page.getByRole("button", { name: "Skip Tutorial" }).click();
+      await this.page
+        .getByRole("button", { name: "Skip Tutorial", exact: true })
+        .click();
     } catch (error) {
       console.info("Error closing tutorial:", error);
     }
@@ -276,7 +278,7 @@ export class BuildPage extends BasePage {
   async isLoaded(): Promise<boolean> {
     console.log(`checking if build page is loaded`);
     try {
-      await this.page.waitForLoadState("networkidle", { timeout: 10_000 });
+      await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
       return true;
     } catch (error) {
       return false;

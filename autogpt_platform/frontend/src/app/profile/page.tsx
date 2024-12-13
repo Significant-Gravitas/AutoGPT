@@ -1,6 +1,6 @@
 "use client";
 
-import { useSupabase } from "@/components/SupabaseProvider";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
