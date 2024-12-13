@@ -673,6 +673,7 @@ const FlowEditor: React.FC<{
                 blocks={availableNodes}
                 addBlock={addNode}
                 flows={availableFlows}
+                nodes={nodes}
               />
             }
             botChildren={
