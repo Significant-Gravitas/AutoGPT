@@ -246,27 +246,6 @@ async def main():
 
     await db.agentnodeexecutioninputoutput.create_many(data=input_output_data)
 
-    # Insert AgentGraphExecutionSchedules
-    agent_graph_execution_schedules = []
-    print(
-        f"Inserting {NUM_USERS * MAX_GRAPHS_PER_USER} agent graph execution schedules"
-    )
-    for graph in agent_graphs:
-        user = random.choice(users)
-        schedule = await db.agentgraphexecutionschedule.create(
-            data={
-                "id": str(faker.uuid4()),
-                "agentGraphId": graph.id,
-                "agentGraphVersion": graph.version,
-                "schedule": "* * * * *",
-                "isEnabled": True,
-                "inputData": "{}",
-                "userId": user.id,
-                "lastUpdated": datetime.now(),
-            }
-        )
-        agent_graph_execution_schedules.append(schedule)
-
     # Insert AgentNodeLinks
     print(f"Inserting {NUM_USERS * MAX_GRAPHS_PER_USER} agent node links")
     for graph in agent_graphs:
@@ -310,21 +289,21 @@ async def main():
                 }
             )
 
-    # Insert UserBlockCredit
-    print(f"Inserting {NUM_USERS} user block credits")
+    # Insert CreditTransaction (formerly UserBlockCredit)
+    print(f"Inserting {NUM_USERS} credit transactions")
     for user in users:
         for _ in range(1):
             block = random.choice(agent_blocks)
-            await db.userblockcredit.create(
+            await db.credittransaction.create(
                 data={
                     "transactionKey": str(faker.uuid4()),
                     "userId": user.id,
                     "blockId": block.id,
                     "amount": random.randint(1, 100),
                     "type": (
-                        prisma.enums.UserBlockCreditType.TOP_UP
+                        "TOP_UP"
                         if random.random() < 0.5
-                        else prisma.enums.UserBlockCreditType.USAGE
+                        else "USAGE"
                     ),
                     "metadata": prisma.Json({}),
                 }
