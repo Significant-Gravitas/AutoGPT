@@ -44,7 +44,7 @@ test.describe("Authentication", () => {
     
     await test.expect(page).toHaveURL("/login");
     await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/");
+    await test.expect(page).toHaveURL("/store");
     await test.expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
   });
 });
