@@ -143,7 +143,7 @@ class PineconeQueryBlock(Block):
                 top_k=input_data.top_k,
                 include_values=input_data.include_values,
                 include_metadata=input_data.include_metadata,
-            ).to_dict()
+            ).to_dict()  # type: ignore
             combined_text = ""
             if results["matches"]:
                 texts = [

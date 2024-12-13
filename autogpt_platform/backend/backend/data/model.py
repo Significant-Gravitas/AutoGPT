@@ -160,7 +160,7 @@ def SchemaField(
         exclude=exclude,
         json_schema_extra=json_extra,
         **kwargs,
-    )
+    )  # type: ignore
 
 
 class _BaseCredentials(BaseModel):

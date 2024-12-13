@@ -18,7 +18,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PasswordInput } from "@/components/PasswordInput";
 import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
 import { useState } from "react";
-import { useSupabase } from "@/components/SupabaseProvider";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -203,14 +203,34 @@ export default function LoginPage() {
                 className="flex w-full justify-center"
                 type="submit"
                 disabled={isLoading}
+                onClick={async () => {
+                  setIsLoading(true);
+                  const values = form.getValues();
+                  const result = await login(values);
+                  if (result) {
+                    setFeedback(result);
+                  }
+                  setIsLoading(false);
+                }}
               >
-                Log in
+                {isLoading ? <FaSpinner className="animate-spin" /> : "Log in"}
               </Button>
-            </div>
-            <div className="w-full text-center">
-              <Link href={"/signup"} className="w-fit text-xs hover:underline">
-                Create a new Account
-              </Link>
+              <Button
+                className="flex w-full justify-center"
+                type="button"
+                disabled={isLoading}
+                onClick={async () => {
+                  setIsLoading(true);
+                  const values = form.getValues();
+                  const result = await signup(values);
+                  if (result) {
+                    setFeedback(result);
+                  }
+                  setIsLoading(false);
+                }}
+              >
+                {isLoading ? <FaSpinner className="animate-spin" /> : "Sign up"}
+              </Button>
             </div>
           </form>
           <p className="text-sm text-red-500">{feedback}</p>
