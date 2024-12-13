@@ -18,7 +18,9 @@ export class ProfilePage extends BasePage {
 
   async getDisplayedName(): Promise<string> {
     await this.waitForPageToLoad();
-    const displayName = await this.page.locator('input[name="displayName"]').inputValue();
+    const displayName = await this.page
+      .locator('input[name="displayName"]')
+      .inputValue();
     if (!displayName) {
       throw new Error("Display name not found");
     }
@@ -39,7 +41,7 @@ export class ProfilePage extends BasePage {
     await this.page.waitForLoadState("networkidle", { timeout: 60_000 });
 
     await this.page.locator('input[name="handle"]').waitFor({
-      state: "visible", 
+      state: "visible",
       timeout: 10_000,
     });
 

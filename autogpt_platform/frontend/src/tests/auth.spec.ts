@@ -6,7 +6,9 @@ test.describe("Authentication", () => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
     await test.expect(page).toHaveURL(/\/store\/.*\/profile/);
-    await test.expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
+    await test
+      .expect(page.getByTestId("profile-popout-menu-trigger"))
+      .toBeVisible();
   });
 
   test("user can logout successfully", async ({
@@ -21,7 +23,7 @@ test.describe("Authentication", () => {
 
     // Click on the profile menu trigger to open popout
     await page.getByTestId("profile-popout-menu-trigger").click();
-    
+
     // Click the logout button in the popout menu
     await page.getByRole("button", { name: "Log out" }).click();
 
@@ -38,13 +40,15 @@ test.describe("Authentication", () => {
     await test.expect(page).toHaveURL(/\/store\/.*\/profile/);
     // Click on the profile menu trigger to open popout
     await page.getByTestId("profile-popout-menu-trigger").click();
-    
+
     // Click the logout button in the popout menu
     await page.getByRole("button", { name: "Log out" }).click();
-    
+
     await test.expect(page).toHaveURL("/login");
     await loginPage.login(testUser.email, testUser.password);
     await test.expect(page).toHaveURL(/\/store\/.*\/profile/);
-    await test.expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
+    await test
+      .expect(page.getByTestId("profile-popout-menu-trigger"))
+      .toBeVisible();
   });
 });

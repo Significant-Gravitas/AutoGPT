@@ -32,7 +32,10 @@ export class LoginPage {
     await passwordInput2.fill(password);
 
     // Wait for the button to be ready
-    const loginButton = this.page.getByRole("button", { name: "Log in", exact: true });
+    const loginButton = this.page.getByRole("button", {
+      name: "Log in",
+      exact: true,
+    });
     await loginButton.waitFor({ state: "visible" });
 
     // Start waiting for navigation before clicking

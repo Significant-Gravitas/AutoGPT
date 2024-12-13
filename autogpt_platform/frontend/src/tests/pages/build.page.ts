@@ -15,7 +15,9 @@ export class BuildPage extends BasePage {
   async closeTutorial(): Promise<void> {
     console.log(`closing tutorial`);
     try {
-      await this.page.getByRole("button", { name: "Skip Tutorial", exact: true }).click();
+      await this.page
+        .getByRole("button", { name: "Skip Tutorial", exact: true })
+        .click();
     } catch (error) {
       console.info("Error closing tutorial:", error);
     }
