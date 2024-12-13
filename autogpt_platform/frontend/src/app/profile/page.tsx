@@ -40,7 +40,7 @@ export default function PrivatePage() {
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
-  const { credits } = useCredits();
+  const { credits, requestTopUp } = useCredits();
   const [amount, setAmount] = useState(5);
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
@@ -119,10 +119,6 @@ export default function PrivatePage() {
     [],
   );
 
-  const handleTopUp = useCallback(() => {
-
-  }, []);
-
   if (isLoading || !providers) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -160,7 +156,7 @@ export default function PrivatePage() {
         </Button>
       </div>
       <Separator className="my-6" />
-      <h2 className="mb-4 text-lg">Top-up Credits</h2>
+      <h2 className="mb-4 text-lg">Top-Up Credits</h2>
       <div className="w-full max-w-md space-y-4">
         <div className="text-md">
           Current credits: <b>{credits}</b> <br />1 USD = 100 credits, 5 USD is
@@ -176,7 +172,7 @@ export default function PrivatePage() {
             min="5"
             step="1"
           />
-          <Button onClick={handleTopUp} className="whitespace-nowrap">
+          <Button onClick={() => requestTopUp(amount)} className="whitespace-nowrap">
             Top-Up
           </Button>
         </div>

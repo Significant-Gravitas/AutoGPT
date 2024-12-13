@@ -4,20 +4,20 @@ from datetime import datetime, timezone
 from prisma import Json
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
-from prisma.models import CreditTransaction
+from prisma.models import CreditTransaction, User
+import stripe
 
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
-from backend.util.settings import Config
+from backend.data.user import get_user_by_id
+from backend.server.model import RequestTopUpResponse
+from backend.util.settings import Settings
 
-config = Config()
+settings = Settings()
 
 
 class UserCreditBase(ABC):
-    def __init__(self, num_user_credits_refill: int):
-        self.num_user_credits_refill = num_user_credits_refill
-
     @abstractmethod
     async def get_or_refill_credit(self, user_id: str) -> int:
         """
@@ -65,8 +65,26 @@ class UserCreditBase(ABC):
         """
         pass
 
+    @abstractmethod
+    async def top_up_intent(self, user_id: str, amount: int) -> RequestTopUpResponse:
+        """
+        Create a payment intent to top up the credits for the user.
+
+        Args:
+            user_id (str): The user ID.
+            amount (int): The amount to top up.
+
+        Returns:
+            RequestTopUpResponse: The response containing the transaction ID and client secret.
+        """
+        pass
+
 
 class UserCredit(UserCreditBase):
+    def __init__(self):
+        self.num_user_credits_refill = settings.config.num_user_credits_refill
+        stripe.api_key = settings.secrets.stripe_api_key
+
     async def get_or_refill_credit(self, user_id: str) -> int:
         cur_time = self.time_now()
         cur_month = cur_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -211,6 +229,43 @@ class UserCredit(UserCreditBase):
             }
         )
 
+    async def top_up_intent(self, user_id: str, amount: int) -> RequestTopUpResponse:
+        user = await get_user_by_id(user_id)
+
+        if not user:
+            raise ValueError(f"User not found: {user_id}")
+
+        # Create customer if not exists
+        if not user.stripeCustomerId:
+            customer = stripe.Customer.create(name=user.name or "", email=user.email)
+            await User.prisma().update(
+                where={"id": user_id}, data={"stripeCustomerId": customer.id}
+            )
+            user.stripeCustomerId = customer.id
+
+        # Create payment intent
+        # amount param is always in the smallest currency unit (so cents for usd)
+        # https://docs.stripe.com/api/payment_intents/create
+        intent = stripe.PaymentIntent.create(
+            amount=amount * 100,
+            currency="usd",
+            customer=user.stripeCustomerId,
+        )
+
+        # Create pending transaction
+        await CreditTransaction.prisma().create(
+            data={
+                "transactionKey": intent.id,
+                "userId": user_id,
+                "amount": amount,
+                "type": CreditTransactionType.TOP_UP,
+                "isActive": False,
+                "metadata": Json({"paymentIntent": intent}),
+            }
+        )
+
+        return RequestTopUpResponse(transaction_id=intent.id, client_secret=intent.client_secret or "")
+
 
 class DisabledUserCredit(UserCreditBase):
     async def get_or_refill_credit(self, *args, **kwargs) -> int:
@@ -222,12 +277,15 @@ class DisabledUserCredit(UserCreditBase):
     async def top_up_credits(self, *args, **kwargs):
         pass
 
+    async def top_up_intent(self, *args, **kwargs) -> RequestTopUpResponse:
+        return RequestTopUpResponse(transaction_id="", client_secret="")
+
 
 def get_user_credit_model() -> UserCreditBase:
-    if config.enable_credit.lower() == "true":
-        return UserCredit(config.num_user_credits_refill)
+    if settings.config.enable_credit.lower() == "true":
+        return UserCredit()
     else:
-        return DisabledUserCredit(0)
+        return DisabledUserCredit()
 
 
 def get_block_costs() -> dict[str, list[BlockCost]]:

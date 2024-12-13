@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 export default function useCredits(): {
   credits: number | null;
   fetchCredits: () => void;
+  requestTopUp: (amount: number) => Promise<void>;
 } {
   const [credits, setCredits] = useState<number | null>(null);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
@@ -20,5 +21,6 @@ export default function useCredits(): {
   return {
     credits,
     fetchCredits,
+    requestTopUp: api.requestTopUp,
   };
 }

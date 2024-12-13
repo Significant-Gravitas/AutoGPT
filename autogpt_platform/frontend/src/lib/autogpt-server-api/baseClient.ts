@@ -18,6 +18,7 @@ import {
   Schedule,
   ScheduleCreatable,
   User,
+  RequestTopUpResponse,
 } from "./types";
 
 export default class BaseAutoGPTServerAPI {
@@ -60,7 +61,7 @@ export default class BaseAutoGPTServerAPI {
     return this._get(`/credits`);
   }
 
-  requestTopUp(amount: number): Promise<void> {
+  requestTopUp(amount: number): Promise<RequestTopUpResponse> {
     return this._request("POST", "/credits", { amount });
   }
 

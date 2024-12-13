@@ -368,3 +368,9 @@ export type ScheduleCreatable = {
   graph_id: string;
   input_data: { [key: string]: any };
 };
+
+/* Mirror of backend/server/model.py:RequestTopUpResponse */
+export type RequestTopUpResponse = {
+  transaction_id: string;
+  client_secret: string;
+};

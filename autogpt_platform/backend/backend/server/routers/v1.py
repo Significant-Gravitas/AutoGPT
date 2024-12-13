@@ -143,7 +143,7 @@ async def get_user_credits(
 async def request_top_up(
     user_id: Annotated[str, Depends(get_user_id)], request: RequestTopUp
 ):
-    pass
+    return _user_credit_model.top_up_intent(user_id, request.amount)
 
 
 ########################################################
