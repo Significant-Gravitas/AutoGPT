@@ -1,22 +1,18 @@
 from enum import Enum
 from typing import Literal
-from backend.data.model import OAuth2Credentials
+from backend.data.model import OAuth2Credentials,ProviderName,CredentialsField, CredentialsMetaInput
 from pydantic import SecretStr
-
-from backend.data.model import CredentialsField, CredentialsMetaInput
 from backend.util.settings import Secrets
 
 secrets = Secrets()
 
-SlackProviderName = Literal["slack_bot", "slack_user"]
+SlackProviderName = Literal[ProviderName.SLACK_BOT, ProviderName.SLACK_USER]
 SlackCredentials = OAuth2Credentials
 SlackCredentialsInput = CredentialsMetaInput[SlackProviderName, Literal["oauth2"]]
 
 
 def SlackCredentialsField(scopes: list[str]) -> SlackCredentialsInput:
     return CredentialsField(
-        provider=["slack_bot","slack_user"],
-        supported_credential_types={"oauth2"},
         description="The Slack integration requires OAuth2 authentication.",
         discriminator="type",
         discriminator_mapping={

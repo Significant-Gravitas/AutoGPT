@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING
 
+from backend.integrations.oauth.slack_bot import SlackBotOAuthHandler
+from backend.integrations.oauth.slack_user import SlackUserOAuthHandler
+
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler

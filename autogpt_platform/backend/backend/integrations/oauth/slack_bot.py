@@ -2,13 +2,13 @@ import urllib.parse
 from typing import ClassVar, Optional
 
 import requests
-from backend.data.model import OAuth2Credentials
+from backend.data.model import OAuth2Credentials, ProviderName
 
 from backend.integrations.oauth.base import BaseOAuthHandler
 
 
 class SlackBotOAuthHandler(BaseOAuthHandler):
-    PROVIDER_NAME: ClassVar[str] = "slack_bot"
+    PROVIDER_NAME = ProviderName.SLACK_BOT
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "chat:write",
         "users:read",
