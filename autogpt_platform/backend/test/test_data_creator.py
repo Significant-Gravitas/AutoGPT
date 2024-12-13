@@ -301,9 +301,9 @@ async def main():
                     "blockId": block.id,
                     "amount": random.randint(1, 100),
                     "type": (
-                        "TOP_UP"
+                        prisma.enums.CreditTransactionType.TOP_UP
                         if random.random() < 0.5
-                        else "USAGE"
+                        else prisma.enums.CreditTransactionType.USAGE
                     ),
                     "metadata": prisma.Json({}),
                 }
