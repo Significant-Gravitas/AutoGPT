@@ -1,7 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import { IconType, IconLogIn } from "@/components/ui/icons";
+import { IconType, IconLogIn, IconAutoGPTLogo } from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 import CreditsCard from "./CreditsCard";
@@ -60,10 +60,18 @@ export const Navbar = async ({
 
   return (
     <>
-      <nav className="sticky top-0 z-50 hidden h-20 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
-        <div className="flex items-center space-x-10">
+      <nav className="sticky top-0 z-50 hidden h-16 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+        <div className="flex items-center gap-11">
+          <div className="w-[88.87px] h-10 relative">
+            <IconAutoGPTLogo className="w-full h-full" />
+          </div>
           {links.map((link) => (
-            <NavbarLink key={link.name} name={link.name} href={link.href} />
+            <NavbarLink 
+              key={link.name} 
+              name={link.name} 
+              href={link.href}
+              className="font-poppins text-[20px] leading-[28px]"
+            />
           ))}
         </div>
         {/* Profile section */}
@@ -85,7 +93,7 @@ export const Navbar = async ({
                 size="sm"
                 className="flex items-center justify-end space-x-2"
               >
-                <IconLogIn className="h-5 w-5" />
+                <IconLogIn className="h-5 w-5 h-[48px] " />
                 <span>Log In</span>
               </Button>
             </Link>
