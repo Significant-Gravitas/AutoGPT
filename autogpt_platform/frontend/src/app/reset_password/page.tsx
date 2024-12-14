@@ -1,7 +1,14 @@
 "use client";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import useUser from "@/hooks/useUser";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,13 +22,15 @@ const emailFormSchema = z.object({
   email: z.string().email().min(2).max(64),
 });
 
-const resetPasswordFormSchema = z.object({
-  password: z.string().min(6).max(64),
-  confirmPassword: z.string().min(6).max(64)
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"]
-});
+const resetPasswordFormSchema = z
+  .object({
+    password: z.string().min(6).max(64),
+    confirmPassword: z.string().min(6).max(64),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
 
 export default function ResetPasswordPage() {
   const { supabase, isLoading: isSupabaseLoading } = useSupabase();
@@ -58,10 +67,12 @@ export default function ResetPasswordPage() {
 
     if (!newPassword) return;
 
-    supabase!.auth.updateUser({ password: newPassword }).then(({ data, error }) => {
-      if (data) alert("Password updated successfully!")
-      if (error) alert("There was an error updating your password.")
-    });
+    supabase!.auth
+      .updateUser({ password: newPassword })
+      .then(({ data, error }) => {
+        if (data) alert("Password updated successfully!");
+        if (error) alert("There was an error updating your password.");
+      });
   }
 
   if (!supabase) {
@@ -81,9 +92,12 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    const { data, error } = await supabase!.auth.resetPasswordForEmail(d.email, {
-      redirectTo: `${window.location.origin}/reset_password`,
-    });
+    const { data, error } = await supabase!.auth.resetPasswordForEmail(
+      d.email,
+      {
+        redirectTo: `${window.location.origin}/reset_password`,
+      },
+    );
 
     if (error) {
       setFeedback(error.message);
@@ -104,7 +118,9 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    const { data, error } = await supabase!.auth.updateUser({ password: d.password })
+    const { data, error } = await supabase!.auth.updateUser({
+      password: d.password,
+    });
 
     if (error) {
       setFeedback(error.message);
@@ -117,10 +133,10 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full">
+    <div className="flex h-full flex-col items-center justify-center">
       <div className="w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center">Reset Password</h1>
-        {user ?
+        <h1 className="text-center text-3xl font-bold">Reset Password</h1>
+        {user ? (
           <form
             onSubmit={resetPasswordForm.handleSubmit(onResetPassword)}
             className="mt-6 space-y-6"
@@ -133,7 +149,11 @@ export default function ResetPasswordPage() {
                   <FormItem className="mb-4">
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="password" {...field} />
+                      <Input
+                        type="password"
+                        placeholder="password"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -146,7 +166,11 @@ export default function ResetPasswordPage() {
                   <FormItem className="mb">
                     <FormLabel>Confirm Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="password" {...field} />
+                      <Input
+                        type="password"
+                        placeholder="password"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -158,14 +182,12 @@ export default function ResetPasswordPage() {
                 disabled={isLoading}
                 onClick={() => onResetPassword(resetPasswordForm.getValues())}
               >
-                {isLoading ? (
-                  <FaSpinner className="mr-2 animate-spin" />
-                ) : null}
+                {isLoading ? <FaSpinner className="mr-2 animate-spin" /> : null}
                 Reset Password
               </Button>
             </Form>
           </form>
-          :
+        ) : (
           <form
             onSubmit={emailForm.handleSubmit(onSendEmail)}
             className="mt-6 space-y-6"
@@ -190,17 +212,17 @@ export default function ResetPasswordPage() {
                 disabled={isLoading}
                 onClick={() => onSendEmail(emailForm.getValues())}
               >
-                {isLoading ? (
-                  <FaSpinner className="mr-2 animate-spin" />
-                ) : null}
+                {isLoading ? <FaSpinner className="mr-2 animate-spin" /> : null}
                 Send Reset Email
               </Button>
               {feedback ? (
-                <div className="text-center text-sm text-red-500">{feedback}</div>
+                <div className="text-center text-sm text-red-500">
+                  {feedback}
+                </div>
               ) : null}
             </Form>
           </form>
-        }
+        )}
       </div>
     </div>
   );
