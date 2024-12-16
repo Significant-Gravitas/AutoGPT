@@ -77,7 +77,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
             key={propKey}
             className="flex w-full flex-row justify-between space-y-2"
           >
-            <span className="mr-2 mt-3">
+            <span className="mr-2 mt-3 dark:text-gray-300">
               {propSchema.title || beautifyString(propKey)}
             </span>
             <NodeGenericInputField
@@ -668,7 +668,7 @@ const NodeKeyValueInput: FC<{
           </div>
         ))}
         <Button
-          className="bg-gray-200 font-normal text-black hover:text-white"
+          className="bg-gray-200 font-normal text-black hover:text-white dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
           disabled={
             keyValuePairs.length > 0 &&
             !keyValuePairs[keyValuePairs.length - 1].key
@@ -788,7 +788,7 @@ const NodeArrayInput: FC<{
         );
       })}
       <Button
-        className="w-[183p] bg-gray-200 font-normal text-black hover:text-white"
+        className="w-[183p] bg-gray-200 font-normal text-black hover:text-white dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
         onClick={() =>
           handleInputChange(selfKey, [...entries, isItemObject ? {} : ""])
         }
@@ -869,15 +869,7 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
-  if (!value) {
-    value = schema.default || "";
-    // Force update hardcodedData so discriminators can update
-    // e.g. credentials update when provider changes
-    // this won't happen if the value is only set here to schema.default
-    if (schema.default) {
-      handleInputChange(selfKey, value);
-    }
-  }
+  value ||= schema.default || "";
   return (
     <div className={className}>
       {schema.enum ? (
@@ -910,7 +902,7 @@ const NodeStringInput: FC<{
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
-            className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
+            className="pr-8 read-only:cursor-pointer read-only:text-gray-500 dark:text-white"
           />
           <Button
             variant="ghost"
@@ -951,7 +943,7 @@ export const NodeTextBoxInput: FC<{
   return (
     <div className={className}>
       <div
-        className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4"
+        className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4 dark:bg-yellow-900"
         onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
       >
         <textarea
@@ -962,7 +954,7 @@ export const NodeTextBoxInput: FC<{
             schema?.placeholder || `Enter ${beautifyString(displayName)}`
           }
           onChange={(e) => handleInputChange(selfKey, e.target.value)}
-          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none"
+          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none dark:text-white"
           style={{
             fontSize: "min(1em, 16px)",
             lineHeight: "1.2",
@@ -1006,6 +998,7 @@ const NodeNumberInput: FC<{
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
           }
+          className="dark:text-white"
         />
       </div>
       {error && <span className="error-message">{error}</span>}
@@ -1038,7 +1031,9 @@ const NodeBooleanInput: FC<{
           defaultChecked={value}
           onCheckedChange={(v) => handleInputChange(selfKey, v)}
         />
-        {displayName && <span className="ml-3">{displayName}</span>}
+        {displayName && (
+          <span className="ml-3 dark:text-gray-300">{displayName}</span>
+        )}
       </div>
       {error && <span className="error-message">{error}</span>}
     </div>

@@ -155,6 +155,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               data-id="blocks-control-popover-trigger"
               data-testid="blocks-control-blocks-button"
               name="Blocks"
+              className="dark:hover:bg-slate-800"
             >
               <IconToyBrick />
             </Button>
@@ -169,12 +170,12 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         className="absolute -top-3 w-[17rem] rounded-xl border-none p-0 shadow-none md:w-[30rem]"
         data-id="blocks-control-popover-content"
       >
-        <Card className="p-3 pb-0">
+        <Card className="p-3 pb-0 dark:bg-slate-900">
           <CardHeader className="flex flex-col gap-x-8 gap-y-1 p-3 px-2">
             <div className="items-center justify-between">
               <Label
                 htmlFor="search-blocks"
-                className="whitespace-nowrap text-base font-bold text-black 2xl:text-xl"
+                className="whitespace-nowrap text-base font-bold text-black dark:text-white 2xl:text-xl"
                 data-id="blocks-control-label"
                 data-testid="blocks-control-blocks-label"
               >
@@ -182,14 +183,14 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               </Label>
             </div>
             <div className="relative flex items-center">
-              <MagnifyingGlassIcon className="absolute m-2 h-5 w-5 text-gray-500" />
+              <MagnifyingGlassIcon className="absolute m-2 h-5 w-5 text-gray-500 dark:text-gray-400" />
               <Input
                 id="search-blocks"
                 type="text"
                 placeholder="Search blocks"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="rounded-lg px-8 py-5"
+                className="rounded-lg px-8 py-5 dark:bg-slate-800 dark:text-white"
                 data-id="blocks-control-search-input"
               />
             </div>
@@ -203,7 +204,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                 return (
                   <div
                     key={category}
-                    className={`cursor-pointer rounded-xl border px-2 py-2 text-xs font-medium ${colorClass}`}
+                    className={`cursor-pointer rounded-xl border px-2 py-2 text-xs font-medium dark:border-slate-700 dark:text-white ${colorClass}`}
                     onClick={() =>
                       setSelectedCategory(
                         selectedCategory === category ? null : category,
@@ -216,15 +217,15 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               })}
             </div>
           </CardHeader>
-          <CardContent className="overflow-scroll border-t p-0">
+          <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
             <ScrollArea
-              className="h-[60vh]"
+              className="h-[60vh] w-fit"
               data-id="blocks-control-scroll-area"
             >
               {filteredAvailableBlocks.map((block) => (
                 <Card
                   key={block.uiKey || block.id}
-                  className={`m-2 my-4 flex h-20 shadow-none ${
+                  className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
                     block.notAvailable
                       ? "cursor-not-allowed opacity-50"
                       : "cursor-pointer hover:shadow-lg"
@@ -243,7 +244,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                   <div className="mx-3 flex flex-1 items-center justify-between">
                     <div className="mr-2 min-w-0">
                       <span
-                        className="block truncate pb-1 text-sm font-semibold"
+                        className="block truncate pb-1 text-sm font-semibold dark:text-white"
                         data-id={`block-name-${block.id}`}
                         data-testid={`block-name-${block.id}`}
                       >
@@ -256,7 +257,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                         />
                       </span>
                       <span
-                        className="block break-all text-xs font-normal text-gray-500"
+                        className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400"
                         data-testid={`block-description-${block.id}`}
                       >
                         <TextRenderer
@@ -270,7 +271,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                       data-id={`block-tooltip-${block.id}`}
                       data-testid={`block-add`}
                     >
-                      <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1" />
+                      <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1 dark:bg-gray-700 dark:stroke-white" />
                     </div>
                   </div>
                 </Card>

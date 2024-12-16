@@ -204,7 +204,6 @@ export type GraphMeta = {
   id: string;
   version: number;
   is_active: boolean;
-  is_template: boolean;
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;
@@ -219,16 +218,10 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  | "version"
-  | "is_active"
-  | "is_template"
-  | "links"
-  | "input_schema"
-  | "output_schema"
+  "version" | "is_active" | "links" | "input_schema" | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;
-  is_template?: boolean;
   links: Array<LinkCreatable>;
   input_schema?: BlockIOObjectSubSchema;
   output_schema?: BlockIOObjectSubSchema;
@@ -352,6 +345,111 @@ export type AnalyticsDetails = {
   index: string;
 };
 
+export type Pagination = {
+  total_items: number;
+  total_pages: number;
+  current_page: number;
+  page_size: number;
+};
+
+export type StoreAgent = {
+  slug: string;
+  agent_name: string;
+  agent_image: string;
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
+  description: string;
+  runs: number;
+  rating: number;
+};
+
+export type StoreAgentsResponse = {
+  agents: StoreAgent[];
+  pagination: Pagination;
+};
+
+export type StoreAgentDetails = {
+  store_listing_version_id: string;
+  slug: string;
+  updated_at: string;
+  agent_name: string;
+  agent_video: string;
+  agent_image: string[];
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
+  description: string;
+  categories: string[];
+  runs: number;
+  rating: number;
+  versions: string[];
+};
+
+export type Creator = {
+  name: string;
+  username: string;
+  description: string;
+  avatar_url: string;
+  num_agents: number;
+  agent_rating: number;
+  agent_runs: number;
+};
+
+export type CreatorsResponse = {
+  creators: Creator[];
+  pagination: Pagination;
+};
+
+export type CreatorDetails = {
+  name: string;
+  username: string;
+  description: string;
+  links: string[];
+  avatar_url: string;
+  agent_rating: number;
+  agent_runs: number;
+  top_categories: string[];
+};
+
+export type StoreSubmission = {
+  agent_id: string;
+  agent_version: number;
+  name: string;
+  sub_heading: string;
+  description: string;
+  image_urls: string[];
+  date_submitted: string;
+  status: string;
+  runs: number;
+  rating: number;
+};
+
+export type StoreSubmissionsResponse = {
+  submissions: StoreSubmission[];
+  pagination: Pagination;
+};
+
+export type StoreSubmissionRequest = {
+  agent_id: string;
+  agent_version: number;
+  slug: string;
+  name: string;
+  sub_heading: string;
+  video_url?: string;
+  image_urls: string[];
+  description: string;
+  categories: string[];
+};
+
+export type ProfileDetails = {
+  name: string;
+  username: string;
+  description: string;
+  links: string[];
+  avatar_url: string;
+};
+
 export type Schedule = {
   id: string;
   name: string;
@@ -367,4 +465,27 @@ export type ScheduleCreatable = {
   cron: string;
   graph_id: string;
   input_data: { [key: string]: any };
+};
+
+export type MyAgent = {
+  agent_id: string;
+  agent_version: number;
+  agent_name: string;
+  last_edited: string;
+};
+
+export type MyAgentsResponse = {
+  agents: MyAgent[];
+  pagination: Pagination;
+};
+
+export type StoreReview = {
+  score: number;
+  comments?: string;
+};
+
+export type StoreReviewCreate = {
+  store_listing_version_id: string;
+  score: number;
+  comments?: string;
 };
