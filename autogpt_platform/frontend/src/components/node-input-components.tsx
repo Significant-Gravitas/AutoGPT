@@ -18,7 +18,7 @@ import {
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import React, { FC, useCallback, useEffect, useState } from "react";
+import React, { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -326,13 +326,26 @@ export const NodeGenericInputField: FC<{
     }
   }
 
-  if ("oneOf" in propSchema) {
-    // At the time of writing, this isn't used in the backend -> no impl. needed
-    console.error(
-      `Unsupported 'oneOf' in schema for '${propKey}'!`,
-      propSchema,
+  if (
+    "oneOf" in propSchema &&
+    propSchema.oneOf &&
+    "discriminator" in propSchema &&
+    propSchema.discriminator
+  ) {
+    return (
+      <NodeOneOfDiscriminatorField
+        nodeId={nodeId}
+        propKey={propKey}
+        propSchema={propSchema}
+        currentValue={currentValue}
+        errors={errors}
+        connections={connections}
+        handleInputChange={handleInputChange}
+        handleInputClick={handleInputClick}
+        className={className}
+        displayName={displayName}
+      />
     );
-    return null;
   }
 
   if (!("type" in propSchema)) {
@@ -449,6 +462,132 @@ export const NodeGenericInputField: FC<{
         />
       );
   }
+};
+
+const NodeOneOfDiscriminatorField: FC<{
+  nodeId: string;
+  propKey: string;
+  propSchema: any;
+  currentValue?: any;
+  errors: { [key: string]: string | undefined };
+  connections: any;
+  handleInputChange: (key: string, value: any) => void;
+  handleInputClick: (key: string) => void;
+  className?: string;
+  displayName?: string;
+}> = ({
+  nodeId,
+  propKey,
+  propSchema,
+  currentValue,
+  errors,
+  connections,
+  handleInputChange,
+  handleInputClick,
+  className,
+  displayName,
+}) => {
+  const discriminator = propSchema.discriminator;
+
+  const discriminatorProperty = discriminator.propertyName;
+
+  const variantOptions = useMemo(() => {
+    const oneOfVariants = propSchema.oneOf || [];
+
+    return oneOfVariants
+      .map((variant: any) => {
+        const variantDiscValue =
+          variant.properties?.[discriminatorProperty]?.const;
+
+        return {
+          value: variantDiscValue,
+          schema: variant,
+        };
+      })
+      .filter((v: any) => v.value != null);
+  }, [discriminatorProperty, propSchema.oneOf]);
+
+  const currentVariant = variantOptions.find(
+    (opt: any) => currentValue?.[discriminatorProperty] === opt.value,
+  );
+
+  const [chosenType, setChosenType] = useState<string>(
+    currentVariant?.value || "",
+  );
+
+  const handleVariantChange = (newType: string) => {
+    setChosenType(newType);
+    const chosenVariant = variantOptions.find(
+      (opt: any) => opt.value === newType,
+    );
+    if (chosenVariant) {
+      const initialValue = {
+        [discriminatorProperty]: newType,
+      };
+      handleInputChange(propKey, initialValue);
+    }
+  };
+
+  const chosenVariantSchema = variantOptions.find(
+    (opt: any) => opt.value === chosenType,
+  )?.schema;
+
+  return (
+    <div className={cn("flex flex-col space-y-2", className)}>
+      <Select value={chosenType || ""} onValueChange={handleVariantChange}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="Select a type..." />
+        </SelectTrigger>
+        <SelectContent>
+          {variantOptions.map((opt: any) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {beautifyString(opt.value)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {chosenVariantSchema && (
+        <div className={cn(className, "w-full flex-col")}>
+          {Object.entries(chosenVariantSchema.properties).map(
+            ([someKey, childSchema]) => {
+              if (someKey === "discriminator") {
+                return null;
+              }
+              const childKey = propKey ? `${propKey}.${someKey}` : someKey;
+              return (
+                <div
+                  key={childKey}
+                  className="flex w-full flex-row justify-between space-y-2"
+                >
+                  <span className="mr-2 mt-3 dark:text-gray-300">
+                    {(childSchema as BlockIOSubSchema).title ||
+                      beautifyString(someKey)}
+                  </span>
+                  <NodeGenericInputField
+                    nodeId={nodeId}
+                    key={propKey}
+                    propKey={childKey}
+                    propSchema={childSchema as BlockIOSubSchema}
+                    currentValue={
+                      currentValue ? currentValue[someKey] : undefined
+                    }
+                    errors={errors}
+                    connections={connections}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                    displayName={
+                      chosenVariantSchema.title || beautifyString(someKey)
+                    }
+                  />
+                </div>
+              );
+            },
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const NodeCredentialsInput: FC<{
@@ -849,7 +988,7 @@ const NodeStringInput: FC<{
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
-            className="pr-8 read-only:cursor-pointer read-only:text-gray-500 dark:text-white"
+            className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
           />
           <Button
             variant="ghost"
