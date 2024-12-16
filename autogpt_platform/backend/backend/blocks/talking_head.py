@@ -1,11 +1,16 @@
 import time
 from typing import Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -25,13 +30,11 @@ TEST_CREDENTIALS_INPUT = {
 
 class CreateTalkingAvatarVideoBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["d_id"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="d_id",
-                supported_credential_types={"api_key"},
-                description="The D-ID integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
-            )
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.D_ID], Literal["api_key"]
+        ] = CredentialsField(
+            description="The D-ID integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
         )
         script_input: str = SchemaField(
             description="The text input for the script",

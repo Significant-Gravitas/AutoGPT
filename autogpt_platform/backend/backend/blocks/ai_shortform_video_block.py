@@ -3,11 +3,16 @@ import time
 from enum import Enum
 from typing import Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -136,13 +141,11 @@ logger = logging.getLogger(__name__)
 
 class AIShortformVideoCreatorBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput[Literal["revid"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="revid",
-                supported_credential_types={"api_key"},
-                description="The revid.ai integration can be used with "
-                "any API key with sufficient permissions for the blocks it is used on.",
-            )
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REVID], Literal["api_key"]
+        ] = CredentialsField(
+            description="The revid.ai integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
         )
         script: str = SchemaField(
             description="""1. Use short and punctuated sentences\n\n2. Use linebreaks to create a new clip\n\n3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat.""",

@@ -1,17 +1,18 @@
 from enum import Enum
 from typing import List, Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
+    APIKeyCredentials,
     BlockSecret,
     CredentialsField,
     CredentialsMetaInput,
     SchemaField,
     SecretField,
 )
+from backend.integrations.providers import ProviderName
 from backend.util.request import requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -77,12 +78,10 @@ class PublishToMediumBlock(Block):
             description="Whether to notify followers that the user has published",
             placeholder="False",
         )
-        credentials: CredentialsMetaInput[Literal["medium"], Literal["api_key"]] = (
-            CredentialsField(
-                provider="medium",
-                supported_credential_types={"api_key"},
-                description="The Medium integration can be used with any API key with sufficient permissions for the blocks it is used on.",
-            )
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.MEDIUM], Literal["api_key"]
+        ] = CredentialsField(
+            description="The Medium integration can be used with any API key with sufficient permissions for the blocks it is used on.",
         )
 
     class Output(BlockSchema):

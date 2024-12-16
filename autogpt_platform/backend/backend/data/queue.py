@@ -1,19 +1,17 @@
+import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
 
 from backend.data import redis
-from backend.data.execution import ExecutionResult
-from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
-config = Config()
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -36,7 +34,7 @@ class BaseRedisEventBus(Generic[M], ABC):
 
     def _serialize_message(self, item: M, channel_key: str) -> tuple[str, str]:
         message = json.dumps(item.model_dump(), cls=DateTimeEncoder)
-        channel_name = f"{self.event_bus_name}-{channel_key}"
+        channel_name = f"{self.event_bus_name}/{channel_key}"
         logger.info(f"[{channel_name}] Publishing an event to Redis {message}")
         return message, channel_name
 
@@ -51,12 +49,12 @@ class BaseRedisEventBus(Generic[M], ABC):
         except Exception as e:
             logger.error(f"Failed to parse event result from Redis {msg} {e}")
 
-    def _subscribe(
+    def _get_pubsub_channel(
         self, connection: redis.Redis | redis.AsyncRedis, channel_key: str
     ) -> tuple[PubSub | AsyncPubSub, str]:
-        channel_name = f"{self.event_bus_name}-{channel_key}"
+        full_channel_name = f"{self.event_bus_name}/{channel_key}"
         pubsub = connection.pubsub()
-        return pubsub, channel_name
+        return pubsub, full_channel_name
 
 
 class RedisEventBus(BaseRedisEventBus[M], ABC):
@@ -67,17 +65,19 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
         return redis.get_redis()
 
     def publish_event(self, event: M, channel_key: str):
-        message, channel_name = self._serialize_message(event, channel_key)
-        self.connection.publish(channel_name, message)
+        message, full_channel_name = self._serialize_message(event, channel_key)
+        self.connection.publish(full_channel_name, message)
 
     def listen_events(self, channel_key: str) -> Generator[M, None, None]:
-        pubsub, channel_name = self._subscribe(self.connection, channel_key)
+        pubsub, full_channel_name = self._get_pubsub_channel(
+            self.connection, channel_key
+        )
         assert isinstance(pubsub, PubSub)
 
         if "*" in channel_key:
-            pubsub.psubscribe(channel_name)
+            pubsub.psubscribe(full_channel_name)
         else:
-            pubsub.subscribe(channel_name)
+            pubsub.subscribe(full_channel_name)
 
         for message in pubsub.listen():
             if event := self._deserialize_message(message, channel_key):
@@ -92,53 +92,31 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         return await redis.get_redis_async()
 
     async def publish_event(self, event: M, channel_key: str):
-        message, channel_name = self._serialize_message(event, channel_key)
+        message, full_channel_name = self._serialize_message(event, channel_key)
         connection = await self.connection
-        await connection.publish(channel_name, message)
+        await connection.publish(full_channel_name, message)
 
     async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
-        pubsub, channel_name = self._subscribe(await self.connection, channel_key)
+        pubsub, full_channel_name = self._get_pubsub_channel(
+            await self.connection, channel_key
+        )
         assert isinstance(pubsub, AsyncPubSub)
 
         if "*" in channel_key:
-            await pubsub.psubscribe(channel_name)
+            await pubsub.psubscribe(full_channel_name)
         else:
-            await pubsub.subscribe(channel_name)
+            await pubsub.subscribe(full_channel_name)
 
         async for message in pubsub.listen():
             if event := self._deserialize_message(message, channel_key):
                 yield event
 
-
-class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
-    Model = ExecutionResult
-
-    @property
-    def event_bus_name(self) -> str:
-        return config.execution_event_bus_name
-
-    def publish(self, res: ExecutionResult):
-        self.publish_event(res, f"{res.graph_id}-{res.graph_exec_id}")
-
-    def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
-    ) -> Generator[ExecutionResult, None, None]:
-        for execution_result in self.listen_events(f"{graph_id}-{graph_exec_id}"):
-            yield execution_result
-
-
-class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
-    Model = ExecutionResult
-
-    @property
-    def event_bus_name(self) -> str:
-        return config.execution_event_bus_name
-
-    async def publish(self, res: ExecutionResult):
-        await self.publish_event(res, f"{res.graph_id}-{res.graph_exec_id}")
-
-    async def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
-    ) -> AsyncGenerator[ExecutionResult, None]:
-        async for execution_result in self.listen_events(f"{graph_id}-{graph_exec_id}"):
-            yield execution_result
+    async def wait_for_event(
+        self, channel_key: str, timeout: Optional[float] = None
+    ) -> M | None:
+        try:
+            return await asyncio.wait_for(
+                anext(aiter(self.listen_events(channel_key))), timeout
+            )
+        except TimeoutError:
+            return None

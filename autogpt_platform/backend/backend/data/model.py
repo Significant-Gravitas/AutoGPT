@@ -1,18 +1,42 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, ClassVar, Generic, Optional, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    Generic,
+    Literal,
+    Optional,
+    TypedDict,
+    TypeVar,
+    get_args,
+)
+from uuid import uuid4
 
-from autogpt_libs.supabase_integration_credentials_store.types import CredentialsType
-from pydantic import BaseModel, Field, GetCoreSchemaHandler
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    GetCoreSchemaHandler,
+    SecretStr,
+    field_serializer,
+)
 from pydantic_core import (
     CoreSchema,
     PydanticUndefined,
     PydanticUndefinedType,
+    ValidationError,
     core_schema,
 )
 
+from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
+
+if TYPE_CHECKING:
+    from backend.data.block import BlockSchema
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -110,9 +134,10 @@ def SchemaField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
-    advanced: Optional[bool] = None,
+    advanced: Optional[bool] = False,
     secret: bool = False,
     exclude: bool = False,
+    hidden: Optional[bool] = None,
     **kwargs,
 ) -> T:
     json_extra = {
@@ -121,6 +146,7 @@ def SchemaField(
             "placeholder": placeholder,
             "secret": secret,
             "advanced": advanced,
+            "hidden": hidden,
         }.items()
         if v is not None
     }
@@ -134,10 +160,81 @@ def SchemaField(
         exclude=exclude,
         json_schema_extra=json_extra,
         **kwargs,
-    )
+    )  # type: ignore
 
 
-CP = TypeVar("CP", bound=str)
+class _BaseCredentials(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    provider: str
+    title: Optional[str]
+
+    @field_serializer("*")
+    def dump_secret_strings(value: Any, _info):
+        if isinstance(value, SecretStr):
+            return value.get_secret_value()
+        return value
+
+
+class OAuth2Credentials(_BaseCredentials):
+    type: Literal["oauth2"] = "oauth2"
+    username: Optional[str]
+    """Username of the third-party service user that these credentials belong to"""
+    access_token: SecretStr
+    access_token_expires_at: Optional[int]
+    """Unix timestamp (seconds) indicating when the access token expires (if at all)"""
+    refresh_token: Optional[SecretStr]
+    refresh_token_expires_at: Optional[int]
+    """Unix timestamp (seconds) indicating when the refresh token expires (if at all)"""
+    scopes: list[str]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    def bearer(self) -> str:
+        return f"Bearer {self.access_token.get_secret_value()}"
+
+
+class APIKeyCredentials(_BaseCredentials):
+    type: Literal["api_key"] = "api_key"
+    api_key: SecretStr
+    expires_at: Optional[int]
+    """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
+
+    def bearer(self) -> str:
+        return f"Bearer {self.api_key.get_secret_value()}"
+
+
+Credentials = Annotated[
+    OAuth2Credentials | APIKeyCredentials,
+    Field(discriminator="type"),
+]
+
+
+CredentialsType = Literal["api_key", "oauth2"]
+
+
+class OAuthState(BaseModel):
+    token: str
+    provider: str
+    expires_at: int
+    """Unix timestamp (seconds) indicating when this OAuth state expires"""
+    scopes: list[str]
+
+
+class UserMetadata(BaseModel):
+    integration_credentials: list[Credentials] = Field(default_factory=list)
+    integration_oauth_states: list[OAuthState] = Field(default_factory=list)
+
+
+class UserMetadataRaw(TypedDict, total=False):
+    integration_credentials: list[dict]
+    integration_oauth_states: list[dict]
+
+
+class UserIntegrations(BaseModel):
+    credentials: list[Credentials] = Field(default_factory=list)
+    oauth_states: list[OAuthState] = Field(default_factory=list)
+
+
+CP = TypeVar("CP", bound=ProviderName)
 CT = TypeVar("CT", bound=CredentialsType)
 
 
@@ -150,19 +247,51 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     provider: CP
     type: CT
 
+    @staticmethod
+    def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
+        schema["credentials_provider"] = get_args(
+            cls.model_fields["provider"].annotation
+        )
+        schema["credentials_types"] = get_args(cls.model_fields["type"].annotation)
 
-class CredentialsFieldSchemaExtra(BaseModel, Generic[CP, CT]):
+    model_config = ConfigDict(
+        json_schema_extra=_add_json_schema_extra,  # type: ignore
+    )
+
+    @classmethod
+    def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
+        """Validates the schema of a `credentials` field"""
+        field_schema = model.jsonschema()["properties"][CREDENTIALS_FIELD_NAME]
+        try:
+            schema_extra = _CredentialsFieldSchemaExtra[CP, CT].model_validate(
+                field_schema
+            )
+        except ValidationError as e:
+            if "Field required [type=missing" not in str(e):
+                raise
+
+            raise TypeError(
+                "Field 'credentials' JSON schema lacks required extra items: "
+                f"{field_schema}"
+            ) from e
+
+        if (
+            len(schema_extra.credentials_provider) > 1
+            and not schema_extra.discriminator
+        ):
+            raise TypeError("Multi-provider CredentialsField requires discriminator!")
+
+
+class _CredentialsFieldSchemaExtra(BaseModel, Generic[CP, CT]):
     # TODO: move discrimination mechanism out of CredentialsField (frontend + backend)
     credentials_provider: list[CP]
-    credentials_scopes: Optional[list[str]]
+    credentials_scopes: Optional[list[str]] = None
     credentials_types: list[CT]
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
 
 
 def CredentialsField(
-    provider: CP | list[CP],
-    supported_credential_types: set[CT],
     required_scopes: set[str] = set(),
     *,
     discriminator: Optional[str] = None,
@@ -170,26 +299,26 @@ def CredentialsField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
-) -> CredentialsMetaInput[CP, CT]:
+) -> CredentialsMetaInput:
     """
     `CredentialsField` must and can only be used on fields named `credentials`.
     This is enforced by the `BlockSchema` base class.
     """
-    if not isinstance(provider, str) and len(provider) > 1 and not discriminator:
-        raise TypeError("Multi-provider CredentialsField requires discriminator!")
 
-    field_schema_extra = CredentialsFieldSchemaExtra[CP, CT](
-        credentials_provider=[provider] if isinstance(provider, str) else provider,
-        credentials_scopes=list(required_scopes) or None,  # omit if empty
-        credentials_types=list(supported_credential_types),
-        discriminator=discriminator,
-        discriminator_mapping=discriminator_mapping,
-    )
+    field_schema_extra = {
+        k: v
+        for k, v in {
+            "credentials_scopes": list(required_scopes) or None,
+            "discriminator": discriminator,
+            "discriminator_mapping": discriminator_mapping,
+        }.items()
+        if v is not None
+    }
 
     return Field(
         title=title,
         description=description,
-        json_schema_extra=field_schema_extra.model_dump(exclude_none=True),
+        json_schema_extra=field_schema_extra,  # validated on BlockSchema init
         **kwargs,
     )
 

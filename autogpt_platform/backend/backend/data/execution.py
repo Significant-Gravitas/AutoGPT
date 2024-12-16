@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, Generic, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
 
 from prisma.enums import AgentExecutionStatus
 from prisma.models import (
@@ -9,22 +9,23 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
-from prisma.types import AgentGraphExecutionWhereInput
 from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
+from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.util import json, mock
+from backend.util.settings import Config
 
 
-class GraphExecution(BaseModel):
+class GraphExecutionEntry(BaseModel):
     user_id: str
     graph_exec_id: str
     graph_id: str
-    start_node_execs: list["NodeExecution"]
+    start_node_execs: list["NodeExecutionEntry"]
 
 
-class NodeExecution(BaseModel):
+class NodeExecutionEntry(BaseModel):
     user_id: str
     graph_exec_id: str
     graph_id: str
@@ -271,7 +272,6 @@ async def update_graph_execution_stats(
     graph_exec_id: str,
     stats: dict[str, Any],
 ) -> ExecutionResult:
-
     status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
@@ -322,34 +322,6 @@ async def update_execution_status(
         raise ValueError(f"Execution {node_exec_id} not found.")
 
     return ExecutionResult.from_db(res)
-
-
-async def get_graph_execution(
-    graph_exec_id: str, user_id: str
-) -> AgentGraphExecution | None:
-    """
-    Retrieve a specific graph execution by its ID.
-
-    Args:
-        graph_exec_id (str): The ID of the graph execution to retrieve.
-        user_id (str): The ID of the user to whom the graph (execution) belongs.
-
-    Returns:
-        AgentGraphExecution | None: The graph execution if found, None otherwise.
-    """
-    execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": graph_exec_id, "userId": user_id},
-        include=GRAPH_EXECUTION_INCLUDE,
-    )
-    return execution
-
-
-async def list_executions(graph_id: str, graph_version: int | None = None) -> list[str]:
-    where: AgentGraphExecutionWhereInput = {"agentGraphId": graph_id}
-    if graph_version is not None:
-        where["agentGraphVersion"] = graph_version
-    executions = await AgentGraphExecution.prisma().find_many(where=where)
-    return [execution.id for execution in executions]
 
 
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
@@ -471,3 +443,42 @@ async def get_incomplete_executions(
         include=EXECUTION_RESULT_INCLUDE,
     )
     return [ExecutionResult.from_db(execution) for execution in executions]
+
+
+# --------------------- Event Bus --------------------- #
+
+config = Config()
+
+
+class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
+    Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
+
+    def publish(self, res: ExecutionResult):
+        self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+
+    def listen(
+        self, graph_id: str = "*", graph_exec_id: str = "*"
+    ) -> Generator[ExecutionResult, None, None]:
+        for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield execution_result
+
+
+class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
+    Model = ExecutionResult
+
+    @property
+    def event_bus_name(self) -> str:
+        return config.execution_event_bus_name
+
+    async def publish(self, res: ExecutionResult):
+        await self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+
+    async def listen(
+        self, graph_id: str = "*", graph_exec_id: str = "*"
+    ) -> AsyncGenerator[ExecutionResult, None]:
+        async for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield execution_result

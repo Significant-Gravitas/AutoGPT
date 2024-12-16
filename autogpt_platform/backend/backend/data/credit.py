@@ -2,14 +2,16 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
 from prisma import Json
-from prisma.enums import UserBlockCreditType
+from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
-from prisma.models import UserBlockCredit
+from prisma.models import CreditTransaction
 
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
 from backend.util.settings import Config
+
+config = Config()
 
 
 class UserCreditBase(ABC):
@@ -68,9 +70,13 @@ class UserCredit(UserCreditBase):
     async def get_or_refill_credit(self, user_id: str) -> int:
         cur_time = self.time_now()
         cur_month = cur_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        nxt_month = cur_month.replace(month=cur_month.month + 1)
+        nxt_month = (
+            cur_month.replace(month=cur_month.month + 1)
+            if cur_month.month < 12
+            else cur_month.replace(year=cur_month.year + 1, month=1)
+        )
 
-        user_credit = await UserBlockCredit.prisma().group_by(
+        user_credit = await CreditTransaction.prisma().group_by(
             by=["userId"],
             sum={"amount": True},
             where={
@@ -87,10 +93,10 @@ class UserCredit(UserCreditBase):
         key = f"MONTHLY-CREDIT-TOP-UP-{cur_month}"
 
         try:
-            await UserBlockCredit.prisma().create(
+            await CreditTransaction.prisma().create(
                 data={
                     "amount": self.num_user_credits_refill,
-                    "type": UserBlockCreditType.TOP_UP,
+                    "type": CreditTransactionType.TOP_UP,
                     "userId": user_id,
                     "transactionKey": key,
                     "createdAt": self.time_now(),
@@ -105,8 +111,8 @@ class UserCredit(UserCreditBase):
     def time_now():
         return datetime.now(timezone.utc)
 
-    @staticmethod
     def _block_usage_cost(
+        self,
         block: Block,
         input_data: BlockInput,
         data_size: float,
@@ -117,27 +123,43 @@ class UserCredit(UserCreditBase):
             return 0, {}
 
         for block_cost in block_costs:
-            if all(
-                # None, [], {}, "", are considered the same value.
-                input_data.get(k) == b or (not input_data.get(k) and not b)
-                for k, b in block_cost.cost_filter.items()
-            ):
-                if block_cost.cost_type == BlockCostType.RUN:
-                    return block_cost.cost_amount, block_cost.cost_filter
+            if not self._is_cost_filter_match(block_cost.cost_filter, input_data):
+                continue
 
-                if block_cost.cost_type == BlockCostType.SECOND:
-                    return (
-                        int(run_time * block_cost.cost_amount),
-                        block_cost.cost_filter,
-                    )
+            if block_cost.cost_type == BlockCostType.RUN:
+                return block_cost.cost_amount, block_cost.cost_filter
 
-                if block_cost.cost_type == BlockCostType.BYTE:
-                    return (
-                        int(data_size * block_cost.cost_amount),
-                        block_cost.cost_filter,
-                    )
+            if block_cost.cost_type == BlockCostType.SECOND:
+                return (
+                    int(run_time * block_cost.cost_amount),
+                    block_cost.cost_filter,
+                )
+
+            if block_cost.cost_type == BlockCostType.BYTE:
+                return (
+                    int(data_size * block_cost.cost_amount),
+                    block_cost.cost_filter,
+                )
 
         return 0, {}
+
+    def _is_cost_filter_match(
+        self, cost_filter: BlockInput, input_data: BlockInput
+    ) -> bool:
+        """
+        Filter rules:
+          - If costFilter is an object, then check if costFilter is the subset of inputValues
+          - Otherwise, check if costFilter is equal to inputValues.
+          - Undefined, null, and empty string are considered as equal.
+        """
+        if not isinstance(cost_filter, dict) or not isinstance(input_data, dict):
+            return cost_filter == input_data
+
+        return all(
+            (not input_data.get(k) and not v)
+            or (input_data.get(k) and self._is_cost_filter_match(v, input_data[k]))
+            for k, v in cost_filter.items()
+        )
 
     async def spend_credits(
         self,
@@ -162,11 +184,11 @@ class UserCredit(UserCreditBase):
         if validate_balance and user_credit < cost:
             raise ValueError(f"Insufficient credit: {user_credit} < {cost}")
 
-        await UserBlockCredit.prisma().create(
+        await CreditTransaction.prisma().create(
             data={
                 "userId": user_id,
                 "amount": -cost,
-                "type": UserBlockCreditType.USAGE,
+                "type": CreditTransactionType.USAGE,
                 "blockId": block.id,
                 "metadata": Json(
                     {
@@ -180,11 +202,11 @@ class UserCredit(UserCreditBase):
         return cost
 
     async def top_up_credits(self, user_id: str, amount: int):
-        await UserBlockCredit.prisma().create(
+        await CreditTransaction.prisma().create(
             data={
                 "userId": user_id,
                 "amount": amount,
-                "type": UserBlockCreditType.TOP_UP,
+                "type": CreditTransactionType.TOP_UP,
                 "createdAt": self.time_now(),
             }
         )
@@ -202,7 +224,6 @@ class DisabledUserCredit(UserCreditBase):
 
 
 def get_user_credit_model() -> UserCreditBase:
-    config = Config()
     if config.enable_credit.lower() == "true":
         return UserCredit(config.num_user_credits_refill)
     else:

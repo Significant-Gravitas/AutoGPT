@@ -1,27 +1,27 @@
 import uuid
 from typing import Any, Literal
 
-from autogpt_libs.supabase_integration_credentials_store import APIKeyCredentials
 from pinecone import Pinecone, ServerlessSpec
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
+from backend.integrations.providers import ProviderName
 
 PineconeCredentials = APIKeyCredentials
 PineconeCredentialsInput = CredentialsMetaInput[
-    Literal["pinecone"],
+    Literal[ProviderName.PINECONE],
     Literal["api_key"],
 ]
 
 
 def PineconeCredentialsField() -> PineconeCredentialsInput:
-    """
-    Creates a Pinecone credentials input on a block.
-
-    """
+    """Creates a Pinecone credentials input on a block."""
     return CredentialsField(
-        provider="pinecone",
-        supported_credential_types={"api_key"},
         description="The Pinecone integration can be used with an API Key.",
     )
 
@@ -143,7 +143,7 @@ class PineconeQueryBlock(Block):
                 top_k=input_data.top_k,
                 include_values=input_data.include_values,
                 include_metadata=input_data.include_metadata,
-            ).to_dict()
+            ).to_dict()  # type: ignore
             combined_text = ""
             if results["matches"]:
                 texts = [

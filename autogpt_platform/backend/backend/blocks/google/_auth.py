@@ -1,9 +1,9 @@
 from typing import Literal
 
-from autogpt_libs.supabase_integration_credentials_store.types import OAuth2Credentials
 from pydantic import SecretStr
 
-from backend.data.model import CredentialsField, CredentialsMetaInput
+from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
+from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
 
 # --8<-- [start:GoogleOAuthIsConfigured]
@@ -13,7 +13,9 @@ GOOGLE_OAUTH_IS_CONFIGURED = bool(
 )
 # --8<-- [end:GoogleOAuthIsConfigured]
 GoogleCredentials = OAuth2Credentials
-GoogleCredentialsInput = CredentialsMetaInput[Literal["google"], Literal["oauth2"]]
+GoogleCredentialsInput = CredentialsMetaInput[
+    Literal[ProviderName.GOOGLE], Literal["oauth2"]
+]
 
 
 def GoogleCredentialsField(scopes: list[str]) -> GoogleCredentialsInput:
@@ -24,8 +26,6 @@ def GoogleCredentialsField(scopes: list[str]) -> GoogleCredentialsInput:
         scopes: The authorization scopes needed for the block to work.
     """
     return CredentialsField(
-        provider="google",
-        supported_credential_types={"oauth2"},
         required_scopes=set(scopes),
         description="The Google integration requires OAuth2 authentication.",
     )

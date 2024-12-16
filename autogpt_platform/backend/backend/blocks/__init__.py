@@ -15,10 +15,10 @@ modules = [
     if f.is_file() and f.name != "__init__.py"
 ]
 for module in modules:
-    if not re.match("^[a-z_.]+$", module):
+    if not re.match("^[a-z0-9_.]+$", module):
         raise ValueError(
             f"Block module {module} error: module name must be lowercase, "
-            "separated by underscores, and contain only alphabet characters"
+            "and contain only alphanumeric characters and underscores."
         )
 
     importlib.import_module(f".{module}", package=__name__)
@@ -59,13 +59,6 @@ for block_cls in all_subclasses(Block):
 
     input_schema = block.input_schema.model_fields
     output_schema = block.output_schema.model_fields
-
-    # Prevent duplicate field name in input_schema and output_schema
-    duplicate_field_names = set(input_schema.keys()) & set(output_schema.keys())
-    if duplicate_field_names:
-        raise ValueError(
-            f"{block.name} has duplicate field names in input_schema and output_schema: {duplicate_field_names}"
-        )
 
     # Make sure `error` field is a string in the output schema
     if "error" in output_schema and output_schema["error"].annotation is not str:

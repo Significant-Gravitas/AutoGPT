@@ -49,7 +49,7 @@ export function CustomEdge({
   const { svgPath, length, getPointForT, getTForDistance } = useBezierPath(
     sourceX - 5,
     sourceY - 5,
-    targetX - 9,
+    targetX + 3,
     targetY - 5,
   );
   const { deleteElements } = useReactFlow<Node, CustomEdge>();

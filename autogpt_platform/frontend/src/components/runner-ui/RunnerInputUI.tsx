@@ -72,6 +72,7 @@ export function RunnerInputUI({
         </div>
         <DialogFooter className="px-6 py-4">
           <Button
+            data-testid="run-dialog-run-button"
             onClick={scheduledInput ? handleSchedule : handleRun}
             className="px-8 py-2 text-lg"
             disabled={scheduledInput ? isScheduling : isRunning}
