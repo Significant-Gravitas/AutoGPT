@@ -1,74 +1,63 @@
-from typing import Optional
+from typing import  Union, List
+from typing_extensions import  Literal
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from pydantic import BaseModel
 
+class PollOption(BaseModel):
+    text: str
 
-class TestMutualExclusiveBlock(Block):
+class Poll(BaseModel):
+    discriminator: Literal['poll']
+    some_input_4: List[PollOption]
+
+class MediaUpload(BaseModel):
+    discriminator: Literal['media']
+    some_input: str
+    some_input_2 : str
+
+class PollDuration(BaseModel):
+    discriminator: Literal['duration']
+    some_input: int
+
+class TweetBlock(Block):
     class Input(BlockSchema):
-        text_input_1: Optional[str] = SchemaField(
-            title="Text Input 1",
-            description="First mutually exclusive input",
-            mutually_exclusive="group_1",
+        tweet_text: str = SchemaField(
+            title="Tweet Text",
+            description="The main text content of the tweet",
         )
 
-        text_input_2: Optional[str] = SchemaField(
-            title="Text Input 2",
-            description="Second mutually exclusive input",
-            mutually_exclusive="group_1",
-        )
-
-        text_input_3: Optional[str] = SchemaField(
-            title="Text Input 3",
-            description="Third mutually exclusive input",
-            mutually_exclusive="group_1",
-        )
-
-        number_input_1: Optional[int] = SchemaField(
-            title="Number Input 1",
-            description="First number input (mutually exclusive)",
-            mutually_exclusive="group2",
-        )
-
-        number_input_2: Optional[int] = SchemaField(
-            title="Number Input 2",
-            description="Second number input (mutually exclusive)",
-            mutually_exclusive="group2",
-        )
-
-        independent_input: str = SchemaField(
-            title="Independent Input",
-            description="This input is not mutually exclusive with others",
-            default="This can be filled anytime",
+        attachment: Union[Poll, MediaUpload, PollDuration] = SchemaField(
+            discriminator='discriminator',
+            title="Tweet Attachment",
+            description="Optional tweet attachment (poll, media, or duration)",
         )
 
     class Output(BlockSchema):
-        result: str = SchemaField(description="Shows which inputs were filled")
+        result: str = SchemaField(description="Shows the tweet content and any attachments")
 
     def __init__(self):
         super().__init__(
             id="b7faa910-b074-11ef-bee7-477f51db4711",
-            description="A test block to demonstrate mutually exclusive inputs",
+            description="Create a tweet with optional attachments",
             categories={BlockCategory.BASIC},
-            input_schema=TestMutualExclusiveBlock.Input,
-            output_schema=TestMutualExclusiveBlock.Output,
+            input_schema=TweetBlock.Input,
+            output_schema=TweetBlock.Output,
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        filled_inputs = []
+        tweet_content = [f"Tweet Text: {input_data.tweet_text}"]
+        if isinstance(input_data.attachment, Poll):
+            options = [opt.text for opt in input_data.attachment.some_input_4]
+            tweet_content.append(f"Poll Options: {', '.join(options)}")
 
-        if input_data.text_input_1:
-            filled_inputs.append(f"Text Input 1: {input_data.text_input_1}")
-        if input_data.text_input_2:
-            filled_inputs.append(f"Text Input 2: {input_data.text_input_2}")
-        if input_data.text_input_3:
-            filled_inputs.append(f"Text Input 3: {input_data.text_input_3}")
+        if isinstance(input_data.attachment, MediaUpload):
+            tweet_content.append(f"Media URL: {input_data.attachment.some_input}")
+            tweet_content.append(f"Media URL 2: {input_data.attachment.some_input_2}")
 
-        if input_data.number_input_1:
-            filled_inputs.append(f"Number Input 1: {input_data.number_input_1}")
-        if input_data.number_input_2:
-            filled_inputs.append(f"Number Input 2: {input_data.number_input_2}")
 
-        filled_inputs.append(f"Independent Input: {input_data.independent_input}")
+        if isinstance(input_data.attachment, PollDuration):
+            tweet_content.append(f"Poll Duration: {input_data.attachment.some_input} hours")
 
-        yield "result", "\n".join(filled_inputs)
+        yield "result", "\n".join(tweet_content)

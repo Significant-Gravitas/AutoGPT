@@ -18,7 +18,7 @@ import {
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import React, { FC, useCallback, useEffect, useState } from "react";
+import React, { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -40,7 +40,6 @@ import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
 import { CredentialsInput } from "./integrations/credentials-input";
-import { useNodes } from "@xyflow/react";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -202,42 +201,6 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
-  const nodes = useNodes();
-
-  const isDisabledByMutualExclusion = useCallback(() => {
-    if (!propSchema.mutually_exclusive) return false;
-
-    // Find all inputs in the same node with the same mutuallyExclusive group
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return false;
-    const inputSchema = node.data.inputSchema as {
-      properties?: Record<string, BlockIOSubSchema>;
-    };
-    if (!inputSchema?.properties) return false;
-
-    // Check if any other input in the same group has a value
-    return Object.entries(inputSchema.properties).some(([key, schema]) => {
-      const otherSchema = schema;
-      return (
-        key !== propKey &&
-        otherSchema.mutually_exclusive === propSchema.mutually_exclusive &&
-        (node.data.hardcodedValues as Record<string, unknown>)[key] !==
-          undefined &&
-        (node.data.hardcodedValues as Record<string, unknown>)[key] !== ""
-      );
-    });
-  }, [nodeId, propKey, propSchema, nodes]);
-
-  const isDisabled = isDisabledByMutualExclusion();
-
-  const handleMutualExclusiveInputChange = (key: string, value: any) => {
-    if (isDisabled) {
-      console.warn("Input is disabled due to mutual exclusivity");
-      return;
-    }
-    handleInputChange(key, value);
-  };
-
   className = cn(className, "my-2");
   displayName ||= propSchema.title || beautifyString(propKey);
 
@@ -341,8 +304,7 @@ export const NodeGenericInputField: FC<{
           error={errors[propKey]}
           className={className}
           displayName={displayName}
-          disabled={isDisabled}
-          handleInputChange={handleMutualExclusiveInputChange}
+          handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
         />
       );
@@ -364,13 +326,26 @@ export const NodeGenericInputField: FC<{
     }
   }
 
-  if ("oneOf" in propSchema) {
-    // At the time of writing, this isn't used in the backend -> no impl. needed
-    console.error(
-      `Unsupported 'oneOf' in schema for '${propKey}'!`,
-      propSchema,
+  if (
+    "oneOf" in propSchema &&
+    propSchema.oneOf &&
+    "discriminator" in propSchema &&
+    propSchema.discriminator
+  ) {
+    return (
+      <NodeOneOfDiscriminatorField
+        nodeId={nodeId}
+        propKey={propKey}
+        propSchema={propSchema}
+        currentValue={currentValue}
+        errors={errors}
+        connections={connections}
+        handleInputChange={handleInputChange}
+        handleInputClick={handleInputClick}
+        className={className}
+        displayName={displayName}
+      />
     );
-    return null;
   }
 
   if (!("type" in propSchema)) {
@@ -382,8 +357,7 @@ export const NodeGenericInputField: FC<{
         error={errors[propKey]}
         className={className}
         displayName={displayName}
-        disabled={isDisabled}
-        handleInputChange={handleMutualExclusiveInputChange}
+        handleInputChange={handleInputChange}
         handleInputClick={handleInputClick}
       />
     );
@@ -488,6 +462,132 @@ export const NodeGenericInputField: FC<{
         />
       );
   }
+};
+
+const NodeOneOfDiscriminatorField: FC<{
+  nodeId: string;
+  propKey: string;
+  propSchema: any;
+  currentValue?: any;
+  errors: { [key: string]: string | undefined };
+  connections: any;
+  handleInputChange: (key: string, value: any) => void;
+  handleInputClick: (key: string) => void;
+  className?: string;
+  displayName?: string;
+}> = ({
+  nodeId,
+  propKey,
+  propSchema,
+  currentValue,
+  errors,
+  connections,
+  handleInputChange,
+  handleInputClick,
+  className,
+  displayName,
+}) => {
+  const discriminator = propSchema.discriminator;
+
+  const discriminatorProperty = discriminator.propertyName;
+
+  const variantOptions = useMemo(() => {
+    const oneOfVariants = propSchema.oneOf || [];
+
+    return oneOfVariants
+      .map((variant: any) => {
+        const variantDiscValue =
+          variant.properties?.[discriminatorProperty]?.const;
+
+        return {
+          value: variantDiscValue,
+          schema: variant,
+        };
+      })
+      .filter((v: any) => v.value != null);
+  }, [discriminatorProperty, propSchema.oneOf]);
+
+  const currentVariant = variantOptions.find(
+    (opt: any) => currentValue?.[discriminatorProperty] === opt.value,
+  );
+
+  const [chosenType, setChosenType] = useState<string>(
+    currentVariant?.value || "",
+  );
+
+  const handleVariantChange = (newType: string) => {
+    setChosenType(newType);
+    const chosenVariant = variantOptions.find(
+      (opt: any) => opt.value === newType,
+    );
+    if (chosenVariant) {
+      const initialValue = {
+        [discriminatorProperty]: newType,
+      };
+      handleInputChange(propKey, initialValue);
+    }
+  };
+
+  const chosenVariantSchema = variantOptions.find(
+    (opt: any) => opt.value === chosenType,
+  )?.schema;
+
+  return (
+    <div className={cn("flex flex-col space-y-2", className)}>
+      <Select value={chosenType || ""} onValueChange={handleVariantChange}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="Select a type..." />
+        </SelectTrigger>
+        <SelectContent>
+          {variantOptions.map((opt: any) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {beautifyString(opt.value)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {chosenVariantSchema && (
+        <div className={cn(className, "w-full flex-col")}>
+          {Object.entries(chosenVariantSchema.properties).map(
+            ([someKey, childSchema]) => {
+              if (someKey === "discriminator") {
+                return null;
+              }
+              const childKey = propKey ? `${propKey}.${someKey}` : someKey;
+              return (
+                <div
+                  key={childKey}
+                  className="flex w-full flex-row justify-between space-y-2"
+                >
+                  <span className="mr-2 mt-3 dark:text-gray-300">
+                    {(childSchema as BlockIOSubSchema).title ||
+                      beautifyString(someKey)}
+                  </span>
+                  <NodeGenericInputField
+                    nodeId={nodeId}
+                    key={propKey}
+                    propKey={childKey}
+                    propSchema={childSchema as BlockIOSubSchema}
+                    currentValue={
+                      currentValue ? currentValue[someKey] : undefined
+                    }
+                    errors={errors}
+                    connections={connections}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                    displayName={
+                      chosenVariantSchema.title || beautifyString(someKey)
+                    }
+                  />
+                </div>
+              );
+            },
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const NodeCredentialsInput: FC<{
@@ -845,7 +945,6 @@ const NodeStringInput: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName: string;
-  disabled?: boolean;
 }> = ({
   selfKey,
   schema,
@@ -855,7 +954,6 @@ const NodeStringInput: FC<{
   handleInputClick,
   className,
   displayName,
-  disabled,
 }) => {
   value ||= schema.default || "";
   return (
@@ -864,11 +962,8 @@ const NodeStringInput: FC<{
         <Select
           defaultValue={value}
           onValueChange={(newValue) => handleInputChange(selfKey, newValue)}
-          disabled={disabled}
         >
-          <SelectTrigger
-            className={disabled ? "cursor-not-allowed opacity-50" : ""}
-          >
+          <SelectTrigger>
             <SelectValue placeholder={schema.placeholder || displayName} />
           </SelectTrigger>
           <SelectContent className="nodrag">
@@ -882,11 +977,7 @@ const NodeStringInput: FC<{
       ) : (
         <div
           className="nodrag relative"
-          onClick={
-            schema.secret && !disabled
-              ? () => handleInputClick(selfKey)
-              : undefined
-          }
+          onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
         >
           <LocalValuedInput
             type="text"
@@ -894,26 +985,20 @@ const NodeStringInput: FC<{
             value={schema.secret && value ? "*".repeat(value.length) : value}
             onChange={(e) => handleInputChange(selfKey, e.target.value)}
             readOnly={schema.secret}
-            disabled={disabled}
             placeholder={
               schema?.placeholder || `Enter ${beautifyString(displayName)}`
             }
-            className={cn(
-              "pr-8 read-only:cursor-pointer read-only:text-gray-500 dark:text-white",
-              disabled && "cursor-not-allowed opacity-50",
-            )}
+            className="pr-8 read-only:cursor-pointer read-only:text-gray-500"
           />
-          {!disabled && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute inset-1 left-auto h-7 w-7 rounded-[0.25rem]"
-              onClick={() => handleInputClick(selfKey)}
-              title="Open a larger textbox input"
-            >
-              <Pencil2Icon className="m-0 p-0" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute inset-1 left-auto h-7 w-7 rounded-[0.25rem]"
+            onClick={() => handleInputClick(selfKey)}
+            title="Open a larger textbox input"
+          >
+            <Pencil2Icon className="m-0 p-0" />
+          </Button>
         </div>
       )}
       {error && <span className="error-message">{error}</span>}
@@ -1050,7 +1135,6 @@ const NodeFallbackInput: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName: string;
-  disabled?: boolean;
 }> = ({
   selfKey,
   schema,
@@ -1060,7 +1144,6 @@ const NodeFallbackInput: FC<{
   handleInputClick,
   className,
   displayName,
-  disabled,
 }) => {
   value ||= (schema as BlockIOStringSubSchema)?.default;
   return (
@@ -1070,7 +1153,6 @@ const NodeFallbackInput: FC<{
       value={value}
       error={error}
       handleInputChange={handleInputChange}
-      disabled={disabled}
       handleInputClick={handleInputClick}
       className={className}
       displayName={displayName}
