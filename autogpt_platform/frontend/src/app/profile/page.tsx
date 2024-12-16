@@ -2,7 +2,6 @@
 
 import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { Button } from "@/components/ui/button";
-import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useMemo, useState } from "react";
 import { FaSpinner } from "react-icons/fa";
@@ -33,7 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function PrivatePage() {
-  const { user, isLoading, error } = useUser();
+  const { user, isLoading } = useSupabase();
   const { supabase } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
@@ -123,7 +122,7 @@ export default function PrivatePage() {
     );
   }
 
-  if (error || !user || !supabase) {
+  if (!user || !supabase) {
     router.push("/login");
     return null;
   }

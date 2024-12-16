@@ -1,5 +1,4 @@
 "use client";
-import useUser from "@/hooks/useUser";
 import { login, signup } from "./actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,8 +31,7 @@ const loginFormSchema = z.object({
 });
 
 export default function LoginPage() {
-  const { supabase, isLoading: isSupabaseLoading } = useSupabase();
-  const { user, isLoading: isUserLoading } = useUser();
+  const { supabase, isLoading: isSupabaseLoading, user } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -48,11 +46,11 @@ export default function LoginPage() {
   });
 
   if (user) {
-    console.log("User exists, redirecting to home");
+    console.debug("User exists, redirecting to /");
     router.push("/");
   }
 
-  if (isUserLoading || isSupabaseLoading || user) {
+  if (isSupabaseLoading || user) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
