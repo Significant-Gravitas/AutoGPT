@@ -1,25 +1,31 @@
-from typing import  Union, List
-from typing_extensions import  Literal
+from typing import List, Union
+
+from pydantic import BaseModel
+from typing_extensions import Literal
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from pydantic import BaseModel
+
 
 class PollOption(BaseModel):
     text: str
 
+
 class Poll(BaseModel):
-    discriminator: Literal['poll']
+    discriminator: Literal["poll"]
     some_input_4: List[PollOption]
 
+
 class MediaUpload(BaseModel):
-    discriminator: Literal['media']
+    discriminator: Literal["media"]
     some_input: str
-    some_input_2 : str
+    some_input_2: str
+
 
 class PollDuration(BaseModel):
-    discriminator: Literal['duration']
+    discriminator: Literal["duration"]
     some_input: int
+
 
 class TweetBlock(Block):
     class Input(BlockSchema):
@@ -29,13 +35,15 @@ class TweetBlock(Block):
         )
 
         attachment: Union[Poll, MediaUpload, PollDuration] = SchemaField(
-            discriminator='discriminator',
+            discriminator="discriminator",
             title="Tweet Attachment",
             description="Optional tweet attachment (poll, media, or duration)",
         )
 
     class Output(BlockSchema):
-        result: str = SchemaField(description="Shows the tweet content and any attachments")
+        result: str = SchemaField(
+            description="Shows the tweet content and any attachments"
+        )
 
     def __init__(self):
         super().__init__(
@@ -56,8 +64,9 @@ class TweetBlock(Block):
             tweet_content.append(f"Media URL: {input_data.attachment.some_input}")
             tweet_content.append(f"Media URL 2: {input_data.attachment.some_input_2}")
 
-
         if isinstance(input_data.attachment, PollDuration):
-            tweet_content.append(f"Poll Duration: {input_data.attachment.some_input} hours")
+            tweet_content.append(
+                f"Poll Duration: {input_data.attachment.some_input} hours"
+            )
 
         yield "result", "\n".join(tweet_content)
