@@ -432,7 +432,15 @@ async def get_graphs(
         include=AGENT_GRAPH_INCLUDE,
     )
 
-    return [GraphModel.from_db(graph) for graph in graphs]
+    graph_models = []
+    for graph in graphs:
+        try:
+            graph_models.append(GraphModel.from_db(graph))
+        except Exception as e:
+            logger.error(f"Error processing graph {graph.id}: {e}")
+            continue
+
+    return graph_models
 
 
 async def get_executions(user_id: str) -> list[GraphExecution]:
