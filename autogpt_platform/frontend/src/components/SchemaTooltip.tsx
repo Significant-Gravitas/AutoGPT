@@ -14,15 +14,18 @@ const SchemaTooltip: React.FC<{ description?: string }> = ({ description }) => {
     <TooltipProvider delayDuration={400}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Info className="rounded-full p-1 hover:bg-gray-300" size={24} />
+          <Info
+            className="rounded-full p-1 hover:bg-gray-300 dark:hover:bg-gray-700"
+            size={24}
+          />
         </TooltipTrigger>
-        <TooltipContent className="tooltip-content max-w-xs">
+        <TooltipContent className="tooltip-content max-w-xs bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100">
           <ReactMarkdown
             components={{
               a: ({ node, ...props }) => (
                 <a
                   target="_blank"
-                  className="text-blue-400 underline"
+                  className="text-blue-400 underline dark:text-blue-300"
                   {...props}
                 />
               ),
