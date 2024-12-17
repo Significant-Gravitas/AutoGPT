@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Form,
   FormControl,
@@ -72,7 +72,7 @@ export const AgentImportForm: React.FC<
   React.FormHTMLAttributes<HTMLFormElement>
 > = ({ className, ...props }) => {
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
-  const api = new BackendAPI();
+  const api = useMemo(() => new BackendAPI(), []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

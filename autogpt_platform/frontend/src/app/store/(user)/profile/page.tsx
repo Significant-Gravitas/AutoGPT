@@ -3,9 +3,7 @@ import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { CreatorDetails } from "@/lib/autogpt-server-api/types";
 
-async function getProfileData() {
-  const api = new BackendAPI();
-
+async function getProfileData(api: BackendAPI) {
   try {
     const profile = await api.getStoreProfile("profile");
     return {
@@ -20,7 +18,8 @@ async function getProfileData() {
 }
 
 export default async function Page({}: {}) {
-  const { profile } = await getProfileData();
+  const api = new BackendAPI();
+  const { profile } = await getProfileData(api);
 
   if (!profile) {
     return (

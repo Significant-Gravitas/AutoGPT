@@ -17,7 +17,7 @@ import useSupabase from "@/hooks/useSupabase";
 
 export default function Page({}: {}) {
   const { supabase } = useSupabase();
-  const api = new BackendAPI();
+  const api = React.useMemo(() => new BackendAPI(), []);
   const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();
   const [openPopout, setOpenPopout] = useState<boolean>(false);
   const [submissionData, setSubmissionData] =

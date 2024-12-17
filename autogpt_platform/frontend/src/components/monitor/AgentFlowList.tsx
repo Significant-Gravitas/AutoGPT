@@ -45,8 +45,6 @@ export const AgentFlowList = ({
   onSelectFlow: (f: GraphMeta) => void;
   className?: string;
 }) => {
-  const api = useMemo(() => new BackendAPI(), []);
-
   return (
     <Card className={className}>
       <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">

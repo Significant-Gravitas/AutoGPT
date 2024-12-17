@@ -25,7 +25,7 @@ const Monitor = () => {
   const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const api = new BackendAPI();
+  const api = useMemo(() => new BackendAPI(), []);
 
   const fetchSchedules = useCallback(async () => {
     setSchedules(await api.listSchedules());

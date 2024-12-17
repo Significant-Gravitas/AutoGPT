@@ -56,7 +56,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
   const popupId = React.useId();
   const router = useRouter();
-  const api = new BackendAPI();
+  const api = React.useMemo(() => new BackendAPI(), []);
 
   React.useEffect(() => {
     console.log("PublishAgentPopout Effect");

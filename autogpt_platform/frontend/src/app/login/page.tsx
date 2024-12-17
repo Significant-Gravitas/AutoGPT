@@ -16,7 +16,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PasswordInput } from "@/components/PasswordInput";
 import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,7 +37,7 @@ export default function LoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const api = new BackendAPI();
+  const api = useMemo(() => new BackendAPI(), []);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),

@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { IconRefresh } from "@/components/ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
 
-const api = new BackendAPI();
-
 export default function CreditButton() {
   const [credit, setCredit] = useState<number | null>(null);
+  const api = useMemo(() => new BackendAPI(), []);
 
   const fetchCredit = useCallback(async () => {
     try {

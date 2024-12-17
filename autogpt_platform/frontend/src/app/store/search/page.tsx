@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
@@ -34,11 +34,11 @@ function SearchResults({
   const [agents, setAgents] = useState<any[]>([]);
   const [creators, setCreators] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const api = useMemo(() => new BackendAPI(), []);
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const api = new BackendAPI();
 
       try {
         const [agentsRes, creatorsRes] = await Promise.all([

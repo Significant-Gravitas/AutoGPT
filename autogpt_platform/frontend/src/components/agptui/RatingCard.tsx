@@ -17,7 +17,7 @@ export const RatingCard: React.FC<RatingCardProps> = ({
   const [rating, setRating] = React.useState<number>(0);
   const [hoveredRating, setHoveredRating] = React.useState<number>(0);
   const [isVisible, setIsVisible] = React.useState(true);
-  const api = new BackendAPI();
+  const api = React.useMemo(() => new BackendAPI(), []);
 
   const handleClose = () => {
     setIsVisible(false);

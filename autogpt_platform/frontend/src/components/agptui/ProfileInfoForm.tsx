@@ -18,7 +18,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState(profile);
   const { supabase } = useSupabase();
-  const api = new BackendAPI();
+  const api = React.useMemo(() => new BackendAPI(), []);
 
   const submitForm = async () => {
     try {
