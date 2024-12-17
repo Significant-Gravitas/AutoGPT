@@ -1,10 +1,7 @@
 "use client";
-
-import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useMemo, useState } from "react";
-import { FaSpinner } from "react-icons/fa";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
@@ -30,10 +27,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import useSupabase from "@/hooks/useSupabase";
+import Spinner from "@/components/Spinner";
 
 export default function PrivatePage() {
-  const { user, isLoading } = useSupabase();
-  const { supabase } = useSupabase();
+  const { supabase, user } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
@@ -114,12 +112,8 @@ export default function PrivatePage() {
     [],
   );
 
-  if (isLoading || !providers) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
-      </div>
-    );
+  if (!providers) {
+    return <Spinner />;
   }
 
   if (!user || !supabase) {

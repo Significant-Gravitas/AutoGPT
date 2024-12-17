@@ -7,15 +7,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./ui/button";
-import { useSupabase } from "./providers/SupabaseProvider";
 import { useRouter } from "next/navigation";
+import useSupabase from "@/hooks/useSupabase";
 
 const ProfileDropdown = () => {
-  const { supabase } = useSupabase();
+  const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
-  const { user, isLoading } = useSupabase();
 
-  if (isLoading) {
+  if (isUserLoading) {
     return null;
   }
 

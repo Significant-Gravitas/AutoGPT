@@ -1,4 +1,4 @@
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import BackendAPI from "@/lib/autogpt-server-api";
 import {
   CreatorDetails as Creator,
   StoreAgent,
@@ -14,7 +14,7 @@ export async function generateMetadata({
 }: {
   params: { creator: string };
 }): Promise<Metadata> {
-  const api = new AutoGPTServerAPI();
+  const api = new BackendAPI();
   const creator = await api.getStoreCreator(params.creator);
 
   return {
@@ -24,7 +24,7 @@ export async function generateMetadata({
 }
 
 // export async function generateStaticParams() {
-//   const api = new AutoGPTServerAPI();
+//   const api = new BackendAPI();
 //   const creators = await api.getStoreCreators({ featured: true });
 //   return creators.creators.map((creator) => ({
 //     creator: creator.username,
@@ -36,7 +36,7 @@ export default async function Page({
 }: {
   params: { creator: string };
 }) {
-  const api = new AutoGPTServerAPI();
+  const api = new BackendAPI();
 
   try {
     const creator = await api.getStoreCreator(params.creator);

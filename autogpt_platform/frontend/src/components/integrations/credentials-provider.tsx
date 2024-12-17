@@ -1,4 +1,4 @@
-import AutoGPTServerAPI, {
+import BackendAPI, {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
@@ -87,7 +87,7 @@ export default function CredentialsProvider({
 }) {
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useMemo(() => new BackendAPI(), []);
 
   const addCredentials = useCallback(
     (
@@ -120,7 +120,7 @@ export default function CredentialsProvider({
     [setProviders],
   );
 
-  /** Wraps `AutoGPTServerAPI.oAuthCallback`, and adds the result to the internal credentials store. */
+  /** Wraps `BackendAPI.oAuthCallback`, and adds the result to the internal credentials store. */
   const oAuthCallback = useCallback(
     async (
       provider: CredentialsProviderName,
@@ -134,7 +134,7 @@ export default function CredentialsProvider({
     [api, addCredentials],
   );
 
-  /** Wraps `AutoGPTServerAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
+  /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
   const createAPIKeyCredentials = useCallback(
     async (
       provider: CredentialsProviderName,
@@ -150,7 +150,7 @@ export default function CredentialsProvider({
     [api, addCredentials],
   );
 
-  /** Wraps `AutoGPTServerAPI.deleteCredentials`, and removes the credentials from the internal store. */
+  /** Wraps `BackendAPI.deleteCredentials`, and removes the credentials from the internal store. */
   const deleteCredentials = useCallback(
     async (
       provider: CredentialsProviderName,

@@ -14,10 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import AutoGPTServerAPI, {
-  Graph,
-  GraphCreatable,
-} from "@/lib/autogpt-server-api";
+import BackendAPI, { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
 
@@ -75,7 +72,7 @@ export const AgentImportForm: React.FC<
   React.FormHTMLAttributes<HTMLFormElement>
 > = ({ className, ...props }) => {
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
-  const api = new AutoGPTServerAPI();
+  const api = new BackendAPI();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

@@ -1,4 +1,4 @@
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import BackendAPI from "@/lib/autogpt-server-api";
 import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 import { AgentInfo } from "@/components/agptui/AgentInfo";
 import { AgentImages } from "@/components/agptui/AgentImages";
@@ -12,7 +12,7 @@ export async function generateMetadata({
 }: {
   params: { creator: string; slug: string };
 }): Promise<Metadata> {
-  const api = new AutoGPTServerAPI();
+  const api = new BackendAPI();
   const agent = await api.getStoreAgent(params.creator, params.slug);
 
   return {
@@ -22,7 +22,7 @@ export async function generateMetadata({
 }
 
 // export async function generateStaticParams() {
-//   const api = new AutoGPTServerAPI();
+//   const api = new BackendAPI();
 //   const agents = await api.getStoreAgents({ featured: true });
 //   return agents.agents.map((agent) => ({
 //     creator: agent.creator,
@@ -35,7 +35,7 @@ export default async function Page({
 }: {
   params: { creator: string; slug: string };
 }) {
-  const api = new AutoGPTServerAPI();
+  const api = new BackendAPI();
   const agent = await api.getStoreAgent(params.creator, params.slug);
   const otherAgents = await api.getStoreAgents({ creator: params.creator });
   const similarAgents = await api.getStoreAgents({

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import AutoGPTServerAPI, {
+import BackendAPI, {
   GraphExecution,
   Graph,
   GraphMeta,
@@ -66,7 +66,7 @@ export const FlowInfo: React.FC<
     setEdges,
   } = useAgentGraph(flow.id, false);
 
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useMemo(() => new BackendAPI(), []);
   const { toast } = useToast();
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);

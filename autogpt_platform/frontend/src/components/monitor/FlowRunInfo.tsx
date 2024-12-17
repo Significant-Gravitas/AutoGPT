@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import AutoGPTServerAPI, {
+import BackendAPI, {
   GraphExecution,
   GraphMeta,
   NodeExecutionResult,
@@ -22,7 +22,7 @@ export const FlowRunInfo: React.FC<
 > = ({ flow, execution, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);
   const [blockOutputs, setBlockOutputs] = useState<BlockOutput[]>([]);
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useMemo(() => new BackendAPI(), []);
 
   const fetchBlockResults = useCallback(async () => {
     const executionResults = await api.getGraphExecutionInfo(
@@ -119,7 +119,7 @@ export const FlowRunInfo: React.FC<
             <strong>Agent ID:</strong> <code>{flow.id}</code>
           </p>
           <p className="hidden">
-            <strong>Run ID:</strong> <code>{flowRun.id}</code>
+            <strong>Run ID:</strong> <code>{execution.execution_id}</code>
           </p>
           <div>
             <strong>Status:</strong>{" "}

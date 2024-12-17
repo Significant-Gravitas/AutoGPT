@@ -1,4 +1,4 @@
-import AutoGPTServerAPI, {
+import BackendAPI, {
   GraphExecution,
   GraphMeta,
 } from "@/lib/autogpt-server-api";
@@ -45,7 +45,7 @@ export const AgentFlowList = ({
   onSelectFlow: (f: GraphMeta) => void;
   className?: string;
 }) => {
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useMemo(() => new BackendAPI(), []);
 
   return (
     <Card className={className}>

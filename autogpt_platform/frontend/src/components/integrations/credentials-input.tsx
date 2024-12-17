@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import BackendAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import { FaDiscord, FaGithub, FaGoogle, FaMedium, FaKey } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
@@ -91,7 +91,7 @@ export const CredentialsInput: FC<{
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
 }> = ({ className, selectedCredentials, onSelectCredentials }) => {
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useMemo(() => new BackendAPI(), []);
   const credentials = useCredentials();
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { IconRefresh } from "@/components/ui/icons";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import BackendAPI from "@/lib/autogpt-server-api";
 import { useState } from "react";
 import {
   Tooltip,
@@ -15,7 +15,7 @@ interface CreditsCardProps {
 
 const CreditsCard = ({ credits }: CreditsCardProps) => {
   const [currentCredits, setCurrentCredits] = useState(credits);
-  const api = new AutoGPTServerAPI();
+  const api = new BackendAPI();
 
   const onRefresh = async () => {
     const { credits } = await api.getUserCredit("credits-card");
