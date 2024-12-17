@@ -41,7 +41,6 @@ export default class BackendAPI {
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
-  private supabaseClient: SupabaseClient | null = null;
   heartbeatInterval: number | null = null;
   readonly HEARTBEAT_INTERVAL = 10_0000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -53,15 +52,17 @@ export default class BackendAPI {
     wsUrl: string = process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL ||
       "ws://localhost:8001/ws",
   ) {
-    const supabase = isClient
+    this.baseUrl = baseUrl;
+    this.wsUrl = wsUrl;
+  }
+
+  private get supabaseClient(): SupabaseClient | null {
+    return isClient
       ? createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         )
       : getServerSupabase();
-    this.baseUrl = baseUrl;
-    this.wsUrl = wsUrl;
-    this.supabaseClient = supabase;
   }
 
   async isAuthenticated(): Promise<boolean> {

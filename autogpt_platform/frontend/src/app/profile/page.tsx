@@ -31,7 +31,7 @@ import useSupabase from "@/hooks/useSupabase";
 import Spinner from "@/components/Spinner";
 
 export default function PrivatePage() {
-  const { supabase, user } = useSupabase();
+  const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
@@ -112,7 +112,7 @@ export default function PrivatePage() {
     [],
   );
 
-  if (!providers) {
+  if (isUserLoading) {
     return <Spinner />;
   }
 
@@ -121,17 +121,19 @@ export default function PrivatePage() {
     return null;
   }
 
-  const allCredentials = Object.values(providers).flatMap((provider) =>
-    [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
-      .filter((cred) => !hiddenCredentials.includes(cred.id))
-      .map((credentials) => ({
-        ...credentials,
-        provider: provider.provider,
-        providerName: provider.providerName,
-        ProviderIcon: providerIcons[provider.provider],
-        TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
-      })),
-  );
+  const allCredentials = providers
+    ? Object.values(providers).flatMap((provider) =>
+        [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+          .filter((cred) => !hiddenCredentials.includes(cred.id))
+          .map((credentials) => ({
+            ...credentials,
+            provider: provider.provider,
+            providerName: provider.providerName,
+            ProviderIcon: providerIcons[provider.provider],
+            TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+          })),
+      )
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl md:py-8">
