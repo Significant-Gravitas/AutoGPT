@@ -8,7 +8,7 @@ We take the security of our project seriously. If you believe you have found a s
 
 Instead, please report them via:
 - [GitHub Security Advisory](https://github.com/Significant-Gravitas/AutoGPT/security/advisories/new)
-- [Huntr.dev](https://huntr.com/repos/significant-gravitas/autogpt) - where you may be eligible for a bounty
+<!--- [Huntr.dev](https://huntr.com/repos/significant-gravitas/autogpt) - where you may be eligible for a bounty-->
 
 ### Reporting Process
 1. **Submit Report**: Use one of the above channels to submit your report

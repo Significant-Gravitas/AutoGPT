@@ -45,11 +45,11 @@ export const ControlPanel = ({
   className,
 }: ControlPanelProps) => {
   return (
-    <Card className={cn("m-4 mt-24 w-14", className)}>
+    <Card className={cn("m-4 mt-24 w-14 dark:bg-slate-900", className)}>
       <CardContent className="p-0">
         <div className="flex flex-col items-center gap-3 rounded-xl py-3">
           {topChildren}
-          <Separator />
+          <Separator className="dark:bg-slate-700" />
           {controls.map((control, index) => (
             <Tooltip key={index} delayDuration={500}>
               <TooltipTrigger asChild>
@@ -59,17 +59,24 @@ export const ControlPanel = ({
                     size="icon"
                     onClick={() => control.onClick()}
                     data-id={`control-button-${index}`}
+                    data-testid={`blocks-control-${control.label.toLowerCase()}-button`}
                     disabled={control.disabled || false}
+                    className="dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
                     {control.icon}
                     <span className="sr-only">{control.label}</span>
                   </Button>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="right">{control.label}</TooltipContent>
+              <TooltipContent
+                side="right"
+                className="dark:bg-slate-800 dark:text-slate-100"
+              >
+                {control.label}
+              </TooltipContent>
             </Tooltip>
           ))}
-          <Separator />
+          <Separator className="dark:bg-slate-700" />
           {botChildren}
         </div>
       </CardContent>

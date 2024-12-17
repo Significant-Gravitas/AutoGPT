@@ -7,6 +7,7 @@ from pydantic import Field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
+from backend.integrations.providers import ProviderName
 
 from .db import BaseDbModel
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class Webhook(BaseDbModel):
     user_id: str
-    provider: str
+    provider: ProviderName
     credentials_id: str
     webhook_type: str
     resource: str
@@ -37,7 +38,7 @@ class Webhook(BaseDbModel):
         return Webhook(
             id=webhook.id,
             user_id=webhook.userId,
-            provider=webhook.provider,
+            provider=ProviderName(webhook.provider),
             credentials_id=webhook.credentialsId,
             webhook_type=webhook.webhookType,
             resource=webhook.resource,
@@ -61,7 +62,7 @@ async def create_webhook(webhook: Webhook) -> Webhook:
         data={
             "id": webhook.id,
             "userId": webhook.user_id,
-            "provider": webhook.provider,
+            "provider": webhook.provider.value,
             "credentialsId": webhook.credentials_id,
             "webhookType": webhook.webhook_type,
             "resource": webhook.resource,
@@ -144,25 +145,28 @@ class WebhookEventBus(AsyncRedisEventBus[WebhookEvent]):
     def event_bus_name(self) -> str:
         return "webhooks"
 
-    async def publish(self, event: WebhookEvent):
-        await self.publish_event(event, f"{event.webhook_id}/{event.event_type}")
 
-    async def listen(
-        self, webhook_id: str, event_type: Optional[str] = None
-    ) -> AsyncGenerator[WebhookEvent, None]:
-        async for event in self.listen_events(f"{webhook_id}/{event_type or '*'}"):
-            yield event
-
-
-event_bus = WebhookEventBus()
+_webhook_event_bus = WebhookEventBus()
 
 
 async def publish_webhook_event(event: WebhookEvent):
-    await event_bus.publish(event)
+    await _webhook_event_bus.publish_event(
+        event, f"{event.webhook_id}/{event.event_type}"
+    )
 
 
-async def listen_for_webhook_event(
+async def listen_for_webhook_events(
     webhook_id: str, event_type: Optional[str] = None
+) -> AsyncGenerator[WebhookEvent, None]:
+    async for event in _webhook_event_bus.listen_events(
+        f"{webhook_id}/{event_type or '*'}"
+    ):
+        yield event
+
+
+async def wait_for_webhook_event(
+    webhook_id: str, event_type: Optional[str] = None, timeout: Optional[float] = None
 ) -> WebhookEvent | None:
-    async for event in event_bus.listen(webhook_id, event_type):
-        return event  # Only one event is expected
+    return await _webhook_event_bus.wait_for_event(
+        f"{webhook_id}/{event_type or '*'}", timeout
+    )

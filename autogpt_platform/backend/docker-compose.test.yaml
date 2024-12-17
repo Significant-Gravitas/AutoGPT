@@ -1,20 +1,31 @@
-version: "3"
 services:
   postgres-test:
     image: ankane/pgvector:latest
     environment:
-      - POSTGRES_USER=agpt_user
-      - POSTGRES_PASSWORD=pass123
-      - POSTGRES_DB=agpt_local
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DB_NAME}
     healthcheck:
       test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
-      - "5433:5432"
+      - "${DB_PORT}:5432"
     networks:
       - app-network-test
+  redis-test:
+    image: redis:latest
+    command: redis-server --requirepass password
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network-test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
      app-network-test:

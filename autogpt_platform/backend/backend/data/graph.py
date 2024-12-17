@@ -105,6 +105,8 @@ class GraphExecution(BaseDbModel):
     duration: float
     total_run_time: float
     status: ExecutionStatus
+    graph_id: str
+    graph_version: int
 
     @staticmethod
     def from_db(execution: AgentGraphExecution):
@@ -130,6 +132,8 @@ class GraphExecution(BaseDbModel):
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(execution.executionStatus),
+            graph_id=execution.agentGraphId,
+            graph_version=execution.agentGraphVersion,
         )
 
 
@@ -139,7 +143,6 @@ class Graph(BaseDbModel):
     is_template: bool = False
     name: str
     description: str
-    executions: list[GraphExecution] = []
     nodes: list[Node] = []
     links: list[Link] = []
 
@@ -254,7 +257,7 @@ class GraphModel(Graph):
         for link in self.links:
             input_links[link.sink_id].append(link)
 
-        # Nodes: required fields are filled or connected
+        # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
@@ -273,6 +276,38 @@ class GraphModel(Graph):
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
+                    )
+
+            # Get input schema properties and check dependencies
+            input_schema = block.input_schema.model_fields
+            required_fields = block.input_schema.get_required_fields()
+
+            def has_value(name):
+                return (
+                    node is not None
+                    and name in node.input_default
+                    and node.input_default[name] is not None
+                    and str(node.input_default[name]).strip() != ""
+                ) or (name in input_schema and input_schema[name].default is not None)
+
+            # Validate dependencies between fields
+            for field_name, field_info in input_schema.items():
+
+                # Apply input dependency validation only on run & field with depends_on
+                json_schema_extra = field_info.json_schema_extra or {}
+                dependencies = json_schema_extra.get("depends_on", [])
+                if not for_run or not dependencies:
+                    continue
+
+                # Check if dependent field has value in input_default
+                field_has_value = has_value(field_name)
+                field_is_required = field_name in required_fields
+
+                # Check for missing dependencies when dependent field is present
+                missing_deps = [dep for dep in dependencies if not has_value(dep)]
+                if missing_deps and (field_has_value or field_is_required):
+                    raise ValueError(
+                        f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
                     )
 
         node_map = {v.id: v for v in self.nodes}
@@ -325,11 +360,6 @@ class GraphModel(Graph):
 
     @staticmethod
     def from_db(graph: AgentGraph, hide_credentials: bool = False):
-        executions = [
-            GraphExecution.from_db(execution)
-            for execution in graph.AgentGraphExecution or []
-        ]
-
         return GraphModel(
             id=graph.id,
             user_id=graph.userId,
@@ -338,7 +368,6 @@ class GraphModel(Graph):
             is_template=graph.isTemplate,
             name=graph.name or "",
             description=graph.description or "",
-            executions=executions,
             nodes=[
                 GraphModel._process_node(node, hide_credentials)
                 for node in graph.AgentNodes or []
@@ -408,7 +437,6 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
 
 async def get_graphs(
     user_id: str,
-    include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
 ) -> list[GraphModel]:
     """
@@ -416,33 +444,50 @@ async def get_graphs(
     Default behaviour is to get all currently active graphs.
 
     Args:
-        include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
         user_id: The ID of the user that owns the graph.
 
     Returns:
         list[GraphModel]: A list of objects representing the retrieved graphs.
     """
-    where_clause: AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    where_clause["userId"] = user_id
-
-    graph_include = AGENT_GRAPH_INCLUDE
-    graph_include["AgentGraphExecution"] = include_executions
-
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=graph_include,
+        include=AGENT_GRAPH_INCLUDE,
     )
 
-    return [GraphModel.from_db(graph) for graph in graphs]
+    graph_models = []
+    for graph in graphs:
+        try:
+            graph_models.append(GraphModel.from_db(graph))
+        except Exception as e:
+            logger.error(f"Error processing graph {graph.id}: {e}")
+            continue
+
+    return graph_models
+
+
+async def get_executions(user_id: str) -> list[GraphExecution]:
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={"userId": user_id},
+        order={"createdAt": "desc"},
+    )
+    return [GraphExecution.from_db(execution) for execution in executions]
+
+
+async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": user_id}
+    )
+    return GraphExecution.from_db(execution) if execution else None
 
 
 async def get_graph(

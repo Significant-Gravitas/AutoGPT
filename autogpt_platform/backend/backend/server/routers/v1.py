@@ -69,8 +69,7 @@ integration_creds_manager = IntegrationCredentialsManager()
 _user_credit_model = get_user_credit_model()
 
 # Define the API routes
-v1_router = APIRouter(prefix="/api")
-
+v1_router = APIRouter()
 
 v1_router.include_router(
     backend.server.integrations.router.router,
@@ -132,7 +131,7 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
 
 @v1_router.get(path="/credits", dependencies=[Depends(auth_middleware)])
 async def get_user_credits(
-    user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
     # Credits can go negative, so ensure it's at least 0 for user to see.
     return {"credits": max(await _user_credit_model.get_or_refill_credit(user_id), 0)}
@@ -149,12 +148,9 @@ class DeleteGraphResponse(TypedDict):
 
 @v1_router.get(path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)])
 async def get_graphs(
-    user_id: Annotated[str, Depends(get_user_id)],
-    with_runs: bool = False,
+    user_id: Annotated[str, Depends(get_user_id)]
 ) -> Sequence[graph_db.Graph]:
-    return await graph_db.get_graphs(
-        include_executions=with_runs, filter_by="active", user_id=user_id
-    )
+    return await graph_db.get_graphs(filter_by="active", user_id=user_id)
 
 
 @v1_router.get(
@@ -252,6 +248,13 @@ async def do_create_graph(
 async def delete_graph(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> DeleteGraphResponse:
+    if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
+
+        def get_credentials(credentials_id: str) -> "Credentials | None":
+            return integration_creds_manager.get(user_id, credentials_id)
+
+        await on_graph_deactivate(active_version, get_credentials)
+
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
 
 
@@ -386,7 +389,7 @@ def execute_graph(
 async def stop_graph_run(
     graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Sequence[execution_db.ExecutionResult]:
-    if not await execution_db.get_graph_execution(graph_exec_id, user_id):
+    if not await graph_db.get_execution(user_id=user_id, execution_id=graph_exec_id):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
 
     await asyncio.to_thread(
@@ -398,23 +401,14 @@ async def stop_graph_run(
 
 
 @v1_router.get(
-    path="/graphs/{graph_id}/executions",
+    path="/executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def list_graph_runs(
-    graph_id: str,
+async def get_executions(
     user_id: Annotated[str, Depends(get_user_id)],
-    graph_version: int | None = None,
-) -> Sequence[str]:
-    graph = await graph_db.get_graph(graph_id, graph_version, user_id=user_id)
-    if not graph:
-        rev = "" if graph_version is None else f" v{graph_version}"
-        raise HTTPException(
-            status_code=404, detail=f"Agent #{graph_id}{rev} not found."
-        )
-
-    return await execution_db.list_executions(graph_id, graph_version)
+) -> list[graph_db.GraphExecution]:
+    return await graph_db.get_executions(user_id=user_id)
 
 
 @v1_router.get(
@@ -432,25 +426,6 @@ async def get_graph_run_node_execution_results(
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     return await execution_db.get_execution_results(graph_exec_id)
-
-
-# NOTE: This is used for testing
-async def get_graph_run_status(
-    graph_id: str,
-    graph_exec_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
-) -> execution_db.ExecutionStatus:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
-    execution = await execution_db.get_graph_execution(graph_exec_id, user_id)
-    if not execution:
-        raise HTTPException(
-            status_code=404, detail=f"Execution #{graph_exec_id} not found."
-        )
-
-    return execution.executionStatus
 
 
 ########################################################
