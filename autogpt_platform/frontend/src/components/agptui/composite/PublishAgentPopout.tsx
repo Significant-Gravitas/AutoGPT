@@ -16,7 +16,7 @@ import {
   MyAgentsResponse,
 } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
-import BackendAPI from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -56,7 +56,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
   const popupId = React.useId();
   const router = useRouter();
-  const api = React.useMemo(() => new BackendAPI(), []);
+  const api = useBackendAPI();
 
   React.useEffect(() => {
     console.log("PublishAgentPopout Effect");

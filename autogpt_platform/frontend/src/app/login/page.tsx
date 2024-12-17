@@ -16,13 +16,13 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PasswordInput } from "@/components/PasswordInput";
 import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
-import BackendAPI from "@/lib/autogpt-server-api";
 import useSupabase from "@/hooks/useSupabase";
 import Spinner from "@/components/Spinner";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
@@ -37,7 +37,7 @@ export default function LoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const api = useMemo(() => new BackendAPI(), []);
+  const api = useBackendAPI();
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),

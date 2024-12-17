@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
 import { Separator } from "@/components/ui/separator";
 import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
 import { SortDropdown } from "@/components/agptui/SortDropdown";
-import BackendAPI from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export default function Page({
   searchParams,
@@ -34,7 +34,7 @@ function SearchResults({
   const [agents, setAgents] = useState<any[]>([]);
   const [creators, setCreators] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const api = useMemo(() => new BackendAPI(), []);
+  const api = useBackendAPI();
 
   useEffect(() => {
     const fetchData = async () => {

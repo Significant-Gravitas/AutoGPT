@@ -12,12 +12,12 @@ import {
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
 } from "@/lib/autogpt-server-api/types";
-import BackendAPI from "@/lib/autogpt-server-api";
 import useSupabase from "@/hooks/useSupabase";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export default function Page({}: {}) {
   const { supabase } = useSupabase();
-  const api = React.useMemo(() => new BackendAPI(), []);
+  const api = useBackendAPI();
   const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();
   const [openPopout, setOpenPopout] = useState<boolean>(false);
   const [submissionData, setSubmissionData] =

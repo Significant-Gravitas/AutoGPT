@@ -1,4 +1,4 @@
-import BackendAPI, {
+import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
@@ -6,13 +6,8 @@ import BackendAPI, {
   CredentialsProviderName,
   PROVIDER_NAMES,
 } from "@/lib/autogpt-server-api";
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { createContext, useCallback, useEffect, useState } from "react";
 
 // Get keys from CredentialsProviderName type
 const CREDENTIALS_PROVIDER_NAMES = Object.values(
@@ -87,7 +82,7 @@ export default function CredentialsProvider({
 }) {
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
-  const api = useMemo(() => new BackendAPI(), []);
+  const api = useBackendAPI();
 
   const addCredentials = useCallback(
     (

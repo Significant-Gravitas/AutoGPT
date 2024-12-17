@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Cross1Icon } from "@radix-ui/react-icons";
 import { IconStar, IconStarFilled } from "@/components/ui/icons";
-import BackendAPI from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 interface RatingCardProps {
   agentName: string;
@@ -17,7 +17,7 @@ export const RatingCard: React.FC<RatingCardProps> = ({
   const [rating, setRating] = React.useState<number>(0);
   const [hoveredRating, setHoveredRating] = React.useState<number>(0);
   const [isVisible, setIsVisible] = React.useState(true);
-  const api = React.useMemo(() => new BackendAPI(), []);
+  const api = useBackendAPI();
 
   const handleClose = () => {
     setIsVisible(false);

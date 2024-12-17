@@ -6,19 +6,17 @@ import { useState } from "react";
 import Image from "next/image";
 
 import { Button } from "./Button";
-
 import { IconPersonFill } from "@/components/ui/icons";
-
-import BackendAPI from "@/lib/autogpt-server-api/client";
 import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Separator } from "@/components/ui/separator";
 import useSupabase from "@/hooks/useSupabase";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState(profile);
   const { supabase } = useSupabase();
-  const api = React.useMemo(() => new BackendAPI(), []);
+  const api = useBackendAPI();
 
   const submitForm = async () => {
     try {
