@@ -37,7 +37,7 @@ export const HeroSection: React.FC = () => {
           Bringing you AI agents designed by thinkers from around the world
         </h3>
         <div className="mb-4 flex justify-center sm:mb-5 md:mb-6">
-          <SearchBar />
+          <SearchBar height="h-[74px]" />
         </div>
         <div>
           <div className="flex justify-center">
