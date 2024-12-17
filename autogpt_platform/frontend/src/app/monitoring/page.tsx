@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import BackendAPI, {
   GraphExecution,
@@ -86,7 +86,7 @@ const Monitor = () => {
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
-          setSelectedFlow(f.id == selectedFlow?.id ? null : f);
+          setSelectedFlow(f.id == selectedFlow?.id ? null : (f as GraphMeta));
         }}
       />
       <FlowRunsList
