@@ -404,6 +404,54 @@ export default function useAgentGraph(
           }
         });
       }
+
+      Object.entries(node.data.inputSchema.properties || {}).forEach(
+        ([key, schema]) => {
+          if (schema.depends_on) {
+            const dependencies = schema.depends_on;
+
+            // Check if dependent field has value
+            const hasValue =
+              inputData[key] != null ||
+              ("default" in schema && schema.default != null);
+
+            const mustHaveValue = node.data.inputSchema.required?.includes(key);
+
+            // Check for missing dependencies when dependent field is present
+            const missingDependencies = dependencies.filter(
+              (dep) =>
+                !inputData[dep as keyof typeof inputData] ||
+                String(inputData[dep as keyof typeof inputData]).trim() === "",
+            );
+
+            if ((hasValue || mustHaveValue) && missingDependencies.length > 0) {
+              setNestedProperty(
+                errors,
+                key,
+                `Requires ${missingDependencies.join(", ")} to be set`,
+              );
+              errorMessage = `Field ${key} requires ${missingDependencies.join(", ")} to be set`;
+            }
+
+            // Check if field is required when dependencies are present
+            const hasAllDependencies = dependencies.every(
+              (dep) =>
+                inputData[dep as keyof typeof inputData] &&
+                String(inputData[dep as keyof typeof inputData]).trim() !== "",
+            );
+
+            if (hasAllDependencies && !hasValue) {
+              setNestedProperty(
+                errors,
+                key,
+                `${key} is required when ${dependencies.join(", ")} are set`,
+              );
+              errorMessage = `${key} is required when ${dependencies.join(", ")} are set`;
+            }
+          }
+        },
+      );
+
       // Set errors
       setNodes((nodes) => {
         return nodes.map((n) => {
