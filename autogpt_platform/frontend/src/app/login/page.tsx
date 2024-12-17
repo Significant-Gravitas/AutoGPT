@@ -235,6 +235,9 @@ export default function LoginPage() {
           </form>
           <p className="text-sm text-red-500">{feedback}</p>
         </Form>
+        <Link href="/reset_password" className="text-sm">
+          Forgot your password?
+        </Link>
       </div>
     </div>
   );
