@@ -1698,10 +1698,10 @@
   resolved "https://registry.yarnpkg.com/@next/env/-/env-14.2.20.tgz#0be2cc955f4eb837516e7d7382284cd5bc1d5a02"
   integrity sha512-JfDpuOCB0UBKlEgEy/H6qcBSzHimn/YWjUHzKl1jMeUO+QVRdzmTTl8gFJaNO87c8DXmVKhFCtwxQ9acqB3+Pw==
 
-"@next/eslint-plugin-next@15.0.3":
-  version "15.0.3"
-  resolved "https://registry.yarnpkg.com/@next/eslint-plugin-next/-/eslint-plugin-next-15.0.3.tgz#ce953098036d462f6901e423cc6445fc165b78c4"
-  integrity sha512-3Ln/nHq2V+v8uIaxCR6YfYo7ceRgZNXfTd3yW1ukTaFbO+/I8jNakrjYWODvG9BuR2v5kgVtH/C8r0i11quOgw==
+"@next/eslint-plugin-next@15.1.0":
+  version "15.1.0"
+  resolved "https://registry.yarnpkg.com/@next/eslint-plugin-next/-/eslint-plugin-next-15.1.0.tgz#421b47ad0772e11b2d67416054675cd32f95b8b7"
+  integrity sha512-+jPT0h+nelBT6HC9ZCHGc7DgGVy04cv4shYdAe6tKlEbjQUtwU3LzQhzbDHQyY2m6g39m6B0kOFVuLGBrxxbGg==
   dependencies:
     fast-glob "3.3.1"
 
@@ -3052,11 +3052,6 @@
   resolved "https://registry.yarnpkg.com/@storybook/components/-/components-8.4.7.tgz#09eeffa07aa672ad3966ca1764a43003731b1d30"
   integrity sha512-uyJIcoyeMWKAvjrG9tJBUCKxr2WZk+PomgrgrUwejkIfXMO76i6jw9BwLa0NZjYdlthDv30r9FfbYZyeNPmF0g==
 
-"@storybook/core-common@^8.0.0":
-  version "8.4.7"
-  resolved "https://registry.yarnpkg.com/@storybook/core-common/-/core-common-8.4.7.tgz#63f775c303b4dc32da137fab9dcc6e9a97bb7b24"
-  integrity sha512-WgVg9UR/Ye4vnoB0i9pQkJsy47IlerkBaxSHycaxIlg87znrYL1K31a5Os1qUXq+eJbH6Jk70dfUmbRh/UOS6A==
-
 "@storybook/core-webpack@8.4.7":
   version "8.4.7"
   resolved "https://registry.yarnpkg.com/@storybook/core-webpack/-/core-webpack-8.4.7.tgz#660d1cbd03a91fee27b65e6acc2f9269ed1fbfc8"
@@ -3088,11 +3083,6 @@
   integrity sha512-Fgogplu4HImgC+AYDcdGm1rmL6OR1rVdNX1Be9C/NEXwOCpbbBwi0BxTf/2ZxHRk9fCeaPEcOdP5S8QHfltc1g==
   dependencies:
     unplugin "^1.3.1"
-
-"@storybook/csf-tools@^8.0.0":
-  version "8.4.7"
-  resolved "https://registry.yarnpkg.com/@storybook/csf-tools/-/csf-tools-8.4.7.tgz#956f9073bbcd377c67e691440ae23536f5be882e"
-  integrity sha512-UR+qMZFEII1e9Gx3RViQoqpSIQnaZWiGQFE2u+wjMMRzqoP2TMRnAHM1d8m6Tk0c1BSrcRt4tUfJkIsTI0o5vw==
 
 "@storybook/csf@^0.1.11":
   version "0.1.12"
@@ -3188,7 +3178,7 @@
     tsconfig-paths "^4.2.0"
     webpack "5"
 
-"@storybook/preview-api@8.4.7", "@storybook/preview-api@^8.0.0":
+"@storybook/preview-api@8.4.7":
   version "8.4.7"
   resolved "https://registry.yarnpkg.com/@storybook/preview-api/-/preview-api-8.4.7.tgz#85e01a97f4182b974581765d725f6c7a7d190013"
   integrity sha512-0QVQwHw+OyZGHAJEXo6Knx+6/4er7n2rTDE5RYJ9F2E2Lg42E19pfdLlq2Jhoods2Xrclo3wj6GWR//Ahi39Eg==
@@ -3223,20 +3213,17 @@
     "@storybook/react-dom-shim" "8.4.7"
     "@storybook/theming" "8.4.7"
 
-"@storybook/test-runner@^0.19.1":
-  version "0.19.1"
-  resolved "https://registry.yarnpkg.com/@storybook/test-runner/-/test-runner-0.19.1.tgz#b0a94bd09d9914f47e23d11779690ffc5b5164a7"
-  integrity sha512-Nc4djXw3Lv3AAXg6TJ7yVTeuMryjMsTDd8GCbE/PStU602rpe8syEqElz78GPoJqB1VYWQ3T9pcu93MKyHT+xQ==
+"@storybook/test-runner@^0.20.1":
+  version "0.20.1"
+  resolved "https://registry.yarnpkg.com/@storybook/test-runner/-/test-runner-0.20.1.tgz#e2efa6266d512312a6b810db376da2919008cccd"
+  integrity sha512-3WU/th/uncIR6vpQDK9hKjiZjmczsluoLbgkRV7ufxY9IgHCGcbIjvT5EPS+XZIaOrNGjaPsyB5cE1okKn9iSA==
   dependencies:
     "@babel/core" "^7.22.5"
     "@babel/generator" "^7.22.5"
     "@babel/template" "^7.22.5"
     "@babel/types" "^7.22.5"
     "@jest/types" "^29.6.3"
-    "@storybook/core-common" "^8.0.0"
     "@storybook/csf" "^0.1.11"
-    "@storybook/csf-tools" "^8.0.0"
-    "@storybook/preview-api" "^8.0.0"
     "@swc/core" "^1.5.22"
     "@swc/jest" "^0.2.23"
     expect-playwright "^0.8.0"
@@ -6146,12 +6133,12 @@ escape-string-regexp@^4.0.0:
   resolved "https://registry.yarnpkg.com/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz#14ba83a5d373e3d311e5afca29cf5bfad965bf34"
   integrity sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==
 
-eslint-config-next@15.0.3:
-  version "15.0.3"
-  resolved "https://registry.yarnpkg.com/eslint-config-next/-/eslint-config-next-15.0.3.tgz#b483585260d5e55050d4ab87e053c88089ae12ee"
-  integrity sha512-IGP2DdQQrgjcr4mwFPve4DrCqo7CVVez1WoYY47XwKSrYO4hC0Dlb+iJA60i0YfICOzgNADIb8r28BpQ5Zs0wg==
+eslint-config-next@15.1.0:
+  version "15.1.0"
+  resolved "https://registry.yarnpkg.com/eslint-config-next/-/eslint-config-next-15.1.0.tgz#25a9a076b059905fd0cf3f6f832771724dfcbbdf"
+  integrity sha512-gADO+nKVseGso3DtOrYX9H7TxB/MuX7AUYhMlvQMqLYvUWu4HrOQuU7cC1HW74tHIqkAvXdwgAz3TCbczzSEXw==
   dependencies:
-    "@next/eslint-plugin-next" "15.0.3"
+    "@next/eslint-plugin-next" "15.1.0"
     "@rushstack/eslint-patch" "^1.10.3"
     "@typescript-eslint/eslint-plugin" "^5.4.2 || ^6.0.0 || ^7.0.0 || ^8.0.0"
     "@typescript-eslint/parser" "^5.4.2 || ^6.0.0 || ^7.0.0 || ^8.0.0"
@@ -6159,7 +6146,7 @@ eslint-config-next@15.0.3:
     eslint-import-resolver-typescript "^3.5.2"
     eslint-plugin-import "^2.31.0"
     eslint-plugin-jsx-a11y "^6.10.0"
-    eslint-plugin-react "^7.35.0"
+    eslint-plugin-react "^7.37.0"
     eslint-plugin-react-hooks "^5.0.0"
 
 eslint-import-resolver-node@^0.3.6, eslint-import-resolver-node@^0.3.9:
@@ -6243,7 +6230,7 @@ eslint-plugin-react-hooks@^5.0.0:
   resolved "https://registry.yarnpkg.com/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-5.1.0.tgz#3d34e37d5770866c34b87d5b499f5f0b53bf0854"
   integrity sha512-mpJRtPgHN2tNAvZ35AMfqeB3Xqeo273QxrHJsbBEPWODRM4r0yB6jfoROqKEYrOn27UtRPpcpHc2UqyBSuUNTw==
 
-eslint-plugin-react@^7.35.0:
+eslint-plugin-react@^7.37.0:
   version "7.37.2"
   resolved "https://registry.yarnpkg.com/eslint-plugin-react/-/eslint-plugin-react-7.37.2.tgz#cd0935987876ba2900df2f58339f6d92305acc7a"
   integrity sha512-EsTAnj9fLVr/GZleBLFbj/sSuXeWmp1eXIN60ceYnZveqEaUCyW4X+Vh4WTdUhCkW4xutXYqTXCUSyqD4rB75w==
@@ -8932,10 +8919,10 @@ msw-storybook-addon@^2.0.3:
   dependencies:
     is-node-process "^1.0.1"
 
-msw@^2.5.2:
-  version "2.6.8"
-  resolved "https://registry.yarnpkg.com/msw/-/msw-2.6.8.tgz#0cc4d92526444f958829f3fb263ab55ca7437b1d"
-  integrity sha512-nxXxnH6WALZ9a7rsQp4HU2AaD4iGAiouMmE/MY4al7pXTibgA6OZOuKhmN2WBIM6w9qMKwRtX8p2iOb45B2M/Q==
+msw@^2.7.0:
+  version "2.7.0"
+  resolved "https://registry.yarnpkg.com/msw/-/msw-2.7.0.tgz#d13ff87f7e018fc4c359800ff72ba5017033fb56"
+  integrity sha512-BIodwZ19RWfCbYTxWTUfTXc+sg4OwjCAgxU1ZsgmggX/7S3LdUifsbUPJs61j0rWb19CZRGY5if77duhc0uXzw==
   dependencies:
     "@bundled-es-modules/cookie" "^2.0.1"
     "@bundled-es-modules/statuses" "^1.0.1"
@@ -8946,12 +8933,12 @@ msw@^2.5.2:
     "@open-draft/until" "^2.1.0"
     "@types/cookie" "^0.6.0"
     "@types/statuses" "^2.0.4"
-    chalk "^4.1.2"
     graphql "^16.8.1"
     headers-polyfill "^4.0.2"
     is-node-process "^1.2.0"
     outvariant "^1.4.3"
     path-to-regexp "^6.3.0"
+    picocolors "^1.1.1"
     strict-event-emitter "^0.5.1"
     type-fest "^4.26.1"
     yargs "^17.7.2"
