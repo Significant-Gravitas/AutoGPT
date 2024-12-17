@@ -12,7 +12,7 @@ readme = "README.md"
 python = "^3.10"
 prisma = "^0.15.0"
 python-dotenv = "^1.0.1"
-uvicorn = "^0.32.1"
+uvicorn = "^0.34.0"
 fastapi = "^0.115.6"
 sentry-sdk = { extras = ["fastapi"], version = "^2.19.2" }
 fuzzywuzzy = "^0.18.0"
