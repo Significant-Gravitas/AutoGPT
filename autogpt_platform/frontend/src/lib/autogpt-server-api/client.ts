@@ -30,8 +30,8 @@ import {
   ScheduleCreatable,
   Schedule,
 } from "./types";
-import getServerSupabase from "../supabase/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
+import getServerSupabase from "../supabase/getServerSupabase";
 
 const isClient = typeof window !== "undefined";
 
@@ -43,7 +43,7 @@ export default class BackendAPI {
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private supabaseClient: SupabaseClient | null = null;
   heartbeatInterval: number | null = null;
-  readonly HEARTBEAT_INTERVAL = 10_0000; // 30 seconds
+  readonly HEARTBEAT_INTERVAL = 10_0000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
   heartbeatTimeoutId: number | null = null;
 
@@ -67,9 +67,9 @@ export default class BackendAPI {
   async isAuthenticated(): Promise<boolean> {
     if (!this.supabaseClient) return false;
     const {
-      data: { session },
-    } = await this.supabaseClient?.auth.getSession();
-    return session != null;
+      data: { user },
+    } = await this.supabaseClient?.auth.getUser();
+    return user != null;
   }
 
   createUser(): Promise<User> {

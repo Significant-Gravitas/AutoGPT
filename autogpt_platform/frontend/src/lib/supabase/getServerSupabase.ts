@@ -1,7 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 
 export default function getServerSupabase() {
+  // Need to require here, so Next.js doesn't complain about importing this on client side
+  const { cookies } = require("next/headers");
   const cookieStore = cookies();
 
   try {
