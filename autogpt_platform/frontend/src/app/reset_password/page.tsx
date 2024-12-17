@@ -54,25 +54,12 @@ export default function ResetPasswordPage() {
     },
   });
 
-  if (isUserLoading || isSupabaseLoading || user) {
+  if (isUserLoading || isSupabaseLoading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
       </div>
     );
-  }
-
-  if (user) {
-    const newPassword = prompt("What would you like your new password to be?");
-
-    if (!newPassword) return;
-
-    supabase!.auth
-      .updateUser({ password: newPassword })
-      .then(({ data, error }) => {
-        if (data) alert("Password updated successfully!");
-        if (error) alert("There was an error updating your password.");
-      });
   }
 
   if (!supabase) {
@@ -87,7 +74,7 @@ export default function ResetPasswordPage() {
     setIsLoading(true);
     setFeedback(null);
 
-    if (!emailForm.trigger()) {
+    if (!(await emailForm.trigger())) {
       setIsLoading(false);
       return;
     }
@@ -113,7 +100,7 @@ export default function ResetPasswordPage() {
     setIsLoading(true);
     setFeedback(null);
 
-    if (!resetPasswordForm.trigger()) {
+    if (!(await resetPasswordForm.trigger())) {
       setIsLoading(false);
       return;
     }
