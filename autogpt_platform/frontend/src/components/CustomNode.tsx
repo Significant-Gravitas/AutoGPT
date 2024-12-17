@@ -554,7 +554,9 @@ export function CustomNode({
   >(null);
 
   useEffect(() => {
-    if (![BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(data.uiType))
+    if (
+      ![BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(data.uiType)
+    )
       return;
     if (!data.webhook) {
       setWebhookStatus("none");
