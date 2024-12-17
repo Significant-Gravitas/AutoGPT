@@ -1,15 +1,13 @@
 "use client";
-
-import { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import AutoGPTServerAPI, {
-  GraphMetaWithRuns,
-  ExecutionMeta,
+  GraphExecution,
   Schedule,
+  GraphMeta,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
-import { FlowRun } from "@/lib/types";
 import {
   AgentFlowList,
   FlowInfo,
@@ -20,13 +18,11 @@ import {
 import { SchedulesTable } from "@/components/monitor/scheduleTable";
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<GraphMetaWithRuns[]>([]);
-  const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
+  const [flows, setFlows] = useState<GraphMeta[]>([]);
+  const [executions, setExecutions] = useState<GraphExecution[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<GraphMetaWithRuns | null>(
-    null,
-  );
-  const [selectedRun, setSelectedRun] = useState<FlowRun | null>(null);
+  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
+  const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
@@ -45,16 +41,11 @@ const Monitor = () => {
   );
 
   const fetchAgents = useCallback(() => {
-    api.listGraphsWithRuns().then((agent) => {
+    api.listGraphs().then((agent) => {
       setFlows(agent);
-      const flowRuns = agent.flatMap((graph) =>
-        graph.executions != null
-          ? graph.executions.map((execution) =>
-              flowRunFromExecutionMeta(graph, execution),
-            )
-          : [],
-      );
-      setFlowRuns(flowRuns);
+    });
+    api.getExecutions().then((executions) => {
+      setExecutions(executions);
     });
   }, [api]);
 
@@ -86,43 +77,45 @@ const Monitor = () => {
 
   return (
     <div
-      className="grid h-full w-screen grid-cols-1 gap-4 px-8 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10"
+      className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10"
       data-testid="monitor-page"
     >
       <AgentFlowList
         className={column1}
         flows={flows}
-        flowRuns={flowRuns}
+        executions={executions}
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
-          setSelectedFlow(
-            f.id == selectedFlow?.id ? null : (f as GraphMetaWithRuns),
-          );
+          setSelectedFlow(f.id == selectedFlow?.id ? null : (f as GraphMeta));
         }}
       />
       <FlowRunsList
         className={column2}
         flows={flows}
-        runs={[
+        executions={[
           ...(selectedFlow
-            ? flowRuns.filter((v) => v.graphID == selectedFlow.id)
-            : flowRuns),
-        ].sort((a, b) => Number(a.startTime) - Number(b.startTime))}
+            ? executions.filter((v) => v.graph_id == selectedFlow.id)
+            : executions),
+        ].sort((a, b) => Number(b.started_at) - Number(a.started_at))}
         selectedRun={selectedRun}
-        onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
+        onSelectRun={(r) =>
+          setSelectedRun(r.execution_id == selectedRun?.execution_id ? null : r)
+        }
       />
       {(selectedRun && (
         <FlowRunInfo
-          flow={selectedFlow || flows.find((f) => f.id == selectedRun.graphID)!}
-          flowRun={selectedRun}
+          flow={
+            selectedFlow || flows.find((f) => f.id == selectedRun.graph_id)!
+          }
+          execution={selectedRun}
           className={column3}
         />
       )) ||
         (selectedFlow && (
           <FlowInfo
             flow={selectedFlow}
-            flowRuns={flowRuns.filter((r) => r.graphID == selectedFlow.id)}
+            executions={executions.filter((e) => e.graph_id == selectedFlow.id)}
             className={column3}
             refresh={() => {
               fetchAgents();
@@ -132,7 +125,7 @@ const Monitor = () => {
           />
         )) || (
           <Card className={`p-6 ${column3}`}>
-            <FlowRunsStats flows={flows} flowRuns={flowRuns} />
+            <FlowRunsStats flows={flows} executions={executions} />
           </Card>
         )}
       <div className="col-span-full xl:col-span-6">
@@ -148,21 +141,5 @@ const Monitor = () => {
     </div>
   );
 };
-
-function flowRunFromExecutionMeta(
-  graphMeta: GraphMetaWithRuns,
-  executionMeta: ExecutionMeta,
-): FlowRun {
-  return {
-    id: executionMeta.execution_id,
-    graphID: graphMeta.id,
-    graphVersion: graphMeta.version,
-    status: executionMeta.status,
-    startTime: executionMeta.started_at,
-    endTime: executionMeta.ended_at,
-    duration: executionMeta.duration,
-    totalRunTime: executionMeta.total_run_time,
-  } as FlowRun;
-}
 
 export default Monitor;
