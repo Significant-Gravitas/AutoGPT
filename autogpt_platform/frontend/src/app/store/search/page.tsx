@@ -138,7 +138,7 @@ function SearchResults({
           </div>
         ) : totalCount > 0 ? (
           <>
-            <div className="mt-[35px] flex items-center justify-between">
+            <div className="mt-[36px] flex items-center justify-between">
               <SearchFilterChips
                 totalCount={totalCount}
                 agentsCount={agentsCount}
