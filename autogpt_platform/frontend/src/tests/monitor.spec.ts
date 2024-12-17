@@ -21,7 +21,7 @@ test.describe.skip("Monitor", () => {
     await test.expect(page).toHaveURL("/");
 
     // add a test agent
-    const basicBlock = await buildPage.getBasicBlock();
+    const basicBlock = await buildPage.getDictionaryBlockDetails();
     const id = uuidv4();
     await buildPage.createSingleBlockAgent(
       `test-agent-${id}`,
