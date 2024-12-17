@@ -257,16 +257,16 @@ export class BuildPage extends BasePage {
     console.log(
       `connecting block output ${startBlockOutputName} of block ${startBlockId} to block input ${endBlockInputName} of block ${endBlockId}`,
     );
+
     const startBlockBase = await this._buildBlockSelector(
       startBlockId,
       startDataId,
     );
     const endBlockBase = await this._buildBlockSelector(endBlockId, endDataId);
-    // Use descendant combinator to find test-id at any depth
+
     const startBlockOutputSelector = `${startBlockBase} [data-testid="output-handle-${startBlockOutputName.toLowerCase()}"]`;
     const endBlockInputSelector = `${endBlockBase} [data-testid="input-handle-${endBlockInputName.toLowerCase()}"]`;
 
-    // Log for debugging
     console.log("Start block selector:", startBlockOutputSelector);
     console.log("End block selector:", endBlockInputSelector);
 
@@ -353,11 +353,116 @@ export class BuildPage extends BasePage {
     await this.waitForVersionField();
   }
 
-  async getBasicBlock(): Promise<Block> {
+  async getDictionaryBlockDetails(): Promise<Block> {
     return {
       id: "31d1064e-7446-4693-a7d4-65e5ca1180d1",
       name: "Add to Dictionary",
       description: "Add to Dictionary",
     };
+  }
+
+  async waitForSaveDialogClose(): Promise<void> {
+    console.log(`waiting for save dialog to close`);
+
+    await this.page.waitForSelector(
+      '[data-id="save-control-popover-content"]',
+      { state: "hidden" },
+    );
+  }
+
+  async getCalculatorBlockDetails(): Promise<Block> {
+    return {
+      id: "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+      name: "Calculator",
+      description: "Calculator",
+    };
+  }
+
+  async nextTutorialStep(): Promise<void> {
+    console.log(`clicking next tutorial step`);
+    await this.page.getByRole("button", { name: "Next" }).click();
+  }
+
+  async zoomOut(): Promise<void> {
+    console.log(`zooming out`);
+    await this.page.getByLabel("zoom out").click();
+  }
+
+  async zoomIn(): Promise<void> {
+    console.log(`zooming in`);
+    await this.page.getByLabel("zoom in").click();
+  }
+
+  async zoomToFit(): Promise<void> {
+    console.log(`zooming to fit`);
+    await this.page.getByLabel("fit view").click();
+  }
+
+  async moveBlockToSide(
+    dataId: string,
+    direction: "up" | "down" | "left" | "right",
+    distance: number = 100,
+  ): Promise<void> {
+    console.log(`moving block ${dataId} to the side`);
+
+    const block = this.page.locator(`[data-id="${dataId}"]`);
+
+    // Get current transform
+    const transform = await block.evaluate((el) => el.style.transform);
+
+    // Parse current coordinates from transform
+    const matches = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+    if (!matches) {
+      throw new Error(`Could not parse current transform: ${transform}`);
+    }
+
+    // Parse current coordinates
+    let currentX = parseFloat(matches[1]);
+    let currentY = parseFloat(matches[2]);
+
+    // Calculate new position
+    let newX = currentX;
+    let newY = currentY;
+
+    switch (direction) {
+      case "up":
+        newY -= distance;
+        break;
+      case "down":
+        newY += distance;
+        break;
+      case "left":
+        newX -= distance;
+        break;
+      case "right":
+        newX += distance;
+        break;
+    }
+
+    // Apply new transform using Playwright's evaluate
+    await block.evaluate(
+      (el, { newX, newY }) => {
+        el.style.transform = `translate(${newX}px, ${newY}px)`;
+      },
+      { newX, newY },
+    );
+  }
+
+  async waitForRunTutorialButton(): Promise<void> {
+    console.log(`waiting for run tutorial button`);
+    await this.page.waitForSelector('[id="press-run-label"]');
+  }
+
+  async getBlocksInAgent(): Promise<string[]> {
+    throw new Error("Not Tested to be correct");
+    console.log(`getting blocks in agent`);
+
+    const ids = await Promise.all(
+      (await this.page.locator(".react-flow__node").all()).map(
+        async (node) => await node.getAttribute("data-id"),
+      ),
+    );
+
+    return ids.filter((id): id is string => id !== null);
   }
 }

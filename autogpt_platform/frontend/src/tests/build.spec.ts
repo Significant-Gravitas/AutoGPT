@@ -34,7 +34,7 @@ test.describe("Build", () => { //(1)!
 
     await buildPage.closeTutorial(); //(9)!
     await buildPage.openBlocksPanel(); //(10)!
-    const block = await buildPage.getBasicBlock();
+    const block = await buildPage.getDictionaryBlockDetails();
 
     await buildPage.addBlock(block); //(11)!
     await buildPage.closeBlocksPanel(); //(12)!
