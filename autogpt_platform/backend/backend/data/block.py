@@ -90,6 +90,7 @@ class BlockSchema(BaseModel):
                 }
             elif isinstance(obj, list):
                 return [ref_to_dict(item) for item in obj]
+
             return obj
 
         cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
