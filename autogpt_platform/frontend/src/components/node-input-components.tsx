@@ -299,7 +299,13 @@ export const NodeGenericInputField: FC<{
       return (
         <NodeStringInput
           selfKey={propKey}
-          schema={{ ...propSchema, type: "string" } as BlockIOStringSubSchema}
+          schema={
+            {
+              ...propSchema,
+              type: "string",
+              enum: (propSchema.anyOf[0] as BlockIOStringSubSchema).enum,
+            } as BlockIOStringSubSchema
+          }
           value={currentValue}
           error={errors[propKey]}
           className={className}
@@ -315,11 +321,58 @@ export const NodeGenericInputField: FC<{
       return (
         <NodeNumberInput
           selfKey={propKey}
-          schema={{ ...propSchema, type: "integer" } as BlockIONumberSubSchema}
+          schema={
+            {
+              ...propSchema,
+              type: "integer",
+            } as BlockIONumberSubSchema
+          }
           value={currentValue}
           error={errors[propKey]}
           className={className}
           displayName={displayName}
+          handleInputChange={handleInputChange}
+        />
+      );
+    } else if (types.includes("array") && types.includes("null")) {
+      return (
+        <NodeArrayInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={
+            {
+              ...propSchema,
+              type: "array",
+              items: (propSchema.anyOf[0] as BlockIOArraySubSchema).items,
+            } as BlockIOArraySubSchema
+          }
+          entries={currentValue}
+          errors={errors}
+          className={className}
+          displayName={displayName}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+        />
+      );
+    } else if (types.includes("object") && types.includes("null")) {
+      return (
+        <NodeKeyValueInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={
+            {
+              ...propSchema,
+              type: "object",
+              additionalProperties: (propSchema.anyOf[0] as BlockIOKVSubSchema)
+                .additionalProperties,
+            } as BlockIOKVSubSchema
+          }
+          entries={currentValue}
+          errors={errors}
+          className={className}
+          displayName={displayName}
+          connections={connections}
           handleInputChange={handleInputChange}
         />
       );
