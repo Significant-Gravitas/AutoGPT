@@ -56,6 +56,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  depends_on?: string[];
   hidden?: boolean;
 };
 
