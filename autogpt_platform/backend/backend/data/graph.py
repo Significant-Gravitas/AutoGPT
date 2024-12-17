@@ -257,7 +257,7 @@ class GraphModel(Graph):
         for link in self.links:
             input_links[link.sink_id].append(link)
 
-        # Nodes: required fields are filled or connected
+        # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
@@ -276,6 +276,38 @@ class GraphModel(Graph):
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
+                    )
+
+            # Get input schema properties and check dependencies
+            input_schema = block.input_schema.model_fields
+            required_fields = block.input_schema.get_required_fields()
+
+            def has_value(name):
+                return (
+                    node is not None
+                    and name in node.input_default
+                    and node.input_default[name] is not None
+                    and str(node.input_default[name]).strip() != ""
+                ) or (name in input_schema and input_schema[name].default is not None)
+
+            # Validate dependencies between fields
+            for field_name, field_info in input_schema.items():
+
+                # Apply input dependency validation only on run & field with depends_on
+                json_schema_extra = field_info.json_schema_extra or {}
+                dependencies = json_schema_extra.get("depends_on", [])
+                if not for_run or not dependencies:
+                    continue
+
+                # Check if dependent field has value in input_default
+                field_has_value = has_value(field_name)
+                field_is_required = field_name in required_fields
+
+                # Check for missing dependencies when dependent field is present
+                missing_deps = [dep for dep in dependencies if not has_value(dep)]
+                if missing_deps and (field_has_value or field_is_required):
+                    raise ValueError(
+                        f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
                     )
 
         node_map = {v.id: v for v in self.nodes}
