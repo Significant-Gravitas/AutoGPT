@@ -1,6 +1,6 @@
 import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
-import AutoGPTServerAPI, {
+import BackendAPI, {
   Block,
   BlockIOSubSchema,
   BlockUIType,
@@ -74,7 +74,7 @@ export default function useAgentGraph(
   const [edges, setEdges] = useState<CustomEdge[]>([]);
 
   const api = useMemo(
-    () => new AutoGPTServerAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
+    () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
     [],
   );
 

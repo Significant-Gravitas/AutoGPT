@@ -3,9 +3,19 @@
 // import ServerSideMarketplaceAPI from "@/lib/marketplace-api/server-client";
 // import { revalidatePath } from "next/cache";
 // import * as Sentry from "@sentry/nextjs";
-// import { checkAuth, createServerClient } from "@/lib/supabase/server";
 // import { redirect } from "next/navigation";
-// import { createClient } from "@/lib/supabase/client";
+
+// export async function checkAuth() {
+//     const supabase = getServerSupabase();
+//     if (!supabase) {
+//       console.error("No supabase client");
+//       redirect("/login");
+//     }
+//     const { data, error } = await supabase.auth.getUser();
+//     if (error || !data?.user) {
+//       redirect("/login");
+//     }
+//   }
 
 // export async function approveAgent(
 //   agentId: string,

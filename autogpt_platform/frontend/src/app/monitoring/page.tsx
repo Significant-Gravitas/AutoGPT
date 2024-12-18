@@ -1,11 +1,7 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
-import AutoGPTServerAPI, {
-  GraphExecution,
-  Schedule,
-  GraphMeta,
-} from "@/lib/autogpt-server-api";
+import { GraphExecution, Schedule, GraphMeta } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
 import {
@@ -16,6 +12,7 @@ import {
   FlowRunsStats,
 } from "@/components/monitor";
 import { SchedulesTable } from "@/components/monitor/scheduleTable";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<GraphMeta[]>([]);
@@ -25,8 +22,7 @@ const Monitor = () => {
   const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useBackendAPI();
 
   const fetchSchedules = useCallback(async () => {
     setSchedules(await api.listSchedules());
@@ -41,7 +37,7 @@ const Monitor = () => {
   );
 
   const fetchAgents = useCallback(() => {
-    api.listGraphs().then((agent) => {
+    api.listLibraryAgents().then((agent) => {
       setFlows(agent);
     });
     api.getExecutions().then((executions) => {

@@ -74,6 +74,7 @@ class Creator(pydantic.BaseModel):
     num_agents: int
     agent_rating: float
     agent_runs: int
+    is_featured: bool
 
 
 class CreatorsResponse(pydantic.BaseModel):
@@ -98,6 +99,7 @@ class Profile(pydantic.BaseModel):
     description: str
     links: list[str]
     avatar_url: str
+    is_featured: bool
 
 
 class StoreSubmission(pydantic.BaseModel):

@@ -16,6 +16,7 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
+import backend.server.v2.library.routes
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
@@ -88,6 +89,9 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 
 

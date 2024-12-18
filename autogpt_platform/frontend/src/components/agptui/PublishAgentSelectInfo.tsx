@@ -4,8 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-import { createClient } from "@/lib/supabase/client";
+import BackendAPI from "@/lib/autogpt-server-api";
 
 interface PublishAgentInfoProps {
   onBack: () => void;
@@ -96,11 +95,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     if (!file) return;
 
     try {
-      const api = new AutoGPTServerAPI(
-        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-        createClient(),
-      );
+      const api = new BackendAPI();
 
       const imageUrl = (await api.uploadStoreSubmissionMedia(file)).replace(
         /^"(.*)"$/,
@@ -343,7 +338,16 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           >
             <option value="">Select a category for your agent</option>
-            <option value="SEO">SEO</option>
+            <option value="productivity">Productivity</option>
+            <option value="writing">Writing & Content</option>
+            <option value="development">Development</option>
+            <option value="data">Data & Analytics</option>
+            <option value="marketing">Marketing & SEO</option>
+            <option value="research">Research & Learning</option>
+            <option value="creative">Creative & Design</option>
+            <option value="business">Business & Finance</option>
+            <option value="personal">Personal Assistant</option>
+            <option value="other">Other</option>
             {/* Add more options here */}
           </select>
         </div>
