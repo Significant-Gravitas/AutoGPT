@@ -77,11 +77,11 @@ async def test_get_library_agents(mocker):
 
     # Verify results
     assert len(result) == 2
-    assert result[0].agent_id == "agent1"
+    assert result[0].id == "agent1"
     assert result[0].name == "Test Agent 1"
     assert result[0].description == "Test Description 1"
     assert result[0].isCreatedByUser is True
-    assert result[1].agent_id == "agent2"
+    assert result[1].id == "agent2"
     assert result[1].name == "Test Agent 2"
     assert result[1].description == "Test Description 2"
     assert result[1].isCreatedByUser is False

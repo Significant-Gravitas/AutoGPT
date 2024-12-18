@@ -119,7 +119,7 @@ export const FlowRunInfo: React.FC<
             <strong>Agent ID:</strong> <code>{flow.id}</code>
           </p>
           <p className="hidden">
-            <strong>Run ID:</strong> <code>{flowRun.id}</code>
+            <strong>Run ID:</strong> <code>{execution.execution_id}</code>
           </p>
           <div>
             <strong>Status:</strong>{" "}

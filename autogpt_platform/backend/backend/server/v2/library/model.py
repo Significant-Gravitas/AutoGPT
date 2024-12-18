@@ -4,13 +4,13 @@ import pydantic
 
 
 class LibraryAgent(pydantic.BaseModel):
-    agent_id: str
-    agent_version: int
-
+    id: str  # Changed from agent_id to match GraphMeta
+    version: int  # Changed from agent_version to match GraphMeta
+    is_active: bool  # Added to match GraphMeta
     name: str
     description: str
 
     isCreatedByUser: bool
-
-    input_schema: dict[str, typing.Any]
-    output_schema: dict[str, typing.Any]
+    # Made input_schema and output_schema match GraphMeta's type
+    input_schema: dict[str, typing.Any]  # Should be BlockIOObjectSubSchema in frontend
+    output_schema: dict[str, typing.Any]  # Should be BlockIOObjectSubSchema in frontend

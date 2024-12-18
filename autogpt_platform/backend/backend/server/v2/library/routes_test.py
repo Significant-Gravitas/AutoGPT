@@ -33,8 +33,9 @@ app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_u
 def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     mocked_value = [
         backend.server.v2.library.model.LibraryAgent(
-            agent_id="test-agent-1",
-            agent_version=1,
+            id="test-agent-1",
+            version=1,
+            is_active=True,
             name="Test Agent 1",
             description="Test Description 1",
             isCreatedByUser=True,
@@ -42,8 +43,9 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
             output_schema={"type": "object", "properties": {}},
         ),
         backend.server.v2.library.model.LibraryAgent(
-            agent_id="test-agent-2",
-            agent_version=1,
+            id="test-agent-2", 
+            version=1,
+            is_active=True,
             name="Test Agent 2",
             description="Test Description 2",
             isCreatedByUser=False,
@@ -62,9 +64,9 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
         for agent in response.json()
     ]
     assert len(data) == 2
-    assert data[0].agent_id == "test-agent-1"
+    assert data[0].id == "test-agent-1"
     assert data[0].isCreatedByUser is True
-    assert data[1].agent_id == "test-agent-2"
+    assert data[1].id == "test-agent-2"
     assert data[1].isCreatedByUser is False
     mock_db_call.assert_called_once_with("test-user-id")
 

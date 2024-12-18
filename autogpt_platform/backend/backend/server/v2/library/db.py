@@ -74,8 +74,9 @@ async def get_library_agents(
         for graph in graphs:
             result.append(
                 backend.server.v2.library.model.LibraryAgent(
-                    agent_id=graph.id,
-                    agent_version=graph.version,
+                    id=graph.id,
+                    version=graph.version,
+                    is_active=graph.is_active,
                     name=graph.name,
                     description=graph.description,
                     isCreatedByUser=any(a.id == graph.id for a in user_created),
