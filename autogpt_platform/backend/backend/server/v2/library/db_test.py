@@ -153,6 +153,7 @@ async def test_add_agent_to_library(mocker):
     )
 
     mock_user_agent = mocker.patch("prisma.models.UserAgent.prisma")
+    mock_user_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
     mock_user_agent.return_value.create = mocker.AsyncMock()
 
     # Call function
@@ -161,6 +162,13 @@ async def test_add_agent_to_library(mocker):
     # Verify mocks called correctly
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
         where={"id": "version123"}, include={"Agent": True}
+    )
+    mock_user_agent.return_value.find_first.assert_called_once_with(
+        where={
+            "userId": "test-user",
+            "agentId": "agent1",
+            "agentVersion": 1,
+        }
     )
     mock_user_agent.return_value.create.assert_called_once_with(
         data=prisma.types.UserAgentCreateInput(

@@ -172,6 +172,9 @@ async def get_store_creators(
     # Build where clause with sanitized inputs
     where = {}
 
+    if featured:
+        where["isFeatured"] = featured
+
     # Add search filter if provided, using parameterized queries
     if search_query:
         # Sanitize and validate search query by escaping special characters
@@ -247,6 +250,7 @@ async def get_store_creators(
                 num_agents=creator.num_agents,
                 agent_rating=creator.agent_rating,
                 agent_runs=creator.agent_runs,
+                is_featured=creator.is_featured,
             )
             for creator in creators
         ]
