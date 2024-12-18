@@ -32,7 +32,10 @@ async def get_library_agents(
         return agents
     except Exception:
         logger.exception("Exception occurred whilst getting library agents")
-        raise
+        raise fastapi.HTTPException(
+            status_code=500, detail="Failed to get library agents"
+        )
+
 
 
 @router.post(
