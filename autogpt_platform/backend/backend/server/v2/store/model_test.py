@@ -88,6 +88,7 @@ def test_creator():
         description="Test description",
         avatar_url="avatar.jpg",
         num_agents=5,
+        is_featured=False,
     )
     assert creator.name == "Test Creator"
     assert creator.num_agents == 5
@@ -104,6 +105,7 @@ def test_creators_response():
                 description="Test description",
                 avatar_url="avatar.jpg",
                 num_agents=5,
+                is_featured=False,
             )
         ],
         pagination=backend.server.v2.store.model.Pagination(

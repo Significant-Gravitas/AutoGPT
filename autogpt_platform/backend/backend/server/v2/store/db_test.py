@@ -113,6 +113,7 @@ async def test_get_store_creator_details(mocker):
         agent_rating=4.5,
         agent_runs=10,
         top_categories=["test"],
+        is_featured=False,
     )
 
     # Mock prisma call
@@ -197,6 +198,7 @@ async def test_update_profile(mocker):
         description="Test description",
         links=["link1"],
         avatarUrl="avatar.jpg",
+        isFeatured=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -215,6 +217,7 @@ async def test_update_profile(mocker):
         description="Test description",
         links=["link1"],
         avatar_url="avatar.jpg",
+        is_featured=False,
     )
 
     # Call function
@@ -239,6 +242,7 @@ async def test_get_user_profile(mocker):
         description="Test description",
         links=["link1", "link2"],
         avatarUrl="avatar.jpg",
+        isFeatured=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
