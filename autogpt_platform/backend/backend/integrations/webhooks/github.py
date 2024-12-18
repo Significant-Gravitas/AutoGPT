@@ -10,7 +10,7 @@ from backend.data import integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 
-from .base import BaseWebhooksManager
+from ._base import BaseWebhooksManager
 
 logger = logging.getLogger(__name__)
 

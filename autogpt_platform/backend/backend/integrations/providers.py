@@ -4,6 +4,7 @@ from enum import Enum
 # --8<-- [start:ProviderName]
 class ProviderName(str, Enum):
     ANTHROPIC = "anthropic"
+    COMPASS = "compass"
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"

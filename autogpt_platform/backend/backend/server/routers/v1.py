@@ -149,7 +149,7 @@ class DeleteGraphResponse(TypedDict):
 @v1_router.get(path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)])
 async def get_graphs(
     user_id: Annotated[str, Depends(get_user_id)]
-) -> Sequence[graph_db.Graph]:
+) -> Sequence[graph_db.GraphModel]:
     return await graph_db.get_graphs(filter_by="active", user_id=user_id)
 
 
@@ -166,9 +166,9 @@ async def get_graph(
     user_id: Annotated[str, Depends(get_user_id)],
     version: int | None = None,
     hide_credentials: bool = False,
-) -> graph_db.Graph:
+) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(
-        graph_id, version, user_id=user_id, hide_credentials=hide_credentials
+        graph_id, version, user_id=user_id, for_export=hide_credentials
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -187,7 +187,7 @@ async def get_graph(
 )
 async def get_graph_all_versions(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> Sequence[graph_db.Graph]:
+) -> Sequence[graph_db.GraphModel]:
     graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -199,7 +199,7 @@ async def get_graph_all_versions(
 )
 async def create_new_graph(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
-) -> graph_db.Graph:
+) -> graph_db.GraphModel:
     return await do_create_graph(create_graph, is_template=False, user_id=user_id)
 
 
@@ -209,7 +209,7 @@ async def do_create_graph(
     # user_id doesn't have to be annotated like on other endpoints,
     # because create_graph isn't used directly as an endpoint
     user_id: str,
-) -> graph_db.Graph:
+) -> graph_db.GraphModel:
     if create_graph.graph:
         graph = graph_db.make_graph_model(create_graph.graph, user_id)
     elif create_graph.template_id:
@@ -270,7 +270,7 @@ async def update_graph(
     graph_id: str,
     graph: graph_db.Graph,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> graph_db.Graph:
+) -> graph_db.GraphModel:
     # Sanity check
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
@@ -440,7 +440,7 @@ async def get_graph_run_node_execution_results(
 )
 async def get_templates(
     user_id: Annotated[str, Depends(get_user_id)]
-) -> Sequence[graph_db.Graph]:
+) -> Sequence[graph_db.GraphModel]:
     return await graph_db.get_graphs(filter_by="template", user_id=user_id)
 
 
@@ -449,7 +449,9 @@ async def get_templates(
     tags=["templates", "graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_template(graph_id: str, version: int | None = None) -> graph_db.Graph:
+async def get_template(
+    graph_id: str, version: int | None = None
+) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(graph_id, version, template=True)
     if not graph:
         raise HTTPException(status_code=404, detail=f"Template #{graph_id} not found.")
@@ -463,7 +465,7 @@ async def get_template(graph_id: str, version: int | None = None) -> graph_db.Gr
 )
 async def create_new_template(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
-) -> graph_db.Graph:
+) -> graph_db.GraphModel:
     return await do_create_graph(create_graph, is_template=True, user_id=user_id)
 
 
