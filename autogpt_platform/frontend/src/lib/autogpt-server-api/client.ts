@@ -333,6 +333,18 @@ export default class BackendAPI {
     return this._get("/store/myagents", params);
   }
 
+  /////////////////////////////////////////
+  /////////// V2 LIBRARY API //////////////
+  /////////////////////////////////////////
+
+  async listLibraryAgents(): Promise<GraphMeta[]> {
+    return this._get("/library/agents");
+  }
+
+  async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
+    await this._request("POST", `/library/agents/${storeListingVersionId}`);
+  }
+
   ///////////////////////////////////////////
   /////////// INTERNAL FUNCTIONS ////////////
   //////////////////////////////??///////////
