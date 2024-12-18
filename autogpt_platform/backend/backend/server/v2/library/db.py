@@ -123,7 +123,9 @@ async def add_agent_to_library(store_listing_version_id: str, user_id: str) -> N
         agent = store_listing_version.Agent
 
         if agent.userId == user_id:
-            logger.warning(f"User {user_id} cannot add their own agent to their library")
+            logger.warning(
+                f"User {user_id} cannot add their own agent to their library"
+            )
             raise backend.server.v2.store.exceptions.DatabaseError(
                 "Cannot add own agent to library"
             )
@@ -133,12 +135,14 @@ async def add_agent_to_library(store_listing_version_id: str, user_id: str) -> N
             where={
                 "userId": user_id,
                 "agentId": agent.id,
-                "agentVersion": agent.version
+                "agentVersion": agent.version,
             }
         )
 
         if existing_user_agent:
-            logger.debug(f"User {user_id} already has agent {agent.id} in their library")
+            logger.debug(
+                f"User {user_id} already has agent {agent.id} in their library"
+            )
             return
 
         # Create UserAgent entry

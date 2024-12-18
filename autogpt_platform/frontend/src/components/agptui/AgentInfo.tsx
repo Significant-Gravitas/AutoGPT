@@ -29,14 +29,10 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   lastUpdated,
   version,
   storeListingVersionId,
-}) => {    
+}) => {
   const router = useRouter();
 
-  const api = React.useMemo(
-    () =>
-      new BackendAPI(),
-    [],
-  );
+  const api = React.useMemo(() => new BackendAPI(), []);
 
   const handleAddToLibrary = async () => {
     try {
@@ -46,7 +42,6 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
     } catch (error) {
       console.error("Failed to add agent to library:", error);
     }
-
   };
 
   return (
