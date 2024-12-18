@@ -4,7 +4,7 @@ import * as React from "react";
 import { IconPlay, StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
 import BackendAPI from "@/lib/autogpt-server-api";
-
+import { useRouter } from "next/navigation";
 interface AgentInfoProps {
   name: string;
   creator: string;
@@ -29,7 +29,8 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   lastUpdated,
   version,
   storeListingVersionId,
-}) => {
+}) => {    
+  const router = useRouter();
 
   const api = React.useMemo(
     () =>
@@ -41,9 +42,11 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
     try {
       await api.addAgentToLibrary(storeListingVersionId);
       console.log("Agent added to library successfully");
+      router.push("/monitoring");
     } catch (error) {
       console.error("Failed to add agent to library:", error);
     }
+
   };
 
   return (
