@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
-import AutoGPTServerAPI, {
+import React, { useEffect, useState, useCallback } from "react";
+import {
   GraphExecution,
   Graph,
   GraphMeta,
@@ -22,7 +22,7 @@ import { ClockIcon, ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import Link from "next/link";
 import { exportAsJSONFile, filterBlocksByType } from "@/lib/utils";
 import { FlowRunsStats } from "@/components/monitor/index";
-import { Trash2Icon, Timer } from "lucide-react";
+import { Trash2Icon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { CronScheduler } from "@/components/cronScheduler";
 import RunnerInputUI from "@/components/runner-ui/RunnerInputUI";
 import useAgentGraph from "@/hooks/useAgentGraph";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
@@ -66,7 +67,7 @@ export const FlowInfo: React.FC<
     setEdges,
   } = useAgentGraph(flow.id, false);
 
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useBackendAPI();
   const { toast } = useToast();
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);

@@ -1,28 +1,9 @@
 import * as React from "react";
 import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
-import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api";
-import { createServerClient } from "@/lib/supabase/server";
+import BackendAPI from "@/lib/autogpt-server-api";
 import { CreatorDetails } from "@/lib/autogpt-server-api/types";
 
-async function getProfileData() {
-  // Get the supabase client first
-  const supabase = createServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    console.warn("--- No session found in profile page");
-    return { profile: null };
-  }
-
-  // Create API client with the same supabase instance
-  const api = new AutoGPTServerAPIServerSide(
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-    supabase, // Pass the supabase client instance
-  );
-
+async function getProfileData(api: BackendAPI) {
   try {
     const profile = await api.getStoreProfile("profile");
     return {
@@ -37,7 +18,8 @@ async function getProfileData() {
 }
 
 export default async function Page({}: {}) {
-  const { profile } = await getProfileData();
+  const api = new BackendAPI();
+  const { profile } = await getProfileData(api);
 
   if (!profile) {
     return (

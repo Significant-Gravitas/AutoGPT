@@ -1,6 +1,6 @@
 // components/RoleBasedAccess.tsx
+import useSupabase from "@/hooks/useSupabase";
 import React from "react";
-import useUser from "@/hooks/useUser";
 
 interface RoleBasedAccessProps {
   allowedRoles: string[];
@@ -11,13 +11,13 @@ const RoleBasedAccess: React.FC<RoleBasedAccessProps> = ({
   allowedRoles,
   children,
 }) => {
-  const { role, isLoading } = useUser();
+  const { user, isUserLoading } = useSupabase();
 
-  if (isLoading) {
+  if (isUserLoading) {
     return <div>Loading...</div>;
   }
 
-  if (!role || !allowedRoles.includes(role)) {
+  if (!user!.role || !allowedRoles.includes(user!.role)) {
     return null;
   }
 

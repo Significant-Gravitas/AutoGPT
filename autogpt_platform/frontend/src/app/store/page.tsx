@@ -14,28 +14,18 @@ import {
   FeaturedCreator,
 } from "@/components/agptui/composite/FeaturedCreators";
 import { Separator } from "@/components/ui/separator";
-import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
 import { Metadata } from "next";
-import { createServerClient } from "@/lib/supabase/server";
 import {
   StoreAgentsResponse,
   CreatorsResponse,
 } from "@/lib/autogpt-server-api/types";
+import BackendAPI from "@/lib/autogpt-server-api";
 
 export const dynamic = "force-dynamic";
 
 async function getStoreData() {
   try {
-    const supabase = createServerClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const api = new AutoGPTServerAPIServerSide(
-      process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-      process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-      supabase,
-    );
+    const api = new BackendAPI();
 
     // Add error handling and default values
     let featuredAgents: StoreAgentsResponse = {
