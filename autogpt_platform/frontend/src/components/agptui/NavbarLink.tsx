@@ -21,7 +21,7 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
 
   return (
     <div
-      className={`px-5 py-4 h-[48px] ${
+      className={`h-[48px] px-5 py-4 ${
         activeLink === href
           ? "rounded-2xl bg-neutral-800 dark:bg-neutral-200"
           : ""

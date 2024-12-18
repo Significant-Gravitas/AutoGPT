@@ -1698,8 +1698,6 @@ export const IconMoon = createIcon((props) => (
   </svg>
 ));
 
-
-
 /**
  * AutoGPT Logo icon component.
  *
@@ -1821,8 +1819,6 @@ export const IconAutoGPTLogo = createIcon((props) => (
     </defs>
   </svg>
 ));
-
-
 
 export const IconBuilder = createIcon((props) => <IconToyBrick {...props} />);
 
