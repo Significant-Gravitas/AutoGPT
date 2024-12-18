@@ -6,10 +6,12 @@ import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 import CreditsCard from "./CreditsCard";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-import { ThemeToggle } from "./ThemeToggle";
 import { NavbarLink } from "./NavbarLink";
 import getServerUser from "@/lib/supabase/getServerUser";
 import BackendAPI from "@/lib/autogpt-server-api";
+
+// Disable theme toggle for now
+// import { ThemeToggle } from "./ThemeToggle";
 
 interface NavLink {
   name: string;
@@ -93,7 +95,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
               </Button>
             </Link>
           )}
-          <ThemeToggle />
+          {/* <ThemeToggle /> */}
         </div>
       </nav>
       {/* Mobile Navbar - Adjust positioning */}
