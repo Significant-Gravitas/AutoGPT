@@ -173,7 +173,7 @@ async def get_store_creators(
     where = {}
 
     if featured:
-        where["isFeatured"] = featured
+        where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
     if search_query:
