@@ -9,8 +9,7 @@ export default function Home() {
   return (
     <FlowEditor
       className="flow-container"
-      flowID={query.get("flowID") ?? query.get("templateID") ?? undefined}
-      template={!!query.get("templateID")}
+      flowID={query.get("flowID") ?? undefined}
     />
   );
 }

@@ -19,8 +19,8 @@ import {
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
-  useBackendAPI,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   beautifyString,
   cn,
@@ -258,7 +258,7 @@ export function CustomNode({
                 ) : (
                   propKey != "credentials" && (
                     <div className="flex gap-1">
-                      <span className="text-m green mb-0 text-gray-900">
+                      <span className="text-m green mb-0 text-gray-900 dark:text-gray-100">
                         {propSchema.title || beautifyString(propKey)}
                       </span>
                       <SchemaTooltip description={propSchema.description} />
@@ -460,49 +460,54 @@ export function CustomNode({
     "custom-node",
     "dark-theme",
     "rounded-xl",
-    "bg-white/[.9]",
-    "border border-gray-300",
+    "bg-white/[.9] dark:bg-gray-800/[.9]",
+    "border border-gray-300 dark:border-gray-600",
     data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
-    data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
+    data.uiType === BlockUIType.NOTE
+      ? "bg-yellow-100 dark:bg-yellow-900"
+      : "bg-white dark:bg-gray-800",
     selected ? "shadow-2xl" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const errorClass =
-    hasConfigErrors || hasOutputError ? "border-red-200 border-2" : "";
+    hasConfigErrors || hasOutputError
+      ? "border-red-200 dark:border-red-800 border-2"
+      : "";
 
   const statusClass = (() => {
-    if (hasConfigErrors || hasOutputError) return "border-red-200 border-4";
+    if (hasConfigErrors || hasOutputError)
+      return "border-red-200 dark:border-red-800 border-4";
     switch (data.status?.toLowerCase()) {
       case "completed":
-        return "border-green-200 border-4";
+        return "border-green-200 dark:border-green-800 border-4";
       case "running":
-        return "border-yellow-200 border-4";
+        return "border-yellow-200 dark:border-yellow-800 border-4";
       case "failed":
-        return "border-red-200 border-4";
+        return "border-red-200 dark:border-red-800 border-4";
       case "incomplete":
-        return "border-purple-200 border-4";
+        return "border-purple-200 dark:border-purple-800 border-4";
       case "queued":
-        return "border-cyan-200 border-4";
+        return "border-cyan-200 dark:border-cyan-800 border-4";
       default:
         return "";
     }
   })();
 
   const statusBackgroundClass = (() => {
-    if (hasConfigErrors || hasOutputError) return "bg-red-200";
+    if (hasConfigErrors || hasOutputError) return "bg-red-200 dark:bg-red-800";
     switch (data.status?.toLowerCase()) {
       case "completed":
-        return "bg-green-200";
+        return "bg-green-200 dark:bg-green-800";
       case "running":
-        return "bg-yellow-200";
+        return "bg-yellow-200 dark:bg-yellow-800";
       case "failed":
-        return "bg-red-200";
+        return "bg-red-200 dark:bg-red-800";
       case "incomplete":
-        return "bg-purple-200";
+        return "bg-purple-200 dark:bg-purple-800";
       case "queued":
-        return "bg-cyan-200";
+        return "bg-cyan-200 dark:bg-cyan-800";
       default:
         return "";
     }
@@ -591,36 +596,36 @@ export function CustomNode({
   );
 
   const LineSeparator = () => (
-    <div className="bg-white pt-6">
-      <Separator.Root className="h-[1px] w-full bg-gray-300"></Separator.Root>
+    <div className="bg-white pt-6 dark:bg-gray-800">
+      <Separator.Root className="h-[1px] w-full bg-gray-300 dark:bg-gray-600"></Separator.Root>
     </div>
   );
 
   const ContextMenuContent = () => (
-    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md">
+    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
       <ContextMenu.Item
         onSelect={copyNode}
-        className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
       >
-        <CopyIcon className="mr-2 h-5 w-5" />
-        <span>Copy</span>
+        <CopyIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+        <span className="dark:text-gray-100">Copy</span>
       </ContextMenu.Item>
       {nodeFlowId && (
         <ContextMenu.Item
           onSelect={() => window.open(`/build?flowID=${nodeFlowId}`)}
-          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
         >
-          <ExitIcon className="mr-2 h-5 w-5" />
-          <span>Open agent</span>
+          <ExitIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+          <span className="dark:text-gray-100">Open agent</span>
         </ContextMenu.Item>
       )}
-      <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
+      <ContextMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
       <ContextMenu.Item
         onSelect={deleteNode}
-        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
       >
-        <TrashIcon className="mr-2 h-5 w-5 text-red-500" />
-        <span>Delete</span>
+        <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+        <span className="dark:text-red-400">Delete</span>
       </ContextMenu.Item>
     </ContextMenu.Content>
   );

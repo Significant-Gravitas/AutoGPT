@@ -148,6 +148,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
 
+    media_gcs_bucket_name: str = Field(
+        default="",
+        description="The name of the Google Cloud Storage bucket for media files",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:

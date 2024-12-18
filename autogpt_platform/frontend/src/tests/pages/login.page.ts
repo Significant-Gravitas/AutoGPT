@@ -32,11 +32,14 @@ export class LoginPage {
     await passwordInput2.fill(password);
 
     // Wait for the button to be ready
-    const loginButton = this.page.getByRole("button", { name: "Log in" });
+    const loginButton = this.page.getByRole("button", {
+      name: "Log in",
+      exact: true,
+    });
     await loginButton.waitFor({ state: "visible" });
 
     // Start waiting for navigation before clicking
-    const navigationPromise = this.page.waitForURL("/", { timeout: 60000 });
+    const navigationPromise = this.page.waitForURL("/", { timeout: 10_000 });
 
     console.log("About to click login button"); // Debug log
     await loginButton.click();
@@ -45,7 +48,7 @@ export class LoginPage {
     await navigationPromise;
 
     console.log("Navigation complete, waiting for network idle"); // Debug log
-    await this.page.waitForLoadState("networkidle", { timeout: 60000 });
+    await this.page.waitForLoadState("load", { timeout: 10_000 });
     console.log("Login process complete"); // Debug log
   }
 }

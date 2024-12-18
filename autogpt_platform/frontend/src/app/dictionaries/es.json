@@ -1,0 +1,22 @@
+{
+  "auth": {
+    "signIn": "Iniciar Sesión",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "submit": "Enviar",
+    "error": "Credenciales inválidas"
+  },
+  "dashboard": {
+    "welcome": "Bienvenido a tu panel",
+    "stats": "Tus Estadísticas",
+    "recentActivity": "Actividad Reciente"
+  },
+  "admin": {
+    "title": "Panel de Administración",
+    "users": "Gestión de Usuarios",
+    "settings": "Configuración del Sistema"
+  },
+  "home": {
+    "welcome": "Bienvenido a la Página de Inicio"
+  }
+}

@@ -1,11 +1,7 @@
 "use client";
-
-import { useSupabase } from "@/components/SupabaseProvider";
 import { Button } from "@/components/ui/button";
-import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useMemo, useState } from "react";
-import { FaSpinner } from "react-icons/fa";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
@@ -31,12 +27,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import useSupabase from "@/hooks/useSupabase";
+import Spinner from "@/components/Spinner";
 import useCredits from "@/hooks/useCredits";
 import { Input } from "@/components/ui/input";
 
 export default function PrivatePage() {
-  const { user, isLoading, error } = useUser();
-  const { supabase } = useSupabase();
+  const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
@@ -119,30 +116,28 @@ export default function PrivatePage() {
     [],
   );
 
-  if (isLoading || !providers) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
-      </div>
-    );
+  if (isUserLoading) {
+    return <Spinner />;
   }
 
-  if (error || !user || !supabase) {
+  if (!user || !supabase) {
     router.push("/login");
     return null;
   }
 
-  const allCredentials = Object.values(providers).flatMap((provider) =>
-    [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
-      .filter((cred) => !hiddenCredentials.includes(cred.id))
-      .map((credentials) => ({
-        ...credentials,
-        provider: provider.provider,
-        providerName: provider.providerName,
-        ProviderIcon: providerIcons[provider.provider],
-        TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
-      })),
-  );
+  const allCredentials = providers
+    ? Object.values(providers).flatMap((provider) =>
+        [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+          .filter((cred) => !hiddenCredentials.includes(cred.id))
+          .map((credentials) => ({
+            ...credentials,
+            provider: provider.provider,
+            providerName: provider.providerName,
+            ProviderIcon: providerIcons[provider.provider],
+            TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+          })),
+      )
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl md:py-8">

@@ -23,6 +23,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -38,24 +39,12 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
 
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          # this might remove tools that are actually needed,
-          # if set to "true" but frees about 6 GB
-          tool-cache: false
-
-          # all of these default to true, but feel free to set to
-          # "false" if necessary for your workflow
-          android: false
-          dotnet: false
-          haskell: false
-          large-packages: true
-          docker-images: true
-          swap-storage: true
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -65,6 +54,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "21"
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          large-packages: false  # slow
+          docker-images: false  # limited benefit
 
       - name: Copy default supabase .env
         run: |
@@ -86,16 +81,16 @@ jobs:
         run: |
           cp .env.example .env
 
-      - name: Install Playwright Browsers
-        run: yarn playwright install --with-deps
+      - name: Install Browser '${{ matrix.browser }}'
+        run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
         run: |
-          yarn test
+          yarn test --project=${{ matrix.browser }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: playwright-report/
           retention-days: 30

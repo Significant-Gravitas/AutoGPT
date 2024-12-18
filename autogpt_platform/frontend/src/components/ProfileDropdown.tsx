@@ -7,16 +7,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./ui/button";
-import { useSupabase } from "./SupabaseProvider";
 import { useRouter } from "next/navigation";
-import useUser from "@/hooks/useUser";
+import useSupabase from "@/hooks/useSupabase";
 
 const ProfileDropdown = () => {
-  const { supabase } = useSupabase();
+  const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
-  const { user, role, isLoading } = useUser();
 
-  if (isLoading) {
+  if (isUserLoading) {
     return null;
   }
 
@@ -37,7 +35,7 @@ const ProfileDropdown = () => {
         <DropdownMenuItem onClick={() => router.push("/profile")}>
           Profile
         </DropdownMenuItem>
-        {role === "admin" && (
+        {user!.role === "admin" && (
           <DropdownMenuItem onClick={() => router.push("/admin/dashboard")}>
             Admin Dashboard
           </DropdownMenuItem>

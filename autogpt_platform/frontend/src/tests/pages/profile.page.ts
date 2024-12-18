@@ -7,13 +7,24 @@ export class ProfilePage extends BasePage {
     super(page);
   }
 
-  async getDisplayedEmail(): Promise<string> {
+  async getDisplayedHandle(): Promise<string> {
     await this.waitForPageToLoad();
-    const email = await this.page.getByTestId("profile-email").textContent();
-    if (!email) {
-      throw new Error("Email not found");
+    const handle = await this.page.locator('input[name="handle"]').inputValue();
+    if (!handle) {
+      throw new Error("Handle not found");
     }
-    return email;
+    return handle;
+  }
+
+  async getDisplayedName(): Promise<string> {
+    await this.waitForPageToLoad();
+    const displayName = await this.page
+      .locator('input[name="displayName"]')
+      .inputValue();
+    if (!displayName) {
+      throw new Error("Display name not found");
+    }
+    return displayName;
   }
   // --8<-- [end:ProfilePageExample]
   async isLoaded(): Promise<boolean> {
@@ -27,13 +38,13 @@ export class ProfilePage extends BasePage {
   }
 
   private async waitForPageToLoad(): Promise<void> {
-    await this.page.waitForLoadState("networkidle", { timeout: 60_000 });
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 60_000 });
 
-    await this.page.getByTestId("profile-email").waitFor({
+    await this.page.locator('input[name="handle"]').waitFor({
       state: "visible",
-      timeout: 60_000,
+      timeout: 10_000,
     });
 
-    await this.page.waitForLoadState("networkidle", { timeout: 60_000 });
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 60_000 });
   }
 }

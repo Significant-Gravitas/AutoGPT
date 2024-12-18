@@ -1,7 +1,6 @@
-import { AutoGPTServerAPI } from "./client";
+import BackendAPI from "./client";
 
-export default AutoGPTServerAPI;
+export default BackendAPI;
 export * from "./client";
-export * from "./context";
 export * from "./types";
 export * from "./utils";

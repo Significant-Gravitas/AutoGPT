@@ -14,12 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import AutoGPTServerAPI, {
-  Graph,
-  GraphCreatable,
-} from "@/lib/autogpt-server-api";
+import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 // Add this custom schema for File type
 const fileSchema = z.custom<File>((val) => val instanceof File, {
@@ -75,7 +73,7 @@ export const AgentImportForm: React.FC<
   React.FormHTMLAttributes<HTMLFormElement>
 > = ({ className, ...props }) => {
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
-  const api = new AutoGPTServerAPI();
+  const api = useBackendAPI();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -96,19 +94,16 @@ export const AgentImportForm: React.FC<
       name: values.agentName,
       description: values.agentDescription,
       is_active: !values.importAsTemplate,
-      is_template: values.importAsTemplate,
     };
 
-    (values.importAsTemplate
-      ? api.createTemplate(payload)
-      : api.createGraph(payload)
-    )
+    api
+      .createGraph(payload)
       .then((response) => {
-        const qID = values.importAsTemplate ? "templateID" : "flowID";
+        const qID = "flowID";
         window.location.href = `/build?${qID}=${response.id}`;
       })
       .catch((error) => {
-        const entity_type = values.importAsTemplate ? "template" : "agent";
+        const entity_type = "agent";
         form.setError("root", {
           message: `Could not create ${entity_type}: ${error}`,
         });
@@ -159,7 +154,6 @@ export const AgentImportForm: React.FC<
                           setAgentObject(agent);
                           form.setValue("agentName", agent.name);
                           form.setValue("agentDescription", agent.description);
-                          form.setValue("importAsTemplate", agent.is_template);
                         } catch (error) {
                           console.error("Error loading agent file:", error);
                         }
@@ -197,41 +191,6 @@ export const AgentImportForm: React.FC<
               <FormLabel>Agent description</FormLabel>
               <FormControl>
                 <Textarea {...field} data-testid="agent-description-input" />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="importAsTemplate"
-          disabled={!agentObject}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Import as</FormLabel>
-              <FormControl>
-                <div className="flex items-center space-x-2">
-                  <span
-                    className={
-                      field.value ? "text-gray-400 dark:text-gray-600" : ""
-                    }
-                  >
-                    Agent
-                  </span>
-                  <Switch
-                    data-testid="import-as-template-switch"
-                    disabled={field.disabled}
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                  <span
-                    className={
-                      field.value ? "" : "text-gray-400 dark:text-gray-600"
-                    }
-                  >
-                    Template
-                  </span>
-                </div>
               </FormControl>
               <FormMessage />
             </FormItem>

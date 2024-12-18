@@ -492,3 +492,101 @@ class NoteBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text
+
+
+class CreateDictionaryBlock(Block):
+    class Input(BlockSchema):
+        values: dict[str, Any] = SchemaField(
+            description="Key-value pairs to create the dictionary with",
+            placeholder="e.g., {'name': 'Alice', 'age': 25}",
+        )
+
+    class Output(BlockSchema):
+        dictionary: dict[str, Any] = SchemaField(
+            description="The created dictionary containing the specified key-value pairs"
+        )
+        error: str = SchemaField(
+            description="Error message if dictionary creation failed"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="b924ddf4-de4f-4b56-9a85-358930dcbc91",
+            description="Creates a dictionary with the specified key-value pairs. Use this when you know all the values you want to add upfront.",
+            categories={BlockCategory.DATA},
+            input_schema=CreateDictionaryBlock.Input,
+            output_schema=CreateDictionaryBlock.Output,
+            test_input=[
+                {
+                    "values": {"name": "Alice", "age": 25, "city": "New York"},
+                },
+                {
+                    "values": {"numbers": [1, 2, 3], "active": True, "score": 95.5},
+                },
+            ],
+            test_output=[
+                (
+                    "dictionary",
+                    {"name": "Alice", "age": 25, "city": "New York"},
+                ),
+                (
+                    "dictionary",
+                    {"numbers": [1, 2, 3], "active": True, "score": 95.5},
+                ),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            # The values are already validated by Pydantic schema
+            yield "dictionary", input_data.values
+        except Exception as e:
+            yield "error", f"Failed to create dictionary: {str(e)}"
+
+
+class CreateListBlock(Block):
+    class Input(BlockSchema):
+        values: List[Any] = SchemaField(
+            description="A list of values to be combined into a new list.",
+            placeholder="e.g., ['Alice', 25, True]",
+        )
+
+    class Output(BlockSchema):
+        list: List[Any] = SchemaField(
+            description="The created list containing the specified values."
+        )
+        error: str = SchemaField(description="Error message if list creation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="a912d5c7-6e00-4542-b2a9-8034136930e4",
+            description="Creates a list with the specified values. Use this when you know all the values you want to add upfront.",
+            categories={BlockCategory.DATA},
+            input_schema=CreateListBlock.Input,
+            output_schema=CreateListBlock.Output,
+            test_input=[
+                {
+                    "values": ["Alice", 25, True],
+                },
+                {
+                    "values": [1, 2, 3, "four", {"key": "value"}],
+                },
+            ],
+            test_output=[
+                (
+                    "list",
+                    ["Alice", 25, True],
+                ),
+                (
+                    "list",
+                    [1, 2, 3, "four", {"key": "value"}],
+                ),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            # The values are already validated by Pydantic schema
+            yield "list", input_data.values
+        except Exception as e:
+            yield "error", f"Failed to create list: {str(e)}"

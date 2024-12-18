@@ -12,6 +12,6 @@ export class BasePage {
   async waitForPageLoad() {
     // Common page load waiting logic
     console.log(`waiting for page to load`);
-    await this.page.waitForLoadState("networkidle", { timeout: 10000 });
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
   }
 }

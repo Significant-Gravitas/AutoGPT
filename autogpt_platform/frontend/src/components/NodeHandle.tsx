@@ -35,7 +35,7 @@ const NodeHandle: FC<HandleProps> = ({
 
   const label = (
     <div className="flex flex-grow flex-row">
-      <span className="text-m green flex items-end pr-2 text-gray-900">
+      <span className="text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100">
         {title || schema.title || beautifyString(keyName.toLowerCase())}
         {isRequired ? "*" : ""}
       </span>
@@ -48,10 +48,10 @@ const NodeHandle: FC<HandleProps> = ({
   const Dot = () => {
     const color = isConnected
       ? getTypeBgColor(schema.type || "any")
-      : "border-gray-300";
+      : "border-gray-300 dark:border-gray-600";
     return (
       <div
-        className={`${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
+        className={`${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300 dark:bg-slate-800 dark:group-hover:bg-gray-700`}
       />
     );
   };
