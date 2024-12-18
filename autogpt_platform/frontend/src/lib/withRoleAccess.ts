@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-import getServerUser from "@/hooks/getServerUser";
 import React from "react";
 import * as Sentry from "@sentry/nextjs";
 

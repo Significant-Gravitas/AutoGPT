@@ -6,10 +6,10 @@ import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 import CreditsCard from "./CreditsCard";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-import { User } from "@supabase/supabase-js";
-import AutoGPTServerAPIServerSide from "@/lib/autogpt-server-api/clientServer";
 import { ThemeToggle } from "./ThemeToggle";
 import { NavbarLink } from "./NavbarLink";
+import getServerUser from "@/lib/supabase/getServerUser";
+import BackendAPI from "@/lib/autogpt-server-api";
 
 interface NavLink {
   name: string;
@@ -17,8 +17,6 @@ interface NavLink {
 }
 
 interface NavbarProps {
-  user: User | null;
-  isLoggedIn: boolean;
   links: NavLink[];
   menuItemGroups: {
     groupName?: string;
@@ -31,8 +29,8 @@ interface NavbarProps {
   }[];
 }
 
-async function getProfileData(user: User | null) {
-  const api = new AutoGPTServerAPIServerSide();
+async function getProfileData() {
+  const api = new BackendAPI();
   const [profile, credits] = await Promise.all([
     api.getStoreProfile("navbar"),
     api.getUserCredit("navbar"),
@@ -43,17 +41,14 @@ async function getProfileData(user: User | null) {
     credits,
   };
 }
-export const Navbar = async ({
-  user,
-  isLoggedIn,
-  links,
-  menuItemGroups,
-}: NavbarProps) => {
+
+export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
+  const { user } = await getServerUser();
+  const isLoggedIn = user !== null;
   let profile: ProfileDetails | null = null;
   let credits: { credits: number } = { credits: 0 };
   if (isLoggedIn) {
-    const { profile: t_profile, credits: t_credits } =
-      await getProfileData(user);
+    const { profile: t_profile, credits: t_credits } = await getProfileData();
     profile = t_profile;
     credits = t_credits;
   }

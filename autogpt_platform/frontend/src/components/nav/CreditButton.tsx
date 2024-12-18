@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { IconRefresh } from "@/components/ui/icons";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-
-const api = new AutoGPTServerAPI();
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export default function CreditButton() {
   const [credit, setCredit] = useState<number | null>(null);
+  const api = useBackendAPI();
 
   const fetchCredit = useCallback(async () => {
     try {

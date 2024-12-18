@@ -1,10 +1,9 @@
-import { createServerClient } from "@/lib/supabase/server";
+import getServerSupabase from "./getServerSupabase";
 
 const getServerUser = async () => {
-  const supabase = createServerClient();
+  const supabase = getServerSupabase();
 
   if (!supabase) {
-    console.log(">>> failed to create supabase client");
     return { user: null, error: "Failed to create Supabase client" };
   }
 

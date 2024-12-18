@@ -2,7 +2,7 @@
 // import Link from "next/link";
 // import { ArrowLeft, Download, Calendar, Tag } from "lucide-react";
 // import { Button } from "@/components/ui/button";
-// import AutoGPTServerAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
+// import BackendAPI, { GraphCreatable } from "@/lib/autogpt-server-api";
 // import "@xyflow/react/dist/style.css";
 // import { useToast } from "../ui/use-toast";
 

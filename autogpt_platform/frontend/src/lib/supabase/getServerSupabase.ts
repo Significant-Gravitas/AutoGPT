@@ -1,15 +1,12 @@
-import {
-  createServerClient as createClient,
-  type CookieOptions,
-} from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { createServerClient } from "@supabase/ssr";
 
-export function createServerClient() {
+export default function getServerSupabase() {
+  // Need require here, so Next.js doesn't complain about importing this on client side
+  const { cookies } = require("next/headers");
   const cookieStore = cookies();
 
   try {
-    return createClient(
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -31,19 +28,9 @@ export function createServerClient() {
         },
       },
     );
+
+    return supabase;
   } catch (error) {
     throw error;
-  }
-}
-
-export async function checkAuth() {
-  const supabase = createServerClient();
-  if (!supabase) {
-    console.error("No supabase client");
-    redirect("/login");
-  }
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data?.user) {
-    redirect("/login");
   }
 }
