@@ -18,7 +18,6 @@ import backend.data.user
 import backend.server.routers.v1
 import backend.server.v2.library.routes
 import backend.server.v2.store.routes
-
 import backend.util.service
 import backend.util.settings
 

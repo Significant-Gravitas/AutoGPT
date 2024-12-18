@@ -6,11 +6,11 @@ def test_library_agent():
         id="test-agent-123",
         version=1,
         is_active=True,
-        name="Test Agent", 
+        name="Test Agent",
         description="Test description",
         isCreatedByUser=False,
         input_schema={"type": "object", "properties": {}},
-        output_schema={"type": "object", "properties": {}}
+        output_schema={"type": "object", "properties": {}},
     )
     assert agent.id == "test-agent-123"
     assert agent.version == 1
@@ -31,7 +31,7 @@ def test_library_agent_with_user_created():
         description="An agent created by the user",
         isCreatedByUser=True,
         input_schema={"type": "object", "properties": {}},
-        output_schema={"type": "object", "properties": {}}
+        output_schema={"type": "object", "properties": {}},
     )
     assert agent.id == "user-agent-456"
     assert agent.version == 2

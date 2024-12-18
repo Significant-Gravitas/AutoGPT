@@ -43,7 +43,7 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
             output_schema={"type": "object", "properties": {}},
         ),
         backend.server.v2.library.model.LibraryAgent(
-            id="test-agent-2", 
+            id="test-agent-2",
             version=1,
             is_active=True,
             name="Test Agent 2",

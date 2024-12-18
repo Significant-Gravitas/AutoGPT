@@ -37,7 +37,6 @@ async def get_library_agents(
         )
 
 
-
 @router.post(
     "/agents/{store_listing_version_id}",
     tags=["library", "private"],
