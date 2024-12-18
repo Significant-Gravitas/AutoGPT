@@ -65,6 +65,7 @@ export default async function Page({
               categories={agent.categories}
               lastUpdated={agent.updated_at}
               version={agent.versions[agent.versions.length - 1]}
+              storeListingVersionId={agent.store_listing_version_id}
             />
           </div>
           <AgentImages images={agent.agent_image} />
