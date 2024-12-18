@@ -1,5 +1,4 @@
 "use client";
-import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -10,7 +9,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import useUser from "@/hooks/useUser";
+import useSupabase from "@/hooks/useSupabase";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -33,8 +32,7 @@ const resetPasswordFormSchema = z
   });
 
 export default function ResetPasswordPage() {
-  const { supabase, isLoading: isSupabaseLoading } = useSupabase();
-  const { user, isLoading: isUserLoading } = useUser();
+  const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -54,7 +52,7 @@ export default function ResetPasswordPage() {
     },
   });
 
-  if (isUserLoading || isSupabaseLoading) {
+  if (isUserLoading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <FaSpinner className="mr-2 h-16 w-16 animate-spin" />

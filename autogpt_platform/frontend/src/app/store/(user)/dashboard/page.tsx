@@ -5,8 +5,6 @@ import { AgentTable } from "@/components/agptui/AgentTable";
 import { AgentTableRowProps } from "@/components/agptui/AgentTableRow";
 import { Button } from "@/components/agptui/Button";
 import { Separator } from "@/components/ui/separator";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-import { createClient } from "@/lib/supabase/client";
 import { StatusType } from "@/components/agptui/Status";
 import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
 import { useCallback, useEffect, useState } from "react";
@@ -14,42 +12,12 @@ import {
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
 } from "@/lib/autogpt-server-api/types";
-
-async function getDashboardData() {
-  const supabase = createClient();
-  if (!supabase) {
-    return { submissions: [] };
-  }
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    console.warn("--- No session found in profile page");
-    return { profile: null };
-  }
-
-  const api = new AutoGPTServerAPI(
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-    supabase,
-  );
-
-  try {
-    const submissions = await api.getStoreSubmissions();
-    return {
-      submissions,
-    };
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    return {
-      profile: null,
-    };
-  }
-}
+import useSupabase from "@/hooks/useSupabase";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export default function Page({}: {}) {
+  const { supabase } = useSupabase();
+  const api = useBackendAPI();
   const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();
   const [openPopout, setOpenPopout] = useState<boolean>(false);
   const [submissionData, setSubmissionData] =
@@ -59,15 +27,20 @@ export default function Page({}: {}) {
   );
 
   const fetchData = useCallback(async () => {
-    const { submissions } = await getDashboardData();
-    if (submissions) {
-      setSubmissions(submissions as StoreSubmissionsResponse);
+    try {
+      const submissions = await api.getStoreSubmissions();
+      setSubmissions(submissions);
+    } catch (error) {
+      console.error("Error fetching submissions:", error);
     }
-  }, []);
+  }, [api, supabase]);
 
   useEffect(() => {
+    if (!supabase) {
+      return;
+    }
     fetchData();
-  }, [fetchData]);
+  }, [supabase]);
 
   const onEditSubmission = useCallback((submission: StoreSubmissionRequest) => {
     setSubmissionData(submission);
@@ -77,19 +50,13 @@ export default function Page({}: {}) {
 
   const onDeleteSubmission = useCallback(
     (submission_id: string) => {
-      const supabase = createClient();
       if (!supabase) {
         return;
       }
-      const api = new AutoGPTServerAPI(
-        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-        supabase,
-      );
       api.deleteStoreSubmission(submission_id);
       fetchData();
     },
-    [fetchData],
+    [supabase],
   );
 
   const onOpenPopout = useCallback(() => {

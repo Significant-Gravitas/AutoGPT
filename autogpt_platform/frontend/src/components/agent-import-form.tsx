@@ -14,12 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import AutoGPTServerAPI, {
-  Graph,
-  GraphCreatable,
-} from "@/lib/autogpt-server-api";
+import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 // Add this custom schema for File type
 const fileSchema = z.custom<File>((val) => val instanceof File, {
@@ -75,7 +73,7 @@ export const AgentImportForm: React.FC<
   React.FormHTMLAttributes<HTMLFormElement>
 > = ({ className, ...props }) => {
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
-  const api = new AutoGPTServerAPI();
+  const api = useBackendAPI();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

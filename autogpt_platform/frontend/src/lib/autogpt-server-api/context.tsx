@@ -1,14 +1,14 @@
-import { AutoGPTServerAPI } from "./client";
+import BackendAPI from "./client";
 import React, { createContext, useMemo } from "react";
 
-const BackendAPIProviderContext = createContext<AutoGPTServerAPI | null>(null);
+const BackendAPIProviderContext = createContext<BackendAPI | null>(null);
 
 export function BackendAPIProvider({
   children,
 }: {
   children?: React.ReactNode;
 }): React.ReactNode {
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useMemo(() => new BackendAPI(), []);
 
   return (
     <BackendAPIProviderContext.Provider value={api}>
@@ -17,7 +17,7 @@ export function BackendAPIProvider({
   );
 }
 
-export function useBackendAPI(): AutoGPTServerAPI {
+export function useBackendAPI(): BackendAPI {
   const context = React.useContext(BackendAPIProviderContext);
   if (!context) {
     throw new Error(

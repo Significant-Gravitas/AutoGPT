@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { createClient } from "@/lib/supabase/client";
+import useSupabase from "@/hooks/useSupabase";
 
 interface SettingsInputFormProps {
   email?: string;
@@ -20,6 +19,7 @@ export const SettingsInputForm = ({
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [passwordsMatch, setPasswordsMatch] = React.useState(true);
+  const { supabase } = useSupabase();
 
   const handleSaveChanges = async () => {
     if (password !== confirmPassword) {
@@ -27,10 +27,9 @@ export const SettingsInputForm = ({
       return;
     }
     setPasswordsMatch(true);
-    const client = createClient();
-    if (client) {
+    if (supabase) {
       try {
-        const { error } = await client.auth.updateUser({
+        const { error } = await supabase.auth.updateUser({
           password: password,
         });
         if (error) {
