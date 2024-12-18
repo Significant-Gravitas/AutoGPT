@@ -57,7 +57,7 @@ We continue to develop this project with the goal of providing access to AI assi
 
 - 🚀 **Build with us** - We welcome any input, whether it's code or ideas for new features or improvements! Join us on [Discord](https://discord.gg/autogpt) and find out how you can join in on the action.
 
-If you'd like to see what's next, check out the [AutoGPT Platform](/).
+If you'd like to see what's next, check out the [AutoGPT Platform](../index.md).
 
 <small>* it isn't quite there yet, but that is the ultimate goal that we are still pursuing</small>
 

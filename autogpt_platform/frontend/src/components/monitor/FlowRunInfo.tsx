@@ -1,12 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import AutoGPTServerAPI, {
-  BlockIORootSchema,
-  Graph,
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  GraphExecution,
   GraphMeta,
   NodeExecutionResult,
   SpecialBlockID,
 } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -15,21 +13,22 @@ import { ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
 import RunnerOutputUI, { BlockOutput } from "../runner-ui/RunnerOutputUI";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowRunInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    flowRun: FlowRun;
+    execution: GraphExecution;
   }
-> = ({ flow, flowRun, ...props }) => {
+> = ({ flow, execution, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);
   const [blockOutputs, setBlockOutputs] = useState<BlockOutput[]>([]);
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useBackendAPI();
 
   const fetchBlockResults = useCallback(async () => {
     const executionResults = await api.getGraphExecutionInfo(
       flow.id,
-      flowRun.id,
+      execution.execution_id,
     );
 
     // Create a map of the latest COMPLETED execution results of output nodes by node_id
@@ -71,26 +70,23 @@ export const FlowRunInfo: React.FC<
         result: result.output_data?.output || undefined,
       })),
     );
-  }, [api, flow.id, flowRun.id]);
+  }, [api, flow.id, execution.execution_id]);
 
   // Fetch graph and execution data
   useEffect(() => {
-    if (!isOutputOpen || blockOutputs.length > 0) {
-      return;
-    }
-
+    if (!isOutputOpen) return;
     fetchBlockResults();
-  }, [isOutputOpen, blockOutputs, fetchBlockResults]);
+  }, [isOutputOpen, fetchBlockResults]);
 
-  if (flowRun.graphID != flow.id) {
+  if (execution.graph_id != flow.id) {
     throw new Error(
-      `FlowRunInfo can't be used with non-matching flowRun.flowID and flow.id`,
+      `FlowRunInfo can't be used with non-matching execution.graph_id and flow.id`,
     );
   }
 
   const handleStopRun = useCallback(() => {
-    api.stopGraphExecution(flow.id, flowRun.id);
-  }, [api, flow.id, flowRun.id]);
+    api.stopGraphExecution(flow.id, execution.execution_id);
+  }, [api, flow.id, execution.execution_id]);
 
   return (
     <>
@@ -98,17 +94,12 @@ export const FlowRunInfo: React.FC<
         <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
           <div>
             <CardTitle>
-              {flow.name} <span className="font-light">v{flow.version}</span>
+              {flow.name}{" "}
+              <span className="font-light">v{execution.graph_version}</span>
             </CardTitle>
-            <p className="mt-2">
-              Agent ID: <code>{flow.id}</code>
-            </p>
-            <p className="mt-1">
-              Run ID: <code>{flowRun.id}</code>
-            </p>
           </div>
           <div className="flex space-x-2">
-            {flowRun.status === "running" && (
+            {execution.status === "RUNNING" && (
               <Button onClick={handleStopRun} variant="destructive">
                 <IconSquare className="mr-2" /> Stop Run
               </Button>
@@ -125,21 +116,28 @@ export const FlowRunInfo: React.FC<
           </div>
         </CardHeader>
         <CardContent>
+          <p className="hidden">
+            <strong>Agent ID:</strong> <code>{flow.id}</code>
+          </p>
+          <p className="hidden">
+            <strong>Run ID:</strong> <code>{execution.execution_id}</code>
+          </p>
           <div>
             <strong>Status:</strong>{" "}
-            <FlowRunStatusBadge status={flowRun.status} />
+            <FlowRunStatusBadge status={execution.status} />
           </div>
           <p>
             <strong>Started:</strong>{" "}
-            {moment(flowRun.startTime).format("YYYY-MM-DD HH:mm:ss")}
+            {moment(execution.started_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
             <strong>Finished:</strong>{" "}
-            {moment(flowRun.endTime).format("YYYY-MM-DD HH:mm:ss")}
+            {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
           <p>
-            <strong>Duration (run time):</strong> {flowRun.duration} (
-            {flowRun.totalRunTime}) seconds
+            <strong>Duration (run time):</strong>{" "}
+            {execution.duration.toFixed(1)} (
+            {execution.total_run_time.toFixed(1)}) seconds
           </p>
         </CardContent>
       </Card>

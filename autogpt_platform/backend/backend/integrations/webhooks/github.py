@@ -8,8 +8,9 @@ from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import Credentials
+from backend.integrations.providers import ProviderName
 
-from .base import BaseWebhooksManager
+from ._base import BaseWebhooksManager
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class GithubWebhookType(StrEnum):
 
 
 class GithubWebhooksManager(BaseWebhooksManager):
-    PROVIDER_NAME = "github"
+    PROVIDER_NAME = ProviderName.GITHUB
 
     WebhookType = GithubWebhookType
 
@@ -58,10 +59,15 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         return payload, event_type
 
-    async def trigger_ping(self, webhook: integrations.Webhook) -> None:
+    async def trigger_ping(
+        self, webhook: integrations.Webhook, credentials: Credentials | None
+    ) -> None:
+        if not credentials:
+            raise ValueError("Credentials are required but were not passed")
+
         headers = {
             **self.GITHUB_API_DEFAULT_HEADERS,
-            "Authorization": f"Bearer {webhook.config.get('access_token')}",
+            "Authorization": credentials.bearer(),
         }
 
         repo, github_hook_id = webhook.resource, webhook.provider_webhook_id

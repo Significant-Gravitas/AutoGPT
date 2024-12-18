@@ -8,26 +8,36 @@ generator client {
   provider             = "prisma-client-py"
   recursive_type_depth = 5
   interface            = "asyncio"
+  previewFeatures      = ["views"]
 }
 
 // User model to mirror Auth provider users
 model User {
-  id           String   @id // This should match the Supabase user ID
-  email        String   @unique
-  name         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  metadata     Json     @default("{}")
-  integrations String   @default("")
+  id               String   @id // This should match the Supabase user ID
+  email            String   @unique
+  name             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  metadata         Json     @default("{}")
+  integrations     String   @default("")
+  stripeCustomerId String?
 
   // Relations
-  AgentGraphs                  AgentGraph[]
-  AgentGraphExecutions         AgentGraphExecution[]
-  IntegrationWebhooks          IntegrationWebhook[]
-  AnalyticsDetails             AnalyticsDetails[]
-  AnalyticsMetrics             AnalyticsMetrics[]
-  UserBlockCredit              UserBlockCredit[]
-  APIKeys                      APIKey[]
+  AgentGraphs          AgentGraph[]
+  AgentGraphExecutions AgentGraphExecution[]
+  AnalyticsDetails     AnalyticsDetails[]
+  AnalyticsMetrics     AnalyticsMetrics[]
+  CreditTransaction    CreditTransaction[]
+
+  AgentPreset AgentPreset[]
+  UserAgent   UserAgent[]
+
+  Profile                     Profile[]
+  StoreListing                StoreListing[]
+  StoreListingReview          StoreListingReview[]
+  StoreListingSubmission      StoreListingSubmission[]
+  APIKeys                     APIKey[]
+  IntegrationWebhooks         IntegrationWebhook[]
 
   @@index([id])
   @@index([email])
@@ -47,13 +57,88 @@ model AgentGraph {
 
   // Link to User model
   userId String
+  // FIX: Do not cascade delete the agent when the user is deleted
+  // This allows us to delete user data with deleting the agent which maybe in use by other users
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  AgentNodes                  AgentNode[]
-  AgentGraphExecution         AgentGraphExecution[]
+  AgentNodes          AgentNode[]
+  AgentGraphExecution AgentGraphExecution[]
+
+  AgentPreset                 AgentPreset[]
+  UserAgent                   UserAgent[]
+  StoreListing                StoreListing[]
+  StoreListingVersion         StoreListingVersion?
 
   @@id(name: "graphVersionId", [id, version])
+  @@index([userId, isActive])
 }
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////////////   USER SPECIFIC DATA   ////////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+
+// An AgentPrest is an Agent + User Configuration of that agent.
+// For example, if someone has created a weather agent and they want to set it up to 
+// Inform them of extreme weather warnings in Texas, the agent with the configuration to set it to
+// monitor texas, along with the cron setup or webhook tiggers, is an AgentPreset
+model AgentPreset {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  name        String
+  description String
+
+  // For agents that can be triggered by webhooks or cronjob
+  // This bool allows us to disable a configured agent without deleting it
+  isActive Boolean @default(true)
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentId      String
+  agentVersion Int
+  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+
+  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
+  UserAgents             UserAgent[]
+  AgentExecution         AgentGraphExecution[]
+
+  @@index([userId])
+}
+
+// For the library page
+// It is a user controlled list of agents, that they will see in there library
+model UserAgent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentId      String
+  agentVersion Int
+  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  isFavorite      Boolean @default(false)
+  isCreatedByUser Boolean @default(false)
+  isArchived      Boolean @default(false)
+  isDeleted       Boolean @default(false)
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   AGENT DEFINITION AND EXECUTION TABLES    ////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
@@ -83,6 +168,10 @@ model AgentNode {
   metadata String @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([agentBlockId])
+  @@index([webhookId])
 }
 
 // This model describes the link between two AgentNodes.
@@ -101,6 +190,9 @@ model AgentNodeLink {
 
   // Default: the data coming from the source can only be consumed by the sink once, Static: input data will be reused.
   isStatic Boolean @default(false)
+
+  @@index([agentNodeSourceId])
+  @@index([agentNodeSinkId])
 }
 
 // This model describes a component that will be executed by the AgentNode.
@@ -115,7 +207,7 @@ model AgentBlock {
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
-  UserBlockCredit       UserBlockCredit[]
+  CreditTransaction     CreditTransaction[]
 }
 
 // This model describes the status of an AgentGraphExecution or AgentNodeExecution.
@@ -146,7 +238,12 @@ model AgentGraphExecution {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats String? // JSON serialized object
+  stats         String? // JSON serialized object
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+  agentPresetId String?
+
+  @@index([agentGraphId, agentGraphVersion])
+  @@index([userId])
 }
 
 // This model describes the execution of an AgentNode.
@@ -171,6 +268,9 @@ model AgentNodeExecution {
   endedTime       DateTime?
 
   stats String? // JSON serialized object
+
+  @@index([agentGraphExecutionId])
+  @@index([agentNodeId])
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -187,8 +287,12 @@ model AgentNodeExecutionInputOutput {
   referencedByOutputExecId String?
   ReferencedByOutputExec   AgentNodeExecution? @relation("AgentNodeExecutionOutput", fields: [referencedByOutputExecId], references: [id], onDelete: Cascade)
 
+  agentPresetId String?
+  AgentPreset   AgentPreset? @relation("AgentPresetsInputData", fields: [agentPresetId], references: [id])
+
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
+  @@index([referencedByOutputExecId])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
@@ -211,6 +315,8 @@ model IntegrationWebhook {
   providerWebhookId String // Webhook ID assigned by the provider
 
   AgentNodes AgentNode[]
+
+  @@index([userId])
 }
 
 model AnalyticsDetails {
@@ -238,8 +344,13 @@ model AnalyticsDetails {
   @@index([type])
 }
 
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   METRICS TRACKING TABLES    ////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
 model AnalyticsMetrics {
-  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -254,14 +365,21 @@ model AnalyticsMetrics {
   // Link to User model
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
-enum UserBlockCreditType {
+enum CreditTransactionType {
   TOP_UP
   USAGE
 }
 
-model UserBlockCredit {
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
 
@@ -272,12 +390,215 @@ model UserBlockCredit {
   block   AgentBlock? @relation(fields: [blockId], references: [id])
 
   amount Int
-  type   UserBlockCreditType
+  type   CreditTransactionType
 
   isActive Boolean @default(true)
   metadata Json?
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
+  @@index([userId, createdAt])
+}
+
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+//////////////   Store TABLES    ///////////////////////////
+//////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////// 
+
+model Profile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Only 1 of user or group can be set.
+  // The user this profile belongs to, if any. 
+  userId String?
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  username    String @unique
+  description String
+
+  links String[]
+
+  avatarUrl String?
+
+  isFeatured Boolean @default(false)
+
+  @@index([username])
+  @@index([userId])
+}
+
+view Creator {
+  username    String @unique
+  name        String
+  avatar_url  String
+  description String
+
+  top_categories String[]
+  links          String[]
+
+  num_agents   Int
+  agent_rating Float
+  agent_runs   Int
+  is_featured  Boolean
+}
+
+view StoreAgent {
+  listing_id            String   @id
+  storeListingVersionId String
+  updated_at            DateTime
+
+  slug        String
+  agent_name  String
+  agent_video String?
+  agent_image String[]
+
+  featured         Boolean  @default(false)
+  creator_username String
+  creator_avatar   String
+  sub_heading      String
+  description      String
+  categories       String[]
+  runs             Int
+  rating           Float
+  versions         String[]
+
+  @@unique([creator_username, slug])
+  @@index([creator_username])
+  @@index([featured])
+  @@index([categories])
+  @@index([storeListingVersionId])
+}
+
+view StoreSubmission {
+  listing_id     String           @id
+  user_id        String
+  slug           String
+  name           String
+  sub_heading    String
+  description    String
+  image_urls     String[]
+  date_submitted DateTime
+  status         SubmissionStatus
+  runs           Int
+  rating         Float
+  agent_id       String
+  agent_version  Int
+
+  @@index([user_id])
+}
+
+model StoreListing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  isDeleted  Boolean @default(false)
+  // Not needed but makes lookups faster
+  isApproved Boolean @default(false)
+
+  // The agent link here is only so we can do lookup on agentId, for the listing the StoreListingVersion is used.
+  agentId      String
+  agentVersion Int
+  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+
+  owningUserId String
+  OwningUser   User   @relation(fields: [owningUserId], references: [id])
+
+  StoreListingVersions   StoreListingVersion[]
+  StoreListingSubmission StoreListingSubmission[]
+
+  @@index([isApproved])
+  @@index([agentId])
+  @@index([owningUserId])
+}
+
+model StoreListingVersion {
+  id        String   @id @default(uuid())
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // The agent and version to be listed on the store
+  agentId      String
+  agentVersion Int
+  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
+
+  // The detials for this version of the agent, this allows the author to update the details of the agent,
+  // But still allow using old versions of the agent with there original details.
+  // TODO: Create a database view that shows only the latest version of each store listing.
+  slug        String
+  name        String
+  subHeading  String
+  videoUrl    String?
+  imageUrls   String[]
+  description String
+  categories  String[]
+
+  isFeatured Boolean @default(false)
+
+  isDeleted              Boolean                  @default(false)
+  // Old versions can be made unavailable by the author if desired
+  isAvailable            Boolean                  @default(true)
+  // Not needed but makes lookups faster
+  isApproved             Boolean                  @default(false)
+  StoreListing           StoreListing?            @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
+  storeListingId         String?
+  StoreListingSubmission StoreListingSubmission[]
+
+  // Reviews are on a specific version, but then aggregated up to the listing.
+  // This allows us to provide a review filter to current version of the agent.
+  StoreListingReview StoreListingReview[]
+
+  @@unique([agentId, agentVersion])
+  @@index([agentId, agentVersion, isApproved])
+}
+
+model StoreListingReview {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  storeListingVersionId String
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  reviewByUserId String
+  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
+
+  score    Int
+  comments String?
+
+  @@unique([storeListingVersionId, reviewByUserId])
+  @@index([storeListingVersionId])
+}
+
+enum SubmissionStatus {
+  DAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model StoreListingSubmission {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  storeListingId String
+  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
+
+  storeListingVersionId String
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  reviewerId String
+  Reviewer   User   @relation(fields: [reviewerId], references: [id])
+
+  Status         SubmissionStatus @default(PENDING)
+  reviewComments String?
+
+  @@index([storeListingId])
+  @@index([Status])
 }
 
 enum APIKeyPermission {
@@ -290,7 +611,7 @@ enum APIKeyPermission {
 model APIKey {
   id          String             @id @default(uuid())
   name        String
-  prefix      String             // First 8 chars for identification
+  prefix      String // First 8 chars for identification
   postfix     String
   key         String             @unique // Hashed key
   status      APIKeyStatus       @default(ACTIVE)

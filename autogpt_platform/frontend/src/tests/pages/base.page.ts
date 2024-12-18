@@ -3,6 +3,7 @@ import { NavBar } from "./navbar.page";
 
 export class BasePage {
   readonly navbar: NavBar;
+  readonly downloadsFolder = "./.test-contents";
 
   constructor(protected page: Page) {
     this.navbar = new NavBar(page);
@@ -10,6 +11,7 @@ export class BasePage {
 
   async waitForPageLoad() {
     // Common page load waiting logic
-    await this.page.waitForLoadState("networkidle", { timeout: 10000 });
+    console.log(`waiting for page to load`);
+    await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
   }
 }

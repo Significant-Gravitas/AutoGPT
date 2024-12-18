@@ -25,8 +25,8 @@ from backend.data.execution import (
     ExecutionQueue,
     ExecutionResult,
     ExecutionStatus,
-    GraphExecution,
-    NodeExecution,
+    GraphExecutionEntry,
+    NodeExecutionEntry,
     merge_execution_input,
     parse_execution_output,
 )
@@ -96,13 +96,13 @@ class LogMetadata:
 
 
 T = TypeVar("T")
-ExecutionStream = Generator[NodeExecution, None, None]
+ExecutionStream = Generator[NodeExecutionEntry, None, None]
 
 
 def execute_node(
     db_client: "DatabaseManager",
     creds_manager: IntegrationCredentialsManager,
-    data: NodeExecution,
+    data: NodeExecutionEntry,
     execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
     """
@@ -252,15 +252,15 @@ def _enqueue_next_nodes(
     graph_exec_id: str,
     graph_id: str,
     log_metadata: LogMetadata,
-) -> list[NodeExecution]:
+) -> list[NodeExecutionEntry]:
     def add_enqueued_execution(
         node_exec_id: str, node_id: str, data: BlockInput
-    ) -> NodeExecution:
+    ) -> NodeExecutionEntry:
         exec_update = db_client.update_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
         )
         db_client.send_execution_update(exec_update)
-        return NodeExecution(
+        return NodeExecutionEntry(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
@@ -269,7 +269,7 @@ def _enqueue_next_nodes(
             data=data,
         )
 
-    def register_next_executions(node_link: Link) -> list[NodeExecution]:
+    def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         enqueued_executions = []
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
@@ -501,8 +501,8 @@ class Executor:
     @error_logged
     def on_node_execution(
         cls,
-        q: ExecutionQueue[NodeExecution],
-        node_exec: NodeExecution,
+        q: ExecutionQueue[NodeExecutionEntry],
+        node_exec: NodeExecutionEntry,
     ) -> dict[str, Any]:
         log_metadata = LogMetadata(
             user_id=node_exec.user_id,
@@ -529,8 +529,8 @@ class Executor:
     @time_measured
     def _on_node_execution(
         cls,
-        q: ExecutionQueue[NodeExecution],
-        node_exec: NodeExecution,
+        q: ExecutionQueue[NodeExecutionEntry],
+        node_exec: NodeExecutionEntry,
         log_metadata: LogMetadata,
         stats: dict[str, Any] | None = None,
     ):
@@ -580,7 +580,9 @@ class Executor:
 
     @classmethod
     @error_logged
-    def on_graph_execution(cls, graph_exec: GraphExecution, cancel: threading.Event):
+    def on_graph_execution(
+        cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
+    ):
         log_metadata = LogMetadata(
             user_id=graph_exec.user_id,
             graph_eid=graph_exec.graph_exec_id,
@@ -605,7 +607,7 @@ class Executor:
     @time_measured
     def _on_graph_execution(
         cls,
-        graph_exec: GraphExecution,
+        graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
     ) -> tuple[dict[str, Any], Exception | None]:
@@ -636,13 +638,13 @@ class Executor:
         cancel_thread.start()
 
         try:
-            queue = ExecutionQueue[NodeExecution]()
+            queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
 
-            def make_exec_callback(exec_data: NodeExecution):
+            def make_exec_callback(exec_data: NodeExecutionEntry):
                 node_id = exec_data.node_id
 
                 def callback(result: object):
@@ -717,7 +719,7 @@ class ExecutionManager(AppService):
         self.use_redis = True
         self.use_supabase = True
         self.pool_size = settings.config.num_graph_workers
-        self.queue = ExecutionQueue[GraphExecution]()
+        self.queue = ExecutionQueue[GraphExecutionEntry]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
     @classmethod
@@ -768,7 +770,7 @@ class ExecutionManager(AppService):
         data: BlockInput,
         user_id: str,
         graph_version: int | None = None,
-    ) -> GraphExecution:
+    ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
@@ -796,10 +798,13 @@ class ExecutionManager(AppService):
             # Extract webhook payload, and assign it to the input pin
             webhook_payload_key = f"webhook_{node.webhook_id}_payload"
             if (
-                block.block_type == BlockType.WEBHOOK
+                block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
                 and node.webhook_id
-                and webhook_payload_key in data
             ):
+                if webhook_payload_key not in data:
+                    raise ValueError(
+                        f"Node {block.name} #{node.id} webhook payload is missing"
+                    )
                 input_data = {"payload": data[webhook_payload_key]}
 
             input_data, error = validate_exec(node, input_data)
@@ -818,7 +823,7 @@ class ExecutionManager(AppService):
         starting_node_execs = []
         for node_exec in node_execs:
             starting_node_execs.append(
-                NodeExecution(
+                NodeExecutionEntry(
                     user_id=user_id,
                     graph_exec_id=node_exec.graph_exec_id,
                     graph_id=node_exec.graph_id,
@@ -832,7 +837,7 @@ class ExecutionManager(AppService):
             )
             self.db_client.send_execution_update(exec_update)
 
-        graph_exec = GraphExecution(
+        graph_exec = GraphExecutionEntry(
             user_id=user_id,
             graph_id=graph_id,
             graph_exec_id=graph_exec_id,

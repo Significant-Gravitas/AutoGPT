@@ -3,10 +3,11 @@ from typing import Literal
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 FalCredentials = APIKeyCredentials
 FalCredentialsInput = CredentialsMetaInput[
-    Literal["fal"],
+    Literal[ProviderName.FAL],
     Literal["api_key"],
 ]
 
@@ -30,7 +31,5 @@ def FalCredentialsField() -> FalCredentialsInput:
     Creates a FAL credentials input on a block.
     """
     return CredentialsField(
-        provider="fal",
-        supported_credential_types={"api_key"},
         description="The FAL integration can be used with an API Key.",
     )

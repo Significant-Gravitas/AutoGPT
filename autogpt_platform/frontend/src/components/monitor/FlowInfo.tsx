@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
-import AutoGPTServerAPI, {
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  GraphExecution,
   Graph,
   GraphMeta,
   safeCopyGraph,
+  BlockUIType,
+  BlockIORootSchema,
 } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -18,7 +20,7 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ClockIcon, ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import Link from "next/link";
-import { exportAsJSONFile } from "@/lib/utils";
+import { exportAsJSONFile, filterBlocksByType } from "@/lib/utils";
 import { FlowRunsStats } from "@/components/monitor/index";
 import { Trash2Icon } from "lucide-react";
 import {
@@ -29,16 +31,44 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
+import { CronScheduler } from "@/components/cronScheduler";
+import RunnerInputUI from "@/components/runner-ui/RunnerInputUI";
+import useAgentGraph from "@/hooks/useAgentGraph";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
     flow: GraphMeta;
-    flowRuns: FlowRun[];
+    executions: GraphExecution[];
     flowVersion?: number | "all";
     refresh: () => void;
   }
-> = ({ flow, flowRuns, flowVersion, refresh, ...props }) => {
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+> = ({ flow, executions, flowVersion, refresh, ...props }) => {
+  const {
+    agentName,
+    setAgentName,
+    agentDescription,
+    setAgentDescription,
+    savedAgent,
+    availableNodes,
+    availableFlows,
+    getOutputType,
+    requestSave,
+    requestSaveAndRun,
+    requestStopRun,
+    scheduleRunner,
+    isRunning,
+    isScheduling,
+    setIsScheduling,
+    nodes,
+    setNodes,
+    edges,
+    setEdges,
+  } = useAgentGraph(flow.id, false);
+
+  const api = useBackendAPI();
+  const { toast } = useToast();
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(
@@ -50,10 +80,101 @@ export const FlowInfo: React.FC<
   );
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [openCron, setOpenCron] = useState(false);
+  const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
+  const isDisabled = !selectedFlowVersion;
+
+  const getBlockInputsAndOutputs = useCallback(() => {
+    const inputBlocks = filterBlocksByType(
+      nodes,
+      (node) => node.data.uiType === BlockUIType.INPUT,
+    );
+
+    const outputBlocks = filterBlocksByType(
+      nodes,
+      (node) => node.data.uiType === BlockUIType.OUTPUT,
+    );
+
+    const inputs = inputBlocks.map((node) => ({
+      id: node.id,
+      type: "input" as const,
+      inputSchema: node.data.inputSchema as BlockIORootSchema,
+      hardcodedValues: {
+        name: (node.data.hardcodedValues as any).name || "",
+        description: (node.data.hardcodedValues as any).description || "",
+        value: (node.data.hardcodedValues as any).value,
+        placeholder_values:
+          (node.data.hardcodedValues as any).placeholder_values || [],
+        limit_to_placeholder_values:
+          (node.data.hardcodedValues as any).limit_to_placeholder_values ||
+          false,
+      },
+    }));
+
+    const outputs = outputBlocks.map((node) => ({
+      id: node.id,
+      type: "output" as const,
+      hardcodedValues: {
+        name: (node.data.hardcodedValues as any).name || "Output",
+        description:
+          (node.data.hardcodedValues as any).description ||
+          "Output from the agent",
+        value: (node.data.hardcodedValues as any).value,
+      },
+      result: (node.data.executionResults as any)?.at(-1)?.data?.output,
+    }));
+
+    return { inputs, outputs };
+  }, [nodes]);
+
+  const handleScheduleButton = () => {
+    if (!selectedFlowVersion) {
+      toast({
+        title: "Please select a flow version before scheduling",
+        duration: 2000,
+      });
+      return;
+    }
+    setOpenCron(true);
+  };
 
   useEffect(() => {
     api.getGraphAllVersions(flow.id).then((result) => setFlowVersions(result));
   }, [flow.id, api]);
+
+  const openRunnerInput = () => setIsRunnerInputOpen(true);
+
+  const runOrOpenInput = () => {
+    const { inputs } = getBlockInputsAndOutputs();
+    if (inputs.length > 0) {
+      openRunnerInput();
+    } else {
+      requestSaveAndRun();
+    }
+  };
+
+  const handleInputChange = useCallback(
+    (nodeId: string, field: string, value: string) => {
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                hardcodedValues: {
+                  ...(node.data.hardcodedValues as any),
+                  [field]: value,
+                },
+              },
+            };
+          }
+          return node;
+        }),
+      );
+    },
+    [setNodes],
+  );
 
   return (
     <Card {...props}>
@@ -62,9 +183,6 @@ export const FlowInfo: React.FC<
           <CardTitle>
             {flow.name} <span className="font-light">v{flow.version}</span>
           </CardTitle>
-          <p className="mt-2">
-            Agent ID: <code>{flow.id}</code>
-          </p>
         </div>
         <div className="flex items-start space-x-2">
           {(flowVersions?.length ?? 0) > 1 && (
@@ -115,6 +233,7 @@ export const FlowInfo: React.FC<
             variant="outline"
             className="px-2.5"
             title="Export to a JSON-file"
+            data-testid="export-button"
             onClick={async () =>
               exportAsJSONFile(
                 safeCopyGraph(
@@ -129,7 +248,20 @@ export const FlowInfo: React.FC<
           >
             <ExitIcon className="mr-2" /> Export
           </Button>
-          <Button variant="outline" onClick={() => setIsDeleteModalOpen(true)}>
+          <Button
+            variant="secondary"
+            className="bg-purple-500 text-white hover:bg-purple-700"
+            onClick={isRunning ? requestStopRun : runOrOpenInput}
+            disabled={isDisabled}
+            title={!isRunning ? "Run Agent" : "Stop Agent"}
+          >
+            {isRunning ? "Stop Agent" : "Run Agent"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsDeleteModalOpen(true)}
+            data-testid="delete-button"
+          >
             <Trash2Icon className="h-full" />
           </Button>
         </div>
@@ -137,10 +269,11 @@ export const FlowInfo: React.FC<
       <CardContent>
         <FlowRunsStats
           flows={[selectedFlowVersion ?? flow]}
-          flowRuns={flowRuns.filter(
-            (r) =>
-              r.graphID == flow.id &&
-              (selectedVersion == "all" || r.graphVersion == selectedVersion),
+          executions={executions.filter(
+            (execution) =>
+              execution.graph_id == flow.id &&
+              (selectedVersion == "all" ||
+                execution.graph_version == selectedVersion),
           )}
         />
       </CardContent>
@@ -174,6 +307,20 @@ export const FlowInfo: React.FC<
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <RunnerInputUI
+        isOpen={isRunnerInputOpen}
+        onClose={() => setIsRunnerInputOpen(false)}
+        blockInputs={getBlockInputsAndOutputs().inputs}
+        onInputChange={handleInputChange}
+        onRun={() => {
+          setIsRunnerInputOpen(false);
+          requestSaveAndRun();
+        }}
+        isRunning={isRunning}
+        scheduledInput={false}
+        isScheduling={false}
+        onSchedule={async () => {}} // Fixed type error by making async
+      />
     </Card>
   );
 };

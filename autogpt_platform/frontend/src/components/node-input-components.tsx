@@ -1,3 +1,11 @@
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { format } from "date-fns";
+import { CalendarIcon, Clock } from "lucide-react";
 import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
 import {
@@ -10,7 +18,7 @@ import {
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
 } from "@/lib/autogpt-server-api/types";
-import React, { FC, useCallback, useEffect, useState } from "react";
+import React, { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -69,7 +77,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
             key={propKey}
             className="flex w-full flex-row justify-between space-y-2"
           >
-            <span className="mr-2 mt-3">
+            <span className="mr-2 mt-3 dark:text-gray-300">
               {propSchema.title || beautifyString(propKey)}
             </span>
             <NodeGenericInputField
@@ -92,6 +100,83 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
 };
 
 export default NodeObjectInputTree;
+
+const NodeDateTimeInput: FC<{
+  selfKey: string;
+  schema: BlockIOStringSubSchema;
+  value?: string;
+  error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value = "",
+  error,
+  handleInputChange,
+  className,
+  displayName,
+}) => {
+  const date = value ? new Date(value) : new Date();
+  const [timeInput, setTimeInput] = useState(
+    value ? format(date, "HH:mm") : "00:00",
+  );
+
+  const handleDateSelect = (newDate: Date | undefined) => {
+    if (!newDate) return;
+
+    const [hours, minutes] = timeInput.split(":").map(Number);
+    newDate.setHours(hours, minutes);
+    handleInputChange(selfKey, newDate.toISOString());
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = e.target.value;
+    setTimeInput(newTime);
+
+    if (value) {
+      const [hours, minutes] = newTime.split(":").map(Number);
+      const newDate = new Date(value);
+      newDate.setHours(hours, minutes);
+      handleInputChange(selfKey, newDate.toISOString());
+    }
+  };
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal",
+              !value && "text-muted-foreground",
+            )}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {value ? format(date, "PPP") : <span>Pick a date</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={handleDateSelect}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+      <LocalValuedInput
+        type="time"
+        value={timeInput}
+        onChange={handleTimeChange}
+        className="w-full"
+      />
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
 
 export const NodeGenericInputField: FC<{
   nodeId: string;
@@ -214,7 +299,13 @@ export const NodeGenericInputField: FC<{
       return (
         <NodeStringInput
           selfKey={propKey}
-          schema={{ ...propSchema, type: "string" } as BlockIOStringSubSchema}
+          schema={
+            {
+              ...propSchema,
+              type: "string",
+              enum: (propSchema.anyOf[0] as BlockIOStringSubSchema).enum,
+            } as BlockIOStringSubSchema
+          }
           value={currentValue}
           error={errors[propKey]}
           className={className}
@@ -223,16 +314,91 @@ export const NodeGenericInputField: FC<{
           handleInputClick={handleInputClick}
         />
       );
+    } else if (
+      (types.includes("integer") || types.includes("number")) &&
+      types.includes("null")
+    ) {
+      return (
+        <NodeNumberInput
+          selfKey={propKey}
+          schema={
+            {
+              ...propSchema,
+              type: "integer",
+            } as BlockIONumberSubSchema
+          }
+          value={currentValue}
+          error={errors[propKey]}
+          className={className}
+          displayName={displayName}
+          handleInputChange={handleInputChange}
+        />
+      );
+    } else if (types.includes("array") && types.includes("null")) {
+      return (
+        <NodeArrayInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={
+            {
+              ...propSchema,
+              type: "array",
+              items: (propSchema.anyOf[0] as BlockIOArraySubSchema).items,
+            } as BlockIOArraySubSchema
+          }
+          entries={currentValue}
+          errors={errors}
+          className={className}
+          displayName={displayName}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+        />
+      );
+    } else if (types.includes("object") && types.includes("null")) {
+      return (
+        <NodeKeyValueInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={
+            {
+              ...propSchema,
+              type: "object",
+              additionalProperties: (propSchema.anyOf[0] as BlockIOKVSubSchema)
+                .additionalProperties,
+            } as BlockIOKVSubSchema
+          }
+          entries={currentValue}
+          errors={errors}
+          className={className}
+          displayName={displayName}
+          connections={connections}
+          handleInputChange={handleInputChange}
+        />
+      );
     }
   }
 
-  if ("oneOf" in propSchema) {
-    // At the time of writing, this isn't used in the backend -> no impl. needed
-    console.error(
-      `Unsupported 'oneOf' in schema for '${propKey}'!`,
-      propSchema,
+  if (
+    "oneOf" in propSchema &&
+    propSchema.oneOf &&
+    "discriminator" in propSchema &&
+    propSchema.discriminator
+  ) {
+    return (
+      <NodeOneOfDiscriminatorField
+        nodeId={nodeId}
+        propKey={propKey}
+        propSchema={propSchema}
+        currentValue={currentValue}
+        errors={errors}
+        connections={connections}
+        handleInputChange={handleInputChange}
+        handleInputClick={handleInputClick}
+        className={className}
+        displayName={displayName}
+      />
     );
-    return null;
   }
 
   if (!("type" in propSchema)) {
@@ -252,6 +418,19 @@ export const NodeGenericInputField: FC<{
 
   switch (propSchema.type) {
     case "string":
+      if ("format" in propSchema && propSchema.format === "date-time") {
+        return (
+          <NodeDateTimeInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      }
       return (
         <NodeStringInput
           selfKey={propKey}
@@ -336,6 +515,132 @@ export const NodeGenericInputField: FC<{
         />
       );
   }
+};
+
+const NodeOneOfDiscriminatorField: FC<{
+  nodeId: string;
+  propKey: string;
+  propSchema: any;
+  currentValue?: any;
+  errors: { [key: string]: string | undefined };
+  connections: any;
+  handleInputChange: (key: string, value: any) => void;
+  handleInputClick: (key: string) => void;
+  className?: string;
+  displayName?: string;
+}> = ({
+  nodeId,
+  propKey,
+  propSchema,
+  currentValue,
+  errors,
+  connections,
+  handleInputChange,
+  handleInputClick,
+  className,
+  displayName,
+}) => {
+  const discriminator = propSchema.discriminator;
+
+  const discriminatorProperty = discriminator.propertyName;
+
+  const variantOptions = useMemo(() => {
+    const oneOfVariants = propSchema.oneOf || [];
+
+    return oneOfVariants
+      .map((variant: any) => {
+        const variantDiscValue =
+          variant.properties?.[discriminatorProperty]?.const;
+
+        return {
+          value: variantDiscValue,
+          schema: variant,
+        };
+      })
+      .filter((v: any) => v.value != null);
+  }, [discriminatorProperty, propSchema.oneOf]);
+
+  const currentVariant = variantOptions.find(
+    (opt: any) => currentValue?.[discriminatorProperty] === opt.value,
+  );
+
+  const [chosenType, setChosenType] = useState<string>(
+    currentVariant?.value || "",
+  );
+
+  const handleVariantChange = (newType: string) => {
+    setChosenType(newType);
+    const chosenVariant = variantOptions.find(
+      (opt: any) => opt.value === newType,
+    );
+    if (chosenVariant) {
+      const initialValue = {
+        [discriminatorProperty]: newType,
+      };
+      handleInputChange(propKey, initialValue);
+    }
+  };
+
+  const chosenVariantSchema = variantOptions.find(
+    (opt: any) => opt.value === chosenType,
+  )?.schema;
+
+  return (
+    <div className={cn("flex flex-col space-y-2", className)}>
+      <Select value={chosenType || ""} onValueChange={handleVariantChange}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="Select a type..." />
+        </SelectTrigger>
+        <SelectContent>
+          {variantOptions.map((opt: any) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {beautifyString(opt.value)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {chosenVariantSchema && (
+        <div className={cn(className, "w-full flex-col")}>
+          {Object.entries(chosenVariantSchema.properties).map(
+            ([someKey, childSchema]) => {
+              if (someKey === "discriminator") {
+                return null;
+              }
+              const childKey = propKey ? `${propKey}.${someKey}` : someKey;
+              return (
+                <div
+                  key={childKey}
+                  className="flex w-full flex-row justify-between space-y-2"
+                >
+                  <span className="mr-2 mt-3 dark:text-gray-300">
+                    {(childSchema as BlockIOSubSchema).title ||
+                      beautifyString(someKey)}
+                  </span>
+                  <NodeGenericInputField
+                    nodeId={nodeId}
+                    key={propKey}
+                    propKey={childKey}
+                    propSchema={childSchema as BlockIOSubSchema}
+                    currentValue={
+                      currentValue ? currentValue[someKey] : undefined
+                    }
+                    errors={errors}
+                    connections={connections}
+                    handleInputChange={handleInputChange}
+                    handleInputClick={handleInputClick}
+                    displayName={
+                      chosenVariantSchema.title || beautifyString(someKey)
+                    }
+                  />
+                </div>
+              );
+            },
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const NodeCredentialsInput: FC<{
@@ -443,7 +748,7 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          /* 
+          /*
           The `index` is used as a DOM key instead of the actual `key`
           because the `key` can change with each input, causing the input to lose focus.
           */
@@ -502,7 +807,7 @@ const NodeKeyValueInput: FC<{
           </div>
         ))}
         <Button
-          className="bg-gray-200 font-normal text-black hover:text-white"
+          className="bg-gray-200 font-normal text-black hover:text-white dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
           disabled={
             keyValuePairs.length > 0 &&
             !keyValuePairs[keyValuePairs.length - 1].key
@@ -622,7 +927,7 @@ const NodeArrayInput: FC<{
         );
       })}
       <Button
-        className="w-[183p] bg-gray-200 font-normal text-black hover:text-white"
+        className="w-[183p] bg-gray-200 font-normal text-black hover:text-white dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
         onClick={() =>
           handleInputChange(selfKey, [...entries, isItemObject ? {} : ""])
         }
@@ -703,15 +1008,7 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
-  if (!value) {
-    value = schema.default || "";
-    // Force update hardcodedData so discriminators can update
-    // e.g. credentials update when provider changes
-    // this won't happen if the value is only set here to schema.default
-    if (schema.default) {
-      handleInputChange(selfKey, value);
-    }
-  }
+  value ||= schema.default || "";
   return (
     <div className={className}>
       {schema.enum ? (
@@ -785,7 +1082,7 @@ export const NodeTextBoxInput: FC<{
   return (
     <div className={className}>
       <div
-        className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4"
+        className="nodrag relative m-0 h-[200px] w-full bg-yellow-100 p-4 dark:bg-yellow-900"
         onClick={schema.secret ? () => handleInputClick(selfKey) : undefined}
       >
         <textarea
@@ -796,7 +1093,7 @@ export const NodeTextBoxInput: FC<{
             schema?.placeholder || `Enter ${beautifyString(displayName)}`
           }
           onChange={(e) => handleInputChange(selfKey, e.target.value)}
-          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none"
+          className="h-full w-full resize-none overflow-hidden border-none bg-transparent text-lg text-black outline-none dark:text-white"
           style={{
             fontSize: "min(1em, 16px)",
             lineHeight: "1.2",
@@ -840,6 +1137,7 @@ const NodeNumberInput: FC<{
           placeholder={
             schema.placeholder || `Enter ${beautifyString(displayName)}`
           }
+          className="dark:text-white"
         />
       </div>
       {error && <span className="error-message">{error}</span>}
@@ -872,7 +1170,9 @@ const NodeBooleanInput: FC<{
           defaultChecked={value}
           onCheckedChange={(v) => handleInputChange(selfKey, v)}
         />
-        {displayName && <span className="ml-3">{displayName}</span>}
+        {displayName && (
+          <span className="ml-3 dark:text-gray-300">{displayName}</span>
+        )}
       </div>
       {error && <span className="error-message">{error}</span>}
     </div>
