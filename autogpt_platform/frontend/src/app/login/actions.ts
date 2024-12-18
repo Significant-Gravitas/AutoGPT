@@ -1,9 +1,10 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createServerClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
+import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import BackendAPI from "@/lib/autogpt-server-api";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
@@ -15,7 +16,7 @@ export async function logout() {
     "logout",
     {},
     async () => {
-      const supabase = createServerClient();
+      const supabase = getServerSupabase();
 
       if (!supabase) {
         redirect("/error");
@@ -36,7 +37,8 @@ export async function logout() {
 
 export async function login(values: z.infer<typeof loginFormSchema>) {
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
-    const supabase = createServerClient();
+    const supabase = getServerSupabase();
+    const api = new BackendAPI();
 
     if (!supabase) {
       redirect("/error");
@@ -44,6 +46,8 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
 
     // We are sure that the values are of the correct type because zod validates the form
     const { data, error } = await supabase.auth.signInWithPassword(values);
+
+    await api.createUser();
 
     if (error) {
       console.log("Error logging in", error);
@@ -70,7 +74,7 @@ export async function signup(values: z.infer<typeof loginFormSchema>) {
     "signup",
     {},
     async () => {
-      const supabase = createServerClient();
+      const supabase = getServerSupabase();
 
       if (!supabase) {
         redirect("/error");

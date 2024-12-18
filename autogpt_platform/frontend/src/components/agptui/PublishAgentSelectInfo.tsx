@@ -4,8 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-import { createClient } from "@/lib/supabase/client";
+import BackendAPI from "@/lib/autogpt-server-api";
 
 interface PublishAgentInfoProps {
   onBack: () => void;
@@ -96,11 +95,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     if (!file) return;
 
     try {
-      const api = new AutoGPTServerAPI(
-        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-        createClient(),
-      );
+      const api = new BackendAPI();
 
       const imageUrl = (await api.uploadStoreSubmissionMedia(file)).replace(
         /^"(.*)"$/,

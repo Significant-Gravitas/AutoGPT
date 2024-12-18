@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverAnchor,
 } from "@/components/ui/popover";
-import { PublishAgentSelect, Agent } from "../PublishAgentSelect";
+import { PublishAgentSelect } from "../PublishAgentSelect";
 import { PublishAgentInfo } from "../PublishAgentSelectInfo";
 import { PublishAgentAwaitingReview } from "../PublishAgentAwaitingReview";
 import { Button } from "../Button";
@@ -15,9 +15,8 @@ import {
   StoreSubmissionRequest,
   MyAgentsResponse,
 } from "@/lib/autogpt-server-api";
-import { createClient } from "@/lib/supabase/client";
-import { AutoGPTServerAPI } from "@/lib/autogpt-server-api/client";
 import { useRouter } from "next/navigation";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -57,18 +56,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
   const popupId = React.useId();
   const router = useRouter();
-
-  const supabase = React.useMemo(() => createClient(), []);
-
-  const api = React.useMemo(
-    () =>
-      new AutoGPTServerAPI(
-        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-        supabase,
-      ),
-    [supabase],
-  );
+  const api = useBackendAPI();
 
   React.useEffect(() => {
     console.log("PublishAgentPopout Effect");

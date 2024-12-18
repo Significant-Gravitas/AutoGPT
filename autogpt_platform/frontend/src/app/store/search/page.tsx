@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AutoGPTServerAPI } from "@/lib/autogpt-server-api/client";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
 import { Separator } from "@/components/ui/separator";
 import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
 import { SortDropdown } from "@/components/agptui/SortDropdown";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export default function Page({
   searchParams,
@@ -34,11 +34,11 @@ function SearchResults({
   const [agents, setAgents] = useState<any[]>([]);
   const [creators, setCreators] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const api = useBackendAPI();
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const api = new AutoGPTServerAPI();
 
       try {
         const [agentsRes, creatorsRes] = await Promise.all([
