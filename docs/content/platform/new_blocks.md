@@ -416,13 +416,13 @@ To create a webhook-triggered block, follow these additional steps on top of the
 
 To add support for a new webhook provider, you'll need to create a WebhooksManager that implements the `BaseWebhooksManager` interface:
 
-```python title="backend/integrations/webhooks/base.py"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager1"
+```python title="backend/integrations/webhooks/_base.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager1"
 
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager2"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager3"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager4"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager5"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager2"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager3"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager4"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager5"
 ```
 
 And add a reference to your `WebhooksManager` class in `WEBHOOK_MANAGERS_BY_NAME`:

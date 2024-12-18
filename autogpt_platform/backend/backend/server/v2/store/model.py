@@ -99,7 +99,7 @@ class Profile(pydantic.BaseModel):
     description: str
     links: list[str]
     avatar_url: str
-    is_featured: bool
+    is_featured: bool = False
 
 
 class StoreSubmission(pydantic.BaseModel):
