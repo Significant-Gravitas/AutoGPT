@@ -71,6 +71,7 @@ SELECT
     p.description,
     ARRAY_AGG(DISTINCT c) FILTER (WHERE c IS NOT NULL) as top_categories,
     p.links,
+    p."isFeatured" as is_featured,
     COALESCE(ast.num_agents, 0) as num_agents,
     COALESCE(ast.agent_rating, 0.0) as agent_rating,
     COALESCE(ast.agent_runs, 0) as agent_runs
@@ -84,7 +85,7 @@ LEFT JOIN LATERAL (
     AND sl."isDeleted" = FALSE 
     AND sl."isApproved" = TRUE
 ) cats ON true
-GROUP BY p.username, p.name, p."avatarUrl", p.description, p.links, 
+GROUP BY p.username, p.name, p."avatarUrl", p.description, p.links, p."isFeatured",
          ast.num_agents, ast.agent_rating, ast.agent_runs;
 
 CREATE VIEW "StoreSubmission" AS
