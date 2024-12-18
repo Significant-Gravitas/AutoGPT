@@ -168,7 +168,7 @@ async def get_graph(
     hide_credentials: bool = False,
 ) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(
-        graph_id, version, user_id=user_id, hide_credentials=hide_credentials
+        graph_id, version, user_id=user_id, for_export=hide_credentials
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
