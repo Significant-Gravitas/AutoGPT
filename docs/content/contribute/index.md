@@ -100,10 +100,7 @@ Watch for any warnings about broken links in the console output! 🚨
 
 ---
 
-<div align="center">
+## Thank You for Contributing to Our Documentation! ❤️
 
-**Thank you for contributing to our documentation!** ❤️
+<p align="center">Together, we make documentation better for everyone.</p>
 
-*Together, we make documentation better for everyone.*
-
-</div>
