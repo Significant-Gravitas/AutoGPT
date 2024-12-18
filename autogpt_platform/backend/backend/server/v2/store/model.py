@@ -76,6 +76,7 @@ class Creator(pydantic.BaseModel):
     agent_runs: int
     is_featured: bool
 
+
 class CreatorsResponse(pydantic.BaseModel):
     creators: List[Creator]
     pagination: Pagination
@@ -99,6 +100,7 @@ class Profile(pydantic.BaseModel):
     links: list[str]
     avatar_url: str
     is_featured: bool
+
 
 class StoreSubmission(pydantic.BaseModel):
     agent_id: str
