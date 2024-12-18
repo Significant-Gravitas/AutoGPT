@@ -75,13 +75,10 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
     settings = Settings()
 
     # Check required settings first before doing any file processing
-    if (
-        not settings.config.media_gcs_bucket_name
-        or not settings.config.google_application_credentials
-    ):
-        logger.error("Missing required GCS settings")
+    if not settings.config.media_gcs_bucket_name:
+        logger.error("Missing GCS bucket name setting")
         raise backend.server.v2.store.exceptions.StorageConfigError(
-            "Missing storage configuration"
+            "Missing storage bucket configuration"
         )
 
     try:

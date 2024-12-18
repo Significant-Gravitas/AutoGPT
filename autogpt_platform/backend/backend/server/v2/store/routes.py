@@ -434,6 +434,8 @@ async def upload_submission_media(
             user_id=user_id, file=file
         )
         return media_url
-    except Exception:
+    except Exception as e:
         logger.exception("Exception occurred whilst uploading submission media")
-        raise
+        raise fastapi.HTTPException(
+            status_code=500, detail=f"Failed to upload media file: {str(e)}"
+        )
