@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { IconPlay, IconStar, StarRatingIcons } from "@/components/ui/icons";
-import Link from "next/link";
+import { IconPlay, StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
+import { createClient } from "@/lib/supabase/client";
+import { AutoGPTServerAPI } from "@/lib/autogpt-server-api/client";
 
 interface AgentInfoProps {
   name: string;
@@ -15,6 +16,7 @@ interface AgentInfoProps {
   categories: string[];
   lastUpdated: string;
   version: string;
+  storeListingVersionId: string;
 }
 
 export const AgentInfo: React.FC<AgentInfoProps> = ({
@@ -27,7 +29,29 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   categories,
   lastUpdated,
   version,
+  storeListingVersionId,
 }) => {
+  const supabase = React.useMemo(() => createClient(), []);
+
+  const api = React.useMemo(
+    () =>
+      new AutoGPTServerAPI(
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
+        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
+        supabase,
+      ),
+    [supabase],
+  );
+
+  const handleAddToLibrary = async () => {
+    try {
+      await api.addAgentToLibrary(storeListingVersionId);
+      console.log("Agent added to library successfully");
+    } catch (error) {
+      console.error("Failed to add agent to library:", error);
+    }
+  };
+
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
       {/* Title */}
@@ -52,10 +76,13 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Run Agent Button */}
       <div className="mb-4 w-full lg:mb-6">
-        <button className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4">
+        <button
+          onClick={handleAddToLibrary}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
+        >
           <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
           <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-            Run agent
+            Add To Library
           </span>
         </button>
       </div>

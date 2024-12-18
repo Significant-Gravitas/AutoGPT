@@ -323,6 +323,18 @@ export default class BaseAutoGPTServerAPI {
     return this._get("/store/myagents", params);
   }
 
+  /////////////////////////////////////////
+  /////////// V2 LIBRARY API //////////////
+  /////////////////////////////////////////
+
+  async listLibraryAgents(): Promise<GraphMeta[]> {
+    return this._get("/agents");
+  }
+
+  async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
+    await this._request("POST", `/agents/${storeListingVersionId}`);
+  }
+
   ///////////////////////////////////////////
   /////////// INTERNAL FUNCTIONS ////////////
   //////////////////////////////??///////////
