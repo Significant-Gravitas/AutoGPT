@@ -402,6 +402,7 @@ def test_get_creators_pagination(mocker: pytest_mock.MockFixture):
                 num_agents=1,
                 agent_rating=4.5,
                 agent_runs=100,
+                is_featured=False,
             )
             for i in range(5)
         ],

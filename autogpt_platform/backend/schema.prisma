@@ -423,6 +423,8 @@ model Profile {
 
   avatarUrl String?
 
+  isFeatured Boolean @default(false)
+
   @@index([username])
   @@index([userId])
 }
@@ -439,6 +441,7 @@ view Creator {
   num_agents   Int
   agent_rating Float
   agent_runs   Int
+  is_featured  Boolean
 }
 
 view StoreAgent {
