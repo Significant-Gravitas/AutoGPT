@@ -12,6 +12,7 @@ interface SearchBarProps {
   textColor?: string;
   placeholderColor?: string;
   width?: string;
+  height?: string;
 }
 
 /** SearchBar component for user input and search functionality. */
@@ -22,6 +23,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   textColor = "text-[#707070] dark:text-neutral-200",
   placeholderColor = "text-[#707070] dark:text-neutral-400",
   width = "w-9/10 lg:w-[56.25rem]",
+  height = "h-[60px]",
 }) => {
   const router = useRouter();
 
@@ -42,7 +44,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     <form
       onSubmit={handleSubmit}
       data-testid="store-search-bar"
-      className={`${width} h-12 px-4 py-2 md:h-[4.5rem] md:px-6 md:py-1 ${backgroundColor} flex items-center justify-center gap-2 rounded-full md:gap-5`}
+      className={`${width} ${height} px-4 py-2 md:px-6 md:py-1 ${backgroundColor} flex items-center justify-center gap-2 rounded-full md:gap-5`}
     >
       <MagnifyingGlassIcon className={`h-5 w-5 md:h-7 md:w-7 ${iconColor}`} />
       <input

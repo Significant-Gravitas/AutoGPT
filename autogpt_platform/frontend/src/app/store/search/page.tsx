@@ -123,12 +123,12 @@ function SearchResults({
             <h2 className="font-geist text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
               Results for:
             </h2>
-            <h1 className="font-poppins text-2xl font-semibold leading-loose text-neutral-800 dark:text-neutral-100">
+            <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
               {searchTerm}
             </h1>
           </div>
           <div className="flex-none">
-            <SearchBar width="w-[439px]" />
+            <SearchBar width="w-[439px]" height="h-[60px]" />
           </div>
         </div>
 
@@ -138,7 +138,7 @@ function SearchResults({
           </div>
         ) : totalCount > 0 ? (
           <>
-            <div className="mt-8 flex items-center justify-between">
+            <div className="mt-[36px] flex items-center justify-between">
               <SearchFilterChips
                 totalCount={totalCount}
                 agentsCount={agentsCount}
@@ -150,8 +150,12 @@ function SearchResults({
             {/* Content section */}
             <div className="min-h-[500px] max-w-[1440px]">
               {showAgents && agentsCount > 0 && (
-                <div className="mt-8">
-                  <AgentsSection agents={agents} sectionTitle="Agents" />
+                <div className="mt-[36px]">
+                  <AgentsSection
+                    agents={agents}
+                    sectionTitle="Agents"
+                    className="font-[Large-Poppins] text-[18px] font-semibold leading-[28px]"
+                  />
                 </div>
               )}
 
