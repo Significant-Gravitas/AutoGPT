@@ -3,8 +3,7 @@
 import * as React from "react";
 import { IconPlay, StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
-import { createClient } from "@/lib/supabase/client";
-import { AutoGPTServerAPI } from "@/lib/autogpt-server-api/client";
+import BackendAPI from "@/lib/autogpt-server-api";
 
 interface AgentInfoProps {
   name: string;
@@ -31,16 +30,11 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   version,
   storeListingVersionId,
 }) => {
-  const supabase = React.useMemo(() => createClient(), []);
 
   const api = React.useMemo(
     () =>
-      new AutoGPTServerAPI(
-        process.env.NEXT_PUBLIC_AGPT_SERVER_URL,
-        process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL,
-        supabase,
-      ),
-    [supabase],
+      new BackendAPI(),
+    [],
   );
 
   const handleAddToLibrary = async () => {
