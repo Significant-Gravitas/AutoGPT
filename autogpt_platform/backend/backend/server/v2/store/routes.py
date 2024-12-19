@@ -1,11 +1,11 @@
 import logging
 import typing
 
+import autogpt_libs.auth.depends
+import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
 import backend.data.graph
 import backend.server.v2.store.db
 import backend.server.v2.store.image_gen
@@ -473,13 +473,17 @@ async def generate_image(
             )
         # Use .jpeg here since we are generating JPEG images
         filename = f"agent_{agent_id}.jpeg"
-        
-        existing_url = await backend.server.v2.store.media.check_media_exists(user_id, filename)
+
+        existing_url = await backend.server.v2.store.media.check_media_exists(
+            user_id, filename
+        )
         if existing_url:
             logger.info(f"Using existing image for agent {agent_id}")
             return fastapi.responses.JSONResponse(content={"image_url": existing_url})
         # Generate agent image as JPEG
-        image = await backend.server.v2.store.image_gen.generate_agent_image(agent=agent)
+        image = await backend.server.v2.store.image_gen.generate_agent_image(
+            agent=agent
+        )
 
         # Create UploadFile with the correct filename and content_type
         image_file = fastapi.UploadFile(

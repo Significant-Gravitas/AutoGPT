@@ -14,6 +14,7 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
+
 async def check_media_exists(user_id: str, filename: str) -> str | None:
     """
     Check if a media file exists in storage for the given user.
@@ -50,7 +51,9 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
         return None
 
 
-async def upload_media(user_id: str, file: fastapi.UploadFile, use_file_name: bool = False) -> str:
+async def upload_media(
+    user_id: str, file: fastapi.UploadFile, use_file_name: bool = False
+) -> str:
 
     # Get file content for deeper validation
     try:
@@ -121,7 +124,7 @@ async def upload_media(user_id: str, file: fastapi.UploadFile, use_file_name: bo
         content_type = file.content_type
         if content_type is None:
             content_type = "image/jpeg"
-        
+
         if (
             content_type not in ALLOWED_IMAGE_TYPES
             and content_type not in ALLOWED_VIDEO_TYPES

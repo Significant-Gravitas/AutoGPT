@@ -1,34 +1,39 @@
 import io
 import logging
-import requests
+from enum import Enum
+
 import replicate
 import replicate.exceptions
-from enum import Enum
-from backend.util.settings import Settings
-from backend.data.graph import Graph
+import requests
 from replicate.helpers import FileOutput
 
+from backend.data.graph import Graph
+from backend.util.settings import Settings
+
 logger = logging.getLogger(__name__)
+
 
 class ImageSize(str, Enum):
     LANDSCAPE = "1024x768"
 
+
 class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
+
 
 async def generate_agent_image(agent: Graph) -> io.BytesIO:
     """
     Generate an image for an agent using Flux model via Replicate API.
-    
+
     Args:
         agent (Graph): The agent to generate an image for
-        
+
     Returns:
         io.BytesIO: The generated image as bytes
     """
     try:
         settings = Settings()
-        
+
         if not settings.secrets.replicate_api_key:
             raise ValueError("Missing Replicate API key in settings")
 
@@ -49,15 +54,12 @@ async def generate_agent_image(agent: Graph) -> io.BytesIO:
             "num_inference_steps": 30,
             "guidance": 3.5,
             "negative_prompt": "blurry, low quality, distorted, deformed",
-            "disable_safety_checker": True
+            "disable_safety_checker": True,
         }
 
         try:
             # Run model
-            output = client.run(
-                "black-forest-labs/flux-pro",
-                input=input_data
-            )
+            output = client.run("black-forest-labs/flux-pro", input=input_data)
 
             # Depending on the model output, extract the image URL or bytes
             # If the output is a list of FileOutput or URLs

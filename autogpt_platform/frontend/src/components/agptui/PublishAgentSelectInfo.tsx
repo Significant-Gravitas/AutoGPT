@@ -96,7 +96,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       console.log("images", newImages);
     }
   };
-  
+
   const handleAddImage = async () => {
     if (images.length >= 5) return;
 
@@ -140,7 +140,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
 
   const handleGenerateImage = async () => {
     if (isGenerating || images.length >= 5) return;
-    
+
     setIsGenerating(true);
     try {
       const api = new BackendAPI();
@@ -345,12 +345,16 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
               variant="default"
               size="sm"
               className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
-                images.length >= 5 ? 'opacity-50 cursor-not-allowed' : ''
+                images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
               }`}
               onClick={handleGenerateImage}
               disabled={isGenerating || images.length >= 5}
             >
-              {isGenerating ? 'Generating...' : images.length >= 5 ? 'Max images reached' : 'Generate'}
+              {isGenerating
+                ? "Generating..."
+                : images.length >= 5
+                  ? "Max images reached"
+                  : "Generate"}
             </Button>
           </div>
         </div>
