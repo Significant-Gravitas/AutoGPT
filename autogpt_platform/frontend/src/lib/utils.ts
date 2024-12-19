@@ -122,12 +122,12 @@ const applyExceptions = (str: string): string => {
 
 /** Recursively remove all "credentials" properties from exported JSON files */
 export function removeCredentials(obj: any) {
-  if (obj && typeof obj === 'object') {
+  if (obj && typeof obj === "object") {
     if (Array.isArray(obj)) {
-      obj.forEach(item => removeCredentials(item));
+      obj.forEach((item) => removeCredentials(item));
     } else {
       delete obj.credentials;
-      Object.values(obj).forEach(value => removeCredentials(value));
+      Object.values(obj).forEach((value) => removeCredentials(value));
     }
   }
   return obj;
@@ -136,7 +136,7 @@ export function removeCredentials(obj: any) {
 export function exportAsJSONFile(obj: object, filename: string): void {
   // Deep clone the object to avoid modifying the original
   const sanitizedObj = JSON.parse(JSON.stringify(obj));
-  
+
   // Sanitize the object
   removeCredentials(sanitizedObj);
 
