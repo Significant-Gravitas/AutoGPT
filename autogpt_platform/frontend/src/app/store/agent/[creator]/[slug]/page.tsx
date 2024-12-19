@@ -68,7 +68,7 @@ export default async function Page({
               storeListingVersionId={agent.store_listing_version_id}
             />
           </div>
-          <AgentImages images={agent.agent_image} />
+          <AgentImages images={[agent.agent_video, ...agent.agent_image]} />
         </div>
         <Separator className="my-6" />
         <AgentsSection
