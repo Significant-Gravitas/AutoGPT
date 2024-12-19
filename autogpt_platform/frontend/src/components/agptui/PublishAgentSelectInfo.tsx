@@ -60,6 +60,25 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   const [slug, setSlug] = React.useState(initialData?.slug || "");
   const thumbnailsContainerRef = React.useRef<HTMLDivElement | null>(null);
 
+  React.useEffect(() => {
+    if (initialData) {
+      setImages(
+        initialData.additionalImages
+          ? [initialData.thumbnailSrc, ...initialData.additionalImages]
+          : initialData.thumbnailSrc
+            ? [initialData.thumbnailSrc]
+            : [],
+      );
+      setSelectedImage(initialData.thumbnailSrc || null);
+      setTitle(initialData.title);
+      setSubheader(initialData.subheader);
+      setYoutubeLink(initialData.youtubeLink);
+      setCategory(initialData.category);
+      setDescription(initialData.description);
+      setSlug(initialData.slug);
+    }
+  }, [initialData]);
+
   const handleRemoveImage = (indexToRemove: number) => {
     const newImages = [...images];
     newImages.splice(indexToRemove, 1);
