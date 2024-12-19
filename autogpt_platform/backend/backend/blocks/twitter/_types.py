@@ -269,7 +269,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what media details you want to see",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     place_fields: TweetPlaceFieldsFilter | None = SchemaField(
@@ -277,7 +276,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what location details you want to see",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     poll_fields: TweetPollFieldsFilter | None = SchemaField(
@@ -285,7 +283,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what poll details you want to see",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     tweet_fields: TweetFieldsFilter | None  = SchemaField(
@@ -293,7 +290,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what tweet details you want to see",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     user_fields: TweetUserFieldsFilter | None = SchemaField(
@@ -301,7 +297,6 @@ class TweetExpansionInputs(BlockSchema):
         placeholder="Choose what user details you want to see",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
 
@@ -318,7 +313,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter event types",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     media_fields: DMMediaFieldFilter | None = SchemaField(
@@ -326,7 +320,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter media fields",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     tweet_fields: DMTweetFieldFilter | None = SchemaField(
@@ -334,7 +327,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter tweet fields",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     user_fields: TweetUserFieldsFilter | None = SchemaField(
@@ -342,7 +334,6 @@ class DMEventExpansionInputs(BlockSchema):
         placeholder="Enter user fields",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
 
@@ -359,7 +350,6 @@ class UserExpansionInputs(BlockSchema):
         placeholder="Choose what details to see in pinned tweets",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
     user_fields: TweetUserFieldsFilter | None = SchemaField(
@@ -367,7 +357,6 @@ class UserExpansionInputs(BlockSchema):
         placeholder="Choose what user details you want to see",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
 
@@ -384,7 +373,6 @@ class SpaceExpansionInputs(BlockSchema):
         placeholder="Choose what Space information you want to get",
         default=SpaceFieldsFilter(Space_Title=True, Host_User_IDs=True),
         advanced=True,
-        depends_on=["expansions"]
     )
 
     user_fields: TweetUserFieldsFilter | None = SchemaField(
@@ -392,7 +380,6 @@ class SpaceExpansionInputs(BlockSchema):
         placeholder="Pick what details you want to see about the users",
         default=None,
         advanced=True,
-        depends_on=["expansions"]
     )
 
 
@@ -409,7 +396,6 @@ class ListExpansionInputs(BlockSchema):
         placeholder="Select what details you want to see about list owners",
         default=TweetUserFieldsFilter(User_ID=True, Username=True),
         advanced=True,
-        depends_on=["expansions"]
     )
 
     list_fields: ListFieldsFilter | None = SchemaField(
@@ -417,7 +403,6 @@ class ListExpansionInputs(BlockSchema):
         placeholder="Pick what list details you want to see",
         default=ListFieldsFilter(Owner_ID=True),
         advanced=True,
-        depends_on=["expansions"]
     )
 
 

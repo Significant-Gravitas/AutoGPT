@@ -128,14 +128,14 @@ class TwitterGetQuoteTweetsBlock(Block):
         credentials: TwitterCredentials,
         tweet_id: str,
         max_results: int,
-        exclude: TweetExcludesFilter,
-        pagination_token: str,
-        expansions: ExpansionFilter,
-        media_fields: TweetMediaFieldsFilter,
-        place_fields: TweetPlaceFieldsFilter,
-        poll_fields: TweetPollFieldsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        exclude: TweetExcludesFilter | None,
+        pagination_token: str | None,
+        expansions: ExpansionFilter | None,
+        media_fields: TweetMediaFieldsFilter | None,
+        place_fields: TweetPlaceFieldsFilter | None,
+        poll_fields: TweetPollFieldsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter |None,
     ):
         try:
             client = tweepy.Client(
