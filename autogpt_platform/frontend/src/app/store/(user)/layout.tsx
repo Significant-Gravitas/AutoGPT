@@ -7,7 +7,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       links: [
         { text: "Creator Dashboard", href: "/store/dashboard" },
         { text: "Agent dashboard", href: "/store/agent-dashboard" },
-        { text: "Integrations", href: "/store/integrations" },
+        { text: "Integrations", href: "/profile" },
         { text: "Profile", href: "/store/profile" },
         { text: "Settings", href: "/store/settings" },
       ],
