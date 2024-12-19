@@ -25,7 +25,7 @@ export function NavBarButtons({ className }: { className?: string }) {
     },
     {
       href: "/store",
-      text: "Agent Store",
+      text: "Marketplace",
       icon: <IconMarketplace />,
     },
   ];
