@@ -125,7 +125,7 @@ class TwitterGetLikingUsersBlock(Block):
             default=10,
             advanced=True,
         )
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for getting next/previous page of results",
             placeholder="Enter pagination token",
             default="",
@@ -161,12 +161,12 @@ class TwitterGetLikingUsersBlock(Block):
             output_schema=TwitterGetLikingUsersBlock.Output,
             test_input={
                 "tweet_id": "1234567890",
-                "max_results": 10,
-                "pagination_token": "",
+                "max_results": 1,
+                "pagination_token": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -190,7 +190,7 @@ class TwitterGetLikingUsersBlock(Block):
     def get_liking_users(
         credentials: TwitterCredentials,
         tweet_id: str,
-        max_results: int ,
+        max_results: int,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
@@ -299,7 +299,7 @@ class TwitterGetLikedTweetsBlock(Block):
             default=10,
             advanced=True,
         )
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for getting next/previous page of results",
             placeholder="Enter pagination token",
             default="",
@@ -339,15 +339,15 @@ class TwitterGetLikedTweetsBlock(Block):
             output_schema=TwitterGetLikedTweetsBlock.Output,
             test_input={
                 "user_id": "1234567890",
-                "max_results": 10,
-                "pagination_token": "",
+                "max_results": 2,
+                "pagination_token": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "media_fields": None,
+                "place_fields": None,
+                "poll_fields": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -389,7 +389,7 @@ class TwitterGetLikedTweetsBlock(Block):
         expansions: ExpansionFilter | None,
         media_fields: TweetMediaFieldsFilter | None,
         place_fields: TweetPlaceFieldsFilter | None,
-        poll_fields: TweetPollFieldsFilter |None,
+        poll_fields: TweetPollFieldsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):

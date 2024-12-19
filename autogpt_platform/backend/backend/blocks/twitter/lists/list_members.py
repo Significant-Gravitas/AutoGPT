@@ -205,7 +205,7 @@ class TwitterGetListMembersBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination of results",
             placeholder="Enter pagination token",
             default="",
@@ -236,12 +236,12 @@ class TwitterGetListMembersBlock(Block):
             output_schema=TwitterGetListMembersBlock.Output,
             test_input={
                 "list_id": "123456789",
-                "max_results": 10,
-                "pagination_token": "",
+                "max_results": 2,
+                "pagination_token": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -275,10 +275,10 @@ class TwitterGetListMembersBlock(Block):
         credentials: TwitterCredentials,
         list_id: str,
         max_results: int,
-        pagination_token: str,
-        expansions: UserExpansionsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        pagination_token: str | None,
+        expansions: UserExpansionsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
@@ -384,7 +384,7 @@ class TwitterGetListMembershipsBlock(Block):
             default=10,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination of results",
             placeholder="Enter pagination token",
             advanced=True,
@@ -411,12 +411,12 @@ class TwitterGetListMembershipsBlock(Block):
             output_schema=TwitterGetListMembershipsBlock.Output,
             test_input={
                 "user_id": "123456789",
-                "max_results": 50,
-                "pagination_token": "",
+                "max_results": 1,
+                "pagination_token": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "list_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "list_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -439,10 +439,10 @@ class TwitterGetListMembershipsBlock(Block):
         credentials: TwitterCredentials,
         user_id: str,
         max_results: int,
-        pagination_token: str,
-        expansions: ListExpansionsFilter,
-        user_fields: TweetUserFieldsFilter,
-        list_fields: ListFieldsFilter,
+        pagination_token: str | None,
+        expansions: ListExpansionsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
+        list_fields: ListFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

@@ -111,7 +111,7 @@ class TwitterGetMutedUsersBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token to request next/previous page of results",
             placeholder="Enter pagination token",
             default="",
@@ -139,12 +139,12 @@ class TwitterGetMutedUsersBlock(Block):
             input_schema=TwitterGetMutedUsersBlock.Input,
             output_schema=TwitterGetMutedUsersBlock.Output,
             test_input={
-                "max_results": 10,
+                "max_results": 2,
                 "pagination_token": "",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -177,10 +177,10 @@ class TwitterGetMutedUsersBlock(Block):
     def get_muted_users(
         credentials: TwitterCredentials,
         max_results: int,
-        pagination_token: str,
-        expansions: UserExpansionsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        pagination_token: str | None,
+        expansions: UserExpansionsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

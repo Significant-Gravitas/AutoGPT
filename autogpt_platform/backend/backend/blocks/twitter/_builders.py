@@ -153,7 +153,7 @@ class ListExpansionsBuilder:
     def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
-    def add_expansions(self, expansions: ListExpansionsFilter):
+    def add_expansions(self, expansions: ListExpansionsFilter | None):
         if expansions:
             filtered_expansions = [
                 name for name, value in expansions.dict().items() if value is True
@@ -164,7 +164,7 @@ class ListExpansionsBuilder:
                 )
         return self
 
-    def add_list_fields(self, list_fields: ListFieldsFilter):
+    def add_list_fields(self, list_fields: ListFieldsFilter | None):
         if list_fields:
             filtered_fields = [
                 name for name, value in list_fields.dict().items() if value is True
@@ -175,7 +175,7 @@ class ListExpansionsBuilder:
                 )
         return self
 
-    def add_user_fields(self, user_fields: TweetUserFieldsFilter):
+    def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
         if user_fields:
             filtered_fields = [
                 name for name, value in user_fields.dict().items() if value is True
@@ -194,7 +194,7 @@ class SpaceExpansionsBuilder:
     def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
-    def add_expansions(self, expansions: SpaceExpansionsFilter):
+    def add_expansions(self, expansions: SpaceExpansionsFilter | None):
         if expansions:
             filtered_expansions = [
                 name for name, value in expansions.dict().items() if value is True
@@ -205,7 +205,7 @@ class SpaceExpansionsBuilder:
                 )
         return self
 
-    def add_space_fields(self, space_fields: SpaceFieldsFilter):
+    def add_space_fields(self, space_fields: SpaceFieldsFilter | None):
         if space_fields:
             filtered_fields = [
                 name for name, value in space_fields.dict().items() if value is True
@@ -216,7 +216,7 @@ class SpaceExpansionsBuilder:
                 )
         return self
 
-    def add_user_fields(self, user_fields: TweetUserFieldsFilter):
+    def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
         if user_fields:
             filtered_fields = [
                 name for name, value in user_fields.dict().items() if value is True

@@ -67,9 +67,9 @@ class TwitterGetListBlock(Block):
             test_input={
                 "list_id": "84839422",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "list_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "list_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -94,9 +94,9 @@ class TwitterGetListBlock(Block):
     def get_list(
         credentials: TwitterCredentials,
         list_id: str,
-        expansions: ListExpansionsFilter,
-        user_fields: TweetUserFieldsFilter,
-        list_fields: ListFieldsFilter,
+        expansions: ListExpansionsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
+        list_fields: ListFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
@@ -192,7 +192,7 @@ class TwitterGetOwnedListsBlock(Block):
             default=10,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination",
             placeholder="Enter pagination token",
             advanced=True,
@@ -224,9 +224,9 @@ class TwitterGetOwnedListsBlock(Block):
                 "user_id": "2244994945",
                 "max_results": 10,
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "list_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "list_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -251,10 +251,10 @@ class TwitterGetOwnedListsBlock(Block):
         credentials: TwitterCredentials,
         user_id: str,
         max_results: int,
-        pagination_token: str,
-        expansions: ListExpansionsFilter,
-        user_fields: TweetUserFieldsFilter,
-        list_fields: ListFieldsFilter,
+        pagination_token: str | None,
+        expansions: ListExpansionsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
+        list_fields: ListFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

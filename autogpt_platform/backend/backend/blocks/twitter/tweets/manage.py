@@ -149,7 +149,6 @@ class TwitterPostTweetBlock(Block):
                 "quote_tweet_id": "",
                 "exclude_reply_user_ids": [],
                 "in_reply_to_tweet_id": "",
-                "reply_settings": TweetReplySettingsFilter(All_Users=True),
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -337,7 +336,7 @@ class TwitterSearchRecentTweetsBlock(Block):
             advanced=True,
         )
 
-        pagination: str = SchemaField(
+        pagination: str | None = SchemaField(
             description="Token for pagination",
             default="",
             placeholder="Enter pagination token",
@@ -372,9 +371,9 @@ class TwitterSearchRecentTweetsBlock(Block):
             test_input={
                 "query": "from:twitterapi #twitterapi",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "max_results": 10,
-                "start_time": None,
-                "end_time": None,
+                "max_results": 2,
+                "start_time": "2024-12-14T18:30:00.000Z",
+                "end_time": "2024-12-17T18:30:00.000Z",
                 "since_id": None,
                 "until_id": None,
                 "sort_order": None,

@@ -257,11 +257,11 @@ class ListFieldsFilter(BaseModel):
 # ---------  [Input Types] -------------
 class TweetExpansionInputs(BlockSchema):
 
-    expansions: ExpansionFilter | None= SchemaField(
+    expansions: ExpansionFilter | None = SchemaField(
         description="Choose what extra information you want to get with your tweets. For example:\n- Select 'Media_Keys' to get media details\n- Select 'Author_User_ID' to get user information\n- Select 'Place_ID' to get location details",
         placeholder="Pick the extra information you want to see",
         default=None,
-        advanced=True
+        advanced=True,
     )
 
     media_fields: TweetMediaFieldsFilter | None = SchemaField(
@@ -285,7 +285,7 @@ class TweetExpansionInputs(BlockSchema):
         advanced=True,
     )
 
-    tweet_fields: TweetFieldsFilter | None  = SchemaField(
+    tweet_fields: TweetFieldsFilter | None = SchemaField(
         description="Select what tweet information you want to see. For referenced tweets (like retweets), select 'Referenced_Tweet_ID' in the expansions above.",
         placeholder="Choose what tweet details you want to see",
         default=None,
@@ -305,7 +305,7 @@ class DMEventExpansionInputs(BlockSchema):
         description="Select expansions to include related data objects in the 'includes' section.",
         placeholder="Enter expansions",
         default=None,
-        advanced=True
+        advanced=True,
     )
 
     event_types: DMEventTypeFilter | None = SchemaField(
@@ -338,11 +338,11 @@ class DMEventExpansionInputs(BlockSchema):
 
 
 class UserExpansionInputs(BlockSchema):
-    expansions : UserExpansionsFilter | None = SchemaField(
+    expansions: UserExpansionsFilter | None = SchemaField(
         description="Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet.",
         placeholder="Select extra user information to include",
         default=None,
-        advanced=True
+        advanced=True,
     )
 
     tweet_fields: TweetFieldsFilter | None = SchemaField(
@@ -365,7 +365,7 @@ class SpaceExpansionInputs(BlockSchema):
         description="Choose additional information you want to get with your Twitter Spaces:\n- Select 'Invited_Users' to see who was invited\n- Select 'Speakers' to see who can speak\n- Select 'Creator' to get details about who made the Space\n- Select 'Hosts' to see who's hosting\n- Select 'Topics' to see Space topics",
         placeholder="Pick what extra information you want to see about the Space",
         default=None,
-        advanced=True
+        advanced=True,
     )
 
     space_fields: SpaceFieldsFilter | None = SchemaField(
@@ -388,7 +388,7 @@ class ListExpansionInputs(BlockSchema):
         description="Choose what extra information you want to get with your Twitter Lists:\n- Select 'List_Owner_ID' to get details about who owns the list\n\nThis will let you see more details about the list owner when you also select user fields below.",
         placeholder="Pick what extra list information you want to see",
         default=ListExpansionsFilter(List_Owner_ID=True),
-        advanced=True
+        advanced=True,
     )
 
     user_fields: TweetUserFieldsFilter | None = SchemaField(
@@ -411,33 +411,33 @@ class TweetTimeWindowInputs(BlockSchema):
         description="Start time in YYYY-MM-DDTHH:mm:ssZ format",
         placeholder="Enter start time",
         default=None,
-        advanced=False
+        advanced=False,
     )
 
     end_time: datetime | None = SchemaField(
         description="End time in YYYY-MM-DDTHH:mm:ssZ format",
         placeholder="Enter end time",
         default=None,
-        advanced=False
+        advanced=False,
     )
 
     since_id: str | None = SchemaField(
         description="Returns results with Tweet ID  greater than this (more recent than), we give priority to since_id over start_time",
         placeholder="Enter since ID",
         default=None,
-        advanced=True
+        advanced=True,
     )
 
     until_id: str | None = SchemaField(
         description="Returns results with Tweet ID less than this (that is, older than), and used with since_id",
         placeholder="Enter until ID",
         default=None,
-        advanced=True
+        advanced=True,
     )
 
     sort_order: str | None = SchemaField(
         description="Order of returned tweets (recency or relevancy)",
         placeholder="Enter sort order",
         default=None,
-        advanced=True
+        advanced=True,
     )

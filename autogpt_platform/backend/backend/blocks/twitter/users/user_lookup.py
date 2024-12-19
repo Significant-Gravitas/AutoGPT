@@ -74,9 +74,9 @@ class TwitterGetUserBlock(Block):
                 "user_id": "",
                 "username": "twitter",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -116,9 +116,9 @@ class TwitterGetUserBlock(Block):
         credentials: TwitterCredentials,
         user_id: str,
         username: str,
-        expansions: UserExpansionsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        expansions: UserExpansionsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
@@ -239,9 +239,9 @@ class TwitterGetUsersBlock(Block):
                 "user_ids": [],
                 "usernames": ["twitter", "twitterdev"],
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -283,9 +283,9 @@ class TwitterGetUsersBlock(Block):
         credentials: TwitterCredentials,
         user_ids: list[str],
         usernames: list[str],
-        expansions: UserExpansionsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        expansions: UserExpansionsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
