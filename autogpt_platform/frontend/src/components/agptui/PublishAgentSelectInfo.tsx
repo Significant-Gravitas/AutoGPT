@@ -19,6 +19,7 @@ interface PublishAgentInfoProps {
   ) => void;
   onClose: () => void;
   initialData?: {
+    agent_id: string;
     title: string;
     subheader: string;
     slug: string;
@@ -36,6 +37,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   onClose,
   initialData,
 }) => {
+  const [agentId, setAgentId] = React.useState<string | null>(null);
   const [images, setImages] = React.useState<string[]>(
     initialData?.additionalImages
       ? [initialData.thumbnailSrc, ...initialData.additionalImages]
@@ -59,10 +61,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   );
   const [slug, setSlug] = React.useState(initialData?.slug || "");
   const thumbnailsContainerRef = React.useRef<HTMLDivElement | null>(null);
-
   React.useEffect(() => {
     if (initialData) {
-      setImages(initialData.additionalImages || []);
+      setAgentId(initialData.agent_id);
+      setImagesWithValidation(initialData.additionalImages || []);
       setSelectedImage(initialData.thumbnailSrc || null);
       setTitle(initialData.title);
       setSubheader(initialData.subheader);
@@ -73,10 +75,18 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     }
   }, [initialData]);
 
+  const setImagesWithValidation = (newImages: string[]) => {
+    // Remove duplicates
+    const uniqueImages = Array.from(new Set(newImages));
+    // Keep only first 5 images
+    const limitedImages = uniqueImages.slice(0, 5);
+    setImages(limitedImages);
+  };
+
   const handleRemoveImage = (indexToRemove: number) => {
     const newImages = [...images];
     newImages.splice(indexToRemove, 1);
-    setImages(newImages);
+    setImagesWithValidation(newImages);
     if (newImages[indexToRemove] === selectedImage) {
       setSelectedImage(newImages[0] || null);
     }
@@ -88,6 +98,8 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   };
 
   const handleAddImage = async () => {
+    if (images.length >= 5) return;
+
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -115,16 +127,33 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         "$1",
       );
 
-      setImages((prev) => {
-        const newImages = [...prev, imageUrl];
-        console.log("Added image. Images now:", newImages);
-        return newImages;
-      });
+      setImagesWithValidation([...images, imageUrl]);
       if (!selectedImage) {
         setSelectedImage(imageUrl);
       }
     } catch (error) {
       console.error("Error uploading image:", error);
+    }
+  };
+
+  const [isGenerating, setIsGenerating] = React.useState(false);
+
+  const handleGenerateImage = async () => {
+    if (isGenerating || images.length >= 5) return;
+
+    setIsGenerating(true);
+    try {
+      const api = new BackendAPI();
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+      const { image_url } = await api.generateStoreSubmissionImage(agentId);
+      console.log("image_url", image_url);
+      setImagesWithValidation([...images, image_url]);
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -284,19 +313,21 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                     </button>
                   </div>
                 ))}
-                <Button
-                  onClick={handleAddImage}
-                  variant="ghost"
-                  className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-                >
-                  <IconPlus
-                    size="lg"
-                    className="text-neutral-600 dark:text-neutral-300"
-                  />
-                  <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600 dark:text-neutral-300">
-                    Add image
-                  </span>
-                </Button>
+                {images.length < 5 && (
+                  <Button
+                    onClick={handleAddImage}
+                    variant="ghost"
+                    className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+                  >
+                    <IconPlus
+                      size="lg"
+                      className="text-neutral-600 dark:text-neutral-300"
+                    />
+                    <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600 dark:text-neutral-300">
+                      Add image
+                    </span>
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -313,9 +344,17 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             <Button
               variant="default"
               size="sm"
-              className="bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500"
+              className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
+                images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
+              }`}
+              onClick={handleGenerateImage}
+              disabled={isGenerating || images.length >= 5}
             >
-              Generate
+              {isGenerating
+                ? "Generating..."
+                : images.length >= 5
+                  ? "Max images reached"
+                  : "Generate"}
             </Button>
           </div>
         </div>

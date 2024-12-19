@@ -299,6 +299,15 @@ export default class BackendAPI {
     return this._request("POST", "/store/submissions", submission);
   }
 
+  generateStoreSubmissionImage(
+    agent_id: string,
+  ): Promise<{ image_url: string }> {
+    return this._request(
+      "POST",
+      "/store/submissions/generate_image?agent_id=" + agent_id,
+    );
+  }
+  c;
   deleteStoreSubmission(submission_id: string): Promise<boolean> {
     return this._request("DELETE", `/store/submissions/${submission_id}`);
   }
