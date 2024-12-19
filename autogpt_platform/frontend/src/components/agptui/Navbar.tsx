@@ -109,7 +109,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
                   groupName: "Navigation",
                   items: links.map((link) => ({
                     icon:
-                      link.name === "Agent Store"
+                      link.name === "Marketplace"
                         ? IconType.Marketplace
                         : link.name === "Library"
                           ? IconType.Library
