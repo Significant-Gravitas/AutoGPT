@@ -7,6 +7,7 @@ export type AgentRunStatus =
   | "queued"
   | "running"
   | "stopped"
+  | "scheduled"
   | "draft";
 
 const statusData: Record<
@@ -14,11 +15,12 @@ const statusData: Record<
   { label: string; variant: keyof typeof statusStyles }
 > = {
   success: { label: "Success", variant: "success" },
+  running: { label: "Running", variant: "info" },
   failed: { label: "Failed", variant: "destructive" },
   queued: { label: "Queued", variant: "warning" },
-  running: { label: "Running", variant: "info" },
-  stopped: { label: "Stopped", variant: "secondary" },
   draft: { label: "Draft", variant: "secondary" },
+  stopped: { label: "Stopped", variant: "secondary" },
+  scheduled: { label: "Scheduled", variant: "secondary" },
 };
 
 const statusStyles = {
@@ -32,7 +34,7 @@ const statusStyles = {
     "bg-slate-100 text-slate-800 hover:bg-slate-100 hover:text-slate-800",
 };
 
-export function AgentRunStatusChip({
+export default function AgentRunStatusChip({
   status,
 }: {
   status: AgentRunStatus;

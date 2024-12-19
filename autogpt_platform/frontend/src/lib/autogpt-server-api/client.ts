@@ -93,10 +93,6 @@ export default class BackendAPI {
     return this._get(`/graphs`);
   }
 
-  getExecutions(): Promise<GraphExecution[]> {
-    return this._get(`/executions`);
-  }
-
   getGraph(
     id: string,
     version?: number,
@@ -143,6 +139,14 @@ export default class BackendAPI {
     inputData: { [key: string]: any } = {},
   ): Promise<GraphExecuteResponse> {
     return this._request("POST", `/graphs/${id}/execute`, inputData);
+  }
+
+  getExecutions(): Promise<GraphExecution[]> {
+    return this._get(`/executions`);
+  }
+
+  getGraphExecutions(graphID: string): Promise<GraphExecution[]> {
+    return this._get(`/graphs/${graphID}/executions`);
   }
 
   async getGraphExecutionInfo(

@@ -405,10 +405,22 @@ async def stop_graph_run(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_executions(
+async def get_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[graph_db.GraphExecution]:
-    return await graph_db.get_executions(user_id=user_id)
+    return await graph_db.get_graphs_executions(user_id=user_id)
+
+
+@v1_router.get(
+    path="/graphs/{graph_id}/executions",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_graph_executions(
+    graph_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> list[graph_db.GraphExecution]:
+    return await graph_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
 
 
 @v1_router.get(

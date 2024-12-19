@@ -1,5 +1,8 @@
 import React from "react";
 import moment from "moment";
+import { MoreVertical } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -8,26 +11,36 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical } from "lucide-react";
-import { AgentRunStatusChip, AgentRunStatus } from "./AgentRunStatusChip";
+
+import AgentRunStatusChip, { AgentRunStatus } from "./AgentRunStatusChip";
 
 export type AgentRunSummaryProps = {
   agentID: string;
   agentRunID: string;
   status: AgentRunStatus;
   title: string;
-  timestamp: Date;
+  timestamp: number | Date;
+  selected?: boolean;
+  onClick?: () => void;
 };
 
-export function AgentRunSummaryCard({
+export default function AgentRunSummaryCard({
   agentID,
   agentRunID,
   status,
   title,
   timestamp,
+  selected = false,
+  onClick,
 }: AgentRunSummaryProps): React.ReactElement {
   return (
-    <Card className="rounded-lg border-zinc-300">
+    <Card
+      className={cn(
+        selected ? "border-violet-700 bg-violet-50/50" : "",
+        "rounded-lg border-zinc-300",
+      )}
+      onClick={onClick}
+    >
       <CardContent className="relative p-4">
         <AgentRunStatusChip status={status} />
 
@@ -62,5 +75,3 @@ export function AgentRunSummaryCard({
     </Card>
   );
 }
-
-export default AgentRunSummaryCard;
