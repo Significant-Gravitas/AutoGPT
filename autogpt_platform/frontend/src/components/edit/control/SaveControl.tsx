@@ -21,6 +21,7 @@ interface SaveControlProps {
   agentMeta: GraphMeta | null;
   agentName: string;
   agentDescription: string;
+  canSave: boolean;
   onSave: () => void;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
@@ -31,6 +32,9 @@ interface SaveControlProps {
  * A SaveControl component to be used within the ControlPanel. It allows the user to save the agent.
  * @param {Object} SaveControlProps - The properties of the SaveControl component.
  * @param {GraphMeta | null} SaveControlProps.agentMeta - The agent's metadata, or null if creating a new agent.
+ * @param {string} SaveControlProps.agentName - The agent's name.
+ * @param {string} SaveControlProps.agentDescription - The agent's description.
+ * @param {boolean} SaveControlProps.canSave - Whether the button to save the agent should be enabled.
  * @param {() => void} SaveControlProps.onSave - Function to save the agent.
  * @param {(name: string) => void} SaveControlProps.onNameChange - Function to handle name changes.
  * @param {(description: string) => void} SaveControlProps.onDescriptionChange - Function to handle description changes.
@@ -38,6 +42,7 @@ interface SaveControlProps {
  */
 export const SaveControl = ({
   agentMeta,
+  canSave,
   onSave,
   agentName,
   onNameChange,
@@ -152,6 +157,7 @@ export const SaveControl = ({
               onClick={handleSave}
               data-id="save-control-save-agent"
               data-testid="save-control-save-agent-button"
+              disabled={!canSave}
             >
               Save Agent
             </Button>
