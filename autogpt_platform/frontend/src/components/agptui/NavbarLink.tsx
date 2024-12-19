@@ -20,7 +20,7 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
   const activeLink = "/" + (parts.length > 2 ? parts[2] : parts[1]);
 
   return (
-    <Link href={href}>
+    <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
         className={`h-[48px] px-5 py-4 ${
           activeLink === href
