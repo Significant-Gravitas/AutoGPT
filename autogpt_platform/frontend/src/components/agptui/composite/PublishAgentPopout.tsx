@@ -44,6 +44,16 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   );
   const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
+  const [initialData, setInitialData] = React.useState<{
+    title: string;
+    subheader: string;
+    slug: string;
+    thumbnailSrc: string;
+    youtubeLink: string;
+    category: string;
+    description: string;
+    additionalImages?: string[];
+  } | null>(null);
   const [publishData, setPublishData] =
     React.useState<StoreSubmissionRequest>(submissionData);
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
@@ -102,6 +112,23 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   };
 
   const handleNextFromSelect = (agentId: string, agentVersion: number) => {
+    const selectedAgentData = myAgents?.agents.find(
+      (agent) => agent.agent_id === agentId,
+    );
+
+    const name = selectedAgentData?.agent_name || "";
+    const description = selectedAgentData?.description || "";
+    setInitialData({
+      title: name,
+      subheader: "",
+      description: description,
+      thumbnailSrc: "",
+      youtubeLink: "",
+      category: "",
+      slug: name.replace(/ /g, "-"),
+      additionalImages: [],
+    });
+
     setStep("info");
     setSelectedAgentId(agentId);
     setSelectedAgentVersion(agentVersion);
@@ -203,6 +230,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                   onBack={handleBack}
                   onSubmit={handleNextFromInfo}
                   onClose={handleClose}
+                  initialData={initialData}
                 />
               </div>
             </div>
