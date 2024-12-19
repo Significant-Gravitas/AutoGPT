@@ -8,7 +8,7 @@ interface FilterChipsProps {
   onFilterChange?: (selectedFilters: string[]) => void;
   multiSelect?: boolean;
 }
-/** FilterChips is a component that allows the user to select filters from a list of badges. It is used on the Agent Store home page */
+/** FilterChips is a component that allows the user to select filters from a list of badges. It is used on the Marketplace home page */
 export const FilterChips: React.FC<FilterChipsProps> = ({
   badges,
   onFilterChange,
