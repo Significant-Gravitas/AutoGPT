@@ -1,11 +1,12 @@
 import io
 import logging
+import requests
 import replicate
 import replicate.exceptions
 from enum import Enum
 from backend.util.settings import Settings
 from backend.data.graph import Graph
-import requests
+from replicate.helpers import FileOutput
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ async def generate_agent_image(agent: Graph) -> io.BytesIO:
             raise ValueError("Missing Replicate API key in settings")
 
         # Construct prompt from agent details
-        prompt = f"App store image for AI agent that gives a cool visual representation of the agent does: - {agent.name} - {agent.description}"
+        prompt = f"App store image for AI agent that gives a cool visual representation of what the agent does: - {agent.name} - {agent.description}"
 
         # Set up Replicate client
         client = replicate.Client(api_token=settings.secrets.replicate_api_key)
@@ -58,37 +59,28 @@ async def generate_agent_image(agent: Graph) -> io.BytesIO:
                 input=input_data
             )
 
-            if not output:
-                raise RuntimeError("No output generated")
+            # Depending on the model output, extract the image URL or bytes
+            # If the output is a list of FileOutput or URLs
+            if isinstance(output, list) and output:
+                if isinstance(output[0], FileOutput):
+                    image_bytes = output[0].read()
+                else:
+                    # If it's a URL string, fetch the image bytes
+                    result_url = output[0]
+                    response = requests.get(result_url)
+                    response.raise_for_status()
+                    image_bytes = response.content
+            elif isinstance(output, FileOutput):
+                image_bytes = output.read()
+            elif isinstance(output, str):
+                # Output is a URL
+                response = requests.get(output)
+                response.raise_for_status()
+                image_bytes = response.content
+            else:
+                raise RuntimeError("Unexpected output format from the model.")
 
-            # Get image URL
-            image_url = next(iter(output))
-            logger.info(f"Generated image URL: {image_url}")
-
-            # Download generated image
-            try:
-                import os
-                # Handle case where image_url is bytes
-                if isinstance(image_url, bytes):
-                    return io.BytesIO(image_url)
-
-                response = requests.get(image_url)
-                if response.status_code != 200:
-                    logger.error(f"Failed to retrieve image. Status code: {response.status_code}")
-                    raise RuntimeError(f"Failed to download image: HTTP {response.status_code}")
-
-                # Write image to local file for debugging/backup
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                os.makedirs(os.path.join(current_dir, "generated_images"), exist_ok=True)
-                filename = os.path.join(current_dir, "generated_images", f"agent_{agent.id}.jpg")
-                with open(filename, "wb") as f:
-                    f.write(response.content)
-                logger.info(f"Saved generated image to {filename}")
-
-                return io.BytesIO(response.content)
-            except Exception as e:
-                logger.error(f"Failed to download and save image: {str(e)}")
-                raise RuntimeError(f"Failed to process image: {str(e)}")
+            return io.BytesIO(image_bytes)
 
         except replicate.exceptions.ReplicateError as e:
             if e.status == 401:
