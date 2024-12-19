@@ -9,6 +9,8 @@ import fastapi.responses
 import backend.server.v2.store.db
 import backend.server.v2.store.media
 import backend.server.v2.store.model
+import backend.data.graph
+import backend.server.v2.store.image_gen
 
 logger = logging.getLogger(__name__)
 
@@ -438,4 +440,65 @@ async def upload_submission_media(
         logger.exception("Exception occurred whilst uploading submission media")
         raise fastapi.HTTPException(
             status_code=500, detail=f"Failed to upload media file: {str(e)}"
+        )
+
+
+@router.post(
+    "/submissions/generate_image",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def generate_image(
+    agent_id: str,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> fastapi.responses.Response:
+    """
+    Generate an image for a store listing submission.
+
+    Args:
+        agent_id (str): ID of the agent to generate an image for
+        user_id (str): ID of the authenticated user
+
+    Returns:
+        str: URL of the generated image
+
+    Raises:
+        HTTPException: If there is an error generating the image
+    """
+    try:
+
+        agent = await backend.data.graph.get_graph(agent_id, user_id=user_id)
+
+        if not agent:
+            raise fastapi.HTTPException(
+                status_code=404, detail=f"Agent with ID {agent_id} not found"
+            )
+        
+        existing_url = await backend.server.v2.store.media.check_media_exists(user_id, f"agent_{agent_id}.png")
+        if existing_url:
+            logger.info(f"Using existing image for agent {agent_id}")
+            return fastapi.responses.JSONResponse(content={"image_url": existing_url})
+
+        image = await backend.server.v2.store.image_gen.generate_agent_image(
+            agent=agent
+        )
+
+        # Create UploadFile and then set content_type
+        image_file = fastapi.UploadFile(
+            file=image,
+            filename=f"agent_{agent_id}.jpeg"
+        )
+
+        image_url = await backend.server.v2.store.media.upload_media(
+            user_id=user_id, file=image_file
+        )
+        
+
+        return fastapi.responses.JSONResponse(content={"image_url": image_url})
+    except Exception as e:
+        logger.exception("Exception occurred whilst generating submission image")
+        raise fastapi.HTTPException(
+            status_code=500, detail=f"Failed to generate image: {str(e)}"
         )

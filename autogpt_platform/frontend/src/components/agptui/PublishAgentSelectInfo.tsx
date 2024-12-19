@@ -19,6 +19,7 @@ interface PublishAgentInfoProps {
   ) => void;
   onClose: () => void;
   initialData?: {
+    agent_id: string;
     title: string;
     subheader: string;
     slug: string;
@@ -36,6 +37,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   onClose,
   initialData,
 }) => {
+  const [agentId, setAgentId] = React.useState<string | null>(null);
   const [images, setImages] = React.useState<string[]>(
     initialData?.additionalImages
       ? [initialData.thumbnailSrc, ...initialData.additionalImages]
@@ -62,6 +64,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
 
   React.useEffect(() => {
     if (initialData) {
+      setAgentId(initialData.agent_id);
       setImages(initialData.additionalImages || []);
       setSelectedImage(initialData.thumbnailSrc || null);
       setTitle(initialData.title);
@@ -86,7 +89,6 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       console.log("images", newImages);
     }
   };
-
   const handleAddImage = async () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -125,6 +127,27 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       }
     } catch (error) {
       console.error("Error uploading image:", error);
+    }
+  };
+
+  const [isGenerating, setIsGenerating] = React.useState(false);
+
+  const handleGenerateImage = async () => {
+    if (isGenerating) return;
+    
+    setIsGenerating(true);
+    try {
+      const api = new BackendAPI();
+      if (!agentId) {
+        throw new Error("Agent ID is required");
+      }
+      const { image_url } = await api.generateStoreSubmissionImage(agentId);
+      console.log("image_url", image_url);
+      setImages(prev => [...prev, image_url]);
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -314,8 +337,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
               variant="default"
               size="sm"
               className="bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500"
+              onClick={handleGenerateImage}
+              disabled={isGenerating}
             >
-              Generate
+              {isGenerating ? 'Generating...' : 'Generate'}
             </Button>
           </div>
         </div>

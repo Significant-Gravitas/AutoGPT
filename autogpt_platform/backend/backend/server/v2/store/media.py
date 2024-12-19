@@ -14,6 +14,34 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
+async def check_media_exists(user_id: str, filename: str) -> str | None:
+    """
+    Check if a media file exists in storage for the given user.
+
+    Args:
+        user_id (str): ID of the user who uploaded the file
+        file_name (str): Name of the file to check
+
+    Returns:
+        str | None: URL of the blob if it exists, None otherwise
+    """
+    try:
+        settings = Settings()
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(settings.config.media_gcs_bucket_name)
+        
+        # Construct the full path including user_id
+        blob_path = f"users/{user_id}/images/{filename}"
+        blob = bucket.blob(blob_path)
+        
+        if blob.exists():
+            return blob.public_url
+        return None
+
+    except Exception as e:
+        logger.error(f"Error checking if media file exists: {str(e)}")
+        return None
+
 
 async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
 
@@ -84,6 +112,9 @@ async def upload_media(user_id: str, file: fastapi.UploadFile) -> str:
     try:
         # Validate file type
         content_type = file.content_type
+        if content_type is None:
+            content_type = "image/jpeg"
+        
         if (
             content_type not in ALLOWED_IMAGE_TYPES
             and content_type not in ALLOWED_VIDEO_TYPES
