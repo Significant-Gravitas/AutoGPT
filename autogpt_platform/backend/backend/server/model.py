@@ -61,6 +61,6 @@ class UpdatePermissionsRequest(pydantic.BaseModel):
 class RequestTopUp(pydantic.BaseModel):
     amount: int
 
+
 class RequestTopUpResponse(pydantic.BaseModel):
-    transaction_id: str
-    client_secret: str
+    checkout_url: str

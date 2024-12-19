@@ -493,6 +493,5 @@ export type StoreReviewCreate = {
 
 /* Mirror of backend/server/model.py:RequestTopUpResponse */
 export type RequestTopUpResponse = {
-  transaction_id: string;
-  client_secret: string;
+  checkout_url: string;
 };

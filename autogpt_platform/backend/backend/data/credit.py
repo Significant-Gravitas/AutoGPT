@@ -246,25 +246,44 @@ class UserCredit(UserCreditBase):
         # Create payment intent
         # amount param is always in the smallest currency unit (so cents for usd)
         # https://docs.stripe.com/api/payment_intents/create
-        intent = stripe.PaymentIntent.create(
-            amount=amount * 100,
-            currency="usd",
+        # intent = stripe.PaymentIntent.create(
+        #     amount=amount * 100,
+        #     currency="usd",
+        #     customer=user.stripeCustomerId,
+        # )
+
+        session = stripe.checkout.Session.create(
             customer=user.stripeCustomerId,
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {
+                            "name": "AutoGPT Platform Credits",
+                        },
+                        "unit_amount": amount * 100,
+                    },
+                    "quantity": 1,
+                }
+            ],
+            mode="payment",
+            success_url="",# TODO kcze
+            cancel_url="",
         )
 
         # Create pending transaction
         await CreditTransaction.prisma().create(
             data={
-                "transactionKey": intent.id,
+                "transactionKey": session.id,# TODO kcze add new model field?
                 "userId": user_id,
                 "amount": amount,
                 "type": CreditTransactionType.TOP_UP,
                 "isActive": False,
-                "metadata": Json({"paymentIntent": intent}),
+                "metadata": Json({"checkout_session": session}),
             }
         )
 
-        return RequestTopUpResponse(transaction_id=intent.id, client_secret=intent.client_secret or "")
+        return RequestTopUpResponse(checkout_url=session.url or "")
 
 
 class DisabledUserCredit(UserCreditBase):
@@ -278,7 +297,7 @@ class DisabledUserCredit(UserCreditBase):
         pass
 
     async def top_up_intent(self, *args, **kwargs) -> RequestTopUpResponse:
-        return RequestTopUpResponse(transaction_id="", client_secret="")
+        return RequestTopUpResponse(checkout_url="")
 
 
 def get_user_credit_model() -> UserCreditBase:
