@@ -865,6 +865,9 @@ export default function useAgentGraph(
   }, [_saveAgent, toast]);
 
   const requestSave = useCallback(() => {
+    if (saveRunRequest.state !== "none") {
+      return;
+    }
     saveAgent();
     setSaveRunRequest({
       request: "save",
