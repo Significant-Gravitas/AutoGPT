@@ -15,7 +15,7 @@ export async function generateMetadata({
   params: { creator: string };
 }): Promise<Metadata> {
   const api = new BackendAPI();
-  const creator = await api.getStoreCreator(params.creator);
+  const creator = await api.getStoreCreator(params.creator.toLowerCase());
 
   return {
     title: `${creator.name} - AutoGPT Store`,
