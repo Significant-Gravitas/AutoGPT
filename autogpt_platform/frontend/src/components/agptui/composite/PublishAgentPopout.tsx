@@ -45,6 +45,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
   const [initialData, setInitialData] = React.useState<{
+    agent_id: string;
     title: string;
     subheader: string;
     slug: string;
@@ -119,6 +120,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     const name = selectedAgentData?.agent_name || "";
     const description = selectedAgentData?.description || "";
     setInitialData({
+      agent_id: agentId,
       title: name,
       subheader: "",
       description: description,
