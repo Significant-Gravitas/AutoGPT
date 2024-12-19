@@ -35,9 +35,10 @@ export default async function Page({
 }: {
   params: { creator: string; slug: string };
 }) {
+  const creator_lower = params.creator.toLowerCase();
   const api = new BackendAPI();
-  const agent = await api.getStoreAgent(params.creator, params.slug);
-  const otherAgents = await api.getStoreAgents({ creator: params.creator });
+  const agent = await api.getStoreAgent(creator_lower, params.slug);
+  const otherAgents = await api.getStoreAgents({ creator: creator_lower });
   const similarAgents = await api.getStoreAgents({
     search_query: agent.categories[0],
   });
