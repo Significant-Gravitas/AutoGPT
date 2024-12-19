@@ -26,7 +26,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
         name: profileData.name,
         username: profileData.username,
         description: profileData.description,
-        links: profileData.links,
+        links: profileData.links.filter((link) => link), // Filter out empty links
         avatar_url: profileData.avatar_url,
       };
 
@@ -225,11 +225,11 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                         defaultValue={link || ""}
                         className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
                         onChange={(e) => {
+                          const newLinks = [...profileData.links];
+                          newLinks[linkNum - 1] = e.target.value;
                           const newProfileData = {
                             ...profileData,
-                            links: profileData.links.map((link, index) =>
-                              index === linkNum - 1 ? e.target.value : link,
-                            ),
+                            links: newLinks,
                           };
                           setProfileData(newProfileData);
                         }}

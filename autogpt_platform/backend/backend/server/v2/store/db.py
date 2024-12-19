@@ -620,6 +620,7 @@ async def update_or_create_profile(
     """
     Update the store profile for a user. Creates a new profile if one doesn't exist.
     Only allows updating if the user_id matches the owning user.
+    If a field is None, it will not overwrite the existing value in the case of an update.
 
     Args:
         user_id: ID of the authenticated user
@@ -630,8 +631,9 @@ async def update_or_create_profile(
 
     Raises:
         HTTPException: If user is not authorized to update this profile
+        DatabaseError: If profile cannot be updated due to database issues
     """
-    logger.debug(f"Updating profile for user {user_id}")
+    logger.info(f"Updating profile for user {user_id} data: {profile}")
 
     try:
         # Check if profile exists for user
@@ -641,7 +643,9 @@ async def update_or_create_profile(
 
         # If no profile exists, create a new one
         if not existing_profile:
-            logger.debug(f"Creating new profile for user {user_id}")
+            logger.debug(
+                f"No existing profile found. Creating new profile for user {user_id}"
+            )
             # Create new profile since one doesn't exist
             new_profile = await prisma.models.Profile.prisma().create(
                 data={
@@ -649,8 +653,9 @@ async def update_or_create_profile(
                     "name": profile.name,
                     "username": profile.username,
                     "description": profile.description,
-                    "links": profile.links,
+                    "links": profile.links or [],
                     "avatarUrl": profile.avatar_url,
+                    "isFeatured": False,
                 }
             )
 
@@ -666,16 +671,23 @@ async def update_or_create_profile(
             )
         else:
             logger.debug(f"Updating existing profile for user {user_id}")
+            # Update only provided fields for the existing profile
+            update_data = {}
+            if profile.name is not None:
+                update_data["name"] = profile.name
+            if profile.username is not None:
+                update_data["username"] = profile.username
+            if profile.description is not None:
+                update_data["description"] = profile.description
+            if profile.links is not None:
+                update_data["links"] = profile.links
+            if profile.avatar_url is not None:
+                update_data["avatarUrl"] = profile.avatar_url
+
             # Update the existing profile
             updated_profile = await prisma.models.Profile.prisma().update(
                 where={"id": existing_profile.id},
-                data=prisma.types.ProfileUpdateInput(
-                    name=profile.name,
-                    username=profile.username,
-                    description=profile.description,
-                    links=profile.links,
-                    avatarUrl=profile.avatar_url,
-                ),
+                data=prisma.types.ProfileUpdateInput(**update_data),
             )
             if updated_profile is None:
                 logger.error(f"Failed to update profile for user {user_id}")
