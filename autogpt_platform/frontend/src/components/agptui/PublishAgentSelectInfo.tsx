@@ -62,13 +62,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
 
   React.useEffect(() => {
     if (initialData) {
-      setImages(
-        initialData.additionalImages
-          ? [initialData.thumbnailSrc, ...initialData.additionalImages]
-          : initialData.thumbnailSrc
-            ? [initialData.thumbnailSrc]
-            : [],
-      );
+      setImages(initialData.additionalImages || []);
       setSelectedImage(initialData.thumbnailSrc || null);
       setTitle(initialData.title);
       setSubheader(initialData.subheader);
