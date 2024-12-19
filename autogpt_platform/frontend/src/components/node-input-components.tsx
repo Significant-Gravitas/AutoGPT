@@ -297,7 +297,25 @@ export const NodeGenericInputField: FC<{
       "type" in s ? s.type : undefined,
     );
     if (types.includes("string") && types.includes("null")) {
-      // optional string
+      // optional string and datetime
+
+      if (
+        "format" in propSchema.anyOf[0] &&
+        propSchema.anyOf[0].format === "date-time"
+      ) {
+        return (
+          <NodeDateTimeInput
+            selfKey={propKey}
+            schema={propSchema.anyOf[0]}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      }
+
       return (
         <NodeStringInput
           selfKey={propKey}
@@ -358,6 +376,42 @@ export const NodeGenericInputField: FC<{
         />
       );
     } else if (types.includes("object") && types.includes("null")) {
+      // rendering optional mutliselect
+      if (
+        Object.values(
+          (propSchema.anyOf[0] as BlockIOObjectSubSchema).properties,
+        ).every(
+          (subSchema) => "type" in subSchema && subSchema.type == "boolean",
+        ) &&
+        Object.keys((propSchema.anyOf[0] as BlockIOObjectSubSchema).properties)
+          .length >= 3
+      ) {
+        const options = Object.keys(
+          (propSchema.anyOf[0] as BlockIOObjectSubSchema).properties,
+        );
+        const selectedKeys = Object.entries(currentValue || {})
+          .filter(([_, v]) => v)
+          .map(([k, _]) => k);
+        return (
+          <NodeMultiSelectInput
+            selfKey={propKey}
+            schema={propSchema.anyOf[0] as BlockIOObjectSubSchema}
+            selection={selectedKeys}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={(key, selection) => {
+              handleInputChange(
+                key,
+                Object.fromEntries(
+                  options.map((option) => [option, selection.includes(option)]),
+                ),
+              );
+            }}
+          />
+        );
+      }
+
       return (
         <NodeKeyValueInput
           nodeId={nodeId}
