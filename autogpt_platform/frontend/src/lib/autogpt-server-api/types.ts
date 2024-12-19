@@ -488,6 +488,7 @@ export type MyAgent = {
   agent_version: number;
   agent_name: string;
   last_edited: string;
+  description: string;
 };
 
 export type MyAgentsResponse = {
