@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
-import { cn } from "@/lib/utils";
+import { cn, removeCredentials } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
@@ -150,6 +150,7 @@ export const AgentImportForm: React.FC<
                             );
                           }
                           const agent = obj as Graph;
+                          removeCredentials(agent);
                           updateBlockIDs(agent);
                           setAgentObject(agent);
                           form.setValue("agentName", agent.name);
