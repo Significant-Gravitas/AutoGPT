@@ -17,6 +17,7 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useToast } from "@/components/ui/use-toast";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -68,6 +69,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const popupId = React.useId();
   const router = useRouter();
   const api = useBackendAPI();
+
+  const { toast } = useToast();
 
   React.useEffect(() => {
     console.log("PublishAgentPopout Effect");
@@ -145,14 +148,20 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     videoUrl: string,
     categories: string[],
   ) => {
-    if (
-      !name ||
-      !subHeading ||
-      !description ||
-      !imageUrls.length ||
-      !categories.length
-    ) {
-      console.error("Missing required fields");
+    const missingFields: string[] = [];
+
+    if (!name) missingFields.push("Name");
+    if (!subHeading) missingFields.push("Sub-heading");
+    if (!description) missingFields.push("Description");
+    if (!imageUrls.length) missingFields.push("Image");
+    if (!categories.length) missingFields.push("Categories");
+
+    if (missingFields.length > 0) {
+      toast({
+        title: "Missing Required Fields",
+        description: `Please fill in: ${missingFields.join(", ")}`,
+        duration: 3000,
+      });
       return;
     }
 
