@@ -578,22 +578,22 @@ async def get_user_profile(
 
         if not profile:
             logger.warning(f"Profile not found for user {user_id}")
-            await prisma.models.Profile.prisma().create(
+            new_profile = await prisma.models.Profile.prisma().create(
                 data=prisma.types.ProfileCreateInput(
                     userId=user_id,
                     name="No Profile Data",
-                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}",
+                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower(),
                     description="No Profile Data",
                     links=[],
                     avatarUrl="",
                 )
             )
             return backend.server.v2.store.model.ProfileDetails(
-                name="No Profile Data",
-                username="No Profile Data",
-                description="No Profile Data",
-                links=[],
-                avatar_url="",
+                name=new_profile.name,
+                username=new_profile.username,
+                description=new_profile.description,
+                links=new_profile.links,
+                avatar_url=new_profile.avatarUrl,
             )
 
         return backend.server.v2.store.model.ProfileDetails(
@@ -651,7 +651,7 @@ async def update_or_create_profile(
                 data={
                     "userId": user_id,
                     "name": profile.name,
-                    "username": profile.username,
+                    "username": profile.username.lower(),
                     "description": profile.description,
                     "links": profile.links or [],
                     "avatarUrl": profile.avatar_url,
