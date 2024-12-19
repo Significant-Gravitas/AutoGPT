@@ -757,6 +757,7 @@ async def get_my_agents(
                 agent_version=agent.version,
                 agent_name=agent.name or "",
                 last_edited=agent.updatedAt or agent.createdAt,
+                description=agent.description or "",
             )
             for agent in agents
         ]
