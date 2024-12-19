@@ -272,9 +272,9 @@ class TwitterGetRetweetersBlock(Block):
         tweet_id: str,
         max_results: int,
         pagination_token: str,
-        expansions: UserExpansionsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        expansions: UserExpansionsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

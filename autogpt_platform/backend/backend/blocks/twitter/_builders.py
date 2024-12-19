@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Dict
 
 from backend.blocks.twitter._mappers import (
@@ -37,7 +38,7 @@ class TweetExpansionsBuilder:
     def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
-    def add_expansions(self, expansions: ExpansionFilter):
+    def add_expansions(self, expansions: ExpansionFilter | None):
         if expansions:
             filtered_expansions = [
                 name for name, value in expansions.dict().items() if value is True
@@ -48,10 +49,9 @@ class TweetExpansionsBuilder:
                     [get_backend_expansion(exp) for exp in filtered_expansions]
                 )
 
-        print("all_expansions : ", self.params["expansions"])
         return self
 
-    def add_media_fields(self, media_fields: TweetMediaFieldsFilter):
+    def add_media_fields(self, media_fields: TweetMediaFieldsFilter | None):
         if media_fields:
             filtered_fields = [
                 name for name, value in media_fields.dict().items() if value is True
@@ -62,7 +62,7 @@ class TweetExpansionsBuilder:
                 )
         return self
 
-    def add_place_fields(self, place_fields: TweetPlaceFieldsFilter):
+    def add_place_fields(self, place_fields: TweetPlaceFieldsFilter | None):
         if place_fields:
             filtered_fields = [
                 name for name, value in place_fields.dict().items() if value is True
@@ -73,7 +73,7 @@ class TweetExpansionsBuilder:
                 )
         return self
 
-    def add_poll_fields(self, poll_fields: TweetPollFieldsFilter):
+    def add_poll_fields(self, poll_fields: TweetPollFieldsFilter | None):
         if poll_fields:
             filtered_fields = [
                 name for name, value in poll_fields.dict().items() if value is True
@@ -84,7 +84,7 @@ class TweetExpansionsBuilder:
                 )
         return self
 
-    def add_tweet_fields(self, tweet_fields: TweetFieldsFilter):
+    def add_tweet_fields(self, tweet_fields: TweetFieldsFilter | None):
         if tweet_fields:
             filtered_fields = [
                 name for name, value in tweet_fields.dict().items() if value is True
@@ -95,7 +95,7 @@ class TweetExpansionsBuilder:
                 )
         return self
 
-    def add_user_fields(self, user_fields: TweetUserFieldsFilter):
+    def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
         if user_fields:
             filtered_fields = [
                 name for name, value in user_fields.dict().items() if value is True
@@ -114,7 +114,7 @@ class UserExpansionsBuilder:
     def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
-    def add_expansions(self, expansions: UserExpansionsFilter):
+    def add_expansions(self, expansions: UserExpansionsFilter | None):
         if expansions:
             filtered_expansions = [
                 name for name, value in expansions.dict().items() if value is True
@@ -123,7 +123,7 @@ class UserExpansionsBuilder:
                 self.params["expansions"] = ",".join(filtered_expansions)
         return self
 
-    def add_tweet_fields(self, tweet_fields: TweetFieldsFilter):
+    def add_tweet_fields(self, tweet_fields: TweetFieldsFilter | None):
         if tweet_fields:
             filtered_fields = [
                 name for name, value in tweet_fields.dict().items() if value is True
@@ -134,7 +134,7 @@ class UserExpansionsBuilder:
                 )
         return self
 
-    def add_user_fields(self, user_fields: TweetUserFieldsFilter):
+    def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
         if user_fields:
             filtered_fields = [
                 name for name, value in user_fields.dict().items() if value is True
@@ -235,27 +235,27 @@ class TweetDurationBuilder:
     def __init__(self, param: Dict[str, Any]):
         self.params: Dict[str, Any] = param
 
-    def add_start_time(self, start_time: str):
+    def add_start_time(self, start_time: datetime | None):
         if start_time:
             self.params["start_time"] = start_time
         return self
 
-    def add_end_time(self, end_time: str):
+    def add_end_time(self, end_time: datetime | None):
         if end_time:
             self.params["end_time"] = end_time
         return self
 
-    def add_since_id(self, since_id: str):
+    def add_since_id(self, since_id: str | None):
         if since_id:
             self.params["since_id"] = since_id
         return self
 
-    def add_until_id(self, until_id: str):
+    def add_until_id(self, until_id: str | None):
         if until_id:
             self.params["until_id"] = until_id
         return self
 
-    def add_sort_order(self, sort_order: str):
+    def add_sort_order(self, sort_order: str | None):
         if sort_order:
             self.params["sort_order"] = sort_order
         return self
@@ -327,7 +327,7 @@ class TweetSearchBuilder:
             self.params["query"] = query
         return self
 
-    def add_pagination(self, max_results: int, pagination: str):
+    def add_pagination(self, max_results: int, pagination: str | None):
         if max_results:
             self.params["max_results"] = max_results
         if pagination:

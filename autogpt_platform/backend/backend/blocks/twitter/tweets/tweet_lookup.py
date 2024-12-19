@@ -102,12 +102,12 @@ class TwitterGetTweetBlock(Block):
     def get_tweet(
         credentials: TwitterCredentials,
         tweet_id: str,
-        expansions: ExpansionFilter,
-        media_fields: TweetMediaFieldsFilter,
-        place_fields: TweetPlaceFieldsFilter,
-        poll_fields: TweetPollFieldsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        expansions: ExpansionFilter | None,
+        media_fields: TweetMediaFieldsFilter | None,
+        place_fields: TweetPlaceFieldsFilter | None,
+        poll_fields: TweetPollFieldsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
@@ -268,12 +268,12 @@ class TwitterGetTweetsBlock(Block):
     def get_tweets(
         credentials: TwitterCredentials,
         tweet_ids: list[str],
-        expansions: ExpansionFilter,
-        media_fields: TweetMediaFieldsFilter,
-        place_fields: TweetPlaceFieldsFilter,
-        poll_fields: TweetPollFieldsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        expansions: ExpansionFilter | None,
+        media_fields: TweetMediaFieldsFilter | None,
+        place_fields: TweetPlaceFieldsFilter | None,
+        poll_fields: TweetPollFieldsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
