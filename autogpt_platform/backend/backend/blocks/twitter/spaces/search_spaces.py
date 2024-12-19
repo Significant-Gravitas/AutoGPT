@@ -80,12 +80,12 @@ class TwitterSearchSpacesBlock(Block):
             output_schema=TwitterSearchSpacesBlock.Output,
             test_input={
                 "query": "tech",
-                "max_results": 10,
+                "max_results": 1,
                 "state": "live",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "space_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "space_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -113,9 +113,9 @@ class TwitterSearchSpacesBlock(Block):
         query: str,
         max_results: int,
         state: SpaceStatesFilter,
-        expansions: SpaceExpansionsFilter,
-        space_fields: SpaceFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        expansions: SpaceExpansionsFilter | None,
+        space_fields: SpaceFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

@@ -114,7 +114,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination",
             placeholder="Enter pagination token",
             default="",
@@ -148,14 +148,14 @@ class TwitterGetBookmarkedTweetsBlock(Block):
             input_schema=TwitterGetBookmarkedTweetsBlock.Input,
             output_schema=TwitterGetBookmarkedTweetsBlock.Output,
             test_input={
-                "max_results": 10,
-                "pagination_token": "",
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "max_results": 2,
+                "pagination_token": None,
+                "expansions": None,
+                "media_fields": None,
+                "place_fields": None,
+                "poll_fields": None,
+                "tweet_fields": None,
+                "user_fields": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -186,7 +186,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
         max_results: int,
         pagination_token: str | None,
         expansions: ExpansionFilter | None,
-        media_fields: TweetMediaFieldsFilter |None,
+        media_fields: TweetMediaFieldsFilter | None,
         place_fields: TweetPlaceFieldsFilter | None,
         poll_fields: TweetPollFieldsFilter | None,
         tweet_fields: TweetFieldsFilter | None,

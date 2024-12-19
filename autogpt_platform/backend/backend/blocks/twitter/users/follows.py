@@ -182,7 +182,7 @@ class TwitterGetFollowersBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for retrieving next/previous page of results",
             placeholder="Enter pagination token",
             default="",
@@ -211,11 +211,11 @@ class TwitterGetFollowersBlock(Block):
             output_schema=TwitterGetFollowersBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "max_results": 10,
+                "max_results": 1,
                 "pagination_token": "",
-                "expansions": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "tweet_fields": None,
+                "user_fields": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -241,10 +241,10 @@ class TwitterGetFollowersBlock(Block):
         credentials: TwitterCredentials,
         target_user_id: str,
         max_results: int,
-        pagination_token: str,
-        expansions: UserExpansionsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        pagination_token: str | None,
+        expansions: UserExpansionsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
@@ -355,7 +355,7 @@ class TwitterGetFollowingBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for retrieving next/previous page of results",
             placeholder="Enter pagination token",
             default="",
@@ -384,11 +384,11 @@ class TwitterGetFollowingBlock(Block):
             output_schema=TwitterGetFollowingBlock.Output,
             test_input={
                 "target_user_id": "12345",
-                "max_results": 10,
-                "pagination_token": "",
-                "expansions": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "max_results": 1,
+                "pagination_token": None,
+                "expansions": None,
+                "tweet_fields": None,
+                "user_fields": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -414,10 +414,10 @@ class TwitterGetFollowingBlock(Block):
         credentials: TwitterCredentials,
         target_user_id: str,
         max_results: int,
-        pagination_token: str,
-        expansions: UserExpansionsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        pagination_token: str | None,
+        expansions: UserExpansionsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

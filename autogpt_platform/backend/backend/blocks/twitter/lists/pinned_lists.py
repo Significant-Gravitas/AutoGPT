@@ -187,9 +187,9 @@ class TwitterGetPinnedListsBlock(Block):
             input_schema=TwitterGetPinnedListsBlock.Input,
             output_schema=TwitterGetPinnedListsBlock.Output,
             test_input={
-                "expansions": [],
-                "list_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "list_fields": None,
+                "user_fields": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -212,9 +212,9 @@ class TwitterGetPinnedListsBlock(Block):
     @staticmethod
     def get_pinned_lists(
         credentials: TwitterCredentials,
-        expansions: ListExpansionsFilter,
-        user_fields: TweetUserFieldsFilter,
-        list_fields: ListFieldsFilter,
+        expansions: ListExpansionsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
+        list_fields: ListFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

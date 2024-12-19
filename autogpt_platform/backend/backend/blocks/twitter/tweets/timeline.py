@@ -55,7 +55,7 @@ class TwitterGetUserMentionsBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination", default="", advanced=True
         )
 
@@ -94,19 +94,19 @@ class TwitterGetUserMentionsBlock(Block):
             test_input={
                 "user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "max_results": 10,
-                "start_time": "",
-                "end_time": "",
+                "max_results": 2,
+                "start_time": "2024-12-14T18:30:00.000Z",
+                "end_time": "2024-12-17T18:30:00.000Z",
                 "since_id": "",
                 "until_id": "",
-                "sort_order": "",
-                "pagination_token": "",
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "sort_order": None,
+                "pagination_token": None,
+                "expansions": None,
+                "media_fields": None,
+                "place_fields": None,
+                "poll_fields": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -296,7 +296,7 @@ class TwitterGetHomeTimelineBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination", default="", advanced=True
         )
 
@@ -334,13 +334,13 @@ class TwitterGetHomeTimelineBlock(Block):
             output_schema=TwitterGetHomeTimelineBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "max_results": 10,
-                "start_time": "",
-                "end_time": "",
-                "since_id": "",
-                "until_id": "",
-                "sort_order": "",
-                "pagination_token": "",
+                "max_results": 2,
+                "start_time": "2024-12-14T18:30:00.000Z",
+                "end_time": "2024-12-17T18:30:00.000Z",
+                "since_id": None,
+                "until_id": None,
+                "sort_order": None,
+                "pagination_token": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -532,7 +532,7 @@ class TwitterGetUserTweetsBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination", default="", advanced=True
         )
 
@@ -571,19 +571,19 @@ class TwitterGetUserTweetsBlock(Block):
             test_input={
                 "user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "max_results": 10,
-                "start_time": "",
-                "end_time": "",
-                "since_id": "",
-                "until_id": "",
-                "sort_order": "",
-                "pagination_token": "",
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "max_results": 2,
+                "start_time": "2024-12-14T18:30:00.000Z",
+                "end_time": "2024-12-17T18:30:00.000Z",
+                "since_id": None,
+                "until_id": None,
+                "sort_order": None,
+                "pagination_token": None,
+                "expansions": None,
+                "media_fields": None,
+                "place_fields": None,
+                "poll_fields": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -629,10 +629,10 @@ class TwitterGetUserTweetsBlock(Block):
         pagination: str | None,
         expansions: ExpansionFilter | None,
         media_fields: TweetMediaFieldsFilter | None,
-        place_fields: TweetPlaceFieldsFilter | None ,
+        place_fields: TweetPlaceFieldsFilter | None,
         poll_fields: TweetPollFieldsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
-        user_fields: TweetUserFieldsFilter |None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

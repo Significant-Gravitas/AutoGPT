@@ -198,7 +198,7 @@ class TwitterGetRetweetersBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination",
             placeholder="Enter pagination token",
             default="",
@@ -236,12 +236,12 @@ class TwitterGetRetweetersBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_results": 1,
                 "pagination_token": "",
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "media_fields": None,
+                "place_fields": None,
+                "poll_fields": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -271,7 +271,7 @@ class TwitterGetRetweetersBlock(Block):
         credentials: TwitterCredentials,
         tweet_id: str,
         max_results: int,
-        pagination_token: str,
+        pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,

@@ -48,19 +48,17 @@ class TwitterGetQuoteTweetsBlock(Block):
         max_results: int = SchemaField(
             description="Number of results to return (max 100)",
             default=10,
-            required=False,
             advanced=True,
         )
 
-        exclude: TweetExcludesFilter = SchemaField(
+        exclude: TweetExcludesFilter | None = SchemaField(
             description="Types of tweets to exclude",
-            required=False,
             advanced=True,
+            default=None
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for pagination",
-            required=False,
             advanced=True,
             default="",
         )
@@ -92,8 +90,8 @@ class TwitterGetQuoteTweetsBlock(Block):
             output_schema=TwitterGetQuoteTweetsBlock.Output,
             test_input={
                 "tweet_id": "1234567890",
-                "max_results": 10,
-                "pagination_token": "",
+                "max_results": 2,
+                "pagination_token": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -135,7 +133,7 @@ class TwitterGetQuoteTweetsBlock(Block):
         place_fields: TweetPlaceFieldsFilter | None,
         poll_fields: TweetPollFieldsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
-        user_fields: TweetUserFieldsFilter |None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(

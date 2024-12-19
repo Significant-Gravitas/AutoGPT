@@ -52,7 +52,7 @@ class TwitterGetListTweetsBlock(Block):
             advanced=True,
         )
 
-        pagination_token: str = SchemaField(
+        pagination_token: str | None = SchemaField(
             description="Token for paginating through results",
             placeholder="Enter pagination token",
             default="",
@@ -84,15 +84,15 @@ class TwitterGetListTweetsBlock(Block):
             output_schema=TwitterGetListTweetsBlock.Output,
             test_input={
                 "list_id": "84839422",
-                "max_results": 10,
-                "pagination_token": "",
+                "max_results": 1,
+                "pagination_token": None,
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "expansions": [],
-                "media_fields": [],
-                "place_fields": [],
-                "poll_fields": [],
-                "tweet_fields": [],
-                "user_fields": [],
+                "expansions": None,
+                "media_fields": None,
+                "place_fields": None,
+                "poll_fields": None,
+                "tweet_fields": None,
+                "user_fields": None,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -117,13 +117,13 @@ class TwitterGetListTweetsBlock(Block):
         credentials: TwitterCredentials,
         list_id: str,
         max_results: int,
-        pagination_token: str,
-        expansions: ExpansionFilter,
-        media_fields: TweetMediaFieldsFilter,
-        place_fields: TweetPlaceFieldsFilter,
-        poll_fields: TweetPollFieldsFilter,
-        tweet_fields: TweetFieldsFilter,
-        user_fields: TweetUserFieldsFilter,
+        pagination_token: str | None,
+        expansions: ExpansionFilter | None,
+        media_fields: TweetMediaFieldsFilter | None,
+        place_fields: TweetPlaceFieldsFilter | None,
+        poll_fields: TweetPollFieldsFilter | None,
+        tweet_fields: TweetFieldsFilter | None,
+        user_fields: TweetUserFieldsFilter | None,
     ):
         try:
             client = tweepy.Client(
