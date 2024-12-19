@@ -254,7 +254,7 @@ async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDet
     """
     try:
         creator = await backend.server.v2.store.db.get_store_creator_details(
-            username=username
+            username=username.lower()
         )
         return creator
     except Exception:
