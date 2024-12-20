@@ -35,19 +35,16 @@
   width: calc(100% - 2.5rem);
 }
 
-
 .custom-node [data-list-container] {
   margin: 0.5rem 1.25rem;
   width: calc(100% - 2.5rem);
 }
-
 
 .custom-node [data-add-item] {
   margin: 0.5rem 1.25rem;
   width: calc(100% - 2.5rem);
   padding: 0.5rem;
 }
-
 
 .array-item-container {
   display: flex;
@@ -56,12 +53,10 @@
   width: calc(100% - 2.5rem);
 }
 
-
 .custom-node [data-content-settings] {
   margin: 0.5rem 1.25rem;
   width: calc(100% - 2.5rem);
 }
-
 
 .custom-node .custom-switch {
   padding: 0.5rem 1.25rem;
