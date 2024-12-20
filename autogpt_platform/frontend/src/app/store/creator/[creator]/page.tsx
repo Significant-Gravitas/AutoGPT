@@ -64,7 +64,7 @@ export default async function Page({
               />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
-              <div className="font-neue text-2xl font-normal leading-normal text-neutral-900 sm:text-3xl md:text-[35px] md:leading-[45px]">
+              <div className="font-neue text-2xl font-normal leading-normal text-neutral-900 dark:text-zinc-50 sm:text-3xl md:text-[35px] md:leading-[45px]">
                 {creator.description}
               </div>
               <CreatorLinks links={creator.links} />
