@@ -1,12 +1,15 @@
 import logging
 import typing
+import urllib.parse
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
 
+import backend.data.graph
 import backend.server.v2.store.db
+import backend.server.v2.store.image_gen
 import backend.server.v2.store.media
 import backend.server.v2.store.model
 
@@ -148,6 +151,9 @@ async def get_agent(
     It returns the store listing agents details.
     """
     try:
+        username = urllib.parse.unquote(username).lower()
+        # URL decode the agent name since it comes from the URL path
+        agent_name = urllib.parse.unquote(agent_name)
         agent = await backend.server.v2.store.db.get_store_agent_details(
             username=username, agent_name=agent_name
         )
@@ -183,6 +189,8 @@ async def create_review(
         The created review
     """
     try:
+        username = urllib.parse.unquote(username).lower()
+        agent_name = urllib.parse.unquote(agent_name)
         # Create the review
         created_review = await backend.server.v2.store.db.create_store_review(
             user_id=user_id,
@@ -253,8 +261,9 @@ async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDet
     - Creator Details Page
     """
     try:
+        username = urllib.parse.unquote(username).lower()
         creator = await backend.server.v2.store.db.get_store_creator_details(
-            username=username
+            username=username.lower()
         )
         return creator
     except Exception:
@@ -438,4 +447,64 @@ async def upload_submission_media(
         logger.exception("Exception occurred whilst uploading submission media")
         raise fastapi.HTTPException(
             status_code=500, detail=f"Failed to upload media file: {str(e)}"
+        )
+
+
+@router.post(
+    "/submissions/generate_image",
+    tags=["store", "private"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def generate_image(
+    agent_id: str,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> fastapi.responses.Response:
+    """
+    Generate an image for a store listing submission.
+
+    Args:
+        agent_id (str): ID of the agent to generate an image for
+        user_id (str): ID of the authenticated user
+
+    Returns:
+        JSONResponse: JSON containing the URL of the generated image
+    """
+    try:
+        agent = await backend.data.graph.get_graph(agent_id, user_id=user_id)
+
+        if not agent:
+            raise fastapi.HTTPException(
+                status_code=404, detail=f"Agent with ID {agent_id} not found"
+            )
+        # Use .jpeg here since we are generating JPEG images
+        filename = f"agent_{agent_id}.jpeg"
+
+        existing_url = await backend.server.v2.store.media.check_media_exists(
+            user_id, filename
+        )
+        if existing_url:
+            logger.info(f"Using existing image for agent {agent_id}")
+            return fastapi.responses.JSONResponse(content={"image_url": existing_url})
+        # Generate agent image as JPEG
+        image = await backend.server.v2.store.image_gen.generate_agent_image(
+            agent=agent
+        )
+
+        # Create UploadFile with the correct filename and content_type
+        image_file = fastapi.UploadFile(
+            file=image,
+            filename=filename,
+        )
+
+        image_url = await backend.server.v2.store.media.upload_media(
+            user_id=user_id, file=image_file, use_file_name=True
+        )
+
+        return fastapi.responses.JSONResponse(content={"image_url": image_url})
+    except Exception as e:
+        logger.exception("Exception occurred whilst generating submission image")
+        raise fastapi.HTTPException(
+            status_code=500, detail=f"Failed to generate image: {str(e)}"
         )

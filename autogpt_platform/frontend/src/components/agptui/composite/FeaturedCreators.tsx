@@ -24,7 +24,7 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
   const router = useRouter();
 
   const handleCardClick = (creator: string) => {
-    router.push(`/store/creator/${creator}`);
+    router.push(`/store/creator/${encodeURIComponent(creator)}`);
   };
 
   // Only show first 4 creators

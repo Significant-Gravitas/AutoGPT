@@ -3,11 +3,12 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks.utils import webhook_ingress_url
 
 from .db import BaseDbModel
 
@@ -30,6 +31,11 @@ class Webhook(BaseDbModel):
     provider_webhook_id: str
 
     attached_nodes: Optional[list["NodeModel"]] = None
+
+    @computed_field
+    @property
+    def url(self) -> str:
+        return webhook_ingress_url(self.provider.value, self.id)
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
@@ -84,8 +90,10 @@ async def get_webhook(webhook_id: str) -> Webhook:
     return Webhook.from_db(webhook)
 
 
-async def get_all_webhooks(credentials_id: str) -> list[Webhook]:
+async def get_all_webhooks_by_creds(credentials_id: str) -> list[Webhook]:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    if not credentials_id:
+        raise ValueError("credentials_id must not be empty")
     webhooks = await IntegrationWebhook.prisma().find_many(
         where={"credentialsId": credentials_id},
         include=INTEGRATION_WEBHOOK_INCLUDE,
@@ -93,7 +101,7 @@ async def get_all_webhooks(credentials_id: str) -> list[Webhook]:
     return [Webhook.from_db(webhook) for webhook in webhooks]
 
 
-async def find_webhook(
+async def find_webhook_by_credentials_and_props(
     credentials_id: str, webhook_type: str, resource: str, events: list[str]
 ) -> Webhook | None:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
@@ -103,6 +111,22 @@ async def find_webhook(
             "webhookType": webhook_type,
             "resource": resource,
             "events": {"has_every": events},
+        },
+        include=INTEGRATION_WEBHOOK_INCLUDE,
+    )
+    return Webhook.from_db(webhook) if webhook else None
+
+
+async def find_webhook_by_graph_and_props(
+    graph_id: str, provider: str, webhook_type: str, events: list[str]
+) -> Webhook | None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    webhook = await IntegrationWebhook.prisma().find_first(
+        where={
+            "provider": provider,
+            "webhookType": webhook_type,
+            "events": {"has_every": events},
+            "AgentNodes": {"some": {"agentGraphId": graph_id}},
         },
         include=INTEGRATION_WEBHOOK_INCLUDE,
     )

@@ -98,7 +98,9 @@ const FlowEditor: React.FC<{
     requestSaveAndRun,
     requestStopRun,
     scheduleRunner,
+    isSaving,
     isRunning,
+    isStopping,
     isScheduling,
     setIsScheduling,
     nodes,
@@ -679,7 +681,8 @@ const FlowEditor: React.FC<{
             botChildren={
               <SaveControl
                 agentMeta={savedAgent}
-                onSave={(isTemplate) => requestSave(isTemplate ?? false)}
+                canSave={!isSaving && !isRunning && !isStopping}
+                onSave={() => requestSave()}
                 agentDescription={agentDescription}
                 onDescriptionChange={setAgentDescription}
                 agentName={agentName}

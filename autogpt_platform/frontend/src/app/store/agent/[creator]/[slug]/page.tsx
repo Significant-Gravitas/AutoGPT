@@ -35,22 +35,26 @@ export default async function Page({
 }: {
   params: { creator: string; slug: string };
 }) {
+  const creator_lower = params.creator.toLowerCase();
   const api = new BackendAPI();
-  const agent = await api.getStoreAgent(params.creator, params.slug);
-  const otherAgents = await api.getStoreAgents({ creator: params.creator });
+  const agent = await api.getStoreAgent(creator_lower, params.slug);
+  const otherAgents = await api.getStoreAgents({ creator: creator_lower });
   const similarAgents = await api.getStoreAgents({
     search_query: agent.categories[0],
   });
 
   const breadcrumbs = [
     { name: "Store", link: "/store" },
-    { name: agent.creator, link: `/store/creator/${agent.creator}` },
+    {
+      name: agent.creator,
+      link: `/store/creator/${encodeURIComponent(agent.creator)}`,
+    },
     { name: agent.agent_name, link: "#" },
   ];
 
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
-      <main className="px-4 md:mt-4 lg:mt-8">
+      <main className="mt-5 px-4">
         <BreadCrumbs items={breadcrumbs} />
 
         <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
@@ -68,14 +72,20 @@ export default async function Page({
               storeListingVersionId={agent.store_listing_version_id}
             />
           </div>
-          <AgentImages images={agent.agent_image} />
+          <AgentImages
+            images={
+              agent.agent_video
+                ? [agent.agent_video, ...agent.agent_image]
+                : agent.agent_image
+            }
+          />
         </div>
-        <Separator className="my-6" />
+        <Separator className="mb-[25px] mt-6" />
         <AgentsSection
           agents={otherAgents.agents}
           sectionTitle={`Other agents by ${agent.creator}`}
         />
-        <Separator className="my-6" />
+        <Separator className="mb-[25px] mt-6" />
         <AgentsSection
           agents={similarAgents.agents}
           sectionTitle="Similar agents"

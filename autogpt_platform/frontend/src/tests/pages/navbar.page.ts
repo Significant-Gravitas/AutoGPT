@@ -9,15 +9,15 @@ export class NavBar {
   }
 
   async clickMonitorLink() {
-    await this.page.getByRole("link", { name: "Library" }).click();
+    await this.page.getByTestId("navbar-link-library").click();
   }
 
   async clickBuildLink() {
-    await this.page.locator('a[href="/build"] div').click();
+    await this.page.getByTestId("navbar-link-build").click();
   }
 
   async clickMarketplaceLink() {
-    await this.page.locator('a[href="/store"]').click();
+    await this.page.getByTestId("navbar-link-marketplace").click();
   }
 
   async getUserMenuButton() {
@@ -25,7 +25,7 @@ export class NavBar {
   }
 
   async clickUserMenu() {
-    await this.page.getByTestId("profile-popout-menu-trigger").click();
+    await (await this.getUserMenuButton()).click();
   }
 
   async logout() {
@@ -35,7 +35,9 @@ export class NavBar {
 
   async isLoggedIn(): Promise<boolean> {
     try {
-      await this.page.getByTestId("profile-popout-menu-trigger").waitFor({
+      await (
+        await this.getUserMenuButton()
+      ).waitFor({
         state: "visible",
         timeout: 10_000,
       });

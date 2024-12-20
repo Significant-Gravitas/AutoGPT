@@ -280,7 +280,11 @@ export default class BackendAPI {
     username: string,
     agentName: string,
   ): Promise<StoreAgentDetails> {
-    return this._get(`/store/agents/${username}/${agentName}`);
+    return this._get(
+      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
+        agentName,
+      )}`,
+    );
   }
 
   getStoreCreators(params?: {
@@ -294,7 +298,7 @@ export default class BackendAPI {
   }
 
   getStoreCreator(username: string): Promise<CreatorDetails> {
-    return this._get(`/store/creator/${username}`);
+    return this._get(`/store/creator/${encodeURIComponent(username)}`);
   }
 
   getStoreSubmissions(params?: {
@@ -310,6 +314,15 @@ export default class BackendAPI {
     return this._request("POST", "/store/submissions", submission);
   }
 
+  generateStoreSubmissionImage(
+    agent_id: string,
+  ): Promise<{ image_url: string }> {
+    return this._request(
+      "POST",
+      "/store/submissions/generate_image?agent_id=" + agent_id,
+    );
+  }
+  c;
   deleteStoreSubmission(submission_id: string): Promise<boolean> {
     return this._request("DELETE", `/store/submissions/${submission_id}`);
   }
@@ -332,7 +345,9 @@ export default class BackendAPI {
     console.log("Reviewing agent: ", username, agentName, review);
     return this._request(
       "POST",
-      `/store/agents/${username}/${agentName}/review`,
+      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
+        agentName,
+      )}/review`,
       review,
     );
   }
@@ -453,16 +468,6 @@ export default class BackendAPI {
         await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
       }
     }
-    console.log("Request: ", method, path, "from: ", page);
-    if (token === "no-token-found") {
-      console.warn(
-        "No auth token found after retries. This may indicate a session sync issue between client and server.",
-      );
-      console.debug("Last session attempt:", retryCount);
-    } else {
-      console.log("Auth token found");
-    }
-    console.log("--------------------------------");
 
     let url = this.baseUrl + path;
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
