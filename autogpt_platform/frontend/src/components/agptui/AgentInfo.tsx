@@ -101,24 +101,24 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Description Section */}
       <div className="mb-4 w-full lg:mb-[36px]">
-        <div className="mb-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:mb-2 sm:text-sm">
+        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 underline underline-offset-[from-font] dark:text-neutral-200 sm:mb-2">
           Description
         </div>
-        <div className="font-geist w-full whitespace-pre-line text-sm font-normal text-neutral-600 dark:text-neutral-300 sm:text-base">
+        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           {longDescription}
         </div>
       </div>
 
       {/* Categories */}
       <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-[36px]">
-        <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
+        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 underline underline-offset-[from-font] dark:text-neutral-200 sm:mb-2">
           Categories
         </div>
         <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {categories.map((category, index) => (
             <div
               key={index}
-              className="whitespace-nowrap rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-xs text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-3 sm:py-1 sm:text-sm"
+              className="font-geist decoration-skip-ink-none whitespace-nowrap rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base font-normal leading-6 text-neutral-800 underline-offset-[from-font] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-[16px] sm:py-[10px]"
             >
               {category}
             </div>
@@ -128,10 +128,10 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Version History */}
       <div className="flex w-full flex-col gap-0.5 sm:gap-1">
-        <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
+        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 underline underline-offset-[from-font] dark:text-neutral-200 sm:mb-2">
           Version history
         </div>
-        <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
+        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           Last updated {lastUpdated}
         </div>
         <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
