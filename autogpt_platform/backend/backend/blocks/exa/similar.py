@@ -8,26 +8,18 @@ from backend.blocks.exa._auth import (
     ExaCredentialsField,
     ExaCredentialsInput,
 )
-from backend.blocks.exa.helpers import ContentSettings
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import requests
 
-class ExaSearchBlock(Block):
+from .helpers import ContentSettings
+
+
+class ExaFindSimilarBlock(Block):
     class Input(BlockSchema):
         credentials: ExaCredentialsInput = ExaCredentialsField()
-        query: str = SchemaField(description="The search query")
-        useAutoprompt: bool = SchemaField(
-            description="Whether to use autoprompt",
-            default=True,
-        )
-        type: str = SchemaField(
-            description="Type of search",
-            default="",
-        )
-        category: str = SchemaField(
-            description="Category to search within",
-            default="",
+        url: str = SchemaField(
+            description="The url for which you would like to find similar links"
         )
         numResults: int = SchemaField(
             description="Number of results to return",
@@ -54,11 +46,11 @@ class ExaSearchBlock(Block):
             description="End date for published content",
         )
         includeText: List[str] = SchemaField(
-            description="Text patterns to include",
+            description="Text patterns to include (max 1 string, up to 5 words)",
             default=[],
         )
         excludeText: List[str] = SchemaField(
-            description="Text patterns to exclude",
+            description="Text patterns to exclude (max 1 string, up to 5 words)",
             default=[],
         )
         contents: ContentSettings = SchemaField(
@@ -68,41 +60,49 @@ class ExaSearchBlock(Block):
 
     class Output(BlockSchema):
         results: list = SchemaField(
-            description="List of search results",
+            description="List of similar documents with title, URL, published date, author, and score",
             default=[],
         )
 
     def __init__(self):
         super().__init__(
-            id="996cec64-ac40-4dde-982f-b0dc60a5824d",
-            description="Searches the web using Exa's advanced search API",
+            id="5e7315d1-af61-4a0c-9350-7c868fa7438a",
+            description="Finds similar links using Exa's findSimilar API",
             categories={BlockCategory.SEARCH},
-            input_schema=ExaSearchBlock.Input,
-            output_schema=ExaSearchBlock.Output,
+            input_schema=ExaFindSimilarBlock.Input,
+            output_schema=ExaFindSimilarBlock.Output,
         )
 
     def run(
         self, input_data: Input, *, credentials: ExaCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/search"
+        url = "https://api.exa.ai/findSimilar"
         headers = {
             "Content-Type": "application/json",
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
         payload = {
-            "query": input_data.query,
-            "useAutoprompt": input_data.useAutoprompt,
+            "url": input_data.url,
             "numResults": input_data.numResults,
             "contents": {
-                "text": {"maxCharacters": 1000, "includeHtmlTags": False},
-                "highlights": {
-                    "numSentences": 3,
-                    "highlightsPerUrl": 3,
-                },
-                "summary": {"query": ""},
+                "text": input_data.contents.text,
+                "highlights": input_data.contents.highlights,
+                "summary": input_data.contents.summary,
             },
         }
+
+        # Add optional fields if they have values
+        optional_fields = [
+            "includeDomains",
+            "excludeDomains",
+            "includeText",
+            "excludeText",
+        ]
+        for field in optional_fields:
+            value = getattr(input_data, field)
+            if value:  # Only add non-empty values
+                payload[field] = value
 
         # Add dates if they exist
         date_fields = [
@@ -116,26 +116,10 @@ class ExaSearchBlock(Block):
             if value:
                 payload[field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-        # Add other fields
-        optional_fields = [
-            "type",
-            "category",
-            "includeDomains",
-            "excludeDomains",
-            "includeText",
-            "excludeText",
-        ]
-
-        for field in optional_fields:
-            value = getattr(input_data, field)
-            if value:  # Only add non-empty values
-                payload[field] = value
-
         try:
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
-            # Extract just the results array from the response
             yield "results", data.get("results", [])
         except Exception as e:
             yield "error", str(e)
