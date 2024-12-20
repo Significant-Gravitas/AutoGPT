@@ -676,7 +676,7 @@ async def update_or_create_profile(
             if profile.name is not None:
                 update_data["name"] = profile.name
             if profile.username is not None:
-                update_data["username"] = profile.username
+                update_data["username"] = profile.username.lower()
             if profile.description is not None:
                 update_data["description"] = profile.description
             if profile.links is not None:
