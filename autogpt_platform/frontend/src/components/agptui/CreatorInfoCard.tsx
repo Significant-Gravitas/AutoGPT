@@ -57,7 +57,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
               {categories.map((category, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-center gap-2.5 rounded-[34px] border border-neutral-600 px-5 py-3 dark:border-neutral-400"
+                  className="flex items-center justify-center gap-2.5 rounded-[34px] border border-neutral-600 px-4 py-3 dark:border-neutral-400"
                   role="listitem"
                 >
                   <div className="font-neue text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
