@@ -4,6 +4,74 @@
   transition: border-color 0.3s ease-in-out;
 }
 
+.custom-node [data-id="input-handles"] {
+  padding: 0 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.custom-node [data-id="input-handles"] > div > div {
+  margin-bottom: 1rem;
+}
+
+.handle-container {
+  display: flex;
+  position: relative;
+  margin-bottom: 0px;
+  padding: 0.75rem 1.25rem;
+  min-height: 44px;
+  height: 100%;
+}
+
+.custom-node input:not([type="checkbox"]),
+.custom-node textarea,
+.custom-node select {
+  width: calc(100% - 2.5rem);
+  max-width: 400px;
+  margin: 0.5rem 1.25rem;
+}
+
+.custom-node [data-id^="date-picker"] {
+  margin: 0.5rem 1.25rem;
+  width: calc(100% - 2.5rem);
+}
+
+.custom-node [data-list-container] {
+  margin: 0.5rem 1.25rem;
+  width: calc(100% - 2.5rem);
+}
+
+.custom-node [data-add-item] {
+  margin: 0.5rem 1.25rem;
+  width: calc(100% - 2.5rem);
+  padding: 0.5rem;
+}
+
+.array-item-container {
+  display: flex;
+  align-items: center;
+  margin: 0.5rem 1.25rem;
+  width: calc(100% - 2.5rem);
+}
+
+.custom-node [data-content-settings] {
+  margin: 0.5rem 1.25rem;
+  width: calc(100% - 2.5rem);
+}
+
+.custom-node .custom-switch {
+  padding: 0.5rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.error-message {
+  color: #d9534f;
+  font-size: 13px;
+  margin: 0.25rem 1.25rem;
+  padding-left: 0.5rem;
+}
+
 /* Existing styles */
 .handle-container {
   display: flex;
