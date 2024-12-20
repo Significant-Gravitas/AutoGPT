@@ -269,7 +269,11 @@ export default class BackendAPI {
     username: string,
     agentName: string,
   ): Promise<StoreAgentDetails> {
-    return this._get(`/store/agents/${username}/${agentName}`);
+    return this._get(
+      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
+        agentName,
+      )}`,
+    );
   }
 
   getStoreCreators(params?: {
@@ -283,7 +287,7 @@ export default class BackendAPI {
   }
 
   getStoreCreator(username: string): Promise<CreatorDetails> {
-    return this._get(`/store/creator/${username}`);
+    return this._get(`/store/creator/${encodeURIComponent(username)}`);
   }
 
   getStoreSubmissions(params?: {
@@ -330,7 +334,9 @@ export default class BackendAPI {
     console.log("Reviewing agent: ", username, agentName, review);
     return this._request(
       "POST",
-      `/store/agents/${username}/${agentName}/review`,
+      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
+        agentName,
+      )}/review`,
       review,
     );
   }
