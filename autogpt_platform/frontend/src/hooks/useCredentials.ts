@@ -94,6 +94,8 @@ export default function useCredentials(): CredentialsData | null {
       )
     : provider.savedOAuthCredentials;
 
+  const savedUserPasswordCredentials = provider.savedUserPasswordCredentials;
+
   return {
     ...provider,
     provider: providerName,
@@ -102,6 +104,7 @@ export default function useCredentials(): CredentialsData | null {
     supportsOAuth2,
     supportsUserPassword,
     savedOAuthCredentials,
+    savedUserPasswordCredentials,
     isLoading: false,
   };
 }

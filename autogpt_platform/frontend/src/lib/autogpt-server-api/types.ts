@@ -121,6 +121,7 @@ export const PROVIDER_NAMES = {
   SLANT3D: "slant3d",
   REPLICATE: "replicate",
   FAL: "fal",
+  REDDIT: "reddit",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
   EXA: "exa",

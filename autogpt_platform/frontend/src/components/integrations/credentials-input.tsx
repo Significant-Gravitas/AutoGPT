@@ -66,6 +66,7 @@ export const providerIcons: Record<
   pinecone: fallbackIcon,
   slant3d: fallbackIcon,
   replicate: fallbackIcon,
+  reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
@@ -271,6 +272,12 @@ export const CredentialsInput: FC<{
               Enter API key
             </Button>
           )}
+          {supportsUserPassword && (
+            <Button onClick={() => setUserPasswordCredentialsModalOpen(true)}>
+              <ProviderIcon className="mr-2 h-4 w-4" />
+              Enter user password
+            </Button>
+          )}
         </div>
         {modals}
         {oAuthError && (
@@ -342,6 +349,13 @@ export const CredentialsInput: FC<{
               {credentials.title}
             </SelectItem>
           ))}
+          {savedUserPasswordCredentials.map((credentials, index) => (
+            <SelectItem key={index} value={credentials.id}>
+              <ProviderIcon className="mr-2 inline h-4 w-4" />
+              <IconUserPlus className="mr-1.5 inline" />
+              {credentials.title}
+            </SelectItem>
+          ))}
           <SelectSeparator />
           {supportsOAuth2 && (
             <SelectItem value="sign-in">
@@ -353,6 +367,12 @@ export const CredentialsInput: FC<{
             <SelectItem value="add-api-key">
               <IconKeyPlus className="mr-1.5 inline" />
               Add new API key
+            </SelectItem>
+          )}
+          {supportsUserPassword && (
+            <SelectItem value="add-user-password">
+              <IconUserPlus className="mr-1.5 inline" />
+              Add new user password
             </SelectItem>
           )}
         </SelectContent>
