@@ -1,21 +1,19 @@
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Iterator, Literal
 
-from backend.util.settings import Settings
 import praw
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField, UserPasswordCredentials
-from backend.util.mock import MockObject
-
-
-from typing import Literal
-
-from pydantic import SecretStr
-
-from backend.data.model import CredentialsField, CredentialsMetaInput
+from backend.data.model import (
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    UserPasswordCredentials,
+)
 from backend.integrations.providers import ProviderName
+from backend.util.mock import MockObject
+from backend.util.settings import Settings
 
 RedditCredentials = UserPasswordCredentials
 RedditCredentialsInput = CredentialsMetaInput[

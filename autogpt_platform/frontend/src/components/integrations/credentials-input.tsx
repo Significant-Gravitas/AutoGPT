@@ -77,14 +77,14 @@ export const providerIcons: Record<
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {
-    success: true;
-    code: string;
-    state: string;
-  }
+      success: true;
+      code: string;
+      state: string;
+    }
   | {
-    success: false;
-    message: string;
-  }
+      success: false;
+      message: string;
+    }
 );
 
 export const CredentialsInput: FC<{
@@ -96,8 +96,10 @@ export const CredentialsInput: FC<{
   const credentials = useCredentials();
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
-  const [isUserPasswordCredentialsModalOpen, setUserPasswordCredentialsModalOpen] =
-    useState(false);
+  const [
+    isUserPasswordCredentialsModalOpen,
+    setUserPasswordCredentialsModalOpen,
+  ] = useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupController, setOAuthPopupController] =
     useState<AbortController | null>(null);
@@ -182,7 +184,8 @@ export const CredentialsInput: FC<{
         console.error("Error in OAuth callback:", error);
         setOAuthError(
           // type of error is unkown so we need to use String(error)
-          `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)
+          `Error in OAuth callback: ${
+            error instanceof Error ? error.message : String(error)
           }`,
         );
       } finally {
@@ -549,7 +552,11 @@ export const UserPasswordCredentialsModal: FC<{
     },
   });
 
-  if (!credentials || credentials.isLoading || !credentials.supportsUserPassword) {
+  if (
+    !credentials ||
+    credentials.isLoading ||
+    !credentials.supportsUserPassword
+  ) {
     return null;
   }
 
@@ -590,7 +597,11 @@ export const UserPasswordCredentialsModal: FC<{
                 <FormItem>
                   <FormLabel>Username</FormLabel>
                   <FormControl>
-                    <Input type="text" placeholder="Enter username..." {...field} />
+                    <Input
+                      type="text"
+                      placeholder="Enter username..."
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -603,7 +614,11 @@ export const UserPasswordCredentialsModal: FC<{
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Enter password..." {...field} />
+                    <Input
+                      type="password"
+                      placeholder="Enter password..."
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -616,7 +631,11 @@ export const UserPasswordCredentialsModal: FC<{
                 <FormItem>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <Input type="text" placeholder="Enter a name for this user password..." {...field} />
+                    <Input
+                      type="text"
+                      placeholder="Enter a name for this user password..."
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

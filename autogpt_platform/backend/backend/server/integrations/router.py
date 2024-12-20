@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
@@ -12,11 +12,9 @@ from backend.data.integrations import (
     publish_webhook_event,
     wait_for_webhook_event,
 )
-from backend.data.model import (
     APIKeyCredentials,
     Credentials,
     CredentialsType,
-    OAuth2Credentials,
     UserPasswordCredentials,
 )
 from backend.executor.manager import ExecutionManager

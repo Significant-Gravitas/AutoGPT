@@ -116,9 +116,6 @@ export default function CredentialsProvider({
             credentials,
           ];
         } else if (credentials.type === "user_password") {
-          console.log("Adding user password credentials", credentials);
-          console.log("Updated provider", updatedProvider);
-          console.log("Updated provider savedUserPasswordCredentials", updatedProvider.savedUserPasswordCredentials);
           updatedProvider.savedUserPasswordCredentials = [
             ...updatedProvider.savedUserPasswordCredentials,
             credentials,
@@ -297,7 +294,13 @@ export default function CredentialsProvider({
         }));
       });
     });
-  }, [api, createAPIKeyCredentials, createUserPasswordCredentials, deleteCredentials, oAuthCallback]);
+  }, [
+    api,
+    createAPIKeyCredentials,
+    createUserPasswordCredentials,
+    deleteCredentials,
+    oAuthCallback,
+  ]);
 
   return (
     <CredentialsProvidersContext.Provider value={providers}>
