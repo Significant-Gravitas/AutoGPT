@@ -71,12 +71,12 @@ export default async function Page({
           </div>
           <AgentImages images={[agent.agent_video, ...agent.agent_image]} />
         </div>
-        <Separator className="my-6" />
+        <Separator className="mb-[25px] mt-6" />
         <AgentsSection
           agents={otherAgents.agents}
           sectionTitle={`Other agents by ${agent.creator}`}
         />
-        <Separator className="my-6" />
+        <Separator className="mb-[25px] mt-6" />
         <AgentsSection
           agents={similarAgents.agents}
           sectionTitle="Similar agents"
