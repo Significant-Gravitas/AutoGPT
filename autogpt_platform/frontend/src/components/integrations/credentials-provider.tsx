@@ -21,10 +21,13 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   discord: "Discord",
   d_id: "D-ID",
   e2b: "E2B",
+  exa: "Exa",
+  fal: "FAL",
   github: "GitHub",
   google: "Google",
   google_maps: "Google Maps",
   groq: "Groq",
+  hubspot: "Hubspot",
   ideogram: "Ideogram",
   jina: "Jina",
   medium: "Medium",
@@ -37,11 +40,8 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   slant3d: "Slant3D",
   reddit: "Reddit",
   replicate: "Replicate",
-  fal: "FAL",
   revid: "Rev.ID",
   unreal_speech: "Unreal Speech",
-  exa: "Exa",
-  hubspot: "Hubspot",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
 

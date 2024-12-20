@@ -105,10 +105,13 @@ export const PROVIDER_NAMES = {
   D_ID: "d_id",
   DISCORD: "discord",
   E2B: "e2b",
+  EXA: "exa",
+  FAL: "fal",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
   GROQ: "groq",
+  HUBSPOT: "hubspot",
   IDEOGRAM: "ideogram",
   JINA: "jina",
   MEDIUM: "medium",
@@ -120,12 +123,9 @@ export const PROVIDER_NAMES = {
   PINECONE: "pinecone",
   SLANT3D: "slant3d",
   REPLICATE: "replicate",
-  FAL: "fal",
   REDDIT: "reddit",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
-  EXA: "exa",
-  HUBSPOT: "hubspot",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
