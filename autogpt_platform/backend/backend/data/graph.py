@@ -521,13 +521,13 @@ async def get_graph(
     """
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
-        "isTemplate": template,
     }
     if version is not None:
         where_clause["version"] = version
     elif not template:
         where_clause["isActive"] = True
 
+    # TODO: Fix hack workaround to get adding store agents to work
     if user_id is not None and not template:
         where_clause["userId"] = user_id
 
