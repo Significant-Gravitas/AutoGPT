@@ -47,7 +47,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
 
     return (
       <div className="relative">
-        <div className="h-[15rem] overflow-hidden rounded-xl bg-[#a8a8a8] dark:bg-neutral-700 sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+        <div className="h-[15rem] overflow-hidden rounded-[26px] bg-[#a8a8a8] dark:bg-neutral-700 sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
           {isValidVideoUrl(image) ? (
             getYouTubeVideoId(image) ? (
               <iframe
