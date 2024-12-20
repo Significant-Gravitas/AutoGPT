@@ -77,7 +77,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
                 Average rating
               </div>
               <div className="inline-flex items-center gap-2">
-                <div className="font-neue text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+                <div className="font-geist text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                   {averageRating.toFixed(1)}
                 </div>
                 <div
@@ -93,7 +93,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
               <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Number of runs
               </div>
-              <div className="font-neue text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+              <div className="font-geist text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                 {new Intl.NumberFormat().format(totalRuns)} runs
               </div>
             </div>
