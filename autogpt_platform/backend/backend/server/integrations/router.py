@@ -12,11 +12,7 @@ from backend.data.integrations import (
     publish_webhook_event,
     wait_for_webhook_event,
 )
-    APIKeyCredentials,
-    Credentials,
-    CredentialsType,
-    UserPasswordCredentials,
-)
+from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
 from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
