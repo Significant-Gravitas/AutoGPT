@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -13,21 +13,24 @@ from backend.util.request import requests
 
 
 class ContentRetrievalSettings(BaseModel):
-    text: dict = SchemaField(
+    text: Optional[dict] = SchemaField(
         description="Text content settings",
         default={"maxCharacters": 1000, "includeHtmlTags": False},
+        advanced=True,
     )
-    highlights: dict = SchemaField(
+    highlights: Optional[dict] = SchemaField(
         description="Highlight settings",
         default={
             "numSentences": 3,
             "highlightsPerUrl": 3,
             "query": "",
         },
+        advanced=True,
     )
-    summary: dict = SchemaField(
+    summary: Optional[dict] = SchemaField(
         description="Summary settings",
         default={"query": ""},
+        advanced=True,
     )
 
 
@@ -40,6 +43,7 @@ class ExaContentsBlock(Block):
         contents: ContentRetrievalSettings = SchemaField(
             description="Content retrieval settings",
             default=ContentRetrievalSettings(),
+            advanced=True,
         )
 
     class Output(BlockSchema):
