@@ -5,6 +5,7 @@ import { IconPlay, StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 interface AgentInfoProps {
   name: string;
   creator: string;
@@ -56,9 +57,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         <div className="font-geist text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           by
         </div>
-        <div className="font-geist text-base font-medium text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
+        <Link
+          href={`/store/creator/${creator}`}
+          className="font-geist text-base font-medium text-neutral-800 hover:underline dark:text-neutral-200 sm:text-lg lg:text-xl"
+        >
           {creator}
-        </div>
+        </Link>
       </div>
 
       {/* Short Description */}
