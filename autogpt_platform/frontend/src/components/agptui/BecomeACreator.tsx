@@ -31,7 +31,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       </h2>
 
       {/* Content Container */}
-      <div className="absolute left-1/2 top-1/2 mt-[60px] w-full max-w-[900px] -translate-x-1/2 -translate-y-1/2 px-4 pt-16 text-center sm:mt-0 md:px-6 lg:px-0">
+      <div className="absolute left-1/2 top-1/2 w-full max-w-[900px] -translate-x-1/2 -translate-y-1/2 px-4 pt-16 text-center md:px-6 lg:px-0">
         <h2 className="font-poppins underline-from-font decoration-skip-ink-none mb-6 text-center text-[48px] font-semibold leading-[54px] tracking-[-0.012em] text-neutral-950 dark:text-neutral-50 md:mb-8 lg:mb-12">
           Build AI agents and share
           <br />

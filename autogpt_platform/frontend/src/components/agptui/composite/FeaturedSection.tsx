@@ -40,7 +40,9 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   const router = useRouter();
 
   const handleCardClick = (creator: string, slug: string) => {
-    router.push(`/store/agent/${creator}/${slug}`);
+    router.push(
+      `/store/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+    );
   };
 
   const handlePrevSlide = useCallback(() => {
