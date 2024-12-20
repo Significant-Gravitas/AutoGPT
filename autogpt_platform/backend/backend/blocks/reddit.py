@@ -127,7 +127,7 @@ class GetRedditPostsBlock(Block):
                 ),
             ],
             test_mock={
-                "get_posts": lambda _: [
+                "get_posts": lambda input_data, credentials: [
                     MockObject(id="id1", title="title1", selftext="body1"),
                     MockObject(id="id2", title="title2", selftext="body2"),
                     MockObject(id="id3", title="title2", selftext="body2"),
@@ -147,7 +147,7 @@ class GetRedditPostsBlock(Block):
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
         current_time = datetime.now(tz=timezone.utc)
-        for post in self.get_posts(input_data, credentials=credentials):
+        for post in self.get_posts(input_data=input_data, credentials=credentials):
             if input_data.last_minutes:
                 post_datetime = datetime.fromtimestamp(
                     post.created_utc, tz=timezone.utc
