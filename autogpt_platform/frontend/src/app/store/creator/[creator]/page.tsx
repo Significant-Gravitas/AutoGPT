@@ -67,7 +67,7 @@ export default async function Page({
               <p className="font-geist text-underline-position-from-font text-decoration-skip-none text-left text-base font-medium leading-6">
                 About
               </p>
-              <div className="font-neue text-2xl font-normal leading-normal text-neutral-900 dark:text-zinc-50 sm:text-3xl md:text-[35px] md:leading-[45px]">
+              <div className="font-poppins text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50">
                 {creator.description}
               </div>
               <CreatorLinks links={creator.links} />
