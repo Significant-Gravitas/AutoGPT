@@ -38,7 +38,7 @@ async def generate_agent_image(agent: Graph) -> io.BytesIO:
             raise ValueError("Missing Replicate API key in settings")
 
         # Construct prompt from agent details
-        prompt = f"App store image for AI agent that gives a cool visual representation of what the agent does: - {agent.name} - {agent.description}"
+        prompt = f"Create a visually engaging app store thumbnail for the AI agent that highlights what it does in a clear and captivating way:\n- **Name**: {agent.name}\n- **Description**: {agent.description}\nFocus on showcasing its core functionality with an appealing design."
 
         # Set up Replicate client
         client = replicate.Client(api_token=settings.secrets.replicate_api_key)
@@ -59,7 +59,7 @@ async def generate_agent_image(agent: Graph) -> io.BytesIO:
 
         try:
             # Run model
-            output = client.run("black-forest-labs/flux-pro", input=input_data)
+            output = client.run("black-forest-labs/flux-1.1-pro", input=input_data)
 
             # Depending on the model output, extract the image URL or bytes
             # If the output is a list of FileOutput or URLs
