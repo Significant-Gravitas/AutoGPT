@@ -113,7 +113,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
               />
             ))}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-[60px]">
             <button
               onClick={handlePrevSlide}
               className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 bg-white dark:border-neutral-600 dark:bg-neutral-800"
