@@ -26,7 +26,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       <div className="left-0 top-0 h-px w-full bg-gray-200 dark:bg-gray-700" />
 
       {/* Title */}
-      <h2 className="mb-[77px] mt-[25px] text-2xl leading-7 text-neutral-800 dark:text-neutral-200">
+      <h2 className="font-poppins underline-from-font decoration-skip-ink-none mb-[77px] mt-[25px] text-left text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
         {title}
       </h2>
 
