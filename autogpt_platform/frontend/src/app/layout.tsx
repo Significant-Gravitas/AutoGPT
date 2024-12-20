@@ -91,7 +91,7 @@ export default async function RootLayout({
                 },
               ]}
             />
-            <main className="flex-1 p-4">{children}</main>
+            <main className="flex-1 p-4 w-full">{children}</main>
             <TallyPopupSimple />
           </div>
           <Toaster />

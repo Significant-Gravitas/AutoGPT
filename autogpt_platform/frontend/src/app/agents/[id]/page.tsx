@@ -177,7 +177,7 @@ export default function AgentRunsPage(): React.ReactElement {
   }
 
   return (
-    <div className="flex gap-8">
+    <div className="flex gap-8 container">
       <aside className="flex w-72 flex-col gap-4">
         <Button className="flex w-full items-center gap-2 py-6">
           <Plus className="h-6 w-6" />
@@ -256,9 +256,9 @@ export default function AgentRunsPage(): React.ReactElement {
                 <CardTitle>Info</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex justify-evenly gap-4">
+                <div className="flex justify-stretch gap-4">
                   {infoStats.map(({ label, value }) => (
-                    <div key={label}>
+                    <div key={label} className="flex-1">
                       <p className="text-sm font-medium text-black">{label}</p>
                       <p className="text-sm text-neutral-600">{value}</p>
                     </div>
