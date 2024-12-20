@@ -33,10 +33,10 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
           </AvatarFallback>
         </Avatar>
         <div className="flex w-full flex-col items-start justify-start gap-1.5">
-          <div className="font-poppins w-full text-2xl font-medium leading-8 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
+          <div className="font-poppins w-full text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
             {username}
           </div>
-          <div className="w-full font-neue text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
+          <div className="font-geist w-full text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
             @{handle}
           </div>
         </div>
@@ -57,7 +57,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
               {categories.map((category, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-center gap-2.5 rounded-[34px] border border-neutral-600 px-5 py-3 dark:border-neutral-400"
+                  className="flex items-center justify-center gap-2.5 rounded-[34px] border border-neutral-600 px-4 py-3 dark:border-neutral-400"
                   role="listitem"
                 >
                   <div className="font-neue text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
@@ -77,7 +77,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
                 Average rating
               </div>
               <div className="inline-flex items-center gap-2">
-                <div className="font-neue text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+                <div className="font-geist text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                   {averageRating.toFixed(1)}
                 </div>
                 <div
@@ -93,7 +93,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
               <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Number of runs
               </div>
-              <div className="font-neue text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+              <div className="font-geist text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                 {new Intl.NumberFormat().format(totalRuns)} runs
               </div>
             </div>
