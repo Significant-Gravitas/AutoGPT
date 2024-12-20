@@ -151,7 +151,7 @@ async def get_agent(
     It returns the store listing agents details.
     """
     try:
-        username = urllib.parse.unquote(username)
+        username = urllib.parse.unquote(username).lower()
         # URL decode the agent name since it comes from the URL path
         agent_name = urllib.parse.unquote(agent_name)
         agent = await backend.server.v2.store.db.get_store_agent_details(
@@ -189,7 +189,7 @@ async def create_review(
         The created review
     """
     try:
-        username = urllib.parse.unquote(username)
+        username = urllib.parse.unquote(username).lower()
         agent_name = urllib.parse.unquote(agent_name)
         # Create the review
         created_review = await backend.server.v2.store.db.create_store_review(
@@ -261,7 +261,7 @@ async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDet
     - Creator Details Page
     """
     try:
-        username = urllib.parse.unquote(username)
+        username = urllib.parse.unquote(username).lower()
         creator = await backend.server.v2.store.db.get_store_creator_details(
             username=username.lower()
         )
