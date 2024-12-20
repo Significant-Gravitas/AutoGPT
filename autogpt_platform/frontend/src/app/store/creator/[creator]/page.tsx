@@ -44,7 +44,7 @@ export default async function Page({
 
     return (
       <div className="mx-auto w-screen max-w-[1360px]">
-        <main className="px-4 md:mt-4 lg:mt-8">
+        <main className="mt-5 px-4">
           <BreadCrumbs
             items={[
               { name: "Store", link: "/store" },

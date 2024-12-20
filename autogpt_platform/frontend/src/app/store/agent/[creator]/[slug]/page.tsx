@@ -51,7 +51,7 @@ export default async function Page({
 
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
-      <main className="px-4 md:mt-4 lg:mt-8">
+      <main className="mt-5 px-4">
         <BreadCrumbs items={breadcrumbs} />
 
         <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
