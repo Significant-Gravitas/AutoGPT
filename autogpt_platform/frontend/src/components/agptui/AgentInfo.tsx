@@ -47,7 +47,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
       {/* Title */}
-      <div className="font-poppins decoration-skip-[none] mb-3 w-full text-[35px] font-medium leading-[40px] tracking-[-0.0075em] text-neutral-900 underline-offset-[from-font] dark:text-neutral-100">
+      <div className="font-poppins mb-3 w-full text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
         {name}
       </div>
 
@@ -67,7 +67,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       </div>
 
       {/* Run Agent Button */}
-      <div className="mb-4 w-full lg:mb-6">
+      <div className="mb-4 w-full lg:mb-[60px]">
         <button
           onClick={handleAddToLibrary}
           className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
@@ -80,7 +80,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       </div>
 
       {/* Rating and Runs */}
-      <div className="mb-4 flex w-full items-center justify-between lg:mb-6">
+      <div className="mb-4 flex w-full items-center justify-between lg:mb-[44px]">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <span className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
             {rating.toFixed(1)}
@@ -93,10 +93,10 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       </div>
 
       {/* Separator */}
-      <Separator className="mb-4 lg:mb-6" />
+      <Separator className="mb-4 lg:mb-[44px]" />
 
       {/* Description Section */}
-      <div className="mb-4 w-full lg:mb-6">
+      <div className="mb-4 w-full lg:mb-[36px]">
         <div className="mb-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:mb-2 sm:text-sm">
           Description
         </div>
@@ -106,7 +106,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       </div>
 
       {/* Categories */}
-      <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-6">
+      <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-[36px]">
         <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 sm:text-sm">
           Categories
         </div>
