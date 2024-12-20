@@ -36,7 +36,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
           <div className="font-poppins w-full text-2xl font-medium leading-8 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
             {username}
           </div>
-          <div className="w-full font-neue text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
+          <div className="font-geist w-full text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
             @{handle}
           </div>
         </div>
