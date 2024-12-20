@@ -76,14 +76,14 @@ export const providerIcons: Record<
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {
-      success: true;
-      code: string;
-      state: string;
-    }
+    success: true;
+    code: string;
+    state: string;
+  }
   | {
-      success: false;
-      message: string;
-    }
+    success: false;
+    message: string;
+  }
 );
 
 export const CredentialsInput: FC<{
@@ -94,6 +94,8 @@ export const CredentialsInput: FC<{
   const api = useBackendAPI();
   const credentials = useCredentials();
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
+    useState(false);
+  const [isUserPasswordCredentialsModalOpen, setUserPasswordCredentialsModalOpen] =
     useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupController, setOAuthPopupController] =
@@ -110,8 +112,10 @@ export const CredentialsInput: FC<{
     providerName,
     supportsApiKey,
     supportsOAuth2,
+    supportsUserPassword,
     savedApiKeys,
     savedOAuthCredentials,
+    savedUserPasswordCredentials,
     oAuthCallback,
   } = credentials;
 
@@ -177,8 +181,7 @@ export const CredentialsInput: FC<{
         console.error("Error in OAuth callback:", error);
         setOAuthError(
           // type of error is unkown so we need to use String(error)
-          `Error in OAuth callback: ${
-            error instanceof Error ? error.message : String(error)
+          `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)
           }`,
         );
       } finally {
@@ -222,6 +225,16 @@ export const CredentialsInput: FC<{
           open={isOAuth2FlowInProgress}
           onClose={() => oAuthPopupController?.abort("canceled")}
           providerName={providerName}
+        />
+      )}
+      {supportsUserPassword && (
+        <UserPasswordCredentialsModal
+          open={isUserPasswordCredentialsModalOpen}
+          onClose={() => setUserPasswordCredentialsModalOpen(false)}
+          onCredentialsCreate={(creds) => {
+            onSelectCredentials(creds);
+            setUserPasswordCredentialsModalOpen(false);
+          }}
         />
       )}
     </>
@@ -479,6 +492,72 @@ export const APIKeyCredentialsModal: FC<{
             />
             <Button type="submit" className="w-full">
               Save & use this API key
+            </Button>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export const UserPasswordCredentialsModal: FC<{
+  open: boolean;
+  onClose: () => void;
+  onCredentialsCreate: (creds: CredentialsMetaInput) => void;
+}> = ({ open, onClose, onCredentialsCreate }) => {
+  const credentials = useCredentials();
+
+  const formSchema = z.object({
+    username: z.string().min(1, "Username is required"),
+    password: z.string().min(1, "Password is required"),
+    title: z.string().min(1, "Name is required"),
+  });
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      title: "",
+    },
+  });
+
+  if (!credentials || credentials.isLoading || !credentials.supportsUserPassword) {
+    return null;
+  }
+
+  const { schema, provider, providerName, createUserPasswordCredentials } =
+    credentials;
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    const newCredentials = await createUserPasswordCredentials({
+      username: values.username,
+      password: values.password,
+      title: values.title,
+    });
+    onCredentialsCreate({
+      provider,
+      id: newCredentials.id,
+      type: "user_password",
+      title: newCredentials.title,
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add new user password for {providerName}</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Button type="submit" className="w-full">
+              Save & use this user password
             </Button>
           </form>
         </Form>

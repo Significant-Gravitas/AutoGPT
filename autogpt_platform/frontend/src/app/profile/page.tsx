@@ -130,7 +130,11 @@ export default function PrivatePage() {
             provider: provider.provider,
             providerName: provider.providerName,
             ProviderIcon: providerIcons[provider.provider],
-            TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+            TypeIcon: {
+              oauth2: IconUser,
+              api_key: IconKey,
+              user_password: IconKey,
+            }[credentials.type],
           })),
       )
     : [];
@@ -175,6 +179,7 @@ export default function PrivatePage() {
                     {
                       oauth2: "OAuth2 credentials",
                       api_key: "API key",
+                      user_password: "User password",
                     }[cred.type]
                   }{" "}
                   - <code>{cred.id}</code>

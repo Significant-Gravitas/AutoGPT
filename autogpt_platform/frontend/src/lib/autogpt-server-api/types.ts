@@ -97,7 +97,7 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   default?: boolean;
 };
 
-export type CredentialsType = "api_key" | "oauth2";
+export type CredentialsType = "api_key" | "oauth2" | "user_password";
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
@@ -312,6 +312,13 @@ export type APIKeyCredentials = BaseCredentials & {
   title: string;
   api_key: string;
   expires_at?: number;
+};
+
+export type UserPasswordCredentials = BaseCredentials & {
+  type: "user_password";
+  title: string;
+  username: string;
+  password: string;
 };
 
 export type User = {

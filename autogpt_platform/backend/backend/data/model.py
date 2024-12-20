@@ -204,12 +204,6 @@ class APIKeyCredentials(_BaseCredentials):
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
-class ClientSecretCredentials(_BaseCredentials):
-    type: Literal["client_secret"] = "client_secret"
-    client_id: SecretStr
-    client_secret: SecretStr
-
-
 class UserPasswordCredentials(_BaseCredentials):
     type: Literal["user_password"] = "user_password"
     username: SecretStr
@@ -217,15 +211,12 @@ class UserPasswordCredentials(_BaseCredentials):
 
 
 Credentials = Annotated[
-    OAuth2Credentials
-    | APIKeyCredentials
-    | ClientSecretCredentials
-    | UserPasswordCredentials,
+    OAuth2Credentials | APIKeyCredentials | UserPasswordCredentials,
     Field(discriminator="type"),
 ]
 
 
-CredentialsType = Literal["api_key", "oauth2", "client_secret", "user_password"]
+CredentialsType = Literal["api_key", "oauth2", "user_password"]
 
 
 class OAuthState(BaseModel):

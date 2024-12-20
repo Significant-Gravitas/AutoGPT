@@ -153,6 +153,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    reddit_user_agent: str = Field(
+        default="AutoGPT:1.0 (by /u/autogpt)",
+        description="The user agent for the Reddit API",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
@@ -267,8 +272,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
-    reddit_username: str = Field(default="", description="Reddit username")
-    reddit_password: str = Field(default="", description="Reddit password")
 
     openweathermap_api_key: str = Field(
         default="", description="OpenWeatherMap API key"

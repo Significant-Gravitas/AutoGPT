@@ -29,6 +29,7 @@ import {
   StoreReview,
   ScheduleCreatable,
   Schedule,
+  UserPasswordCredentials,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -185,6 +186,16 @@ export default class BackendAPI {
   createAPIKeyCredentials(
     credentials: Omit<APIKeyCredentials, "id" | "type">,
   ): Promise<APIKeyCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      credentials,
+    );
+  }
+
+  createUserPasswordCredentials(
+    credentials: Omit<UserPasswordCredentials, "id" | "type">,
+  ): Promise<UserPasswordCredentials> {
     return this._request(
       "POST",
       `/integrations/${credentials.provider}/credentials`,

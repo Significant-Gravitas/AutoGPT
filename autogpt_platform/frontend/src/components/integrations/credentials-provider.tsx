@@ -5,6 +5,7 @@ import {
   CredentialsMetaResponse,
   CredentialsProviderName,
   PROVIDER_NAMES,
+  UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { createContext, useCallback, useEffect, useState } from "react";
@@ -48,17 +49,26 @@ type APIKeyCredentialsCreatable = Omit<
   "id" | "provider" | "type"
 >;
 
+type UserPasswordCredentialsCreatable = Omit<
+  UserPasswordCredentials,
+  "id" | "provider" | "type"
+>;
+
 export type CredentialsProviderData = {
   provider: CredentialsProviderName;
   providerName: string;
   savedApiKeys: CredentialsMetaResponse[];
   savedOAuthCredentials: CredentialsMetaResponse[];
+  savedUserPasswordCredentials: CredentialsMetaResponse[];
   oAuthCallback: (
     code: string,
     state_token: string,
   ) => Promise<CredentialsMetaResponse>;
   createAPIKeyCredentials: (
     credentials: APIKeyCredentialsCreatable,
+  ) => Promise<CredentialsMetaResponse>;
+  createUserPasswordCredentials: (
+    credentials: UserPasswordCredentialsCreatable,
   ) => Promise<CredentialsMetaResponse>;
   deleteCredentials: (
     id: string,
@@ -104,6 +114,11 @@ export default function CredentialsProvider({
             ...updatedProvider.savedOAuthCredentials,
             credentials,
           ];
+        } else if (credentials.type === "user_password") {
+          updatedProvider.savedUserPasswordCredentials = [
+            ...updatedProvider.savedUserPasswordCredentials,
+            credentials,
+          ];
         }
 
         return {
@@ -136,6 +151,22 @@ export default function CredentialsProvider({
       credentials: APIKeyCredentialsCreatable,
     ): Promise<CredentialsMetaResponse> => {
       const credsMeta = await api.createAPIKeyCredentials({
+        provider,
+        ...credentials,
+      });
+      addCredentials(provider, credsMeta);
+      return credsMeta;
+    },
+    [api, addCredentials],
+  );
+
+  /** Wraps `BackendAPI.createUserPasswordCredentials`, and adds the result to the internal credentials store. */
+  const createUserPasswordCredentials = useCallback(
+    async (
+      provider: CredentialsProviderName,
+      credentials: UserPasswordCredentialsCreatable,
+    ): Promise<CredentialsMetaResponse> => {
+      const credsMeta = await api.createUserPasswordCredentials({
         provider,
         ...credentials,
       });
@@ -188,12 +219,18 @@ export default function CredentialsProvider({
         const credentialsByProvider = response.reduce(
           (acc, cred) => {
             if (!acc[cred.provider]) {
-              acc[cred.provider] = { oauthCreds: [], apiKeys: [] };
+              acc[cred.provider] = {
+                oauthCreds: [],
+                apiKeys: [],
+                userPasswordCreds: [],
+              };
             }
             if (cred.type === "oauth2") {
               acc[cred.provider].oauthCreds.push(cred);
             } else if (cred.type === "api_key") {
               acc[cred.provider].apiKeys.push(cred);
+            } else if (cred.type === "user_password") {
+              acc[cred.provider].userPasswordCreds.push(cred);
             }
             return acc;
           },
@@ -202,6 +239,7 @@ export default function CredentialsProvider({
             {
               oauthCreds: CredentialsMetaResponse[];
               apiKeys: CredentialsMetaResponse[];
+              userPasswordCreds: CredentialsMetaResponse[];
             }
           >,
         );
@@ -231,6 +269,13 @@ export default function CredentialsProvider({
                     provider as CredentialsProviderName,
                     credentials,
                   ),
+                createUserPasswordCredentials: (
+                  credentials: UserPasswordCredentialsCreatable,
+                ) =>
+                  createUserPasswordCredentials(
+                    provider as CredentialsProviderName,
+                    credentials,
+                  ),
                 deleteCredentials: (id: string, force: boolean = false) =>
                   deleteCredentials(
                     provider as CredentialsProviderName,
@@ -243,7 +288,7 @@ export default function CredentialsProvider({
         }));
       });
     });
-  }, [api, createAPIKeyCredentials, deleteCredentials, oAuthCallback]);
+  }, [api, createAPIKeyCredentials, createUserPasswordCredentials, deleteCredentials, oAuthCallback]);
 
   return (
     <CredentialsProvidersContext.Provider value={providers}>
