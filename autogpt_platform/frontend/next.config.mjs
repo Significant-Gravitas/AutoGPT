@@ -12,7 +12,6 @@ const nextConfig = {
       "picsum.photos", // for placeholder images
       "dummyimage.com", // for placeholder images
       "placekitten.com", // for placeholder images
-      "www.andersen.biz",
     ],
   },
   output: "standalone",
