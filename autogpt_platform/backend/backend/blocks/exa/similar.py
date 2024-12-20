@@ -1,8 +1,6 @@
 from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel
-
 from backend.blocks.exa._auth import (
     ExaCredentials,
     ExaCredentialsField,
@@ -74,7 +72,7 @@ class ExaFindSimilarBlock(Block):
         )
 
     def run(
-            self, input_data: Input, *, credentials: ExaCredentials, **kwargs
+        self, input_data: Input, *, credentials: ExaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/findSimilar"
         headers = {

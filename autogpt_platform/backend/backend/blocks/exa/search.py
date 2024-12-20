@@ -1,8 +1,6 @@
 from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel
-
 from backend.blocks.exa._auth import (
     ExaCredentials,
     ExaCredentialsField,
@@ -12,6 +10,7 @@ from backend.blocks.exa.helpers import ContentSettings
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import requests
+
 
 class ExaSearchBlock(Block):
     class Input(BlockSchema):
@@ -82,7 +81,7 @@ class ExaSearchBlock(Block):
         )
 
     def run(
-            self, input_data: Input, *, credentials: ExaCredentials, **kwargs
+        self, input_data: Input, *, credentials: ExaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/search"
         headers = {
