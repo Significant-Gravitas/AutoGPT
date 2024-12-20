@@ -21,35 +21,35 @@ class ExaFindSimilarBlock(Block):
         url: str = SchemaField(
             description="The url for which you would like to find similar links"
         )
-        numResults: int = SchemaField(
+        number_of_results: int = SchemaField(
             description="Number of results to return",
             default=10,
         )
-        includeDomains: List[str] = SchemaField(
+        include_domains: List[str] = SchemaField(
             description="Domains to include in search",
             default=[],
         )
-        excludeDomains: List[str] = SchemaField(
+        exclude_domains: List[str] = SchemaField(
             description="Domains to exclude from search",
             default=[],
         )
-        startCrawlDate: datetime = SchemaField(
+        start_crawl_date: datetime = SchemaField(
             description="Start date for crawled content",
         )
-        endCrawlDate: datetime = SchemaField(
+        end_crawl_date: datetime = SchemaField(
             description="End date for crawled content",
         )
-        startPublishedDate: datetime = SchemaField(
+        start_published_date: datetime = SchemaField(
             description="Start date for published content",
         )
-        endPublishedDate: datetime = SchemaField(
+        end_published_date: datetime = SchemaField(
             description="End date for published content",
         )
-        includeText: List[str] = SchemaField(
+        include_text: List[str] = SchemaField(
             description="Text patterns to include (max 1 string, up to 5 words)",
             default=[],
         )
-        excludeText: List[str] = SchemaField(
+        exclude_text: List[str] = SchemaField(
             description="Text patterns to exclude (max 1 string, up to 5 words)",
             default=[],
         )
@@ -74,7 +74,7 @@ class ExaFindSimilarBlock(Block):
         )
 
     def run(
-        self, input_data: Input, *, credentials: ExaCredentials, **kwargs
+            self, input_data: Input, *, credentials: ExaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/findSimilar"
         headers = {
@@ -84,37 +84,35 @@ class ExaFindSimilarBlock(Block):
 
         payload = {
             "url": input_data.url,
-            "numResults": input_data.numResults,
-            "contents": {
-                "text": input_data.contents.text,
-                "highlights": input_data.contents.highlights,
-                "summary": input_data.contents.summary,
-            },
+            "numResults": input_data.number_of_results,
+            "contents": input_data.contents.dict(),
+        }
+
+        optional_field_mapping = {
+            "include_domains": "includeDomains",
+            "exclude_domains": "excludeDomains",
+            "include_text": "includeText",
+            "exclude_text": "excludeText",
         }
 
         # Add optional fields if they have values
-        optional_fields = [
-            "includeDomains",
-            "excludeDomains",
-            "includeText",
-            "excludeText",
-        ]
-        for field in optional_fields:
-            value = getattr(input_data, field)
+        for input_field, api_field in optional_field_mapping.items():
+            value = getattr(input_data, input_field)
             if value:  # Only add non-empty values
-                payload[field] = value
+                payload[api_field] = value
+
+        date_field_mapping = {
+            "start_crawl_date": "startCrawlDate",
+            "end_crawl_date": "endCrawlDate",
+            "start_published_date": "startPublishedDate",
+            "end_published_date": "endPublishedDate",
+        }
 
         # Add dates if they exist
-        date_fields = [
-            "startCrawlDate",
-            "endCrawlDate",
-            "startPublishedDate",
-            "endPublishedDate",
-        ]
-        for field in date_fields:
-            value = getattr(input_data, field, None)
+        for input_field, api_field in date_field_mapping.items():
+            value = getattr(input_data, input_field, None)
             if value:
-                payload[field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                payload[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         try:
             response = requests.post(url, headers=headers, json=payload)
