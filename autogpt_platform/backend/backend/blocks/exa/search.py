@@ -19,18 +19,22 @@ class ExaSearchBlock(Block):
         use_auto_prompt: bool = SchemaField(
             description="Whether to use autoprompt",
             default=True,
+            advanced=True,
         )
         type: str = SchemaField(
             description="Type of search",
             default="",
+            advanced=True,
         )
         category: str = SchemaField(
             description="Category to search within",
             default="",
+            advanced=True,
         )
         number_of_results: int = SchemaField(
             description="Number of results to return",
             default=10,
+            advanced=True,
         )
         include_domains: List[str] = SchemaField(
             description="Domains to include in search",
@@ -39,6 +43,7 @@ class ExaSearchBlock(Block):
         exclude_domains: List[str] = SchemaField(
             description="Domains to exclude from search",
             default=[],
+            advanced=True,
         )
         start_crawl_date: datetime = SchemaField(
             description="Start date for crawled content",
@@ -55,14 +60,17 @@ class ExaSearchBlock(Block):
         include_text: List[str] = SchemaField(
             description="Text patterns to include",
             default=[],
+            advanced=True,
         )
         exclude_text: List[str] = SchemaField(
             description="Text patterns to exclude",
             default=[],
+            advanced=True,
         )
         contents: ContentSettings = SchemaField(
             description="Content retrieval settings",
             default=ContentSettings(),
+            advanced=True,
         )
 
     class Output(BlockSchema):
