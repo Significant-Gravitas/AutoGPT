@@ -451,16 +451,6 @@ export default class BackendAPI {
         await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
       }
     }
-    console.log("Request: ", method, path, "from: ", page);
-    if (token === "no-token-found") {
-      console.warn(
-        "No auth token found after retries. This may indicate a session sync issue between client and server.",
-      );
-      console.debug("Last session attempt:", retryCount);
-    } else {
-      console.log("Auth token found");
-    }
-    console.log("--------------------------------");
 
     let url = this.baseUrl + path;
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
