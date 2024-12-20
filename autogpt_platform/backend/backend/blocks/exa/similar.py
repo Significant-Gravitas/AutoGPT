@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Any
+from typing import Any, List
 
 from backend.blocks.exa._auth import (
     ExaCredentials,
