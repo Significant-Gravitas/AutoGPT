@@ -4,7 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
 import { Status, StatusType } from "./Status";
-import * as DropdownMenu from "@radix-ui/react-context-menu";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
 import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
 
