@@ -246,13 +246,18 @@ export const CredentialsInput: FC<{
     selectedCredentials &&
     !savedApiKeys
       .concat(savedOAuthCredentials)
+      .concat(savedUserPasswordCredentials)
       .some((c) => c.id === selectedCredentials.id)
   ) {
     onSelectCredentials(undefined);
   }
 
   // No saved credentials yet
-  if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
+  if (
+    savedApiKeys.length === 0 &&
+    savedOAuthCredentials.length === 0 &&
+    savedUserPasswordCredentials.length === 0
+  ) {
     return (
       <>
         <div className="mb-2 flex gap-1">
@@ -287,6 +292,7 @@ export const CredentialsInput: FC<{
     );
   }
 
+  //TODO: This is a mess that won't scale. We need to refactor this single credential logic
   const singleCredential =
     savedApiKeys.length === 1 && savedOAuthCredentials.length === 0
       ? savedApiKeys[0]
@@ -316,6 +322,7 @@ export const CredentialsInput: FC<{
     } else {
       const selectedCreds = savedApiKeys
         .concat(savedOAuthCredentials)
+        .concat(savedUserPasswordCredentials)
         .find((c) => c.id == newValue)!;
 
       onSelectCredentials({
@@ -576,6 +583,45 @@ export const UserPasswordCredentialsModal: FC<{
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="username"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Username</FormLabel>
+                  <FormControl>
+                    <Input type="text" placeholder="Enter username..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <Input type="password" placeholder="Enter password..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input type="text" placeholder="Enter a name for this user password..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <Button type="submit" className="w-full">
               Save & use this user password
             </Button>

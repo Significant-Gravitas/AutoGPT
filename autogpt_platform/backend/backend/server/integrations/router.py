@@ -17,6 +17,7 @@ from backend.data.model import (
     Credentials,
     CredentialsType,
     OAuth2Credentials,
+    UserPasswordCredentials,
 )
 from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -196,22 +197,15 @@ def get_credential(
 
 
 @router.post("/{provider}/credentials", status_code=201)
-def create_api_key_credentials(
+def create_credentials(
     user_id: Annotated[str, Depends(get_user_id)],
     provider: Annotated[
         ProviderName, Path(title="The provider to create credentials for")
     ],
-    api_key: Annotated[str, Body(title="The API key to store")],
-    title: Annotated[str, Body(title="Optional title for the credentials")],
-    expires_at: Annotated[
-        int | None, Body(title="Unix timestamp when the key expires")
-    ] = None,
-) -> APIKeyCredentials:
-    new_credentials = APIKeyCredentials(
-        provider=provider,
-        api_key=SecretStr(api_key),
-        title=title,
-        expires_at=expires_at,
+    credential: Credentials,
+) -> Credentials:
+    new_credentials = credential.__class__(
+        provider=provider, **credential.model_dump(exclude={"provider"})
     )
 
     try:

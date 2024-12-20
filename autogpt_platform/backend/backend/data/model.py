@@ -197,7 +197,10 @@ class OAuth2Credentials(_BaseCredentials):
 class APIKeyCredentials(_BaseCredentials):
     type: Literal["api_key"] = "api_key"
     api_key: SecretStr
-    expires_at: Optional[int]
+    expires_at: Optional[int] = Field(
+        default=None,
+        description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
+    )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
     def bearer(self) -> str:

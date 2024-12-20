@@ -116,6 +116,9 @@ export default function CredentialsProvider({
             credentials,
           ];
         } else if (credentials.type === "user_password") {
+          console.log("Adding user password credentials", credentials);
+          console.log("Updated provider", updatedProvider);
+          console.log("Updated provider savedUserPasswordCredentials", updatedProvider.savedUserPasswordCredentials);
           updatedProvider.savedUserPasswordCredentials = [
             ...updatedProvider.savedUserPasswordCredentials,
             credentials,
@@ -201,7 +204,10 @@ export default function CredentialsProvider({
           updatedProvider.savedOAuthCredentials.filter(
             (cred) => cred.id !== id,
           );
-
+        updatedProvider.savedUserPasswordCredentials =
+          updatedProvider.savedUserPasswordCredentials.filter(
+            (cred) => cred.id !== id,
+          );
         return {
           ...prev,
           [provider]: updatedProvider,
@@ -257,6 +263,8 @@ export default function CredentialsProvider({
                 savedApiKeys: credentialsByProvider[provider]?.apiKeys ?? [],
                 savedOAuthCredentials:
                   credentialsByProvider[provider]?.oauthCreds ?? [],
+                savedUserPasswordCredentials:
+                  credentialsByProvider[provider]?.userPasswordCreds ?? [],
                 oAuthCallback: (code: string, state_token: string) =>
                   oAuthCallback(
                     provider as CredentialsProviderName,

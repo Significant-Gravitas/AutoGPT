@@ -30,6 +30,7 @@ import {
   ScheduleCreatable,
   Schedule,
   UserPasswordCredentials,
+  Credentials,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -189,7 +190,7 @@ export default class BackendAPI {
     return this._request(
       "POST",
       `/integrations/${credentials.provider}/credentials`,
-      credentials,
+      { ...credentials, type: "api_key" },
     );
   }
 
@@ -199,7 +200,7 @@ export default class BackendAPI {
     return this._request(
       "POST",
       `/integrations/${credentials.provider}/credentials`,
-      credentials,
+      { ...credentials, type: "user_password" },
     );
   }
 
@@ -211,10 +212,7 @@ export default class BackendAPI {
     );
   }
 
-  getCredentials(
-    provider: string,
-    id: string,
-  ): Promise<APIKeyCredentials | OAuth2Credentials> {
+  getCredentials(provider: string, id: string): Promise<Credentials> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 

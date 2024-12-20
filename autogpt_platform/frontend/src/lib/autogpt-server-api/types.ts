@@ -99,6 +99,11 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
 
 export type CredentialsType = "api_key" | "oauth2" | "user_password";
 
+export type Credentials =
+  | APIKeyCredentials
+  | OAuth2Credentials
+  | UserPasswordCredentials;
+
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
