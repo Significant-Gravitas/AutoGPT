@@ -105,14 +105,9 @@ class GetRedditPostsBlock(Block):
             # ),
             input_schema=GetRedditPostsBlock.Input,
             output_schema=GetRedditPostsBlock.Output,
+            test_credentials=TEST_CREDENTIALS,
             test_input={
-                "creds": {
-                    "client_id": "client_id",
-                    "client_secret": "client_secret",
-                    "username": "username",
-                    "password": "password",
-                    "user_agent": "user_agent",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "subreddit": "subreddit",
                 "last_post": "id3",
                 "post_limit": 2,
@@ -191,7 +186,11 @@ class PostRedditCommentBlock(Block):
             #     not settings.secrets.reddit_client_id
             #     or not settings.secrets.reddit_client_secret
             # ),
-            test_input={"data": {"post_id": "id", "comment": "comment"}},
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "data": {"post_id": "id", "comment": "comment"},
+            },
             test_output=[("comment_id", "dummy_comment_id")],
             test_mock={"reply_post": lambda creds, comment: "dummy_comment_id"},
         )
