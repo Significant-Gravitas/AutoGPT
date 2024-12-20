@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Any
 
 from backend.blocks.exa._auth import (
     ExaCredentials,
@@ -63,7 +63,7 @@ class ExaFindSimilarBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: list = SchemaField(
+        results: List[Any] = SchemaField(
             description="List of similar documents with title, URL, published date, author, and score",
             default=[],
         )
