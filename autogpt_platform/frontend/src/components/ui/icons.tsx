@@ -1098,9 +1098,13 @@ export function StarRatingIcons(avgRating: number): JSX.Element[] {
   const rating = Math.max(0, Math.min(5, avgRating));
   for (let i = 1; i <= 5; i++) {
     if (i <= rating) {
-      stars.push(<IconStarFilled key={i} className="text-black" />);
+      stars.push(
+        <IconStarFilled key={i} className="text-black dark:text-yellow-500" />,
+      );
     } else {
-      stars.push(<IconStar key={i} className="text-black" />);
+      stars.push(
+        <IconStar key={i} className="text-black dark:text-yellow-500" />,
+      );
     }
   }
   return stars;
