@@ -38,7 +38,9 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   const displayedAgents = allAgents.slice(0, 9);
 
   const handleCardClick = (creator: string, slug: string) => {
-    router.push(`/store/agent/${creator}/${slug}`);
+    router.push(
+      `/store/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+    );
   };
 
   return (

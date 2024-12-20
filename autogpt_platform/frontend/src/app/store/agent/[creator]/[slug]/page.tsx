@@ -45,7 +45,10 @@ export default async function Page({
 
   const breadcrumbs = [
     { name: "Store", link: "/store" },
-    { name: agent.creator, link: `/store/creator/${agent.creator}` },
+    {
+      name: agent.creator,
+      link: `/store/creator/${encodeURIComponent(agent.creator)}`,
+    },
     { name: agent.agent_name, link: "#" },
   ];
 
