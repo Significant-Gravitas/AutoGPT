@@ -1,6 +1,6 @@
 import React from "react";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Poppins } from "next/font/google";
 import { Providers } from "@/app/providers";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/agptui/Navbar";
@@ -12,6 +12,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 
 const inter = Inter({ subsets: ["latin"] });
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
+});
 
 export const metadata: Metadata = {
   title: "NextGen AutoGPT",
@@ -25,7 +31,13 @@ export default async function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={cn("antialiased transition-colors", inter.className)}>
+      <body
+        className={cn(
+          "antialiased transition-colors",
+          inter.className,
+          poppins.className,
+        )}
+      >
         <Providers
           attribute="class"
           defaultTheme="light"
