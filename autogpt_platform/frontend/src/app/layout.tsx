@@ -21,6 +21,12 @@ const poppins = Poppins({
   variable: "--font-poppins",
 });
 
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
+});
+
 export const metadata: Metadata = {
   title: "NextGen AutoGPT",
   description: "Your one stop shop to creating AI Agents",
