@@ -39,7 +39,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
 
   const handleCardClick = (creator: string, slug: string) => {
     router.push(
-      `/store/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+      `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
     );
   };
 

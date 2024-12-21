@@ -5,11 +5,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const sidebarLinkGroups = [
     {
       links: [
-        { text: "Creator Dashboard", href: "/store/dashboard" },
-        { text: "Agent dashboard", href: "/store/agent-dashboard" },
-        { text: "Integrations", href: "/store/integrations" },
-        { text: "Profile", href: "/store/profile" },
-        { text: "Settings", href: "/store/settings" },
+        { text: "Creator Dashboard", href: "/marketplace/dashboard" },
+        { text: "Agent dashboard", href: "/marketplace/agent-dashboard" },
+        { text: "Integrations", href: "/marketplace/integrations" },
+        { text: "Profile", href: "/marketplace/profile" },
+        { text: "Settings", href: "/marketplace/settings" },
       ],
     },
   ];
