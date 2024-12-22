@@ -213,7 +213,7 @@ services:
       - NEXT_PUBLIC_AGPT_MARKETPLACE_URL=http://localhost:8015/api/v1/market
       - NEXT_PUBLIC_BEHAVE_AS=LOCAL
     ports:
-      - "3000:3000"
+      - "8030:3000"
     networks:
       - app-network
 
