@@ -194,7 +194,6 @@ services:
     build:
       context: ../
       dockerfile: autogpt_platform/frontend/Dockerfile
-      target: dev
     depends_on:
       db:
         condition: service_healthy
