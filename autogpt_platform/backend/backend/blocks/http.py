@@ -34,7 +34,7 @@ class SendWebRequestBlock(Block):
         json_format: bool = SchemaField(
             title="JSON format",
             description="Whether to send and receive body as JSON",
-            default=True,
+            default=false,
         )
         body: Any = SchemaField(
             description="The body of the request",
