@@ -81,7 +81,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@chromatic-com/storybook": "^3.2.2",
+    "@chromatic-com/storybook": "^3.2.3",
     "@playwright/test": "^1.48.2",
     "@storybook/addon-a11y": "^8.3.5",
     "@storybook/addon-essentials": "^8.4.2",
@@ -92,7 +92,7 @@
     "@storybook/nextjs": "^8.4.2",
     "@storybook/react": "^8.3.5",
     "@storybook/test": "^8.3.5",
-    "@storybook/test-runner": "^0.20.1",
+    "@storybook/test-runner": "^0.21.0",
     "@types/negotiator": "^0.6.3",
     "@types/node": "^22.9.0",
     "@types/react": "^18",
@@ -102,7 +102,7 @@
     "chromatic": "^11.12.5",
     "concurrently": "^9.0.1",
     "eslint": "^8",
-    "eslint-config-next": "15.1.0",
+    "eslint-config-next": "15.1.2",
     "eslint-plugin-storybook": "^0.11.0",
     "msw": "^2.7.0",
     "msw-storybook-addon": "^2.0.3",
@@ -110,7 +110,7 @@
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.9",
     "storybook": "^8.4.5",
-    "tailwindcss": "^3.4.15",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
