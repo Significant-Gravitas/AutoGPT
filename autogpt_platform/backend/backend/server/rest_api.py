@@ -56,11 +56,7 @@ docs_url = (
     if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL
     else None
 )
-docs_json_url = (
-    os.environ["OPENAPI_JSON_PATH"]
-    if os.environ["OPENAPI_JSON_PATH"] is not None
-    else None
-)
+docs_json_url = os.getenv("OPENAPI_JSON_PATH")
 
 app = fastapi.FastAPI(
     title="AutoGPT Agent Server",
