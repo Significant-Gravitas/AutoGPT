@@ -24,7 +24,9 @@ class PostTwitterTweetBlock(Block):
             description="Twitter credentials", 
             default=TwitterCredentials()
         )
-        data: TwitterPost = SchemaField(description="Twitter post")
+        post_content: str = SchemaField(
+            description="Twitter post",
+            default=f"Hello, Twitter! This tweet was posted using OAuth 2.0 User Context. 🚀 {datetime.now().isoformat()}")
 
     class Output(BlockSchema):
         post_id: str = SchemaField(description="Posted ID")
@@ -38,14 +40,14 @@ class PostTwitterTweetBlock(Block):
             output_schema=PostTwitterTweetBlock.Output,
             test_input={
                 "api": TwitterCredentials(),
-                "data": {"id": "id", "content": "content"}
+                "post_content": "post_content"
             },
             test_output=[("post_id", "post_id")],
-            test_mock={"post_tweet": lambda api, post: "post_id"},
+            test_mock={"post_tweet": lambda api, post_content: "post_id"},
         )
 
     @staticmethod
-    def post_tweet(api: TwitterCredentials, post: TwitterPost) -> str:
+    def post_tweet(api: TwitterCredentials, post_content: str) -> str:
         headers = {
             "Authorization": f"Bearer {api.access_token.get_secret_value()}",
             "Content-Type": "application/json"
@@ -53,7 +55,7 @@ class PostTwitterTweetBlock(Block):
 
         # Data for the tweet
         body = {
-            "text": post.content[:255],
+            "text": post_content[:255] if len(post_content) > 255 else post_content,
         }
 
         response = requests.post(api.api_url + "/tweets", headers=headers, data=json.dumps(body))
@@ -64,4 +66,4 @@ class PostTwitterTweetBlock(Block):
         return response.json().get("data").get("id")
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "post_id", self.post_tweet(input_data.api, input_data.data)
+        yield "post_id", self.post_tweet(input_data.api, input_data.post_content)
