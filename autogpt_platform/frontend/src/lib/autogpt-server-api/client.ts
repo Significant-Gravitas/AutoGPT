@@ -311,7 +311,7 @@ export default class BackendAPI {
       "/store/submissions/generate_image?agent_id=" + agent_id,
     );
   }
-  c;
+
   deleteStoreSubmission(submission_id: string): Promise<boolean> {
     return this._request("DELETE", `/store/submissions/${submission_id}`);
   }
@@ -346,6 +346,13 @@ export default class BackendAPI {
     page_size?: number;
   }): Promise<MyAgentsResponse> {
     return this._get("/store/myagents", params);
+  }
+
+  downloadStoreAgent(
+    storeListingVersionId: string,
+    version?: number,
+  ): Promise<BlobPart> {
+    return this._get(`/download/agents/${storeListingVersionId}/${version}`);
   }
 
   /////////////////////////////////////////
