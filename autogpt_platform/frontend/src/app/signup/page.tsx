@@ -1,6 +1,5 @@
 "use client";
-import { signup, signupFormSchema } from "./actions";
-import { Button } from "@/components/ui/button";
+import { signup } from "./actions";
 import {
   Form,
   FormControl,
@@ -15,26 +14,26 @@ import { Input } from "@/components/ui/input";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PasswordInput } from "@/components/PasswordInput";
-import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import useSupabase from "@/hooks/useSupabase";
 import Spinner from "@/components/Spinner";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import AuthCard from "@/components/auth/AuthCard";
-import AuthHeader from "@/components/auth/AuthHeader";
-import AuthButton from "@/components/auth/AuthButton";
-import AuthBottomText from "@/components/auth/AuthBottomText";
-import AuthFeedback from "@/components/auth/AuthFeedback";
+import {
+  AuthCard,
+  AuthHeader,
+  AuthButton,
+  AuthFeedback,
+  AuthBottomText,
+} from "@/components/auth";
+import { signupFormSchema } from "@/types/auth";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const api = useBackendAPI();
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -45,6 +44,26 @@ export default function LoginPage() {
       agreeToTerms: false,
     },
   });
+
+  const onSignup = useCallback(
+    async (data: z.infer<typeof signupFormSchema>) => {
+      setIsLoading(true);
+
+      if (!(await form.trigger())) {
+        setIsLoading(false);
+        return;
+      }
+
+      const error = await signup(data);
+      setIsLoading(false);
+      if (error) {
+        setFeedback(error);
+        return;
+      }
+      setFeedback(null);
+    },
+    [form],
+  );
 
   if (user) {
     console.debug("User exists, redirecting to /");
@@ -62,38 +81,6 @@ export default function LoginPage() {
       </div>
     );
   }
-
-  async function handleSignInWithProvider(
-    provider: "google" | "github" | "discord",
-  ) {
-    const { data, error } = await supabase!.auth.signInWithOAuth({
-      provider: provider,
-      options: {
-        redirectTo:
-          process.env.AUTH_CALLBACK_URL ??
-          `http://localhost:3000/auth/callback`,
-      },
-    });
-
-    await api.createUser();
-
-    if (!error) {
-      setFeedback(null);
-      return;
-    }
-    setFeedback(error.message);
-  }
-
-  const onSignup = async (data: z.infer<typeof signupFormSchema>) => {
-    setIsLoading(true);
-    const error = await signup(data);
-    setIsLoading(false);
-    if (error) {
-      setFeedback(error);
-      return;
-    }
-    setFeedback(null);
-  };
 
   return (
     <AuthCard>
@@ -135,7 +122,7 @@ export default function LoginPage() {
                 <FormControl>
                   <PasswordInput {...field} />
                 </FormControl>
-                <FormDescription className="text-slate-500 text-sm font-normal leading-tight">
+                <FormDescription className="text-sm font-normal leading-tight text-slate-500">
                   Password needs to be at least 6 characters long
                 </FormDescription>
                 <FormMessage />
@@ -153,7 +140,7 @@ export default function LoginPage() {
             control={form.control}
             name="agreeToTerms"
             render={({ field }) => (
-              <FormItem className="mt-6 flex flex-row items-start space-x-2 -space-y-1">
+              <FormItem className="mt-6 flex flex-row items-start -space-y-1 space-x-2">
                 <FormControl>
                   <Checkbox
                     checked={field.value}
@@ -162,17 +149,21 @@ export default function LoginPage() {
                 </FormControl>
                 <div className="">
                   <FormLabel>
-                    <span className="mr-1 text-slate-950 text-sm font-normal leading-normal">I agree to the</span>
+                    <span className="mr-1 text-sm font-normal leading-normal text-slate-950">
+                      I agree to the
+                    </span>
                     <Link
                       href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
-                      className="text-slate-950 text-sm font-normal leading-normal underline"
+                      className="text-sm font-normal leading-normal text-slate-950 underline"
                     >
                       Terms of Use
                     </Link>
-                    <span className="mx-1 text-slate-950 text-sm font-normal leading-normal">and</span>
+                    <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+                      and
+                    </span>
                     <Link
                       href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
-                      className="text-slate-950 text-sm font-normal leading-normal underline"
+                      className="text-sm font-normal leading-normal text-slate-950 underline"
                     >
                       Privacy Policy
                     </Link>
@@ -183,7 +174,7 @@ export default function LoginPage() {
             )}
           />
         </form>
-        <AuthFeedback message={feedback} isError={true}/>
+        <AuthFeedback message={feedback} isError={true} />
       </Form>
       <AuthBottomText
         text="Already a member?"

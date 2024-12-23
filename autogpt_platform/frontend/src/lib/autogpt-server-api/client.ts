@@ -311,7 +311,7 @@ export default class BackendAPI {
       "/store/submissions/generate_image?agent_id=" + agent_id,
     );
   }
-  c;
+
   deleteStoreSubmission(submission_id: string): Promise<boolean> {
     return this._request("DELETE", `/store/submissions/${submission_id}`);
   }
