@@ -13,7 +13,6 @@ import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { PasswordInput } from "@/components/PasswordInput";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -26,6 +25,7 @@ import {
   AuthButton,
   AuthFeedback,
   AuthBottomText,
+  PasswordInput,
 } from "@/components/auth";
 import { signupFormSchema } from "@/types/auth";
 
@@ -34,6 +34,7 @@ export default function SignupPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [showWaitlistPrompt, setShowWaitlistPrompt] = useState(false);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -57,7 +58,7 @@ export default function SignupPage() {
       const error = await signup(data);
       setIsLoading(false);
       if (error) {
-        setFeedback(error);
+        setShowWaitlistPrompt(true);
         return;
       }
       setFeedback(null);
@@ -176,6 +177,38 @@ export default function SignupPage() {
         </form>
         <AuthFeedback message={feedback} isError={true} />
       </Form>
+      {showWaitlistPrompt && (
+        <div>
+          <span className="mr-1 text-sm font-normal leading-normal text-red-500">
+            The provided email may not be allowed to sign up.
+          </span>
+          <br />
+          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+            - AutoGPT Platform is currently in closed beta. You can join
+          </span>
+          <Link
+            href="https://agpt.co/waitlist"
+            className="text-sm font-normal leading-normal text-slate-950 underline"
+          >
+            the waitlist here.
+          </Link>
+          <br />
+          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+            - Make sure you use the same email address you used to sign up for
+            the waitlist.
+          </span>
+          <br />
+          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+            - You can self host the platform, visit our
+          </span>
+          <Link
+            href="https://agpt.co/waitlist"
+            className="text-sm font-normal leading-normal text-slate-950 underline"
+          >
+            GitHub repository.
+          </Link>
+        </div>
+      )}
       <AuthBottomText
         text="Already a member?"
         linkText="Log in"

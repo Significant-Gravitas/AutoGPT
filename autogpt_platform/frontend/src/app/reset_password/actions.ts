@@ -1,3 +1,4 @@
+"use server";
 import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
@@ -9,10 +10,11 @@ export async function sendResetEmail(email: string) {
     {},
     async () => {
       const supabase = getServerSupabase();
-      const headersList = headers()
-      const host = headersList.get('host')
-      const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https'
-      const origin = `${protocol}://${host}`
+      const headersList = headers();
+      const host = headersList.get("host");
+      const protocol =
+        process.env.NODE_ENV === "development" ? "http" : "https";
+      const origin = `${protocol}://${host}`;
 
       if (!supabase) {
         redirect("/error");

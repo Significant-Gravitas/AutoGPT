@@ -23,6 +23,7 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
 
       if (error) {
         console.error("Error signing up", error);
+        // FIXME: supabase doesn't return the correct error message for this case
         if (error.message.includes("P0001")) {
           return "Please join our waitlist for your turn: https://agpt.co/waitlist";
         }

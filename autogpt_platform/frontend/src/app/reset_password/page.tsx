@@ -4,6 +4,7 @@ import {
   AuthHeader,
   AuthButton,
   AuthFeedback,
+  PasswordInput,
 } from "@/components/auth";
 import {
   Form,
@@ -29,6 +30,7 @@ export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
+  const [disabled, setDisabled] = useState(false);
 
   const sendEmailForm = useForm<z.infer<typeof sendEmailFormSchema>>({
     resolver: zodResolver(sendEmailFormSchema),
@@ -62,7 +64,10 @@ export default function ResetPasswordPage() {
         setIsError(true);
         return;
       }
-      setFeedback("Password reset email sent. Please check your email.");
+      setDisabled(true);
+      setFeedback(
+        "Password reset email sent if user exists. Please check your email.",
+      );
       setIsError(false);
     },
     [sendEmailForm],
@@ -116,7 +121,7 @@ export default function ResetPasswordPage() {
                 <FormItem className="mb-6">
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" {...field} />
+                    <PasswordInput {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -129,7 +134,7 @@ export default function ResetPasswordPage() {
                 <FormItem className="mb-6">
                   <FormLabel>Confirm Password</FormLabel>
                   <FormControl>
-                    <Input type="password" {...field} />
+                    <PasswordInput {...field} />
                   </FormControl>
                   <FormDescription className="text-sm font-normal leading-tight text-slate-500">
                     Password needs to be at least 6 characters long
@@ -145,6 +150,7 @@ export default function ResetPasswordPage() {
             >
               Update password
             </AuthButton>
+            <AuthFeedback message={feedback} isError={isError} />
           </Form>
         </form>
       ) : (
@@ -166,6 +172,7 @@ export default function ResetPasswordPage() {
             <AuthButton
               onClick={() => onSendEmail(sendEmailForm.getValues())}
               isLoading={isLoading}
+              disabled={disabled}
               type="submit"
             >
               Send reset email

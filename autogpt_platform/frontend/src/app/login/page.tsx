@@ -12,7 +12,6 @@ import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { PasswordInput } from "@/components/PasswordInput";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -24,6 +23,7 @@ import {
   AuthButton,
   AuthFeedback,
   AuthBottomText,
+  PasswordInput,
 } from "@/components/auth";
 import { loginFormSchema } from "@/types/auth";
 

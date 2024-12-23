@@ -10,7 +10,7 @@ export const loginFormSchema = z.object({
     .trim(),
   password: z
     .string()
-    .min(6, "Password must contain at least 6 character")
+    .min(6, "Password must contain at least 6 characters")
     .max(64, "Password must contain at most 64 characters"),
 });
 
@@ -23,11 +23,11 @@ export const signupFormSchema = z
       .trim(),
     password: z
       .string()
-      .min(6, "Password must contain at least 6 character")
+      .min(6, "Password must contain at least 6 characters")
       .max(64, "Password must contain at most 64 characters"),
     confirmPassword: z
       .string()
-      .min(6, "Password must contain at least 6 character")
+      .min(6, "Password must contain at least 6 characters")
       .max(64, "Password must contain at most 64 characters"),
     agreeToTerms: z.boolean().refine((value) => value === true, {
       message: "You must agree to the Terms of Use and Privacy Policy",
@@ -50,11 +50,11 @@ export const changePasswordFormSchema = z
   .object({
     password: z
       .string()
-      .min(6, "Password must contain at least 6 character")
+      .min(6, "Password must contain at least 6 characters")
       .max(64, "Password must contain at most 64 characters"),
     confirmPassword: z
       .string()
-      .min(6, "Password must contain at least 6 character")
+      .min(6, "Password must contain at least 6 characters")
       .max(64, "Password must contain at most 64 characters"),
   })
   .refine((data) => data.password === data.confirmPassword, {

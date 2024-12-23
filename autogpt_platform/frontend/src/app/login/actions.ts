@@ -45,11 +45,6 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
 
     if (error) {
       console.error("Error logging in", error);
-      if (error.status == 400) {
-        // Hence User is not present
-        redirect("/login");
-      }
-
       return error.message;
     }
 
