@@ -13,17 +13,22 @@ export default function AuthButton({
   children,
   onClick,
   isLoading = false,
-  type = "button"
+  type = "button",
 }: Props) {
   return (
     <Button
-      className="mt-2 self-stretch w-full px-4 py-2 bg-slate-900 rounded-md"
+      className="mt-2 w-full self-stretch rounded-md bg-slate-900 px-4 py-2"
       type={type}
       disabled={isLoading}
       onClick={onClick}
     >
-      {isLoading ? <FaSpinner className="animate-spin" /> :
-        <div className="text-slate-50 text-sm font-medium leading-normal">{children}</div>}
+      {isLoading ? (
+        <FaSpinner className="animate-spin" />
+      ) : (
+        <div className="text-sm font-medium leading-normal text-slate-50">
+          {children}
+        </div>
+      )}
     </Button>
   );
 }

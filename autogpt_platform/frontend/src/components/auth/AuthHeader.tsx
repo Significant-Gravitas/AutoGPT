@@ -4,12 +4,10 @@ interface Props {
   children: ReactNode;
 }
 
-export default function AuthHeader({
-  children
-}: Props) {
+export default function AuthHeader({ children }: Props) {
   return (
-    <div className="mb-8 text-slate-950 text-2xl font-semibold leading-normal">
+    <div className="mb-8 text-2xl font-semibold leading-normal text-slate-950">
       {children}
     </div>
-  )
+  );
 }

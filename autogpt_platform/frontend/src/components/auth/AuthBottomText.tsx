@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 interface Props {
-  className?: string,
+  className?: string;
   text: string;
   linkText?: string;
   href?: string;
@@ -12,14 +12,26 @@ export default function AuthBottomText({
   className = "",
   text,
   linkText,
-  href = ""
+  href = "",
 }: Props) {
   return (
-    <div className={cn(className, "mt-8 inline-flex w-full justify-center items-center")}>
-      <span className="text-slate-950 text-sm font-medium leading-normal">{text}</span>
-      {linkText && <Link href={href} className="ml-1 text-slate-950 text-sm font-medium underline leading-normal">
-        {linkText}
-      </Link>}
+    <div
+      className={cn(
+        className,
+        "mt-8 inline-flex w-full items-center justify-center",
+      )}
+    >
+      <span className="text-sm font-medium leading-normal text-slate-950">
+        {text}
+      </span>
+      {linkText && (
+        <Link
+          href={href}
+          className="ml-1 text-sm font-medium leading-normal text-slate-950 underline"
+        >
+          {linkText}
+        </Link>
+      )}
     </div>
-  )
+  );
 }
