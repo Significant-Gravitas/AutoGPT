@@ -68,7 +68,6 @@ app = fastapi.FastAPI(
     version="0.1",
     lifespan=lifespan_context,
     docs_url=docs_url,
-    openapi_url=docs_json_url,
 )
 
 
