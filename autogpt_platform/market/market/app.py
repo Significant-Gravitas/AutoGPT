@@ -61,6 +61,7 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
 )
 
+print("#########################################################################", os.environ.get(        "BACKEND_CORS_ALLOW_ORIGINS"    ))
 app.add_middleware(fastapi.middleware.gzip.GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     middleware_class=fastapi.middleware.cors.CORSMiddleware,
