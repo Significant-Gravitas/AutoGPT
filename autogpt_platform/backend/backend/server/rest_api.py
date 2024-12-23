@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import typing
+import os
 
 import fastapi
 import fastapi.responses
@@ -55,6 +56,11 @@ docs_url = (
     if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL
     else None
 )
+docs_json_url = (
+    os.environ["OPENAPI_JSON_PATH"]
+    if os.environ["OPENAPI_JSON_PATH"] is not None
+    else None
+)
 
 app = fastapi.FastAPI(
     title="AutoGPT Agent Server",
@@ -66,6 +72,7 @@ app = fastapi.FastAPI(
     version="0.1",
     lifespan=lifespan_context,
     docs_url=docs_url,
+    openapi_url=docs_json_url,
 )
 
 
