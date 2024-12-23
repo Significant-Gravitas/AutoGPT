@@ -514,7 +514,7 @@ async def generate_image(
             status_code=500, detail=f"Failed to generate image: {str(e)}"
         )
 
-@router.get("/download/agents/{store_listing_version_id}/{version}",tags=["store","public"],)
+@router.get("/download/agents/{store_listing_version_id}",tags=["store","public"],)
 async def download_agent_file(
     store_listing_version_id: str = fastapi.Path(..., description="The ID of the agent to download"),
     version: typing.Optional[int] = fastapi.Query(
