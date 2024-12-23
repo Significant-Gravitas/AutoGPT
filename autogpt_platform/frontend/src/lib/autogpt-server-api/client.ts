@@ -352,9 +352,11 @@ export default class BackendAPI {
     storeListingVersionId: string,
     version?: number,
   ): Promise<BlobPart> {
-    return this._get(
-      `/download/agents/${storeListingVersionId}?version=${version}`,
-    );
+    const url = version
+      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
+      : `/store/download/agents/${storeListingVersionId}`;
+
+    return this._get(url);
   }
 
   /////////////////////////////////////////

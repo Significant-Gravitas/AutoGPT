@@ -781,7 +781,10 @@ async def get_my_agents(
             "Failed to fetch my agents"
         ) from e
 
-async def get_agent(store_listing_version_id: str, version_id:Optional[int]) -> GraphModel:
+
+async def get_agent(
+    store_listing_version_id: str, version_id: Optional[int]
+) -> GraphModel:
     """Get agent using the version ID and store listing version ID."""
     try:
         store_listing_version = (
@@ -810,7 +813,7 @@ async def get_agent(store_listing_version_id: str, version_id:Optional[int]) -> 
         graph.version = 1
         graph.is_template = False
         graph.is_active = True
-        delattr(graph, 'user_id')
+        delattr(graph, "user_id")
 
         return graph
 

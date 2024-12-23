@@ -1,22 +1,20 @@
+import json
 import logging
+import tempfile
 import typing
 import urllib.parse
-import tempfile
-import json
-
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
+from fastapi.encoders import jsonable_encoder
 
 import backend.data.graph
 import backend.server.v2.store.db
 import backend.server.v2.store.image_gen
 import backend.server.v2.store.media
 import backend.server.v2.store.model
-from fastapi.encoders import jsonable_encoder
-
 
 logger = logging.getLogger(__name__)
 
@@ -514,9 +512,15 @@ async def generate_image(
             status_code=500, detail=f"Failed to generate image: {str(e)}"
         )
 
-@router.get("/download/agents/{store_listing_version_id}",tags=["store","public"],)
+
+@router.get(
+    "/download/agents/{store_listing_version_id}",
+    tags=["store", "public"],
+)
 async def download_agent_file(
-    store_listing_version_id: str = fastapi.Path(..., description="The ID of the agent to download"),
+    store_listing_version_id: str = fastapi.Path(
+        ..., description="The ID of the agent to download"
+    ),
     version: typing.Optional[int] = fastapi.Query(
         None, description="Specific version of the agent"
     ),
@@ -535,7 +539,9 @@ async def download_agent_file(
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
 
-    graph_data = await backend.server.v2.store.db.get_agent(store_listing_version_id=store_listing_version_id, version_id=version)
+    graph_data = await backend.server.v2.store.db.get_agent(
+        store_listing_version_id=store_listing_version_id, version_id=version
+    )
 
     graph_date_dict = jsonable_encoder(graph_data)
 
