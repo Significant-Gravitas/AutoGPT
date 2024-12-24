@@ -28,7 +28,7 @@ export class LoginPage {
 
     // Wait for the button to be ready
     const loginButton = this.page.getByRole("button", {
-      name: "Log in",
+      name: "Login",
       exact: true,
     });
     await loginButton.waitFor({ state: "visible" });
