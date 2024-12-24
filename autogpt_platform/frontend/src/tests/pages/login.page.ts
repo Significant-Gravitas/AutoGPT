@@ -16,11 +16,6 @@ export class LoginPage {
     await passwordInput.waitFor({ state: "visible" });
     await passwordInput.fill(password);
 
-    // Check terms
-    const termsCheckbox = this.page.getByLabel("I agree to the Terms of Use");
-    await termsCheckbox.waitFor({ state: "visible" });
-    await termsCheckbox.click();
-
     // TODO: This is a workaround to wait for the page to load after filling the email and password
     const emailInput2 = this.page.getByPlaceholder("m@example.com");
     await emailInput2.waitFor({ state: "visible" });
