@@ -21,23 +21,28 @@ interface SaveControlProps {
   agentMeta: GraphMeta | null;
   agentName: string;
   agentDescription: string;
-  onSave: (isTemplate: boolean | undefined) => void;
+  canSave: boolean;
+  onSave: () => void;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
   pinSavePopover: boolean;
 }
 
 /**
- * A SaveControl component to be used within the ControlPanel. It allows the user to save the agent / template.
+ * A SaveControl component to be used within the ControlPanel. It allows the user to save the agent.
  * @param {Object} SaveControlProps - The properties of the SaveControl component.
  * @param {GraphMeta | null} SaveControlProps.agentMeta - The agent's metadata, or null if creating a new agent.
- * @param {(isTemplate: boolean | undefined) => void} SaveControlProps.onSave - Function to save the agent or template.
+ * @param {string} SaveControlProps.agentName - The agent's name.
+ * @param {string} SaveControlProps.agentDescription - The agent's description.
+ * @param {boolean} SaveControlProps.canSave - Whether the button to save the agent should be enabled.
+ * @param {() => void} SaveControlProps.onSave - Function to save the agent.
  * @param {(name: string) => void} SaveControlProps.onNameChange - Function to handle name changes.
  * @param {(description: string) => void} SaveControlProps.onDescriptionChange - Function to handle description changes.
  * @returns The SaveControl component.
  */
 export const SaveControl = ({
   agentMeta,
+  canSave,
   onSave,
   agentName,
   onNameChange,
@@ -51,15 +56,9 @@ export const SaveControl = ({
    * We should migrate this to be handled with form controls and a form library.
    */
 
-  // Determines if we're saving a template or an agent
-  let isTemplate = agentMeta?.is_template ? true : undefined;
   const handleSave = useCallback(() => {
-    onSave(isTemplate);
-  }, [onSave, isTemplate]);
-
-  const getType = () => {
-    return agentMeta?.is_template ? "template" : "agent";
-  };
+    onSave();
+  }, [onSave]);
 
   const { toast } = useToast();
 
@@ -91,8 +90,10 @@ export const SaveControl = ({
               variant="ghost"
               size="icon"
               data-id="save-control-popover-trigger"
+              data-testid="blocks-control-save-button"
+              name="Save"
             >
-              <IconSave />
+              <IconSave className="dark:text-gray-300" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -104,10 +105,12 @@ export const SaveControl = ({
         align="start"
         data-id="save-control-popover-content"
       >
-        <Card className="border-none shadow-none">
+        <Card className="border-none shadow-none dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="grid gap-3">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name" className="dark:text-gray-300">
+                Name
+              </Label>
               <Input
                 id="name"
                 placeholder="Enter your agent name"
@@ -115,9 +118,12 @@ export const SaveControl = ({
                 value={agentName}
                 onChange={(e) => onNameChange(e.target.value)}
                 data-id="save-control-name-input"
+                data-testid="save-control-name-input"
                 maxLength={100}
               />
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description" className="dark:text-gray-300">
+                Description
+              </Label>
               <Input
                 id="description"
                 placeholder="Your agent description"
@@ -125,17 +131,21 @@ export const SaveControl = ({
                 value={agentDescription}
                 onChange={(e) => onDescriptionChange(e.target.value)}
                 data-id="save-control-description-input"
+                data-testid="save-control-description-input"
                 maxLength={500}
               />
               {agentMeta?.version && (
                 <>
-                  <Label htmlFor="version">Version</Label>
+                  <Label htmlFor="version" className="dark:text-gray-300">
+                    Version
+                  </Label>
                   <Input
                     id="version"
                     placeholder="Version"
                     className="col-span-3"
                     value={agentMeta?.version || "-"}
                     disabled
+                    data-testid="save-control-version-output"
                   />
                 </>
               )}
@@ -143,25 +153,14 @@ export const SaveControl = ({
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
             <Button
-              className="w-full"
+              className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
               onClick={handleSave}
               data-id="save-control-save-agent"
+              data-testid="save-control-save-agent-button"
+              disabled={!canSave}
             >
-              Save {getType()}
+              Save Agent
             </Button>
-            {!agentMeta && (
-              <Button
-                variant="secondary"
-                className="w-full"
-                data-id="save-control-template-button"
-                onClick={() => {
-                  isTemplate = true;
-                  handleSave();
-                }}
-              >
-                Save as Template
-              </Button>
-            )}
           </CardFooter>
         </Card>
       </PopoverContent>

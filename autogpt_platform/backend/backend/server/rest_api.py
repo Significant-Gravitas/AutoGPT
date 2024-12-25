@@ -16,6 +16,8 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
+import backend.server.v2.library.routes
+import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
 
@@ -25,15 +27,26 @@ logger = logging.getLogger(__name__)
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 
 
+@contextlib.contextmanager
+def launch_darkly_context():
+    if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
+        initialize_launchdarkly()
+        try:
+            yield
+        finally:
+            shutdown_launchdarkly()
+    else:
+        yield
+
+
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    initialize_launchdarkly()
-    yield
-    shutdown_launchdarkly()
+    with launch_darkly_context():
+        yield
     await backend.data.db.disconnect()
 
 
@@ -73,7 +86,13 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
 
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
-app.include_router(backend.server.routers.v1.v1_router, tags=["v1"])
+app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
+)
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])
@@ -106,17 +125,17 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_create_graph(
         create_graph: backend.server.routers.v1.CreateGraph,
         user_id: str,
-        is_template=False,
     ):
         return await backend.server.routers.v1.create_new_graph(create_graph, user_id)
 
     @staticmethod
-    async def test_get_graph_run_status(
-        graph_id: str, graph_exec_id: str, user_id: str
-    ):
-        return await backend.server.routers.v1.get_graph_run_status(
-            graph_id, graph_exec_id, user_id
+    async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
+        execution = await backend.data.graph.get_execution(
+            user_id=user_id, execution_id=graph_exec_id
         )
+        if not execution:
+            raise ValueError(f"Execution {graph_exec_id} not found")
+        return execution.status
 
     @staticmethod
     async def test_get_graph_run_node_execution_results(

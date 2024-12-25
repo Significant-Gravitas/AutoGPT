@@ -1,5 +1,4 @@
 "use client";
-import useUser from "@/hooks/useUser";
 import { login, signup } from "./actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,10 +17,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PasswordInput } from "@/components/PasswordInput";
 import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
 import { useState } from "react";
-import { useSupabase } from "@/components/SupabaseProvider";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
+import useSupabase from "@/hooks/useSupabase";
+import Spinner from "@/components/Spinner";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const loginFormSchema = z.object({
   email: z.string().email().min(2).max(64),
@@ -32,11 +33,11 @@ const loginFormSchema = z.object({
 });
 
 export default function LoginPage() {
-  const { supabase, isLoading: isSupabaseLoading } = useSupabase();
-  const { user, isLoading: isUserLoading } = useUser();
+  const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const api = useBackendAPI();
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -48,16 +49,12 @@ export default function LoginPage() {
   });
 
   if (user) {
-    console.log("User exists, redirecting to home");
+    console.debug("User exists, redirecting to /");
     router.push("/");
   }
 
-  if (isUserLoading || isSupabaseLoading || user) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
-      </div>
-    );
+  if (isUserLoading || user) {
+    return <Spinner />;
   }
 
   if (!supabase) {
@@ -79,6 +76,8 @@ export default function LoginPage() {
           `http://localhost:3000/auth/callback`,
       },
     });
+
+    await api.createUser();
 
     if (!error) {
       setFeedback(null);
@@ -203,18 +202,41 @@ export default function LoginPage() {
                 className="flex w-full justify-center"
                 type="submit"
                 disabled={isLoading}
+                onClick={async () => {
+                  setIsLoading(true);
+                  const values = form.getValues();
+                  const result = await login(values);
+                  if (result) {
+                    setFeedback(result);
+                  }
+                  setIsLoading(false);
+                }}
               >
-                Log in
+                {isLoading ? <FaSpinner className="animate-spin" /> : "Log in"}
               </Button>
-            </div>
-            <div className="w-full text-center">
-              <Link href={"/signup"} className="w-fit text-xs hover:underline">
-                Create a new Account
-              </Link>
+              <Button
+                className="flex w-full justify-center"
+                type="button"
+                disabled={isLoading}
+                onClick={async () => {
+                  setIsLoading(true);
+                  const values = form.getValues();
+                  const result = await signup(values);
+                  if (result) {
+                    setFeedback(result);
+                  }
+                  setIsLoading(false);
+                }}
+              >
+                {isLoading ? <FaSpinner className="animate-spin" /> : "Sign up"}
+              </Button>
             </div>
           </form>
           <p className="text-sm text-red-500">{feedback}</p>
         </Form>
+        <Link href="/reset_password" className="text-sm">
+          Forgot your password?
+        </Link>
       </div>
     </div>
   );

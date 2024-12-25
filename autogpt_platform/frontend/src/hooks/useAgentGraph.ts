@@ -1,6 +1,6 @@
 import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
-import AutoGPTServerAPI, {
+import BackendAPI, {
   Block,
   BlockIOSubSchema,
   BlockUIType,
@@ -26,7 +26,6 @@ const ajv = new Ajv({ strict: false, allErrors: true });
 
 export default function useAgentGraph(
   flowID?: string,
-  template?: boolean,
   passDataToBeads?: boolean,
 ) {
   const { toast } = useToast();
@@ -75,7 +74,7 @@ export default function useAgentGraph(
   const [edges, setEdges] = useState<CustomEdge[]>([]);
 
   const api = useMemo(
-    () => new AutoGPTServerAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
+    () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
     [],
   );
 
@@ -170,6 +169,7 @@ export default function useAgentGraph(
               inputSchema: block.inputSchema,
               outputSchema: block.outputSchema,
               hardcodedValues: node.input_default,
+              webhook: node.webhook,
               uiType: block.uiType,
               connections: graph.links
                 .filter((l) => [l.source_id, l.sink_id].includes(node.id))
@@ -332,13 +332,11 @@ export default function useAgentGraph(
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    (template ? api.getTemplate(flowID) : api.getGraph(flowID)).then(
-      (graph) => {
-        console.debug("Loading graph");
-        loadGraph(graph);
-      },
-    );
-  }, [flowID, template, availableNodes, api, loadGraph]);
+    api.getGraph(flowID).then((graph) => {
+      console.debug("Loading graph");
+      loadGraph(graph);
+    });
+  }, [flowID, availableNodes, api, loadGraph]);
 
   // Update nodes with execution data
   useEffect(() => {
@@ -406,6 +404,54 @@ export default function useAgentGraph(
           }
         });
       }
+
+      Object.entries(node.data.inputSchema.properties || {}).forEach(
+        ([key, schema]) => {
+          if (schema.depends_on) {
+            const dependencies = schema.depends_on;
+
+            // Check if dependent field has value
+            const hasValue =
+              inputData[key] != null ||
+              ("default" in schema && schema.default != null);
+
+            const mustHaveValue = node.data.inputSchema.required?.includes(key);
+
+            // Check for missing dependencies when dependent field is present
+            const missingDependencies = dependencies.filter(
+              (dep) =>
+                !inputData[dep as keyof typeof inputData] ||
+                String(inputData[dep as keyof typeof inputData]).trim() === "",
+            );
+
+            if ((hasValue || mustHaveValue) && missingDependencies.length > 0) {
+              setNestedProperty(
+                errors,
+                key,
+                `Requires ${missingDependencies.join(", ")} to be set`,
+              );
+              errorMessage = `Field ${key} requires ${missingDependencies.join(", ")} to be set`;
+            }
+
+            // Check if field is required when dependencies are present
+            const hasAllDependencies = dependencies.every(
+              (dep) =>
+                inputData[dep as keyof typeof inputData] &&
+                String(inputData[dep as keyof typeof inputData]).trim() !== "",
+            );
+
+            if (hasAllDependencies && !hasValue) {
+              setNestedProperty(
+                errors,
+                key,
+                `${key} is required when ${dependencies.join(", ")} are set`,
+              );
+              errorMessage = `${key} is required when ${dependencies.join(", ")} are set`;
+            }
+          }
+        },
+      );
+
       // Set errors
       setNodes((nodes) => {
         return nodes.map((n) => {
@@ -642,203 +688,192 @@ export default function useAgentGraph(
     [availableNodes],
   );
 
-  const _saveAgent = useCallback(
-    async (asTemplate: boolean = false) => {
-      //FIXME frontend ids should be resolved better (e.g. returned from the server)
-      // currently this relays on block_id and position
-      const blockIdToNodeIdMap: Record<string, string> = {};
+  const _saveAgent = useCallback(async () => {
+    //FIXME frontend ids should be resolved better (e.g. returned from the server)
+    // currently this relays on block_id and position
+    const blockIdToNodeIdMap: Record<string, string> = {};
 
-      nodes.forEach((node) => {
-        const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
-        blockIdToNodeIdMap[key] = node.id;
-      });
+    nodes.forEach((node) => {
+      const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
+      blockIdToNodeIdMap[key] = node.id;
+    });
 
-      const formattedNodes = nodes.map((node) => {
-        const inputDefault = prepareNodeInputData(node);
-        const inputNodes = edges
-          .filter((edge) => edge.target === node.id)
-          .map((edge) => ({
-            name: edge.targetHandle || "",
-            node_id: edge.source,
-          }));
-
-        const outputNodes = edges
-          .filter((edge) => edge.source === node.id)
-          .map((edge) => ({
-            name: edge.sourceHandle || "",
-            node_id: edge.target,
-          }));
-
-        return {
-          id: node.id,
-          block_id: node.data.block_id,
-          input_default: inputDefault,
-          input_nodes: inputNodes,
-          output_nodes: outputNodes,
-          data: {
-            ...node.data,
-            hardcodedValues: removeEmptyStringsAndNulls(
-              node.data.hardcodedValues,
-            ),
-          },
-          metadata: { position: node.position },
-        };
-      });
-
-      const links = edges.map((edge) => ({
-        source_id: edge.source,
-        sink_id: edge.target,
-        source_name: edge.sourceHandle || "",
-        sink_name: edge.targetHandle || "",
-      }));
-
-      const payload = {
-        id: savedAgent?.id!,
-        name: agentName || `New Agent ${new Date().toISOString()}`,
-        description: agentDescription || "",
-        nodes: formattedNodes,
-        links: links,
-      };
-
-      // To avoid saving the same graph, we compare the payload with the saved agent.
-      // Differences in IDs are ignored.
-      const comparedPayload = {
-        ...(({ id, ...rest }) => rest)(payload),
-        nodes: payload.nodes.map(
-          ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
-        ),
-        links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
-      };
-      const comparedSavedAgent = {
-        name: savedAgent?.name,
-        description: savedAgent?.description,
-        nodes: savedAgent?.nodes.map((v) => ({
-          block_id: v.block_id,
-          input_default: v.input_default,
-          metadata: v.metadata,
-        })),
-        links: savedAgent?.links.map((v) => ({
-          sink_name: v.sink_name,
-          source_name: v.source_name,
-        })),
-      };
-
-      let newSavedAgent = null;
-      if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
-        console.warn("No need to save: Graph is the same as version on server");
-        newSavedAgent = savedAgent;
-      } else {
-        console.debug(
-          "Saving new Graph version; old vs new:",
-          comparedPayload,
-          payload,
-        );
-        setNodesSyncedWithSavedAgent(false);
-
-        newSavedAgent = savedAgent
-          ? await (savedAgent.is_template
-              ? api.updateTemplate(savedAgent.id, payload)
-              : api.updateGraph(savedAgent.id, payload))
-          : await (asTemplate
-              ? api.createTemplate(payload)
-              : api.createGraph(payload));
-
-        console.debug("Response from the API:", newSavedAgent);
-      }
-
-      // Route the URL to the new flow ID if it's a new agent.
-      if (!savedAgent) {
-        const path = new URLSearchParams(searchParams);
-        path.set("flowID", newSavedAgent.id);
-        router.push(`${pathname}?${path.toString()}`);
-        return;
-      }
-
-      // Update the node IDs on the frontend
-      setSavedAgent(newSavedAgent);
-      setNodes((prev) => {
-        return newSavedAgent.nodes
-          .map((backendNode) => {
-            const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-            const frontendNodeId = blockIdToNodeIdMap[key];
-            const frontendNode = prev.find(
-              (node) => node.id === frontendNodeId,
-            );
-
-            return frontendNode
-              ? {
-                  ...frontendNode,
-                  position: backendNode.metadata.position,
-                  data: {
-                    ...frontendNode.data,
-                    hardcodedValues: removeEmptyStringsAndNulls(
-                      frontendNode.data.hardcodedValues,
-                    ),
-                    status: undefined,
-                    backend_id: backendNode.id,
-                    executionResults: [],
-                  },
-                }
-              : null;
-          })
-          .filter((node) => node !== null);
-      });
-      // Reset bead count
-      setEdges((edges) => {
-        return edges.map((edge) => ({
-          ...edge,
-          data: {
-            ...edge.data,
-            edgeColor: edge.data?.edgeColor!,
-            beadUp: 0,
-            beadDown: 0,
-            beadData: [],
-          },
+    const formattedNodes = nodes.map((node) => {
+      const inputDefault = prepareNodeInputData(node);
+      const inputNodes = edges
+        .filter((edge) => edge.target === node.id)
+        .map((edge) => ({
+          name: edge.targetHandle || "",
+          node_id: edge.source,
         }));
-      });
-    },
-    [
-      api,
-      nodes,
-      edges,
-      pathname,
-      router,
-      searchParams,
-      savedAgent,
-      agentName,
-      agentDescription,
-      prepareNodeInputData,
-    ],
-  );
 
-  const saveAgent = useCallback(
-    async (asTemplate: boolean = false) => {
-      try {
-        await _saveAgent(asTemplate);
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        console.error("Error saving agent", error);
-        toast({
-          variant: "destructive",
-          title: "Error saving agent",
-          description: errorMessage,
-        });
-      }
-    },
-    [_saveAgent, toast],
-  );
+      const outputNodes = edges
+        .filter((edge) => edge.source === node.id)
+        .map((edge) => ({
+          name: edge.sourceHandle || "",
+          node_id: edge.target,
+        }));
 
-  const requestSave = useCallback(
-    (asTemplate: boolean) => {
-      saveAgent(asTemplate);
-      setSaveRunRequest({
-        request: "save",
-        state: "saving",
+      return {
+        id: node.id,
+        block_id: node.data.block_id,
+        input_default: inputDefault,
+        input_nodes: inputNodes,
+        output_nodes: outputNodes,
+        data: {
+          ...node.data,
+          hardcodedValues: removeEmptyStringsAndNulls(
+            node.data.hardcodedValues,
+          ),
+        },
+        metadata: { position: node.position },
+      };
+    });
+
+    const links = edges.map((edge) => ({
+      source_id: edge.source,
+      sink_id: edge.target,
+      source_name: edge.sourceHandle || "",
+      sink_name: edge.targetHandle || "",
+    }));
+
+    const payload = {
+      id: savedAgent?.id!,
+      name: agentName || `New Agent ${new Date().toISOString()}`,
+      description: agentDescription || "",
+      nodes: formattedNodes,
+      links: links,
+    };
+
+    // To avoid saving the same graph, we compare the payload with the saved agent.
+    // Differences in IDs are ignored.
+    const comparedPayload = {
+      ...(({ id, ...rest }) => rest)(payload),
+      nodes: payload.nodes.map(
+        ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
+      ),
+      links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
+    };
+    const comparedSavedAgent = {
+      name: savedAgent?.name,
+      description: savedAgent?.description,
+      nodes: savedAgent?.nodes.map((v) => ({
+        block_id: v.block_id,
+        input_default: v.input_default,
+        metadata: v.metadata,
+      })),
+      links: savedAgent?.links.map((v) => ({
+        sink_name: v.sink_name,
+        source_name: v.source_name,
+      })),
+    };
+
+    let newSavedAgent = null;
+    if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
+      console.warn("No need to save: Graph is the same as version on server");
+      newSavedAgent = savedAgent;
+    } else {
+      console.debug(
+        "Saving new Graph version; old vs new:",
+        comparedPayload,
+        payload,
+      );
+      setNodesSyncedWithSavedAgent(false);
+
+      newSavedAgent = savedAgent
+        ? await api.updateGraph(savedAgent.id, payload)
+        : await api.createGraph(payload);
+
+      console.debug("Response from the API:", newSavedAgent);
+    }
+
+    // Route the URL to the new flow ID if it's a new agent.
+    if (!savedAgent) {
+      const path = new URLSearchParams(searchParams);
+      path.set("flowID", newSavedAgent.id);
+      router.push(`${pathname}?${path.toString()}`);
+      return;
+    }
+
+    // Update the node IDs on the frontend
+    setSavedAgent(newSavedAgent);
+    setNodes((prev) => {
+      return newSavedAgent.nodes
+        .map((backendNode) => {
+          const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
+          const frontendNodeId = blockIdToNodeIdMap[key];
+          const frontendNode = prev.find((node) => node.id === frontendNodeId);
+
+          return frontendNode
+            ? {
+                ...frontendNode,
+                position: backendNode.metadata.position,
+                data: {
+                  ...frontendNode.data,
+                  hardcodedValues: removeEmptyStringsAndNulls(
+                    frontendNode.data.hardcodedValues,
+                  ),
+                  status: undefined,
+                  backend_id: backendNode.id,
+                  webhook: backendNode.webhook,
+                  executionResults: [],
+                },
+              }
+            : null;
+        })
+        .filter((node) => node !== null);
+    });
+    // Reset bead count
+    setEdges((edges) => {
+      return edges.map((edge) => ({
+        ...edge,
+        data: {
+          ...edge.data,
+          edgeColor: edge.data?.edgeColor!,
+          beadUp: 0,
+          beadDown: 0,
+          beadData: [],
+        },
+      }));
+    });
+  }, [
+    api,
+    nodes,
+    edges,
+    pathname,
+    router,
+    searchParams,
+    savedAgent,
+    agentName,
+    agentDescription,
+    prepareNodeInputData,
+  ]);
+
+  const saveAgent = useCallback(async () => {
+    try {
+      await _saveAgent();
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("Error saving agent", error);
+      toast({
+        variant: "destructive",
+        title: "Error saving agent",
+        description: errorMessage,
       });
-    },
-    [saveAgent],
-  );
+    }
+  }, [_saveAgent, toast]);
+
+  const requestSave = useCallback(() => {
+    if (saveRunRequest.state !== "none") {
+      return;
+    }
+    saveAgent();
+    setSaveRunRequest({
+      request: "save",
+      state: "saving",
+    });
+  }, [saveAgent]);
 
   const requestSaveAndRun = useCallback(() => {
     saveAgent();

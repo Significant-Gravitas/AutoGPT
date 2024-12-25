@@ -121,6 +121,7 @@ from backend.data.model import (
 
 from backend.data.block import Block, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField
+from backend.integrations.providers import ProviderName
 
 
 # API Key auth:
@@ -128,9 +129,9 @@ class BlockWithAPIKeyAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
-        credentials: CredentialsMetaInput[Literal['github'], Literal['api_key']] = CredentialsField(
-            provider="github",
-            supported_credential_types={"api_key"},
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.GITHUB], Literal["api_key"]
+        ] = CredentialsField(
             description="The GitHub integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
         )
@@ -151,9 +152,9 @@ class BlockWithOAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
-        credentials: CredentialsMetaInput[Literal['github'], Literal['oauth2']] = CredentialsField(
-            provider="github",
-            supported_credential_types={"oauth2"},
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.GITHUB], Literal["oauth2"]
+        ] = CredentialsField(
             required_scopes={"repo"},
             description="The GitHub integration can be used with OAuth.",
         )
@@ -174,9 +175,9 @@ class BlockWithAPIKeyAndOAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
-        credentials: CredentialsMetaInput[Literal['github'], Literal['api_key', 'oauth2']] = CredentialsField(
-            provider="github",
-            supported_credential_types={"api_key", "oauth2"},
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.GITHUB], Literal["api_key", "oauth2"]
+        ] = CredentialsField(
             required_scopes={"repo"},
             description="The GitHub integration can be used with OAuth, "
             "or any API key with sufficient permissions for the blocks it is used on.",
@@ -226,6 +227,16 @@ response = requests.post(
     headers={"Authorization": credentials.bearer()},
 )
 ```
+
+The `ProviderName` enum is the single source of truth for which providers exist in our system.
+Naturally, to add an authenticated block for a new provider, you'll have to add it here too.
+<details>
+<summary><code>ProviderName</code> definition</summary>
+
+```python title="backend/integrations/providers.py"
+--8<-- "autogpt_platform/backend/backend/integrations/providers.py:ProviderName"
+```
+</details>
 
 #### Adding an OAuth2 service integration
 
@@ -405,13 +416,13 @@ To create a webhook-triggered block, follow these additional steps on top of the
 
 To add support for a new webhook provider, you'll need to create a WebhooksManager that implements the `BaseWebhooksManager` interface:
 
-```python title="backend/integrations/webhooks/base.py"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager1"
+```python title="backend/integrations/webhooks/_base.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager1"
 
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager2"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager3"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager4"
---8<-- "autogpt_platform/backend/backend/integrations/webhooks/base.py:BaseWebhooksManager5"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager2"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager3"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager4"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager5"
 ```
 
 And add a reference to your `WebhooksManager` class in `WEBHOOK_MANAGERS_BY_NAME`:

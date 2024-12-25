@@ -10,6 +10,7 @@ type HandleProps = {
   isConnected: boolean;
   isRequired?: boolean;
   side: "left" | "right";
+  title?: string;
 };
 
 const NodeHandle: FC<HandleProps> = ({
@@ -18,6 +19,7 @@ const NodeHandle: FC<HandleProps> = ({
   isConnected,
   isRequired,
   side,
+  title,
 }) => {
   const typeName: Record<string, string> = {
     string: "text",
@@ -33,8 +35,8 @@ const NodeHandle: FC<HandleProps> = ({
 
   const label = (
     <div className="flex flex-grow flex-row">
-      <span className="text-m green flex items-end pr-2 text-gray-900">
-        {schema.title || beautifyString(keyName.toLowerCase())}
+      <span className="text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100">
+        {title || schema.title || beautifyString(keyName.toLowerCase())}
         {isRequired ? "*" : ""}
       </span>
       <span className={`${typeClass} flex items-end`}>
@@ -43,13 +45,13 @@ const NodeHandle: FC<HandleProps> = ({
     </div>
   );
 
-  const Dot = ({ className = "" }) => {
+  const Dot = () => {
     const color = isConnected
       ? getTypeBgColor(schema.type || "any")
-      : "border-gray-300";
+      : "border-gray-300 dark:border-gray-600";
     return (
       <div
-        className={`${className} ${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300`}
+        className={`${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300 dark:bg-slate-800 dark:group-hover:bg-gray-700`}
       />
     );
   };
@@ -59,12 +61,13 @@ const NodeHandle: FC<HandleProps> = ({
       <div key={keyName} className="handle-container">
         <Handle
           type="target"
+          data-testid={`input-handle-${keyName}`}
           position={Position.Left}
           id={keyName}
-          className="-ml-[26px]"
+          className="group -ml-[38px]"
         >
           <div className="pointer-events-none flex items-center">
-            <Dot className={`-ml-2 mr-2`} />
+            <Dot />
             {label}
           </div>
         </Handle>
@@ -76,6 +79,7 @@ const NodeHandle: FC<HandleProps> = ({
       <div key={keyName} className="handle-container justify-end">
         <Handle
           type="source"
+          data-testid={`output-handle-${keyName}`}
           position={Position.Right}
           id={keyName}
           className="group -mr-[26px]"

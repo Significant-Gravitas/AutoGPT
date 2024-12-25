@@ -56,6 +56,7 @@ export type BlockIOSubSchemaMeta = {
   description?: string;
   placeholder?: string;
   advanced?: boolean;
+  depends_on?: string[];
   hidden?: boolean;
 };
 
@@ -83,6 +84,7 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   enum?: string[];
   secret?: true;
   default?: string;
+  format?: string;
 };
 
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
@@ -102,6 +104,7 @@ export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
   D_ID: "d_id",
   DISCORD: "discord",
+  E2B: "e2b",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
@@ -115,10 +118,12 @@ export const PROVIDER_NAMES = {
   OPENWEATHERMAP: "openweathermap",
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
+  SLANT3D: "slant3d",
   REPLICATE: "replicate",
   FAL: "fal",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  EXA: "exa",
   HUBSPOT: "hubspot",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
@@ -167,6 +172,7 @@ export type Node = {
     position: { x: number; y: number };
     [key: string]: any;
   };
+  webhook?: Webhook;
 };
 
 /* Mirror of backend/data/graph.py:Link */
@@ -183,30 +189,26 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of autogpt_server/data/graph.py:ExecutionMeta */
-export type ExecutionMeta = {
+/* Mirror of backend/data/graph.py:GraphExecution */
+export type GraphExecution = {
   execution_id: string;
   started_at: number;
   ended_at: number;
   duration: number;
   total_run_time: number;
-  status: "running" | "waiting" | "success" | "failed";
+  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  graph_id: string;
+  graph_version: number;
 };
 
-/* Mirror of backend/data/graph.py:GraphMeta */
 export type GraphMeta = {
   id: string;
   version: number;
   is_active: boolean;
-  is_template: boolean;
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;
   output_schema: BlockIOObjectSubSchema;
-};
-
-export type GraphMetaWithRuns = GraphMeta & {
-  executions: ExecutionMeta[];
 };
 
 /* Mirror of backend/data/graph.py:Graph */
@@ -217,16 +219,10 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  | "version"
-  | "is_active"
-  | "is_template"
-  | "links"
-  | "input_schema"
-  | "output_schema"
+  "version" | "is_active" | "links" | "input_schema" | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;
-  is_template?: boolean;
   links: Array<LinkCreatable>;
   input_schema?: BlockIOObjectSubSchema;
   output_schema?: BlockIOObjectSubSchema;
@@ -318,6 +314,20 @@ export type APIKeyCredentials = BaseCredentials & {
   expires_at?: number;
 };
 
+/* Mirror of backend/data/integrations.py:Webhook */
+type Webhook = {
+  id: string;
+  url: string;
+  provider: CredentialsProviderName;
+  credentials_id: string;
+  webhook_type: string;
+  resource?: string;
+  events: string[];
+  secret: string;
+  config: Record<string, any>;
+  provider_webhook_id?: string;
+};
+
 export type User = {
   id: string;
   email: string;
@@ -329,6 +339,7 @@ export enum BlockUIType {
   OUTPUT = "Output",
   NOTE = "Note",
   WEBHOOK = "Webhook",
+  WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
 }
 
@@ -350,6 +361,111 @@ export type AnalyticsDetails = {
   index: string;
 };
 
+export type Pagination = {
+  total_items: number;
+  total_pages: number;
+  current_page: number;
+  page_size: number;
+};
+
+export type StoreAgent = {
+  slug: string;
+  agent_name: string;
+  agent_image: string;
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
+  description: string;
+  runs: number;
+  rating: number;
+};
+
+export type StoreAgentsResponse = {
+  agents: StoreAgent[];
+  pagination: Pagination;
+};
+
+export type StoreAgentDetails = {
+  store_listing_version_id: string;
+  slug: string;
+  updated_at: string;
+  agent_name: string;
+  agent_video: string;
+  agent_image: string[];
+  creator: string;
+  creator_avatar: string;
+  sub_heading: string;
+  description: string;
+  categories: string[];
+  runs: number;
+  rating: number;
+  versions: string[];
+};
+
+export type Creator = {
+  name: string;
+  username: string;
+  description: string;
+  avatar_url: string;
+  num_agents: number;
+  agent_rating: number;
+  agent_runs: number;
+};
+
+export type CreatorsResponse = {
+  creators: Creator[];
+  pagination: Pagination;
+};
+
+export type CreatorDetails = {
+  name: string;
+  username: string;
+  description: string;
+  links: string[];
+  avatar_url: string;
+  agent_rating: number;
+  agent_runs: number;
+  top_categories: string[];
+};
+
+export type StoreSubmission = {
+  agent_id: string;
+  agent_version: number;
+  name: string;
+  sub_heading: string;
+  description: string;
+  image_urls: string[];
+  date_submitted: string;
+  status: string;
+  runs: number;
+  rating: number;
+};
+
+export type StoreSubmissionsResponse = {
+  submissions: StoreSubmission[];
+  pagination: Pagination;
+};
+
+export type StoreSubmissionRequest = {
+  agent_id: string;
+  agent_version: number;
+  slug: string;
+  name: string;
+  sub_heading: string;
+  video_url?: string;
+  image_urls: string[];
+  description: string;
+  categories: string[];
+};
+
+export type ProfileDetails = {
+  name: string;
+  username: string;
+  description: string;
+  links: string[];
+  avatar_url: string;
+};
+
 export type Schedule = {
   id: string;
   name: string;
@@ -365,4 +481,28 @@ export type ScheduleCreatable = {
   cron: string;
   graph_id: string;
   input_data: { [key: string]: any };
+};
+
+export type MyAgent = {
+  agent_id: string;
+  agent_version: number;
+  agent_name: string;
+  last_edited: string;
+  description: string;
+};
+
+export type MyAgentsResponse = {
+  agents: MyAgent[];
+  pagination: Pagination;
+};
+
+export type StoreReview = {
+  score: number;
+  comments?: string;
+};
+
+export type StoreReviewCreate = {
+  store_listing_version_id: string;
+  score: number;
+  comments?: string;
 };

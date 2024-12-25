@@ -1,6 +1,5 @@
 import React from "react";
-import { GraphMeta } from "@/lib/autogpt-server-api";
-import { FlowRun } from "@/lib/types";
+import { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -16,11 +15,11 @@ import { TextRenderer } from "../ui/render";
 
 export const FlowRunsList: React.FC<{
   flows: GraphMeta[];
-  runs: FlowRun[];
+  executions: GraphExecution[];
   className?: string;
-  selectedRun?: FlowRun | null;
-  onSelectRun: (r: FlowRun) => void;
-}> = ({ flows, runs, selectedRun, onSelectRun, className }) => (
+  selectedRun?: GraphExecution | null;
+  onSelectRun: (r: GraphExecution) => void;
+}> = ({ flows, executions, selectedRun, onSelectRun, className }) => (
   <Card className={className}>
     <CardHeader>
       <CardTitle>Runs</CardTitle>
@@ -35,25 +34,34 @@ export const FlowRunsList: React.FC<{
             <TableHead>Duration</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
-          {runs.map((run) => (
+        <TableBody data-testid="flow-runs-list-body">
+          {executions.map((execution) => (
             <TableRow
-              key={run.id}
+              key={execution.execution_id}
+              data-testid={`flow-run-${execution.execution_id}-graph-${execution.graph_id}`}
+              data-runid={execution.execution_id}
+              data-graphid={execution.graph_id}
               className="cursor-pointer"
-              onClick={() => onSelectRun(run)}
-              data-state={selectedRun?.id == run.id ? "selected" : null}
+              onClick={() => onSelectRun(execution)}
+              data-state={
+                selectedRun?.execution_id == execution.execution_id
+                  ? "selected"
+                  : null
+              }
             >
               <TableCell>
                 <TextRenderer
-                  value={flows.find((f) => f.id == run.graphID)!.name}
+                  value={flows.find((f) => f.id == execution.graph_id)?.name}
                   truncateLengthLimit={30}
                 />
               </TableCell>
-              <TableCell>{moment(run.startTime).format("HH:mm")}</TableCell>
               <TableCell>
-                <FlowRunStatusBadge status={run.status} />
+                {moment(execution.started_at).format("HH:mm")}
               </TableCell>
-              <TableCell>{formatDuration(run.duration)}</TableCell>
+              <TableCell>
+                <FlowRunStatusBadge status={execution.status} />
+              </TableCell>
+              <TableCell>{formatDuration(execution.duration)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

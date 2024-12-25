@@ -1,6 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// TODO: Update the protected pages list
+const PROTECTED_PAGES = [
+  "/monitor",
+  "/build",
+  "/store/profile",
+  "/store/settings",
+  "/store/dashboard",
+];
+const ADMIN_PAGES = ["/admin"];
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -48,15 +58,37 @@ export async function updateSession(request: NextRequest) {
       error,
     } = await supabase.auth.getUser();
 
+    // Get the user role
+    const userRole = user?.role;
+    const url = request.nextUrl.clone();
+    const pathname = request.nextUrl.pathname;
+    // AUTH REDIRECTS
+    // If not logged in and trying to access a protected page, redirect to login
     if (
-      !user &&
-      !request.nextUrl.pathname.startsWith("/login") &&
-      !request.nextUrl.pathname.startsWith("/auth")
+      (!user &&
+        PROTECTED_PAGES.some((page) => {
+          const combinedPath = `${page}`;
+          // console.log("Checking pathname:", request.nextUrl.pathname, "against:", combinedPath);
+          return request.nextUrl.pathname.startsWith(combinedPath);
+        })) ||
+      ADMIN_PAGES.some((page) => {
+        const combinedPath = `${page}`;
+        // console.log("Checking pathname:", request.nextUrl.pathname, "against:", combinedPath);
+        return request.nextUrl.pathname.startsWith(combinedPath);
+      })
     ) {
       // no user, potentially respond by redirecting the user to the login page
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      // return NextResponse.redirect(url)
+      url.pathname = `/login`;
+      return NextResponse.redirect(url);
+    }
+    if (
+      user &&
+      userRole != "admin" &&
+      ADMIN_PAGES.some((page) => request.nextUrl.pathname.startsWith(`${page}`))
+    ) {
+      // no user, potentially respond by redirecting the user to the login page
+      url.pathname = `/store`;
+      return NextResponse.redirect(url);
     }
 
     // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're

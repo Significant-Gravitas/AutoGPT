@@ -2,13 +2,14 @@ import React from "react";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Providers } from "@/app/providers";
-import { NavBar } from "@/components/NavBar";
 import { cn } from "@/lib/utils";
+import { Navbar } from "@/components/agptui/Navbar";
 
 import "./globals.css";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "@/components/ui/toaster";
+import { IconType } from "@/components/ui/icons";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
   description: "Your one stop shop to creating AI Agents",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -32,9 +33,65 @@ export default function RootLayout({
           // enableSystem
           disableTransitionOnChange
         >
-          <div className="flex min-h-screen flex-col">
-            <NavBar />
-            <main className="flex-1 p-4">{children}</main>
+          <div className="flex min-h-screen flex-col items-center justify-center">
+            <Navbar
+              links={[
+                {
+                  name: "Marketplace",
+                  href: "/store",
+                },
+                {
+                  name: "Library",
+                  href: "/monitoring",
+                },
+                {
+                  name: "Build",
+                  href: "/build",
+                },
+              ]}
+              menuItemGroups={[
+                {
+                  items: [
+                    {
+                      icon: IconType.Edit,
+                      text: "Edit profile",
+                      href: "/store/profile",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.LayoutDashboard,
+                      text: "Creator Dashboard",
+                      href: "/store/dashboard",
+                    },
+                    {
+                      icon: IconType.UploadCloud,
+                      text: "Publish an agent",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.Settings,
+                      text: "Settings",
+                      href: "/store/settings",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.LogOut,
+                      text: "Log out",
+                    },
+                  ],
+                },
+              ]}
+            />
+            <main className="flex-1">{children}</main>
             <TallyPopupSimple />
           </div>
           <Toaster />

@@ -4,20 +4,24 @@ import React, {
   useCallback,
   useRef,
   useContext,
+  useMemo,
 } from "react";
-import { NodeProps, useReactFlow, Node, Edge } from "@xyflow/react";
+import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./customnode.css";
 import InputModalComponent from "./InputModalComponent";
 import OutputModalComponent from "./OutputModalComponent";
 import {
   BlockIORootSchema,
+  BlockIOSubSchema,
   BlockIOStringSubSchema,
   Category,
+  Node,
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
-} from "@/lib/autogpt-server-api/types";
+} from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   beautifyString,
   cn,
@@ -68,6 +72,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
+  webhook?: Node["webhook"];
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -83,7 +88,7 @@ export type CustomNodeData = {
   uiType: BlockUIType;
 };
 
-export type CustomNode = Node<CustomNodeData, "custom">;
+export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export function CustomNode({
   data,
@@ -104,6 +109,7 @@ export function CustomNode({
   >();
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
+  const api = useBackendAPI();
   let nodeFlowId = "";
 
   if (data.uiType === BlockUIType.AGENT) {
@@ -163,17 +169,38 @@ export function CustomNode({
       nodeType === BlockUIType.NOTE
     )
       return null;
-    const keys = Object.keys(schema.properties);
-    return keys.map((key) => (
-      <div key={key}>
-        <NodeHandle
-          keyName={key}
-          isConnected={isOutputHandleConnected(key)}
-          schema={schema.properties[key]}
-          side="right"
-        />
-      </div>
-    ));
+
+    const renderHandles = (
+      propSchema: { [key: string]: BlockIOSubSchema },
+      keyPrefix = "",
+      titlePrefix = "",
+    ) => {
+      return Object.keys(propSchema).map((propKey) => {
+        const fieldSchema = propSchema[propKey];
+        const fieldTitle =
+          titlePrefix + (fieldSchema.title || beautifyString(propKey));
+
+        return (
+          <div key={propKey}>
+            <NodeHandle
+              title={fieldTitle}
+              keyName={`${keyPrefix}${propKey}`}
+              isConnected={isOutputHandleConnected(propKey)}
+              schema={fieldSchema}
+              side="right"
+            />
+            {"properties" in fieldSchema &&
+              renderHandles(
+                fieldSchema.properties,
+                `${keyPrefix}${propKey}_#_`,
+                `${fieldTitle}.`,
+              )}
+          </div>
+        );
+      });
+    };
+
+    return renderHandles(schema.properties);
   };
 
   const generateInputHandles = (
@@ -211,7 +238,11 @@ export function CustomNode({
           const isHidden = propSchema.hidden;
           const isConnectable =
             // No input connection handles on INPUT and WEBHOOK blocks
-            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
+            ![
+              BlockUIType.INPUT,
+              BlockUIType.WEBHOOK,
+              BlockUIType.WEBHOOK_MANUAL,
+            ].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
@@ -232,7 +263,7 @@ export function CustomNode({
                 ) : (
                   propKey != "credentials" && (
                     <div className="flex gap-1">
-                      <span className="text-m green mb-0 text-gray-900">
+                      <span className="text-m green mb-0 text-gray-900 dark:text-gray-100">
                         {propSchema.title || beautifyString(propKey)}
                       </span>
                       <SchemaTooltip description={propSchema.description} />
@@ -434,49 +465,54 @@ export function CustomNode({
     "custom-node",
     "dark-theme",
     "rounded-xl",
-    "bg-white/[.9]",
-    "border border-gray-300",
+    "bg-white/[.9] dark:bg-gray-800/[.9]",
+    "border border-gray-300 dark:border-gray-600",
     data.uiType === BlockUIType.NOTE ? "w-[300px]" : "w-[500px]",
-    data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white",
+    data.uiType === BlockUIType.NOTE
+      ? "bg-yellow-100 dark:bg-yellow-900"
+      : "bg-white dark:bg-gray-800",
     selected ? "shadow-2xl" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const errorClass =
-    hasConfigErrors || hasOutputError ? "border-red-200 border-2" : "";
+    hasConfigErrors || hasOutputError
+      ? "border-red-200 dark:border-red-800 border-2"
+      : "";
 
   const statusClass = (() => {
-    if (hasConfigErrors || hasOutputError) return "border-red-200 border-4";
+    if (hasConfigErrors || hasOutputError)
+      return "border-red-200 dark:border-red-800 border-4";
     switch (data.status?.toLowerCase()) {
       case "completed":
-        return "border-green-200 border-4";
+        return "border-green-200 dark:border-green-800 border-4";
       case "running":
-        return "border-yellow-200 border-4";
+        return "border-yellow-200 dark:border-yellow-800 border-4";
       case "failed":
-        return "border-red-200 border-4";
+        return "border-red-200 dark:border-red-800 border-4";
       case "incomplete":
-        return "border-purple-200 border-4";
+        return "border-purple-200 dark:border-purple-800 border-4";
       case "queued":
-        return "border-cyan-200 border-4";
+        return "border-cyan-200 dark:border-cyan-800 border-4";
       default:
         return "";
     }
   })();
 
   const statusBackgroundClass = (() => {
-    if (hasConfigErrors || hasOutputError) return "bg-red-200";
+    if (hasConfigErrors || hasOutputError) return "bg-red-200 dark:bg-red-800";
     switch (data.status?.toLowerCase()) {
       case "completed":
-        return "bg-green-200";
+        return "bg-green-200 dark:bg-green-800";
       case "running":
-        return "bg-yellow-200";
+        return "bg-yellow-200 dark:bg-yellow-800";
       case "failed":
-        return "bg-red-200";
+        return "bg-red-200 dark:bg-red-800";
       case "incomplete":
-        return "bg-purple-200";
+        return "bg-purple-200 dark:bg-purple-800";
       case "queued":
-        return "bg-cyan-200";
+        return "bg-cyan-200 dark:bg-cyan-800";
       default:
         return "";
     }
@@ -513,37 +549,91 @@ export function CustomNode({
       isCostFilterMatch(cost.cost_filter, inputValues),
     );
 
+  const [webhookStatus, setWebhookStatus] = useState<
+    "works" | "exists" | "broken" | "none" | "pending" | null
+  >(null);
+
+  useEffect(() => {
+    if (
+      ![BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(data.uiType)
+    )
+      return;
+    if (!data.webhook) {
+      setWebhookStatus("none");
+      return;
+    }
+
+    setWebhookStatus("pending");
+    api
+      .pingWebhook(data.webhook.id)
+      .then((pinged) => setWebhookStatus(pinged ? "works" : "exists"))
+      .catch((error: Error) =>
+        error.message.includes("ping timed out")
+          ? setWebhookStatus("broken")
+          : setWebhookStatus("none"),
+      );
+  }, [data.uiType, data.webhook, api, setWebhookStatus]);
+
+  const webhookStatusDot = useMemo(
+    () =>
+      webhookStatus && (
+        <div
+          className={cn(
+            "size-4 rounded-full border-2",
+            {
+              pending: "animate-pulse border-gray-300 bg-gray-400",
+              works: "border-green-300 bg-green-400",
+              exists: "border-green-200 bg-green-300",
+              broken: "border-red-400 bg-red-500",
+              none: "border-gray-300 bg-gray-400",
+            }[webhookStatus],
+          )}
+          title={
+            {
+              pending: "Checking connection status...",
+              works: "Connected",
+              exists:
+                "Connected (but we could not verify the real-time status)",
+              broken: "The connected webhook is not working",
+              none: "Not connected. Fill out all the required block inputs and save the agent to connect.",
+            }[webhookStatus]
+          }
+        />
+      ),
+    [webhookStatus],
+  );
+
   const LineSeparator = () => (
-    <div className="bg-white pt-6">
-      <Separator.Root className="h-[1px] w-full bg-gray-300"></Separator.Root>
+    <div className="bg-white pt-6 dark:bg-gray-800">
+      <Separator.Root className="h-[1px] w-full bg-gray-300 dark:bg-gray-600"></Separator.Root>
     </div>
   );
 
   const ContextMenuContent = () => (
-    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md">
+    <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
       <ContextMenu.Item
         onSelect={copyNode}
-        className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
       >
-        <CopyIcon className="mr-2 h-5 w-5" />
-        <span>Copy</span>
+        <CopyIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+        <span className="dark:text-gray-100">Copy</span>
       </ContextMenu.Item>
       {nodeFlowId && (
         <ContextMenu.Item
           onSelect={() => window.open(`/build?flowID=${nodeFlowId}`)}
-          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
+          className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
         >
-          <ExitIcon className="mr-2 h-5 w-5" />
-          <span>Open agent</span>
+          <ExitIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+          <span className="dark:text-gray-100">Open agent</span>
         </ContextMenu.Item>
       )}
-      <ContextMenu.Separator className="my-1 h-px bg-gray-300" />
+      <ContextMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
       <ContextMenu.Item
         onSelect={deleteNode}
-        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
+        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
       >
-        <TrashIcon className="mr-2 h-5 w-5 text-red-500" />
-        <span>Delete</span>
+        <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+        <span className="dark:text-red-400">Delete</span>
       </ContextMenu.Item>
     </ContextMenu.Content>
   );
@@ -566,58 +656,75 @@ export function CustomNode({
       className={`${blockClasses} ${errorClass} ${statusClass}`}
       data-id={`custom-node-${id}`}
       z-index={1}
+      data-blockid={data.block_id}
+      data-blockname={data.title}
+      data-blocktype={data.blockType}
+      data-nodetype={data.uiType}
+      data-category={data.categories[0]?.category.toLowerCase() || ""}
+      data-inputs={JSON.stringify(
+        Object.keys(data.inputSchema?.properties || {}),
+      )}
+      data-outputs={JSON.stringify(
+        Object.keys(data.outputSchema?.properties || {}),
+      )}
     >
       {/* Header */}
       <div
-        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} items-center rounded-t-xl`}
+        className={`flex h-24 border-b border-gray-300 ${data.uiType === BlockUIType.NOTE ? "bg-yellow-100" : "bg-white"} space-x-1 rounded-t-xl`}
       >
         {/* Color Stripe */}
         <div className={`-ml-px h-full w-3 rounded-tl-xl ${stripeColor}`}></div>
 
-        <div className="flex w-full flex-col">
-          <div className="flex flex-row items-center justify-between">
-            <div className="font-roboto flex items-center px-3 text-lg font-semibold">
+        <div className="flex w-full flex-col justify-start space-y-2.5 px-4 pt-4">
+          <div className="flex flex-row items-center space-x-2 font-semibold">
+            <h3 className="font-roboto text-lg">
               <TextRenderer
                 value={beautifyString(
                   data.blockType?.replace(/Block$/, "") || data.title,
                 )}
                 truncateLengthLimit={80}
               />
+            </h3>
+            <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
 
-              <div className="px-2 text-xs text-gray-500">
-                #{id.split("-")[0]}
-              </div>
-            </div>
+            <div className="w-auto grow" />
+
+            {webhookStatusDot}
+            <button
+              aria-label="Options"
+              className="cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
+              onClick={onContextButtonTrigger}
+            >
+              <DotsVerticalIcon className="h-5 w-5" />
+            </button>
           </div>
-          {blockCost && (
-            <div className="px-3 text-base font-light">
-              <span className="ml-auto flex items-center">
-                <IconCoin />{" "}
-                <span className="m-1 font-medium">{blockCost.cost_amount}</span>{" "}
-                credits/{blockCost.cost_type}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center space-x-2">
+            {blockCost && (
+              <div className="mr-3 text-base font-light">
+                <span className="ml-auto flex items-center">
+                  <IconCoin />{" "}
+                  <span className="mx-1 font-medium">
+                    {blockCost.cost_amount}
+                  </span>{" "}
+                  credits/{blockCost.cost_type}
+                </span>
+              </div>
+            )}
+            {data.categories.map((category) => (
+              <Badge
+                key={category.category}
+                variant="outline"
+                className={`${getPrimaryCategoryColor([category])} h-6 whitespace-nowrap rounded-full border border-gray-300 opacity-50`}
+              >
+                {beautifyString(category.category.toLowerCase())}
+              </Badge>
+            ))}
+          </div>
         </div>
-        {data.categories.map((category) => (
-          <Badge
-            key={category.category}
-            variant="outline"
-            className={`mr-5 ${getPrimaryCategoryColor([category])} whitespace-nowrap rounded-xl border border-gray-300 opacity-50`}
-          >
-            {beautifyString(category.category.toLowerCase())}
-          </Badge>
-        ))}
-        <button
-          aria-label="Options"
-          className="mr-2 cursor-pointer rounded-full border-none bg-transparent p-1 hover:bg-gray-100"
-          onClick={onContextButtonTrigger}
-        >
-          <DotsVerticalIcon className="h-5 w-5" />
-        </button>
 
         <ContextMenuContent />
       </div>
+
       {/* Body */}
       <div className="ml-5 mt-6 rounded-b-xl">
         {/* Input Handles */}
@@ -627,6 +734,33 @@ export function CustomNode({
             data-id="input-handles"
           >
             <div>
+              {data.uiType === BlockUIType.WEBHOOK_MANUAL &&
+                (data.webhook ? (
+                  <div className="nodrag mr-5 flex flex-col gap-1">
+                    Webhook URL:
+                    <div className="flex gap-2 rounded-md bg-gray-50 p-2">
+                      <code className="select-all text-sm">
+                        {data.webhook.url}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-7 flex-none"
+                        onClick={() =>
+                          data.webhook &&
+                          navigator.clipboard.writeText(data.webhook.url)
+                        }
+                        title="Copy webhook URL"
+                      >
+                        <CopyIcon className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="italic text-gray-500">
+                    (A Webhook URL will be generated when you save the agent)
+                  </p>
+                ))}
               {data.inputSchema &&
                 generateInputHandles(data.inputSchema, data.uiType)}
             </div>

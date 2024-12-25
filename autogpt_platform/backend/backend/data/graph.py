@@ -84,6 +84,8 @@ class NodeModel(Node):
             raise ValueError(f"Block #{self.block_id} not found for node #{self.id}")
         if not block.webhook_config:
             raise TypeError("This method can't be used on non-webhook blocks")
+        if not block.webhook_config.event_filter_input:
+            return True
         event_filter = self.input_default.get(block.webhook_config.event_filter_input)
         if not event_filter:
             raise ValueError(f"Event filter is not configured on node #{self.id}")
@@ -105,6 +107,8 @@ class GraphExecution(BaseDbModel):
     duration: float
     total_run_time: float
     status: ExecutionStatus
+    graph_id: str
+    graph_version: int
 
     @staticmethod
     def from_db(execution: AgentGraphExecution):
@@ -130,6 +134,8 @@ class GraphExecution(BaseDbModel):
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(execution.executionStatus),
+            graph_id=execution.agentGraphId,
+            graph_version=execution.agentGraphVersion,
         )
 
 
@@ -139,7 +145,6 @@ class Graph(BaseDbModel):
     is_template: bool = False
     name: str
     description: str
-    executions: list[GraphExecution] = []
     nodes: list[Node] = []
     links: list[Link] = []
 
@@ -254,7 +259,7 @@ class GraphModel(Graph):
         for link in self.links:
             input_links[link.sink_id].append(link)
 
-        # Nodes: required fields are filled or connected
+        # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
             block = get_block(node.block_id)
             if block is None:
@@ -265,14 +270,53 @@ class GraphModel(Graph):
                 + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
             for name in block.input_schema.get_required_fields():
-                if name not in provided_inputs and (
-                    for_run  # Skip input completion validation, unless when executing.
-                    or block.block_type == BlockType.INPUT
-                    or block.block_type == BlockType.OUTPUT
-                    or block.block_type == BlockType.AGENT
+                if (
+                    name not in provided_inputs
+                    and not (
+                        name == "payload"
+                        and block.block_type
+                        in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+                    )
+                    and (
+                        for_run  # Skip input completion validation, unless when executing.
+                        or block.block_type == BlockType.INPUT
+                        or block.block_type == BlockType.OUTPUT
+                        or block.block_type == BlockType.AGENT
+                    )
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
+                    )
+
+            # Get input schema properties and check dependencies
+            input_schema = block.input_schema.model_fields
+            required_fields = block.input_schema.get_required_fields()
+
+            def has_value(name):
+                return (
+                    node is not None
+                    and name in node.input_default
+                    and node.input_default[name] is not None
+                    and str(node.input_default[name]).strip() != ""
+                ) or (name in input_schema and input_schema[name].default is not None)
+
+            # Validate dependencies between fields
+            for field_name, field_info in input_schema.items():
+                # Apply input dependency validation only on run & field with depends_on
+                json_schema_extra = field_info.json_schema_extra or {}
+                dependencies = json_schema_extra.get("depends_on", [])
+                if not for_run or not dependencies:
+                    continue
+
+                # Check if dependent field has value in input_default
+                field_has_value = has_value(field_name)
+                field_is_required = field_name in required_fields
+
+                # Check for missing dependencies when dependent field is present
+                missing_deps = [dep for dep in dependencies if not has_value(dep)]
+                if missing_deps and (field_has_value or field_is_required):
+                    raise ValueError(
+                        f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
                     )
 
         node_map = {v.id: v for v in self.nodes}
@@ -324,12 +368,7 @@ class GraphModel(Graph):
                 link.is_static = True  # Each value block output should be static.
 
     @staticmethod
-    def from_db(graph: AgentGraph, hide_credentials: bool = False):
-        executions = [
-            GraphExecution.from_db(execution)
-            for execution in graph.AgentGraphExecution or []
-        ]
-
+    def from_db(graph: AgentGraph, for_export: bool = False):
         return GraphModel(
             id=graph.id,
             user_id=graph.userId,
@@ -338,9 +377,8 @@ class GraphModel(Graph):
             is_template=graph.isTemplate,
             name=graph.name or "",
             description=graph.description or "",
-            executions=executions,
             nodes=[
-                GraphModel._process_node(node, hide_credentials)
+                NodeModel.from_db(GraphModel._process_node(node, for_export))
                 for node in graph.AgentNodes or []
             ],
             links=list(
@@ -353,23 +391,29 @@ class GraphModel(Graph):
         )
 
     @staticmethod
-    def _process_node(node: AgentNode, hide_credentials: bool) -> NodeModel:
-        node_dict = {field: getattr(node, field) for field in node.model_fields}
-        if hide_credentials and "constantInput" in node_dict:
-            constant_input = json.loads(
-                node_dict["constantInput"], target_type=dict[str, Any]
-            )
-            constant_input = GraphModel._hide_credentials_in_input(constant_input)
-            node_dict["constantInput"] = json.dumps(constant_input)
-        return NodeModel.from_db(AgentNode(**node_dict))
+    def _process_node(node: AgentNode, for_export: bool) -> AgentNode:
+        if for_export:
+            # Remove credentials from node input
+            if node.constantInput:
+                constant_input = json.loads(
+                    node.constantInput, target_type=dict[str, Any]
+                )
+                constant_input = GraphModel._hide_node_input_credentials(constant_input)
+                node.constantInput = json.dumps(constant_input)
+
+            # Remove webhook info
+            node.webhookId = None
+            node.Webhook = None
+
+        return node
 
     @staticmethod
-    def _hide_credentials_in_input(input_data: dict[str, Any]) -> dict[str, Any]:
+    def _hide_node_input_credentials(input_data: dict[str, Any]) -> dict[str, Any]:
         sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
         result = {}
         for key, value in input_data.items():
             if isinstance(value, dict):
-                result[key] = GraphModel._hide_credentials_in_input(value)
+                result[key] = GraphModel._hide_node_input_credentials(value)
             elif isinstance(value, str) and any(
                 sensitive_key in key.lower() for sensitive_key in sensitive_keys
             ):
@@ -408,7 +452,6 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
 
 async def get_graphs(
     user_id: str,
-    include_executions: bool = False,
     filter_by: Literal["active", "template"] | None = "active",
 ) -> list[GraphModel]:
     """
@@ -416,33 +459,50 @@ async def get_graphs(
     Default behaviour is to get all currently active graphs.
 
     Args:
-        include_executions: Whether to include executions in the graph metadata.
         filter_by: An optional filter to either select templates or active graphs.
         user_id: The ID of the user that owns the graph.
 
     Returns:
         list[GraphModel]: A list of objects representing the retrieved graphs.
     """
-    where_clause: AgentGraphWhereInput = {}
+    where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
     elif filter_by == "template":
         where_clause["isTemplate"] = True
 
-    where_clause["userId"] = user_id
-
-    graph_include = AGENT_GRAPH_INCLUDE
-    graph_include["AgentGraphExecution"] = include_executions
-
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
-        include=graph_include,
+        include=AGENT_GRAPH_INCLUDE,
     )
 
-    return [GraphModel.from_db(graph) for graph in graphs]
+    graph_models = []
+    for graph in graphs:
+        try:
+            graph_models.append(GraphModel.from_db(graph))
+        except Exception as e:
+            logger.error(f"Error processing graph {graph.id}: {e}")
+            continue
+
+    return graph_models
+
+
+async def get_executions(user_id: str) -> list[GraphExecution]:
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={"userId": user_id},
+        order={"createdAt": "desc"},
+    )
+    return [GraphExecution.from_db(execution) for execution in executions]
+
+
+async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": user_id}
+    )
+    return GraphExecution.from_db(execution) if execution else None
 
 
 async def get_graph(
@@ -450,7 +510,7 @@ async def get_graph(
     version: int | None = None,
     template: bool = False,
     user_id: str | None = None,
-    hide_credentials: bool = False,
+    for_export: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -461,13 +521,13 @@ async def get_graph(
     """
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
-        "isTemplate": template,
     }
     if version is not None:
         where_clause["version"] = version
     elif not template:
         where_clause["isActive"] = True
 
+    # TODO: Fix hack workaround to get adding store agents to work
     if user_id is not None and not template:
         where_clause["userId"] = user_id
 
@@ -476,7 +536,7 @@ async def get_graph(
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-    return GraphModel.from_db(graph, hide_credentials) if graph else None
+    return GraphModel.from_db(graph, for_export) if graph else None
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:

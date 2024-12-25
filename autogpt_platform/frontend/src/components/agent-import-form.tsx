@@ -14,12 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import AutoGPTServerAPI, {
-  Graph,
-  GraphCreatable,
-} from "@/lib/autogpt-server-api";
-import { cn } from "@/lib/utils";
+import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
+import { cn, removeCredentials } from "@/lib/utils";
 import { EnterIcon } from "@radix-ui/react-icons";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 // Add this custom schema for File type
 const fileSchema = z.custom<File>((val) => val instanceof File, {
@@ -75,7 +73,7 @@ export const AgentImportForm: React.FC<
   React.FormHTMLAttributes<HTMLFormElement>
 > = ({ className, ...props }) => {
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
-  const api = new AutoGPTServerAPI();
+  const api = useBackendAPI();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -96,19 +94,16 @@ export const AgentImportForm: React.FC<
       name: values.agentName,
       description: values.agentDescription,
       is_active: !values.importAsTemplate,
-      is_template: values.importAsTemplate,
     };
 
-    (values.importAsTemplate
-      ? api.createTemplate(payload)
-      : api.createGraph(payload)
-    )
+    api
+      .createGraph(payload)
       .then((response) => {
-        const qID = values.importAsTemplate ? "templateID" : "flowID";
+        const qID = "flowID";
         window.location.href = `/build?${qID}=${response.id}`;
       })
       .catch((error) => {
-        const entity_type = values.importAsTemplate ? "template" : "agent";
+        const entity_type = "agent";
         form.setError("root", {
           message: `Could not create ${entity_type}: ${error}`,
         });
@@ -132,6 +127,7 @@ export const AgentImportForm: React.FC<
                 <Input
                   type="file"
                   accept="application/json"
+                  data-testid="import-agent-file-input"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -154,11 +150,11 @@ export const AgentImportForm: React.FC<
                             );
                           }
                           const agent = obj as Graph;
+                          removeCredentials(agent);
                           updateBlockIDs(agent);
                           setAgentObject(agent);
                           form.setValue("agentName", agent.name);
                           form.setValue("agentDescription", agent.description);
-                          form.setValue("importAsTemplate", agent.is_template);
                         } catch (error) {
                           console.error("Error loading agent file:", error);
                         }
@@ -181,7 +177,7 @@ export const AgentImportForm: React.FC<
             <FormItem>
               <FormLabel>Agent name</FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input {...field} data-testid="agent-name-input" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -195,47 +191,18 @@ export const AgentImportForm: React.FC<
             <FormItem>
               <FormLabel>Agent description</FormLabel>
               <FormControl>
-                <Textarea {...field} />
+                <Textarea {...field} data-testid="agent-description-input" />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="importAsTemplate"
+        <Button
+          type="submit"
+          className="w-full"
           disabled={!agentObject}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Import as</FormLabel>
-              <FormControl>
-                <div className="flex items-center space-x-2">
-                  <span
-                    className={
-                      field.value ? "text-gray-400 dark:text-gray-600" : ""
-                    }
-                  >
-                    Agent
-                  </span>
-                  <Switch
-                    disabled={field.disabled}
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                  <span
-                    className={
-                      field.value ? "" : "text-gray-400 dark:text-gray-600"
-                    }
-                  >
-                    Template
-                  </span>
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button type="submit" className="w-full" disabled={!agentObject}>
+          data-testid="import-agent-submit"
+        >
           <EnterIcon className="mr-2" /> Import & Edit
         </Button>
       </form>

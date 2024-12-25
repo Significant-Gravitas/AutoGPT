@@ -5,8 +5,10 @@ test.describe("Authentication", () => {
   test("user can login successfully", async ({ page, loginPage, testUser }) => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/");
-    await test.expect(page.getByText("Monitor")).toBeVisible();
+    await test.expect(page).toHaveURL("/store");
+    await test
+      .expect(page.getByTestId("profile-popout-menu-trigger"))
+      .toBeVisible();
   });
 
   test("user can logout successfully", async ({
@@ -17,12 +19,19 @@ test.describe("Authentication", () => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
 
-    await test.expect(page).toHaveURL("/");
+    await test.expect(page).toHaveURL("/store");
 
-    // Click on the user menu
-    await page.getByRole("button", { name: "CN" }).click();
-    // Click on the logout menu item
-    await page.getByRole("menuitem", { name: "Log out" }).click();
+    // Click on the profile menu trigger to open popout
+    await page.getByTestId("profile-popout-menu-trigger").click();
+
+    // Wait for menu to be visible before clicking logout
+    await page.getByRole("button", { name: "Log out" }).waitFor({
+      state: "visible",
+      timeout: 5000,
+    });
+
+    // Click the logout button in the popout menu
+    await page.getByRole("button", { name: "Log out" }).click();
 
     await test.expect(page).toHaveURL("/login");
   });
@@ -34,12 +43,18 @@ test.describe("Authentication", () => {
   }) => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
-    await page.goto("/");
-    await page.getByRole("button", { name: "CN" }).click();
-    await page.getByRole("menuitem", { name: "Log out" }).click();
+    await test.expect(page).toHaveURL("/store");
+    // Click on the profile menu trigger to open popout
+    await page.getByTestId("profile-popout-menu-trigger").click();
+
+    // Click the logout button in the popout menu
+    await page.getByRole("button", { name: "Log out" }).click();
+
     await test.expect(page).toHaveURL("/login");
     await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/");
-    await test.expect(page.getByText("Monitor")).toBeVisible();
+    await test.expect(page).toHaveURL("/store");
+    await test
+      .expect(page.getByTestId("profile-popout-menu-trigger"))
+      .toBeVisible();
   });
 });

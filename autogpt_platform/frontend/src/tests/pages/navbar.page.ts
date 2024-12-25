@@ -4,26 +4,24 @@ export class NavBar {
   constructor(private page: Page) {}
 
   async clickProfileLink() {
-    // await this.page.getByTestId("profile-link").click();
-
-    await this.page.getByRole("button", { name: "CN" }).click();
-    await this.page.getByRole("menuitem", { name: "Profile" }).click();
+    await this.page.getByTestId("profile-popout-menu-trigger").click();
+    await this.page.getByRole("link", { name: "Edit profile" }).click();
   }
 
   async clickMonitorLink() {
-    await this.page.getByTestId("monitor-link").click();
+    await this.page.getByTestId("navbar-link-library").click();
   }
 
   async clickBuildLink() {
-    await this.page.getByTestId("build-link").click();
+    await this.page.getByTestId("navbar-link-build").click();
   }
 
   async clickMarketplaceLink() {
-    await this.page.getByTestId("marketplace-link").click();
+    await this.page.getByTestId("navbar-link-marketplace").click();
   }
 
   async getUserMenuButton() {
-    return this.page.getByRole("button", { name: "CN" });
+    return this.page.getByTestId("profile-popout-menu-trigger");
   }
 
   async clickUserMenu() {
@@ -32,7 +30,7 @@ export class NavBar {
 
   async logout() {
     await this.clickUserMenu();
-    await this.page.getByRole("menuitem", { name: "Log out" }).click();
+    await this.page.getByText("Log out").click();
   }
 
   async isLoggedIn(): Promise<boolean> {
@@ -41,7 +39,7 @@ export class NavBar {
         await this.getUserMenuButton()
       ).waitFor({
         state: "visible",
-        timeout: 5000,
+        timeout: 10_000,
       });
       return true;
     } catch {

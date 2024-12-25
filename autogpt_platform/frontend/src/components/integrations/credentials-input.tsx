@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import { FaDiscord, FaGithub, FaGoogle, FaMedium, FaKey } from "react-icons/fa";
-import { FC, useMemo, useState } from "react";
+import { FC, useState } from "react";
 import {
   CredentialsMetaInput,
   CredentialsProviderName,
@@ -39,6 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const fallbackIcon = FaKey;
 
@@ -48,6 +48,7 @@ export const providerIcons: Record<
   React.FC<{ className?: string }>
 > = {
   anthropic: fallbackIcon,
+  e2b: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
   groq: fallbackIcon,
@@ -63,10 +64,12 @@ export const providerIcons: Record<
   openweathermap: fallbackIcon,
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
+  slant3d: fallbackIcon,
   replicate: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
   unreal_speech: fallbackIcon,
+  exa: fallbackIcon,
   hubspot: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
@@ -88,7 +91,7 @@ export const CredentialsInput: FC<{
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
 }> = ({ className, selectedCredentials, onSelectCredentials }) => {
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useBackendAPI();
   const credentials = useCredentials();
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
