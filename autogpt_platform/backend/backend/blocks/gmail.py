@@ -36,7 +36,6 @@ class GmailBlock(Block):
 
     def __init__(self):
         super().__init__(
-            disabled=True,
             id="eaf81b28-b42f-47e7-9a14-5af3edfa4b1e",
             description="This block sends an email using the Gmail credentials.",
             categories={BlockCategory.OUTPUT},
