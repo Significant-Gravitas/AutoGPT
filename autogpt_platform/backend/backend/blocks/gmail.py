@@ -97,7 +97,7 @@ class GmailBlock(Block):
                 input_data.creds,
             )
             print(response)
-            yield "status", "OK"   
+            yield "status", True
         except Exception as e:
-            yield "status", "KO"
+            yield "status", False
             yield "error", f"An error occurred: {e}"   
