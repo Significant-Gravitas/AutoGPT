@@ -56,7 +56,7 @@ class GmailBlock(Block):
         raw = json.loads(creds)
         credentials = Credentials(
             token=raw["access_token"],
-            refresh_token=raw["refresh_token"],
+            # refresh_token=raw["refresh_token"],
             token_uri=GOOGLE_CLIENT_TOKEN_URI,
             client_id=GOOGLE_CLIENT_ID,
             client_secret=GOOGLE_CLIENT_SECRET,
