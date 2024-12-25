@@ -17,7 +17,7 @@ class GmailBlock(Block):
         email: str = SchemaField(
             description="Email address that authorizes sending emails"
         )
-        subject_text = SchemaField(
+        subject_text: str = SchemaField(
             description="Subject of the email",
             default="AutoGPT Notification"
         )
