@@ -96,7 +96,7 @@ class GmailBlock(Block):
                 input_data.body_text,
                 input_data.creds,
             )
-            print(response)
+            #  response = {'id': '193fe2be6dae125c', 'threadId': '193fe2be6dae125c', 'labelIds': ['UNREAD', 'SENT', 'INBOX']}
             yield "status", True
         except Exception as e:
             yield "status", False
