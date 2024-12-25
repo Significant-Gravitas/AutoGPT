@@ -27,7 +27,9 @@ from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 
-LLMProviderName = Literal["anthropic", "groq", "openai", "ollama", "open_router"]
+LLMProviderName = Literal[
+    "anthropic", "groq", "openai", "ollama", "open_router", "aiml"
+]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -92,6 +94,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # Anthropic models
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
+    # Aiml models
+    QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
+    LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
+    LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     # Groq models
     LLAMA3_8B = "llama3-8b-8192"
     LLAMA3_70B = "llama3-70b-8192"
@@ -477,16 +483,19 @@ class AIStructuredResponseGeneratorBlock(Block):
                 if input_data.expected_format:
                     parsed_dict, parsed_error = parse_response(response_text)
                     if not parsed_error:
-                        yield "response", {
-                            k: (
-                                json.loads(v)
-                                if isinstance(v, str)
-                                and v.startswith("[")
-                                and v.endswith("]")
-                                else (", ".join(v) if isinstance(v, list) else v)
-                            )
-                            for k, v in parsed_dict.items()
-                        }
+                        yield (
+                            "response",
+                            {
+                                k: (
+                                    json.loads(v)
+                                    if isinstance(v, str)
+                                    and v.startswith("[")
+                                    and v.endswith("]")
+                                    else (", ".join(v) if isinstance(v, list) else v)
+                                )
+                                for k, v in parsed_dict.items()
+                            },
+                        )
                         return
                 else:
                     yield "response", {"response": response_text}
@@ -753,9 +762,7 @@ class AITextSummarizerBlock(Block):
                     chunk_overlap=input_data.chunk_overlap,
                 ),
                 credentials=credentials,
-            ).send(None)[
-                1
-            ]  # Get the first yielded value
+            ).send(None)[1]  # Get the first yielded value
 
 
 class AIConversationBlock(Block):
@@ -807,7 +814,8 @@ class AIConversationBlock(Block):
                 "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
             ),
             test_mock={
-                "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                "llm_call": lambda *args,
+                **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
             },
         )
 
