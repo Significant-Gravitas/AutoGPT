@@ -60,7 +60,3 @@ class UpdatePermissionsRequest(pydantic.BaseModel):
 
 class RequestTopUp(pydantic.BaseModel):
     amount: int
-
-
-class RequestTopUpResponse(pydantic.BaseModel):
-    checkout_url: str

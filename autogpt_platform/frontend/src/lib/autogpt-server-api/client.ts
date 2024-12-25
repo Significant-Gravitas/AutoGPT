@@ -29,7 +29,6 @@ import {
   StoreReview,
   ScheduleCreatable,
   Schedule,
-  RequestTopUpResponse,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -86,7 +85,7 @@ export default class BackendAPI {
     }
   }
 
-  requestTopUp(amount: number): Promise<RequestTopUpResponse> {
+  requestTopUp(amount: number) {
     return this._request("POST", "/credits", { amount });
   }
 

@@ -490,8 +490,3 @@ export type StoreReviewCreate = {
   score: number;
   comments?: string;
 };
-
-/* Mirror of backend/server/model.py:RequestTopUpResponse */
-export type RequestTopUpResponse = {
-  checkout_url: string;
-};

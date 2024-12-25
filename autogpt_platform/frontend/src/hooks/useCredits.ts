@@ -1,4 +1,4 @@
-import AutoGPTServerAPI, { RequestTopUpResponse } from "@/lib/autogpt-server-api";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
@@ -34,13 +34,6 @@ export default function useCredits(): {
     const response = await api.requestTopUp(amount);
 
     router.push(response.checkout_url);
-
-    // const result = await stripe.confirmPayment({
-    //   clientSecret: response.client_secret,
-    //   confirmParams: {
-    //     return_url: "return_to_url",
-    //   },
-    // });
   }, [api]);
 
   return {
