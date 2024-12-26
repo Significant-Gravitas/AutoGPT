@@ -24,8 +24,8 @@ class GmailBlock(Block):
         body_text: str = SchemaField(
             description="Body of the email"
         )
-        creds: str = SchemaField(
-            description="JSON text of Gmail credentials"
+        access_token: str = SchemaField(
+            description="Gmail access token credentials"
         )
 
     class Output(BlockSchema):
@@ -45,17 +45,16 @@ class GmailBlock(Block):
                 "email": "tuan.nguyen930708@gmail.com",
                 "subject_text": "AutoGPT Notification",
                 "body_text": "Sending by AutoGPT",
-                "creds": "",
+                "access_token": "",
             },
             test_output=[("status", "OK")],
             test_mock={"send_email": lambda *args, **kwargs: "OK"},
         )
 
     @staticmethod
-    def send_email(email: str, subject_text:str, body_text: str, creds: str) -> str:
-        raw = json.loads(creds)
+    def send_email(email: str, subject_text:str, body_text: str, access_token: str) -> str:
         credentials = Credentials(
-            token=raw["access_token"],
+            token=access_token,
             # refresh_token=raw["refresh_token"],
             token_uri=GOOGLE_CLIENT_TOKEN_URI,
             client_id=GOOGLE_CLIENT_ID,
@@ -94,7 +93,7 @@ class GmailBlock(Block):
                 input_data.email,
                 input_data.subject_text,
                 input_data.body_text,
-                input_data.creds,
+                input_data.access_token,
             )
             #  response = {'id': '193fe2be6dae125c', 'threadId': '193fe2be6dae125c', 'labelIds': ['UNREAD', 'SENT', 'INBOX']}
             yield "status", True
