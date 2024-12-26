@@ -24,7 +24,7 @@
 .array-item-container {
   display: flex;
   align-items: center;
-  width: calc(100% - 2.5rem);
+  min-width: calc(100% - 2.5rem);
 }
 
 .custom-node .custom-switch {
