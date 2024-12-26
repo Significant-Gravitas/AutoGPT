@@ -155,8 +155,6 @@ async def test_get_input_schema(server: SpinTestServer):
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
-    print(">>>> input_schema", input_schema)
-    print(">>>> ExpectedInputSchema", ExpectedInputSchema.jsonschema())
     assert input_schema == ExpectedInputSchema.jsonschema()
 
     output_schema = created_graph.output_schema
