@@ -142,8 +142,6 @@ def SchemaField(
     **kwargs,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
-        if advanced:
-            raise ValueError("Advanced fields must have a default value.")
         advanced = False
     elif advanced is None:
         advanced = True
