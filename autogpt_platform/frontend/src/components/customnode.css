@@ -15,8 +15,7 @@
 .custom-node [data-id^="date-picker"],
 .custom-node [data-list-container],
 .custom-node [data-add-item],
-.custom-node [data-content-settings]
- {
+.custom-node [data-content-settings] {
   min-width: calc(100% - 2.5rem);
   max-width: 400px;
 }
