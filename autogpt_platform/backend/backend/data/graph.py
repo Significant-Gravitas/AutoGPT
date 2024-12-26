@@ -193,7 +193,8 @@ class Graph(BaseDbModel):
             "properties": {
                 p.name: {
                     "secret": p.secret,
-                    "advanced": p.advanced,
+                    # Default value has to be set for advanced fields.
+                    "advanced": p.advanced and p.value is not None,
                     "title": p.title or p.name,
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),

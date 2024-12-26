@@ -144,9 +144,7 @@ async def test_get_input_schema(server: SpinTestServer):
 
     class ExpectedInputSchema(BlockSchema):
         in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
-        in_key_b: Any = SchemaField(
-            title="in_key_b", advanced=False
-        )  # no default value
+        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
 
     class ExpectedOutputSchema(BlockSchema):
         out_key: Any = SchemaField(
@@ -157,6 +155,8 @@ async def test_get_input_schema(server: SpinTestServer):
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
+    print(">>>> input_schema", input_schema)
+    print(">>>> ExpectedInputSchema", ExpectedInputSchema.jsonschema())
     assert input_schema == ExpectedInputSchema.jsonschema()
 
     output_schema = created_graph.output_schema
