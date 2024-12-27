@@ -311,7 +311,6 @@ export default class BackendAPI {
       "/store/submissions/generate_image?agent_id=" + agent_id,
     );
   }
-  c;
   deleteStoreSubmission(submission_id: string): Promise<boolean> {
     return this._request("DELETE", `/store/submissions/${submission_id}`);
   }
@@ -352,11 +351,34 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(): Promise<GraphMeta[]> {
-    return this._get("/library/agents");
+  async listLibraryAgents(
+    paginationToken?: string,
+  ): Promise<{ agents: GraphMeta[]; next_token: string | null }> {
+    return this._get(
+      "/library/agents",
+      paginationToken ? { pagination_token: paginationToken } : undefined,
+    );
+  }
+
+  async librarySearchAgent(
+    search: string,
+    paginationToken?: string,
+    filter?:
+      | "most_recent"
+      | "highest_runtime"
+      | "most_runs"
+      | "alphabetical"
+      | "last_modified",
+  ): Promise<{ agents: GraphMeta[]; next_token: string | null }> {
+    return this._get("/library/agents/search", {
+      search_term: search,
+      ...(paginationToken && { pagination_token: paginationToken }),
+      ...(filter && { sort_by: filter }),
+    });
   }
 
   async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
+    console.log("Adding to the library");
     await this._request("POST", `/library/agents/${storeListingVersionId}`);
   }
 
