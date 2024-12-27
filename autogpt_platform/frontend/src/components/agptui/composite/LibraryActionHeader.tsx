@@ -1,26 +1,140 @@
+"use client";
+import { LibrarySearchBar } from "@/components/agptui/LibrarySearchBar";
 import { LibraryNotificationDropdown } from "../LibraryNotificationDropdown";
+import { LibraryUploadAgent } from "../LibraryUploadAgent";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { cn } from "@/lib/utils";
+import {
+  Dispatch,
+  SetStateAction,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
+import { GraphMeta } from "@/lib/autogpt-server-api";
+import LibraryAgentFilter from "../LibraryAgentFilter";
 
-const LibraryActionHeader: React.FC = () => {
-  return (
-    <div className="flex w-screen items-center justify-between px-4 pt-6">
-      <LibraryNotificationDropdown />
-      <LibrarySearchBar />
-      <LibraryUploadAgent />
-    </div>
+interface LibraryActionHeaderProps {
+  setAgents: Dispatch<SetStateAction<GraphMeta[]>>;
+  setAgentLoading: Dispatch<SetStateAction<boolean>>;
+  numberOfAgents: number;
+}
+
+// Constants for header animation behavior
+const SCROLL_THRESHOLD = 30;
+const INITIAL_HEIGHT = 100;
+const COLLAPSED_HEIGHT = 50;
+const TRANSITION_DURATION = 0.3;
+
+/**
+ * LibraryActionHeader component - Renders a sticky header with search, notifications and filters
+ * Animates and collapses based on scroll position
+ */
+const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({
+  setAgents,
+  setAgentLoading,
+  numberOfAgents,
+}) => {
+  const { scrollY } = useScroll();
+  const [scrollPosition, setScrollPosition] = useState(0);
+
+  const height = useTransform(
+    scrollY,
+    [0, 100],
+    [INITIAL_HEIGHT, COLLAPSED_HEIGHT],
   );
-};
 
-const LibrarySearchBar = () => {
+  const handleScroll = useCallback((currentY: number) => {
+    setScrollPosition(currentY);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = scrollY.on("change", handleScroll);
+    return () => unsubscribe();
+  }, [scrollY, handleScroll]);
+
+  // Calculate animation offsets based on scroll position
+  const getScrollAnimation = (offsetX: number, offsetY: number) => ({
+    x: scrollPosition > SCROLL_THRESHOLD ? offsetX : 0,
+    y: scrollPosition > SCROLL_THRESHOLD ? offsetY : 0,
+  });
+
   return (
-    <div>
-      SearchBar
-      {/* Search bar content */}
-    </div>
-  );
-};
+    <>
+      <div className="sticky top-16 z-[10] hidden items-start justify-between bg-neutral-50 pb-4 md:flex">
+        <motion.div
+          className={cn("relative flex-1 space-y-[32px]")}
+          style={{ height }}
+          transition={{ duration: TRANSITION_DURATION }}
+        >
+          <LibraryNotificationDropdown />
 
-const LibraryUploadAgent = () => {
-  return <div>Uploading Agent</div>;
+          <motion.div
+            className="flex items-center gap-[10px] p-2"
+            animate={getScrollAnimation(60, -76)}
+          >
+            <span className="w-[96px] font-poppin text-[18px] font-semibold leading-[28px] text-neutral-800">
+              My agents
+            </span>
+            <span className="w-[70px] font-sans text-[14px] font-normal leading-6">
+              {numberOfAgents} agents
+            </span>
+          </motion.div>
+        </motion.div>
+
+        <LibrarySearchBar
+          setAgents={setAgents}
+          setAgentLoading={setAgentLoading}
+        />
+        <motion.div
+          className="flex flex-1 flex-col items-end space-y-[32px]"
+          style={{ height }}
+          transition={{ duration: TRANSITION_DURATION }}
+        >
+          <LibraryUploadAgent />
+          <motion.div
+            className="flex items-center gap-[10px] pl-2 pr-2 font-sans text-[14px] font-[500] leading-[24px] text-neutral-600"
+            animate={getScrollAnimation(-60, -68)}
+          >
+            <LibraryAgentFilter
+              setAgents={setAgents}
+              setAgentLoading={setAgentLoading}
+            />
+          </motion.div>
+        </motion.div>
+      </div>
+
+      {/* Mobile and tablet */}
+      <div className="flex flex-col gap-4 bg-neutral-50 p-4 pt-[52px] md:hidden">
+        <div className="flex w-full justify-between">
+          <LibraryNotificationDropdown />
+          <LibraryUploadAgent />
+        </div>
+
+        <div className="flex items-center justify-center">
+          <LibrarySearchBar
+            setAgents={setAgents}
+            setAgentLoading={setAgentLoading}
+          />
+        </div>
+
+        <div className="flex w-full justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-poppin text-[18px] font-semibold leading-[28px] text-neutral-800">
+              My agents
+            </span>
+            <span className="font-sans text-[14px] font-normal leading-6">
+              {numberOfAgents} agents
+            </span>
+          </div>
+          <LibraryAgentFilter
+            setAgents={setAgents}
+            setAgentLoading={setAgentLoading}
+          />
+        </div>
+      </div>
+    </>
+  );
 };
 
 export default LibraryActionHeader;
