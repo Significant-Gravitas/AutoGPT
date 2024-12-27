@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
+from fastapi.responses import RedirectResponse
 from prisma import Json
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
@@ -11,7 +12,6 @@ from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
 from backend.data.user import get_user_by_id
-from backend.server.model import RequestTopUpResponse
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -66,7 +66,7 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_intent(self, user_id: str, amount: int) -> RequestTopUpResponse:
+    async def top_up_intent(self, user_id: str, amount: int) -> RedirectResponse:
         """
         Create a payment intent to top up the credits for the user.
 
@@ -75,7 +75,7 @@ class UserCreditBase(ABC):
             amount (int): The amount to top up.
 
         Returns:
-            RequestTopUpResponse: The response containing the transaction ID and client secret.
+            RedirectResponse: The redirect response to the payment page.
         """
         pass
 
@@ -229,7 +229,7 @@ class UserCredit(UserCreditBase):
             }
         )
 
-    async def top_up_intent(self, user_id: str, amount: int) -> RequestTopUpResponse:
+    async def top_up_intent(self, user_id: str, amount: int) -> RedirectResponse:
         user = await get_user_by_id(user_id)
 
         if not user:
@@ -243,16 +243,10 @@ class UserCredit(UserCreditBase):
             )
             user.stripeCustomerId = customer.id
 
-        # Create payment intent
+        # Create checkout session
+        # https://docs.stripe.com/checkout/quickstart?client=react
         # amount param is always in the smallest currency unit (so cents for usd)
-        # https://docs.stripe.com/api/payment_intents/create
-        # intent = stripe.PaymentIntent.create(
-        #     amount=amount * 100,
-        #     currency="usd",
-        #     customer=user.stripeCustomerId,
-        # )
-
-        session = stripe.checkout.Session.create(
+        checkout_session = stripe.checkout.Session.create(
             customer=user.stripeCustomerId,
             line_items=[
                 {
@@ -267,23 +261,50 @@ class UserCredit(UserCreditBase):
                 }
             ],
             mode="payment",
-            success_url="",# TODO kcze
-            cancel_url="",
+            success_url=settings.config.platform_base_url + "/profile?topup=success",
+            cancel_url=settings.config.platform_base_url + "/profile?topup=cancel",
         )
 
         # Create pending transaction
         await CreditTransaction.prisma().create(
             data={
-                "transactionKey": session.id,# TODO kcze add new model field?
+                "transactionKey": checkout_session.id,# TODO kcze add new model field?
                 "userId": user_id,
                 "amount": amount,
                 "type": CreditTransactionType.TOP_UP,
                 "isActive": False,
-                "metadata": Json({"checkout_session": session}),
+                "metadata": Json({"checkout_session": checkout_session}),
             }
         )
 
-        return RequestTopUpResponse(checkout_url=session.url or "")
+        return RedirectResponse(checkout_session.url or "", 303)
+    
+    # https://docs.stripe.com/checkout/fulfillment
+    async def fulfill_checkout(self, session_id):
+        # Retrieve CreditTransaction
+        credit_transaction = await CreditTransaction.prisma().find_first_or_raise(
+            where={"transactionKey": session_id}
+        )
+
+        # This can be called multiple times for one id, so ignore if already fulfilled
+        if credit_transaction.isActive:
+            return
+
+        # Retrieve the Checkout Session from the API
+        checkout_session = stripe.checkout.Session.retrieve(session_id)
+
+        # Check the Checkout Session's payment_status property
+        # to determine if fulfillment should be peformed
+        if checkout_session.payment_status != 'unpaid':
+            # Activate the CreditTransaction
+            await CreditTransaction.prisma().update(
+                where={"transactionKey": session_id},
+                data={
+                    "isActive": True,
+                    "createdAt": self.time_now(),
+                    "metadata": Json({"checkout_session": checkout_session}),
+                },
+            )
 
 
 class DisabledUserCredit(UserCreditBase):
@@ -296,8 +317,8 @@ class DisabledUserCredit(UserCreditBase):
     async def top_up_credits(self, *args, **kwargs):
         pass
 
-    async def top_up_intent(self, *args, **kwargs) -> RequestTopUpResponse:
-        return RequestTopUpResponse(checkout_url="")
+    async def top_up_intent(self, *args, **kwargs) -> RedirectResponse:
+        return RedirectResponse("")
 
 
 def get_user_credit_model() -> UserCreditBase:
