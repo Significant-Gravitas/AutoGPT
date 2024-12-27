@@ -19,6 +19,7 @@ const config = {
         // Include the custom font family
         neue: ['"PP Neue Montreal TT"', "sans-serif"],
         poppin: ["var(--font-poppins)"],
+        inter: ["var(--font-inter)"],
       },
       colors: {
         border: "hsl(var(--border))",

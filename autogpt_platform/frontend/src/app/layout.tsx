@@ -4,6 +4,8 @@ import { Inter, Poppins } from "next/font/google";
 import { Providers } from "@/app/providers";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/agptui/Navbar";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 
 import "./globals.css";
 import TallyPopupSimple from "@/components/TallyPopup";
@@ -11,7 +13,7 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -30,12 +32,14 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable} ${poppins.variable} ${inter.variable}`}
+    >
       <body
         className={cn(
-          "antialiased transition-colors",
+          "bg-neutral-50 antialiased transition-colors",
           inter.className,
-          poppins.className,
         )}
       >
         <Providers

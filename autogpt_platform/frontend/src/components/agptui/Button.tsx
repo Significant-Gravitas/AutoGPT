@@ -21,8 +21,8 @@ const buttonVariants = cva(
           "hover:bg-neutral-100 text-[#272727] dark:text-neutral-100 dark:hover:bg-neutral-700",
         link: "text-[#272727] underline-offset-4 hover:underline dark:text-neutral-100",
         library_outline:
-          "rounded-[52px] hover:bg-[#262626] border border-zinc-700 hover:text-white",
-        library_primary: "rounded-[52px] bg-[#262626] text-white",
+          "rounded-[52px] hover:bg-[#262626] border border-zinc-700 hover:text-white font-sans",
+        library_primary: "rounded-[52px] bg-[#262626] text-white font-sans",
       },
       size: {
         default:
