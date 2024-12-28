@@ -41,6 +41,7 @@ export default function LoginPage() {
     },
   });
 
+  // TODO: uncomment when we enable social login
   // const onProviderLogin = useCallback(async (
   //   provider: LoginProvider,
   // ) => {
@@ -94,38 +95,6 @@ export default function LoginPage() {
   return (
     <AuthCard>
       <AuthHeader>Login to your account</AuthHeader>
-      {/* <div className="mb-6 space-y-2">
-          <Button
-            className="w-full"
-            onClick={() => onProviderLogin("google")}
-            variant="outline"
-            type="button"
-            disabled={isLoading}
-          >
-            <FaGoogle className="mr-2 h-4 w-4" />
-            Sign in with Google
-          </Button>
-          <Button
-            className="w-full"
-            onClick={() => onProviderLogin("github")}
-            variant="outline"
-            type="button"
-            disabled={isLoading}
-          >
-            <FaGithub className="mr-2 h-4 w-4" />
-            Sign in with GitHub
-          </Button>
-          <Button
-            className="w-full"
-            onClick={() => onProviderLogin("discord")}
-            variant="outline"
-            type="button"
-            disabled={isLoading}
-          >
-            <FaDiscord className="mr-2 h-4 w-4" />
-            Sign in with Discord
-          </Button>
-        </div> */}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onLogin)}>
           <FormField
