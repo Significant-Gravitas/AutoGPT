@@ -10,7 +10,7 @@ from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
 REFILL_VALUE = 1000
-user_credit = UserCredit(REFILL_VALUE)
+user_credit = UserCredit()
 
 
 @pytest.mark.asyncio(scope="session")

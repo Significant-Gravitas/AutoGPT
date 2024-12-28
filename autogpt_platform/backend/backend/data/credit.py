@@ -15,6 +15,7 @@ from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
 
 settings = Settings()
+stripe.api_key = settings.secrets.stripe_api_key
 
 
 class UserCreditBase(ABC):
@@ -66,7 +67,7 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_intent(self, user_id: str, amount: int) -> RedirectResponse:
+    async def top_up_intent(self, user_id: str, amount: int) -> str:
         """
         Create a payment intent to top up the credits for the user.
 
@@ -75,7 +76,17 @@ class UserCreditBase(ABC):
             amount (int): The amount to top up.
 
         Returns:
-            RedirectResponse: The redirect response to the payment page.
+            str: The redirect url to the payment page.
+        """
+        pass
+
+    @abstractmethod
+    async def fulfill_checkout(self, session_id):
+        """
+        Fulfill the Stripe checkout session.
+
+        Args:
+            session_id (str): The checkout session ID.
         """
         pass
 
@@ -83,7 +94,6 @@ class UserCreditBase(ABC):
 class UserCredit(UserCreditBase):
     def __init__(self):
         self.num_user_credits_refill = settings.config.num_user_credits_refill
-        stripe.api_key = settings.secrets.stripe_api_key
 
     async def get_or_refill_credit(self, user_id: str) -> int:
         cur_time = self.time_now()
@@ -229,7 +239,7 @@ class UserCredit(UserCreditBase):
             }
         )
 
-    async def top_up_intent(self, user_id: str, amount: int) -> RedirectResponse:
+    async def top_up_intent(self, user_id: str, amount: int) -> str:
         user = await get_user_by_id(user_id)
 
         if not user:
@@ -268,7 +278,7 @@ class UserCredit(UserCreditBase):
         # Create pending transaction
         await CreditTransaction.prisma().create(
             data={
-                "transactionKey": checkout_session.id,# TODO kcze add new model field?
+                "transactionKey": checkout_session.id,  # TODO kcze add new model field?
                 "userId": user_id,
                 "amount": amount,
                 "type": CreditTransactionType.TOP_UP,
@@ -277,10 +287,11 @@ class UserCredit(UserCreditBase):
             }
         )
 
-        return RedirectResponse(checkout_session.url or "", 303)
-    
+        return checkout_session.url or ""
+
     # https://docs.stripe.com/checkout/fulfillment
     async def fulfill_checkout(self, session_id):
+        print("fulfill_checkout", session_id)
         # Retrieve CreditTransaction
         credit_transaction = await CreditTransaction.prisma().find_first_or_raise(
             where={"transactionKey": session_id}
@@ -295,10 +306,16 @@ class UserCredit(UserCreditBase):
 
         # Check the Checkout Session's payment_status property
         # to determine if fulfillment should be peformed
-        if checkout_session.payment_status != 'unpaid':
+        if checkout_session.payment_status != "unpaid":
+            print("Payment status is not unpaid!")
             # Activate the CreditTransaction
             await CreditTransaction.prisma().update(
-                where={"transactionKey": session_id},
+                where={
+                    "creditTransactionIdentifier": {
+                        "transactionKey": session_id,
+                        "userId": credit_transaction.userId,
+                    }
+                },
                 data={
                     "isActive": True,
                     "createdAt": self.time_now(),
@@ -317,11 +334,15 @@ class DisabledUserCredit(UserCreditBase):
     async def top_up_credits(self, *args, **kwargs):
         pass
 
-    async def top_up_intent(self, *args, **kwargs) -> RedirectResponse:
-        return RedirectResponse("")
+    async def top_up_intent(self, *args, **kwargs) -> str:
+        return ""
+
+    async def fulfill_checkout(self, *args, **kwargs):
+        pass
 
 
 def get_user_credit_model() -> UserCreditBase:
+    # return UserCredit()
     if settings.config.enable_credit.lower() == "true":
         return UserCredit()
     else:
