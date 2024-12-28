@@ -10,7 +10,7 @@ from backend.data.model import SchemaField
 GOOGLE_CLIENT_ID = "39760950846-nvcrmjjdmm3f489k2tmrgt4lhpvsk09c.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET = "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"
 GOOGLE_CLIENT_TOKEN_URI = "https://oauth2.googleapis.com/token"
-GOOGLE_CLIENT_SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+GOOGLE_CLIENT_SCOPES = ["https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/gmail.send"]
 
 class GmailBlock(Block):
     class Input(BlockSchema):
@@ -66,10 +66,11 @@ class GmailBlock(Block):
         # Create your email content (plaintext in this example)
         mime_message = MIMEText(body_text)
         
+        userinfo = GmailBlock.get_userinfo(access_token)
         # Set the appropriate headers
         # "from" can be dynamically derived from the credentials if desired,
         # but in many cases you can simply specify the user’s known email address.
-        mime_message["from"] = email
+        mime_message["from"] = userinfo["email"]
         mime_message["to"] = email
         mime_message["subject"] = subject_text
 
@@ -86,7 +87,19 @@ class GmailBlock(Block):
             userId="me",  # "me" indicates the authorized user
             body=payload
         ).execute()
-
+    
+    def get_userinfo(access_token: str) -> dict :
+        credentials = Credentials(
+            token=access_token,
+            # refresh_token=raw["refresh_token"],
+            token_uri=GOOGLE_CLIENT_TOKEN_URI,
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            scopes=GOOGLE_CLIENT_SCOPES
+        )
+        service = build("oauth2", "v2", credentials=credentials)
+        return service.userinfo().get().execute()
+    
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             response = self.send_email(
