@@ -1,5 +1,5 @@
-import re
 import base64
+import re
 
 from typing_extensions import TypedDict
 
@@ -542,7 +542,9 @@ class GithubCreateFileBlock(Block):
     class Output(BlockSchema):
         url: str = SchemaField(description="URL of the created file")
         sha: str = SchemaField(description="SHA of the commit")
-        error: str = SchemaField(description="Error message if the file creation failed")
+        error: str = SchemaField(
+            description="Error message if the file creation failed"
+        )
 
     def __init__(self):
         super().__init__(
@@ -583,9 +585,9 @@ class GithubCreateFileBlock(Block):
     ) -> tuple[str, str]:
         api = get_api(credentials)
         # Convert content to base64
-        content_bytes = content.encode('utf-8')
-        content_base64 = base64.b64encode(content_bytes).decode('utf-8')
-        
+        content_bytes = content.encode("utf-8")
+        content_base64 = base64.b64encode(content_bytes).decode("utf-8")
+
         # Create the file using the GitHub API
         contents_url = f"{repo_url}/contents/{file_path}"
         data = {
@@ -595,7 +597,7 @@ class GithubCreateFileBlock(Block):
         }
         response = api.put(contents_url, json=data)
         result = response.json()
-        
+
         return result["content"]["html_url"], result["commit"]["sha"]
 
     def run(
@@ -687,17 +689,17 @@ class GithubUpdateFileBlock(Block):
         commit_message: str,
     ) -> tuple[str, str]:
         api = get_api(credentials)
-        
+
         # First get the current file to get its SHA
         contents_url = f"{repo_url}/contents/{file_path}"
         params = {"ref": branch}
         response = api.get(contents_url, params=params)
         current_file = response.json()
-        
+
         # Convert new content to base64
-        content_bytes = content.encode('utf-8')
-        content_base64 = base64.b64encode(content_bytes).decode('utf-8')
-        
+        content_bytes = content.encode("utf-8")
+        content_base64 = base64.b64encode(content_bytes).decode("utf-8")
+
         # Update the file
         data = {
             "message": commit_message,
@@ -707,7 +709,7 @@ class GithubUpdateFileBlock(Block):
         }
         response = api.put(contents_url, json=data)
         result = response.json()
-        
+
         return result["content"]["html_url"], result["commit"]["sha"]
 
     def run(
