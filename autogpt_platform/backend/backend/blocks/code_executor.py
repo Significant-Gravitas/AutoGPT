@@ -36,6 +36,7 @@ class ProgrammingLanguage(Enum):
     JAVA = "java"
 
 
+
 class CodeExecutionBlock(Block):
     # TODO : Add support to upload and download files
     # Currently, You can customized the CPU and Memory, only by creating a pre customized sandbox template
@@ -178,6 +179,221 @@ class CodeExecutionBlock(Block):
                 input_data.timeout,
                 credentials.api_key.get_secret_value(),
                 input_data.template_id,
+            )
+
+            if response:
+                yield "response", response
+            if stdout_logs:
+                yield "stdout_logs", stdout_logs
+            if stderr_logs:
+                yield "stderr_logs", stderr_logs
+        except Exception as e:
+            yield "error", str(e)
+
+
+class InstantiationBlock(CodeExecutionBlock):
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.E2B], Literal["api_key"]
+        ] = CredentialsField(
+            description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
+        )
+
+        # Todo : Option to run commond in background
+        setup_commands: list[str] = SchemaField(
+            description=(
+                "Shell commands to set up the sandbox before running the code. "
+                "You can use `curl` or `git` to install your desired Debian based "
+                "package manager. `pip` and `npm` are pre-installed.\n\n"
+                "These commands are executed with `sh`, in the foreground."
+            ),
+            placeholder="pip install cowsay",
+            default=[],
+            advanced=False,
+        )
+
+        setup_code: str = SchemaField(
+            description="Code to execute in the sandbox",
+            placeholder="print('Hello, World!')",
+            default="",
+            advanced=False,
+        )
+
+        language: ProgrammingLanguage = SchemaField(
+            description="Programming language to execute",
+            default=ProgrammingLanguage.PYTHON,
+            advanced=False,
+        )
+
+        timeout: int = SchemaField(
+            description="Execution timeout in seconds", default=300
+        )
+
+        template_id: str = SchemaField(
+            description=(
+                "You can use an E2B sandbox template by entering its ID here. "
+                "Check out the E2B docs for more details: "
+                "[E2B - Sandbox template](https://e2b.dev/docs/sandbox-template)"
+            ),
+            default="",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        sandbox_id: str = SchemaField(description="ID of the sandbox instance")
+        response: str = SchemaField(description="Response from code execution")
+        stdout_logs: str = SchemaField(
+            description="Standard output logs from execution"
+        )
+        stderr_logs: str = SchemaField(description="Standard error logs from execution")
+        error: str = SchemaField(description="Error message if execution failed")
+
+
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            sandbox_id, response, stdout_logs, stderr_logs = self.execute_code(
+                input_data.setup_code,
+                input_data.language,
+                input_data.setup_commands,
+                input_data.timeout,
+                credentials.api_key.get_secret_value(),
+                input_data.template_id,
+            )
+            if sandbox_id:
+                yield "sandbox_id", sandbox_id
+            else:
+                yield "error", "Sandbox ID not found"
+            if response:
+                yield "response", response
+            if stdout_logs:
+                yield "stdout_logs", stdout_logs
+            if stderr_logs:
+                yield "stderr_logs", stderr_logs
+        except Exception as e:
+            yield "error", str(e)
+
+
+    def execute_code(
+        self,
+        code: str,
+        language: ProgrammingLanguage,
+        setup_commands: list[str],
+        timeout: int,
+        api_key: str,
+        template_id: str,
+    ):
+        try:
+            sandbox = None
+            if template_id:
+                sandbox = Sandbox(
+                    template=template_id, api_key=api_key, timeout=timeout
+                )
+            else:
+                sandbox = Sandbox(api_key=api_key, timeout=timeout)
+
+            if not sandbox:
+                raise Exception("Sandbox not created")
+
+            # Running setup commands
+            for cmd in setup_commands:
+                sandbox.commands.run(cmd)
+
+            # Executing the code
+            execution = sandbox.run_code(
+                code,
+                language=language.value,
+                on_error=lambda e: sandbox.kill(),  # Kill the sandbox if there is an error
+            )
+
+            if execution.error:
+                raise Exception(execution.error)
+
+            response = execution.text
+            stdout_logs = "".join(execution.logs.stdout)
+            stderr_logs = "".join(execution.logs.stderr)
+
+            return sandbox.sandbox_id, response, stdout_logs, stderr_logs
+
+        except Exception as e:
+            raise e
+
+class StepExecutionBlock(CodeExecutionBlock):
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.E2B], Literal["api_key"]
+        ] = CredentialsField(
+            description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
+        )
+
+
+        sandbox_id: str = SchemaField(
+            description="ID of the sandbox instance to execute the code in",
+            advanced=False,
+        )
+
+        step_code: str = SchemaField(
+            description="Code to execute in the sandbox",
+            placeholder="print('Hello, World!')",
+            default="",
+            advanced=False,
+        )
+
+        language: ProgrammingLanguage = SchemaField(
+            description="Programming language to execute",
+            default=ProgrammingLanguage.PYTHON,
+            advanced=False,
+        )
+
+
+    class Output(BlockSchema):
+        response: str = SchemaField(description="Response from code execution")
+        stdout_logs: str = SchemaField(
+            description="Standard output logs from execution"
+        )
+        stderr_logs: str = SchemaField(description="Standard error logs from execution")
+        error: str = SchemaField(description="Error message if execution failed")
+
+    def execute_step_code(
+        self,
+        sandbox_id: str,
+        code: str,
+        language: ProgrammingLanguage,
+        api_key: str,
+    ):
+        try:
+            sandbox = Sandbox.connect(sandbox_id=sandbox_id, api_key=api_key)
+            if not sandbox:
+                raise Exception("Sandbox not found")
+
+            # Executing the code
+            execution = sandbox.run_code(
+                code,
+                language=language.value
+            )
+
+            if execution.error:
+                raise Exception(execution.error)
+
+            response = execution.text
+            stdout_logs = "".join(execution.logs.stdout)
+            stderr_logs = "".join(execution.logs.stderr)
+
+            return response, stdout_logs, stderr_logs
+
+        except Exception as e:
+            raise e
+
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            response, stdout_logs, stderr_logs = self.execute_step_code(
+                input_data.sandbox_id,
+                input_data.step_code,
+                input_data.language,
+                credentials.api_key.get_secret_value(),
             )
 
             if response:
