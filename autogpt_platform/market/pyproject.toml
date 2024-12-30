@@ -28,8 +28,8 @@ pytest-asyncio = "^0.25.0"
 
 pytest-watcher = "^0.4.3"
 requests = "^2.32.3"
-ruff = "^0.8.3"
-pyright = "^1.1.390"
+ruff = "^0.8.4"
+pyright = "^1.1.391"
 isort = "^5.13.2"
 black = "^24.10.0"
 
