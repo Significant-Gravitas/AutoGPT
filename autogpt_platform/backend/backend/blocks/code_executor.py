@@ -191,7 +191,7 @@ class CodeExecutionBlock(Block):
             yield "error", str(e)
 
 
-class InstantiationBlock(CodeExecutionBlock):
+class InstantiationBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
@@ -248,6 +248,36 @@ class InstantiationBlock(CodeExecutionBlock):
         stderr_logs: str = SchemaField(description="Standard error logs from execution")
         error: str = SchemaField(description="Error message if execution failed")
 
+    def __init__(self):
+        super().__init__(
+            id="ff0861c9-1726-4aec-9e5b-bf53f3622112",
+            description="Instantiate an isolated sandbox environment with internet access where to execute code in.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=InstantiationBlock.Input,
+            output_schema=InstantiationBlock.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "setup_code": "print('Hello World')",
+                "language": ProgrammingLanguage.PYTHON.value,
+                "setup_commands": [],
+                "timeout": 300,
+                "template_id": "",
+            },
+            test_output=[
+                ("sandbox_id", str),
+                ("response", "Hello World"),
+                ("stdout_logs", "Hello World\n"),
+            ],
+            test_mock={
+                "execute_code": lambda setup_code, language, setup_commands, timeout, api_key, template_id: (
+                    "sandbox_id",
+                    "Hello World",
+                    "Hello World\n",
+                    "",
+                ),
+            },
+        )
 
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -319,7 +349,7 @@ class InstantiationBlock(CodeExecutionBlock):
         except Exception as e:
             raise e
 
-class StepExecutionBlock(CodeExecutionBlock):
+class StepExecutionBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
@@ -354,6 +384,34 @@ class StepExecutionBlock(CodeExecutionBlock):
         )
         stderr_logs: str = SchemaField(description="Standard error logs from execution")
         error: str = SchemaField(description="Error message if execution failed")
+
+    def __init__(self):
+        super().__init__(
+            id="82b59b8e-ea10-4d57-9161-8b169b0adba6",
+            description="Execute code in a previously instantiated sandbox environment.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=StepExecutionBlock.Input,
+            output_schema=StepExecutionBlock.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "sandbox_id": "sandbox_id",
+                "step_code": "print('Hello World')",
+                "language": ProgrammingLanguage.PYTHON.value
+            },
+            test_output=[
+                ("sandbox_id", str),
+                ("response", "Hello World"),
+                ("stdout_logs", "Hello World\n"),
+            ],
+            test_mock={
+                "execute_step_code": lambda sandbox_id, step_code, language, api_key: (
+                    "Hello World",
+                    "Hello World\n",
+                    "",
+                ),
+            },
+        )
 
     def execute_step_code(
         self,
