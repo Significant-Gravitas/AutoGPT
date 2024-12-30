@@ -1,7 +1,8 @@
-import { Graph, Block, Node } from "./types";
+import { Graph, Block, Node, BlockUIType } from "./types";
 
 /** Creates a copy of the graph with all secrets removed */
 export function safeCopyGraph(graph: Graph, block_defs: Block[]): Graph {
+  graph = removeAgentInputBlockValues(graph, block_defs);
   return {
     ...graph,
     nodes: graph.nodes.map((node) => {
@@ -16,5 +17,30 @@ export function safeCopyGraph(graph: Graph, block_defs: Block[]): Graph {
           }, {}),
       };
     }),
+  };
+}
+
+export function removeAgentInputBlockValues(graph: Graph, blocks: Block[]) {
+  const inputBlocks = graph.nodes.filter(
+    (node) =>
+      blocks.find((b) => b.id === node.block_id)?.uiType === BlockUIType.INPUT,
+  );
+
+  const modifiedNodes = graph.nodes.map((node) => {
+    if (inputBlocks.find((inputNode) => inputNode.id === node.id)) {
+      return {
+        ...node,
+        input_default: {
+          ...node.input_default,
+          value: "",
+        },
+      };
+    }
+    return node;
+  });
+
+  return {
+    ...graph,
+    nodes: modifiedNodes,
   };
 }
