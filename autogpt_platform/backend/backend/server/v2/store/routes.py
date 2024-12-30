@@ -508,11 +508,11 @@ async def upload_submission_media(
             user_id=user_id, file=file
         )
         return media_url
-    except Exception as e:
+    except Exception:
         logger.exception("Exception occurred whilst uploading submission media")
         return fastapi.responses.JSONResponse(
             status_code=500,
-            content={"detail": f"Failed to upload media file: {str(e)}"},
+            content={"detail": "An error occurred while uploading the media file"},
         )
 
 
