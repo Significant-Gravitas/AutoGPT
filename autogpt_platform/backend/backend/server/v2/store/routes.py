@@ -526,7 +526,7 @@ async def generate_image(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
-) -> fastapi.responses.Response | fastapi.responses.JSONResponse:
+) -> fastapi.responses.Response:
     """
     Generate an image for a store listing submission.
 
