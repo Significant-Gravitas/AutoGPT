@@ -28,7 +28,11 @@ export default function useSupabase() {
       const response = await supabase.auth.getUser();
 
       if (response.error) {
-        console.error("Error fetching user", response.error);
+        // Display error only if it's not about missing auth session (user is not logged in)
+        if (response.error.message !== "Auth session missing!") {
+          console.error("Error fetching user", response.error);
+        }
+        setUser(null);
       } else {
         setUser(response.data.user);
       }
