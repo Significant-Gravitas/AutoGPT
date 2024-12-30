@@ -569,8 +569,8 @@ async def generate_image(
         )
 
         return fastapi.responses.JSONResponse(content={"image_url": image_url})
-    except Exception as e:
+    except Exception:
         logger.exception("Exception occurred whilst generating submission image")
         return fastapi.responses.JSONResponse(
-            status_code=500, content={"detail": f"Failed to generate image: {str(e)}"}
+            status_code=500, content={"detail": "An error occurred while generating the image"}
         )
