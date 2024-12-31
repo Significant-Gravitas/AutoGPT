@@ -194,7 +194,6 @@ class Graph(BaseDbModel):
                 p.name: {
                     "secret": p.secret,
                     "advanced": p.advanced,
-                    "title": p.title or p.name,
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
                 }

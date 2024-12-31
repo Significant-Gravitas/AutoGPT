@@ -146,9 +146,6 @@ class AgentInputBlock(Block):
             description="The value to be passed as input.",
             default=None,
         )
-        title: str | None = SchemaField(
-            description="The title of the input.", default=None, advanced=True
-        )
         description: str | None = SchemaField(
             description="The description of the input.",
             default=None,
@@ -230,11 +227,6 @@ class AgentOutputBlock(Block):
             advanced=False,
         )
         name: str = SchemaField(description="The name of the output.")
-        title: str | None = SchemaField(
-            description="The title of the output.",
-            default=None,
-            advanced=True,
-        )
         description: str | None = SchemaField(
             description="The description of the output.",
             default=None,
