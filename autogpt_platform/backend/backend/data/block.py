@@ -97,11 +97,6 @@ class BlockSchema(BaseModel):
 
         cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
 
-        # Set default properties values
-        for field in cls.cached_jsonschema.get("properties", {}).values():
-            if isinstance(field, dict) and "advanced" not in field:
-                field["advanced"] = True
-
         return cls.cached_jsonschema
 
     @classmethod
