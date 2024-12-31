@@ -36,7 +36,6 @@ class ProgrammingLanguage(Enum):
     JAVA = "java"
 
 
-
 class CodeExecutionBlock(Block):
     # TODO : Add support to upload and download files
     # Currently, You can customized the CPU and Memory, only by creating a pre customized sandbox template
@@ -304,7 +303,6 @@ class InstantiationBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
-
     def execute_code(
         self,
         code: str,
@@ -349,6 +347,7 @@ class InstantiationBlock(Block):
         except Exception as e:
             raise e
 
+
 class StepExecutionBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
@@ -356,7 +355,6 @@ class StepExecutionBlock(Block):
         ] = CredentialsField(
             description="Enter your api key for the E2B Sandbox. You can get it in here - https://e2b.dev/docs",
         )
-
 
         sandbox_id: str = SchemaField(
             description="ID of the sandbox instance to execute the code in",
@@ -375,7 +373,6 @@ class StepExecutionBlock(Block):
             default=ProgrammingLanguage.PYTHON,
             advanced=False,
         )
-
 
     class Output(BlockSchema):
         response: str = SchemaField(description="Response from code execution")
@@ -397,10 +394,9 @@ class StepExecutionBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "sandbox_id": "sandbox_id",
                 "step_code": "print('Hello World')",
-                "language": ProgrammingLanguage.PYTHON.value
+                "language": ProgrammingLanguage.PYTHON.value,
             },
             test_output=[
-                ("sandbox_id", str),
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
@@ -426,10 +422,7 @@ class StepExecutionBlock(Block):
                 raise Exception("Sandbox not found")
 
             # Executing the code
-            execution = sandbox.run_code(
-                code,
-                language=language.value
-            )
+            execution = sandbox.run_code(code, language=language.value)
 
             if execution.error:
                 raise Exception(execution.error)
