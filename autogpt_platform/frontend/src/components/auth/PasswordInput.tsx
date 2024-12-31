@@ -16,6 +16,7 @@ const PasswordInput = forwardRef<HTMLInputElement, InputProps>(
           type={showPassword ? "text" : "password"}
           className={cn("hide-password-toggle pr-10", className)}
           ref={ref}
+          title="password"
           {...props}
         />
         <Button
@@ -23,8 +24,11 @@ const PasswordInput = forwardRef<HTMLInputElement, InputProps>(
           variant="ghost"
           size="sm"
           className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-          onClick={() => setShowPassword((prev) => !prev)}
+          onMouseDown={() => setShowPassword(true)}
+          onMouseUp={() => setShowPassword(false)}
+          onMouseLeave={() => setShowPassword(false)}
           disabled={disabled}
+          tabIndex={-1}
         >
           {showPassword && !disabled ? (
             <EyeIcon className="h-4 w-4" aria-hidden="true" />

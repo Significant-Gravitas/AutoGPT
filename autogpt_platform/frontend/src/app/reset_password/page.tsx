@@ -1,8 +1,15 @@
 "use client";
-import { Button } from "@/components/ui/button";
+import {
+  AuthCard,
+  AuthHeader,
+  AuthButton,
+  AuthFeedback,
+  PasswordInput,
+} from "@/components/auth";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -10,54 +17,87 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import useSupabase from "@/hooks/useSupabase";
+import { sendEmailFormSchema, changePasswordFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
-import { FaSpinner } from "react-icons/fa";
 import { z } from "zod";
-
-const emailFormSchema = z.object({
-  email: z.string().email().min(2).max(64),
-});
-
-const resetPasswordFormSchema = z
-  .object({
-    password: z.string().min(6).max(64),
-    confirmPassword: z.string().min(6).max(64),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
+import { changePassword, sendResetEmail } from "./actions";
+import Spinner from "@/components/Spinner";
 
 export default function ResetPasswordPage() {
   const { supabase, user, isUserLoading } = useSupabase();
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
+  const [disabled, setDisabled] = useState(false);
 
-  const emailForm = useForm<z.infer<typeof emailFormSchema>>({
-    resolver: zodResolver(emailFormSchema),
+  const sendEmailForm = useForm<z.infer<typeof sendEmailFormSchema>>({
+    resolver: zodResolver(sendEmailFormSchema),
     defaultValues: {
       email: "",
     },
   });
 
-  const resetPasswordForm = useForm<z.infer<typeof resetPasswordFormSchema>>({
-    resolver: zodResolver(resetPasswordFormSchema),
+  const changePasswordForm = useForm<z.infer<typeof changePasswordFormSchema>>({
+    resolver: zodResolver(changePasswordFormSchema),
     defaultValues: {
       password: "",
       confirmPassword: "",
     },
   });
 
+  const onSendEmail = useCallback(
+    async (data: z.infer<typeof sendEmailFormSchema>) => {
+      setIsLoading(true);
+      setFeedback(null);
+
+      if (!(await sendEmailForm.trigger())) {
+        setIsLoading(false);
+        return;
+      }
+
+      const error = await sendResetEmail(data.email);
+      setIsLoading(false);
+      if (error) {
+        setFeedback(error);
+        setIsError(true);
+        return;
+      }
+      setDisabled(true);
+      setFeedback(
+        "Password reset email sent if user exists. Please check your email.",
+      );
+      setIsError(false);
+    },
+    [sendEmailForm],
+  );
+
+  const onChangePassword = useCallback(
+    async (data: z.infer<typeof changePasswordFormSchema>) => {
+      setIsLoading(true);
+      setFeedback(null);
+
+      if (!(await changePasswordForm.trigger())) {
+        setIsLoading(false);
+        return;
+      }
+
+      const error = await changePassword(data.password);
+      setIsLoading(false);
+      if (error) {
+        setFeedback(error);
+        setIsError(true);
+        return;
+      }
+      setFeedback("Password changed successfully. Redirecting to login.");
+      setIsError(false);
+    },
+    [changePasswordForm],
+  );
+
   if (isUserLoading) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
-      </div>
-    );
+    return <Spinner />;
   }
 
   if (!supabase) {
@@ -68,147 +108,79 @@ export default function ResetPasswordPage() {
     );
   }
 
-  async function onSendEmail(d: z.infer<typeof emailFormSchema>) {
-    setIsLoading(true);
-    setFeedback(null);
-
-    if (!(await emailForm.trigger())) {
-      setIsLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase!.auth.resetPasswordForEmail(
-      d.email,
-      {
-        redirectTo: `${window.location.origin}/reset_password`,
-      },
-    );
-
-    if (error) {
-      setFeedback(error.message);
-      setIsLoading(false);
-      return;
-    }
-
-    setFeedback("Password reset email sent. Please check your email.");
-    setIsLoading(false);
-  }
-
-  async function onResetPassword(d: z.infer<typeof resetPasswordFormSchema>) {
-    setIsLoading(true);
-    setFeedback(null);
-
-    if (!(await resetPasswordForm.trigger())) {
-      setIsLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase!.auth.updateUser({
-      password: d.password,
-    });
-
-    if (error) {
-      setFeedback(error.message);
-      setIsLoading(false);
-      return;
-    }
-
-    await supabase!.auth.signOut();
-    router.push("/login");
-  }
-
   return (
-    <div className="flex h-full flex-col items-center justify-center">
-      <div className="w-full max-w-md">
-        <h1 className="text-center text-3xl font-bold">Reset Password</h1>
-        {user ? (
-          <form
-            onSubmit={resetPasswordForm.handleSubmit(onResetPassword)}
-            className="mt-6 space-y-6"
-          >
-            <Form {...resetPasswordForm}>
-              <FormField
-                control={resetPasswordForm.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem className="mb-4">
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={resetPasswordForm.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem className="mb">
-                    <FormLabel>Confirm Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-                onClick={() => onResetPassword(resetPasswordForm.getValues())}
-              >
-                {isLoading ? <FaSpinner className="mr-2 animate-spin" /> : null}
-                Reset Password
-              </Button>
-            </Form>
-          </form>
-        ) : (
-          <form
-            onSubmit={emailForm.handleSubmit(onSendEmail)}
-            className="mt-6 space-y-6"
-          >
-            <Form {...emailForm}>
-              <FormField
-                control={emailForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem className="mb-4">
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input placeholder="user@email.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-                onClick={() => onSendEmail(emailForm.getValues())}
-              >
-                {isLoading ? <FaSpinner className="mr-2 animate-spin" /> : null}
-                Send Reset Email
-              </Button>
-              {feedback ? (
-                <div className="text-center text-sm text-red-500">
-                  {feedback}
-                </div>
-              ) : null}
-            </Form>
-          </form>
-        )}
-      </div>
-    </div>
+    <AuthCard>
+      <AuthHeader>Reset Password</AuthHeader>
+      {user ? (
+        <form onSubmit={changePasswordForm.handleSubmit(onChangePassword)}>
+          <Form {...changePasswordForm}>
+            <FormField
+              control={changePasswordForm.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem className="mb-6">
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <PasswordInput {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={changePasswordForm.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem className="mb-6">
+                  <FormLabel>Confirm Password</FormLabel>
+                  <FormControl>
+                    <PasswordInput {...field} />
+                  </FormControl>
+                  <FormDescription className="text-sm font-normal leading-tight text-slate-500">
+                    Password needs to be at least 6 characters long
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <AuthButton
+              onClick={() => onChangePassword(changePasswordForm.getValues())}
+              isLoading={isLoading}
+              type="submit"
+            >
+              Update password
+            </AuthButton>
+            <AuthFeedback message={feedback} isError={isError} />
+          </Form>
+        </form>
+      ) : (
+        <form onSubmit={sendEmailForm.handleSubmit(onSendEmail)}>
+          <Form {...sendEmailForm}>
+            <FormField
+              control={sendEmailForm.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem className="mb-6">
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input placeholder="m@example.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <AuthButton
+              onClick={() => onSendEmail(sendEmailForm.getValues())}
+              isLoading={isLoading}
+              disabled={disabled}
+              type="submit"
+            >
+              Send reset email
+            </AuthButton>
+            <AuthFeedback message={feedback} isError={isError} />
+          </Form>
+        </form>
+      )}
+    </AuthCard>
   );
 }
