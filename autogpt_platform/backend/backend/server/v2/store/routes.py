@@ -10,6 +10,7 @@ import fastapi
 import fastapi.responses
 from fastapi.encoders import jsonable_encoder
 
+import backend.data.block
 import backend.data.graph
 import backend.server.v2.store.db
 import backend.server.v2.store.image_gen
@@ -543,6 +544,28 @@ async def download_agent_file(
         store_listing_version_id=store_listing_version_id, version_id=version
     )
 
+    
+
+    def remove_agent_input_block_values(graph):
+        # Remove input block values before returning
+        blocks = [block() for block in backend.data.block.get_blocks().values()]
+
+        input_blocks = [
+            node for node in graph["nodes"] 
+            if next((b for b in blocks if b.id == node["block_id"] and b.block_type == backend.data.block.BlockType.INPUT), None)
+        ]
+
+        modified_nodes = []
+        for node in graph["nodes"]:
+            if any(input_block["id"] == node["id"] for input_block in input_blocks):
+                node = {**node}
+                if "input_default" in node:
+                    node["input_default"] = {**node["input_default"], "value": ""}
+            modified_nodes.append(node)
+
+        return {**graph, "nodes": modified_nodes}
+
+    graph_data = remove_agent_input_block_values(graph_data)
     graph_date_dict = jsonable_encoder(graph_data)
 
     file_name = f"agent_{store_listing_version_id}_v{version or 'latest'}.json"
