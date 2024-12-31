@@ -92,7 +92,7 @@ class IntegrationCredentialsManager:
 
                     fresh_credentials = oauth_handler.refresh_tokens(credentials)
                     self.store.update_creds(user_id, fresh_credentials)
-                    if _lock:
+                    if _lock and _lock.locked():
                         _lock.release()
 
                     credentials = fresh_credentials
@@ -144,7 +144,8 @@ class IntegrationCredentialsManager:
         try:
             yield
         finally:
-            lock.release()
+            if lock.locked():
+                lock.release()
 
     def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
