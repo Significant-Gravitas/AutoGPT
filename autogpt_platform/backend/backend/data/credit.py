@@ -72,7 +72,7 @@ class UserCreditBase(ABC):
 
         Args:
             user_id (str): The user ID.
-            amount (int): The amount to top up.
+            amount (int): The amount of credits to top up.
 
         Returns:
             str: The redirect url to the payment page.
@@ -231,7 +231,7 @@ class UserCredit(UserCreditBase):
     async def top_up_credits(self, user_id: str, amount: int):
         if amount < 0:
             raise ValueError(f"Top up amount must not be negative: {amount}")
-        
+
         await CreditTransaction.prisma().create(
             data={
                 "userId": user_id,
@@ -258,7 +258,8 @@ class UserCredit(UserCreditBase):
 
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
-        # amount param is always in the smallest currency unit (so cents for usd)
+        # unit_amount param is always in the smallest currency unit (so cents for usd)
+        # which equals to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=user.stripeCustomerId,
             line_items=[
@@ -268,7 +269,7 @@ class UserCredit(UserCreditBase):
                         "product_data": {
                             "name": "AutoGPT Platform Credits",
                         },
-                        "unit_amount": amount * 100,
+                        "unit_amount": amount,
                     },
                     "quantity": 1,
                 }

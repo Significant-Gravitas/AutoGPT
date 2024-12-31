@@ -167,7 +167,10 @@ export default function PrivatePage() {
             min="5"
             step="1"
           />
-          <Button onClick={() => requestTopUp(amount)} className="whitespace-nowrap">
+          <Button
+            onClick={() => requestTopUp(amount)}
+            className="whitespace-nowrap"
+          >
             Top-Up
           </Button>
         </div>

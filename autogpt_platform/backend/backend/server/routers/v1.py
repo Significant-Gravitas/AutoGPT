@@ -3,7 +3,6 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
-from fastapi.responses import RedirectResponse
 import pydantic
 import stripe
 from autogpt_libs.auth.middleware import auth_middleware
@@ -42,9 +41,9 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
-    RequestTopUp,
 )
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
@@ -137,10 +136,12 @@ async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
     # Credits can go negative, so ensure it's at least 0 for user to see.
-    return {"credits": max(await _user_credit_model.get_or_refill_credit(user_id), 0)}
+    return {"credits": max(await _user_credit_model.get_credits(user_id), 0)}
 
 
-@v1_router.post(path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)])
+@v1_router.post(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
 async def request_top_up(
     request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
 ):
@@ -153,7 +154,7 @@ async def stripe_webhook(request: Request):
     # Get the raw request body
     payload = await request.body()
     # Get the signature header
-    sig_header = request.headers.get('stripe-signature')
+    sig_header = request.headers.get("stripe-signature")
 
     try:
         event = stripe.Webhook.construct_event(
@@ -165,14 +166,12 @@ async def stripe_webhook(request: Request):
     except stripe.SignatureVerificationError:
         # Invalid signature
         raise HTTPException(status_code=400)
-    
-    print(event)
 
     if (
-        event['type'] == 'checkout.session.completed'
-        or event['type'] == 'checkout.session.async_payment_succeeded'
+        event["type"] == "checkout.session.completed"
+        or event["type"] == "checkout.session.async_payment_succeeded"
     ):
-        await _user_credit_model.fulfill_checkout(event['data']['object']['id'])
+        await _user_credit_model.fulfill_checkout(event["data"]["object"]["id"])
 
     return Response(status_code=200)
 
