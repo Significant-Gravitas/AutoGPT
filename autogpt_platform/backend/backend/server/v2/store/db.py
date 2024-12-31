@@ -31,7 +31,7 @@ async def get_store_agents(
         sanitized_query = search_query.strip()
         if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
             raise backend.server.v2.store.exceptions.DatabaseError(
-                "Invalid search query"
+                f"Invalid search query: len({len(sanitized_query)}) query: {search_query}"
             )
 
         # Escape special SQL characters
@@ -449,6 +449,11 @@ async def create_store_submission(
     )
 
     try:
+        # Sanitize slug to only allow letters and hyphens
+        slug = "".join(
+            c if c.isalpha() or c == "-" or c.isnumeric() else "" for c in slug
+        ).lower()
+
         # First verify the agent belongs to this user
         agent = await prisma.models.AgentGraph.prisma().find_first(
             where=prisma.types.AgentGraphWhereInput(
@@ -636,7 +641,12 @@ async def update_or_create_profile(
     logger.info(f"Updating profile for user {user_id} data: {profile}")
 
     try:
-        # Check if profile exists for user
+        # Sanitize username to only allow letters and hyphens
+        username = "".join(
+            c if c.isalpha() or c == "-" or c.isnumeric() else ""
+            for c in profile.username
+        ).lower()
+
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
         )
@@ -651,7 +661,7 @@ async def update_or_create_profile(
                 data={
                     "userId": user_id,
                     "name": profile.name,
-                    "username": profile.username.lower(),
+                    "username": username,
                     "description": profile.description,
                     "links": profile.links or [],
                     "avatarUrl": profile.avatar_url,
@@ -676,7 +686,7 @@ async def update_or_create_profile(
             if profile.name is not None:
                 update_data["name"] = profile.name
             if profile.username is not None:
-                update_data["username"] = profile.username
+                update_data["username"] = username
             if profile.description is not None:
                 update_data["description"] = profile.description
             if profile.links is not None:
