@@ -947,7 +947,8 @@ def synchronized(key: str, timeout: int = 60):
         lock.acquire()
         yield
     finally:
-        lock.release()
+        if lock.locked():
+            lock.release()
 
 
 def llprint(message: str):
