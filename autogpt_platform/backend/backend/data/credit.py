@@ -275,8 +275,10 @@ class UserCredit(UserCreditBase):
                 }
             ],
             mode="payment",
-            success_url=settings.config.platform_base_url + "/store/credits?topup=success",
-            cancel_url=settings.config.platform_base_url + "/store/credits?topup=cancel",
+            success_url=settings.config.platform_base_url
+            + "/store/credits?topup=success",
+            cancel_url=settings.config.platform_base_url
+            + "/store/credits?topup=cancel",
         )
 
         # Create pending transaction
@@ -309,7 +311,7 @@ class UserCredit(UserCreditBase):
 
         # Check the Checkout Session's payment_status property
         # to determine if fulfillment should be peformed
-        if checkout_session.payment_status != "unpaid":
+        if checkout_session.payment_status in ["paid", "no_payment_required"]:
             # Activate the CreditTransaction
             await CreditTransaction.prisma().update(
                 where={

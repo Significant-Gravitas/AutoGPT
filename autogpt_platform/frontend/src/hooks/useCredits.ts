@@ -30,18 +30,14 @@ export default function useCredits(): {
       const stripe = await stripePromise;
 
       if (!stripe) {
-        console.error("Stripe failed to load");
         return;
       }
 
       // Convert dollar amount to credit count
       const response = await api.requestTopUp(usd_amount * 100);
-
-      console.log(response);
-
       router.push(response.checkout_url);
     },
-    [api],
+    [api, router],
   );
 
   return {
