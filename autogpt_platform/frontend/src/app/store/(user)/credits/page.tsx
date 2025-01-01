@@ -1,11 +1,14 @@
 "use client";
 import { Button } from "@/components/agptui/Button";
 import useCredits from "@/hooks/useCredits";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export default function CreditsPage() {
   const { credits, requestTopUp } = useCredits();
   const [amount, setAmount] = useState(5);
+  const searchParams = useSearchParams();
+  const topupStatus = searchParams.get("topup");
 
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
@@ -13,11 +16,15 @@ export default function CreditsPage() {
         Credits
       </h1>
       <p className="font-circular mb-6 text-base font-normal leading-tight text-neutral-600 dark:text-neutral-400">
-        Current credits: <b>{credits}</b> <br />
+        Current credits: <b>{credits}</b>
       </p>
       <h2 className="font-circular mb-4 text-lg font-normal leading-7 text-neutral-700 dark:text-neutral-300">
         Top-up Credits
       </h2>
+      <p className="font-circular mb-6 text-base font-normal leading-tight text-neutral-600 dark:text-neutral-400">
+        {topupStatus === "success" && <span className="text-green-500">Your payment was successful. Your credits will be updated shortly.</span>}
+        {topupStatus === "cancel" && <span className="text-red-500">Payment failed. Your payment method has not been charged.</span>}
+      </p>
       <div className="w-full">
         <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
           1 USD = 100 credits, 5 USD is a minimum top-up
@@ -35,7 +42,6 @@ export default function CreditsPage() {
           />
         </div>
       </div>
-
       <Button
         type="submit"
         variant="default"
