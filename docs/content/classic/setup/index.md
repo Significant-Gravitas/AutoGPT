@@ -175,6 +175,19 @@ If you don't know which to choose, you can safely go with OpenAI*.
 [anthropic/models]: https://docs.anthropic.com/en/docs/models-overview
 
 
+### AI/ML API
+1. Make sure you have credits in your account: [Billing -> View Usage](https://aimlapi.com/app/billing?utm_source=autogpt&utm_medium=autogpt&utm_campaign=autogpt)
+2. Get your AI/ML API key from [Key Management](https://aimlapi.com/app/keys?utm_source=autogpt&utm_medium=autogpt&utm_campaign=autogpt)
+3. Open `.env`
+4. Find the line that says `AIML_API_KEY=`
+5. Insert your Aiml API Key directly after = without quotes or spaces:
+    ```ini
+    AIML_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ```
+6. If you would like to see more of our [models](https://aimlapi.com/models?utm_source=autogpt&utm_medium=autogpt&utm_campaign=autogpt) here or have any questions, we would welcome your [feedback](https://discord.gg/j5QggeZJgY)!
+***See you later! With love, your AI/ML team***❤️
+
+
 ### Groq
 
 !!! note
