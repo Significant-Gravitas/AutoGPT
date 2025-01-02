@@ -111,7 +111,7 @@ def execute_block_test(block: Block):
         extra_exec_kwargs[field_name] = block.test_credentials
     elif credentials_input_fields and block.test_credentials:
         if not isinstance(block.test_credentials, dict):
-            log.warning(f"Block {block.name} has no usable test credentials")
+            raise TypeError(f"Block {block.name} has no usable test credentials")
         else:
             for field_name in credentials_input_fields:
                 if field_name in block.test_credentials:

@@ -262,7 +262,7 @@ export function CustomNode({
                     side="left"
                   />
                 ) : (
-                  propKey != "credentials" &&
+                  propKey !== "credentials" &&
                   !propKey.endsWith("_credentials") && (
                     <div className="flex gap-1">
                       <span className="text-m green mb-0 text-gray-900 dark:text-gray-100">
