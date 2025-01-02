@@ -38,11 +38,11 @@ export default function PrivatePage() {
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
     | {
-      open: true;
-      message: string;
-      onConfirm: () => void;
-      onReject: () => void;
-    }
+        open: true;
+        message: string;
+        onConfirm: () => void;
+        onReject: () => void;
+      }
     | { open: false }
   >({ open: false });
 
@@ -124,16 +124,16 @@ export default function PrivatePage() {
 
   const allCredentials = providers
     ? Object.values(providers).flatMap((provider) =>
-      [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
-        .filter((cred) => !hiddenCredentials.includes(cred.id))
-        .map((credentials) => ({
-          ...credentials,
-          provider: provider.provider,
-          providerName: provider.providerName,
-          ProviderIcon: providerIcons[provider.provider],
-          TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
-        })),
-    )
+        [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+          .filter((cred) => !hiddenCredentials.includes(cred.id))
+          .map((credentials) => ({
+            ...credentials,
+            provider: provider.provider,
+            providerName: provider.providerName,
+            ProviderIcon: providerIcons[provider.provider],
+            TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+          })),
+      )
     : [];
 
   return (

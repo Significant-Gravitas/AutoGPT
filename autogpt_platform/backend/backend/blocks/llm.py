@@ -457,7 +457,6 @@ class AIStructuredResponseGeneratorBlock(Block):
                 max_tokens=max_tokens,
             )
 
-            # response = completion.choices[0].message.content
             return (
                 completion.choices[0].message.content or "",
                 completion.usage.prompt_tokens if completion.usage else 0,
@@ -828,7 +827,9 @@ class AITextSummarizerBlock(Block):
                     chunk_overlap=input_data.chunk_overlap,
                 ),
                 credentials=credentials,
-            ).send(None)[1]  # Get the first yielded value
+            ).send(None)[
+                1
+            ]  # Get the first yielded value
 
 
 class AIConversationBlock(Block):
@@ -885,8 +886,7 @@ class AIConversationBlock(Block):
                 "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
             ),
             test_mock={
-                "llm_call": lambda *args,
-                **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
             },
         )
 
