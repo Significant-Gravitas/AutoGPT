@@ -67,9 +67,13 @@ export default async function Page({
               <p className="font-geist text-underline-position-from-font text-decoration-skip-none text-left text-base font-medium leading-6">
                 About
               </p>
-              <div className="font-poppins text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50">
+              <div
+                className="font-poppins text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
+                style={{ whiteSpace: "pre-line" }}
+              >
                 {creator.description}
               </div>
+
               <CreatorLinks links={creator.links} />
             </div>
           </div>
