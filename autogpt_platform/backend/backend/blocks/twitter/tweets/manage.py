@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import cast
+from typing import List, Literal, Optional, Union, cast
+from pydantic import BaseModel
 
 import tweepy
 from tweepy.client import Response
@@ -36,6 +37,27 @@ from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+class Media(BaseModel):
+    discriminator: Literal['media']
+    media_ids: Optional[List[str]] = None
+    media_tagged_user_ids: Optional[List[str]] = None
+
+class DeepLink(BaseModel):
+    discriminator: Literal['deep_link']
+    direct_message_deep_link: Optional[str] = None
+
+class Poll(BaseModel):
+    discriminator: Literal['poll']
+    poll_options: Optional[List[str]] = None
+    poll_duration_minutes: Optional[int] = None
+
+class Place(BaseModel):
+    discriminator: Literal['place']
+    place_id: Optional[str] = None
+
+class Quote(BaseModel):
+    discriminator: Literal['quote']
+    quote_tweet_id: Optional[str] = None
 
 class TwitterPostTweetBlock(Block):
     """
@@ -48,71 +70,33 @@ class TwitterPostTweetBlock(Block):
         )
 
         tweet_text: str = SchemaField(
-            description="Text of the tweet to post [It's Optional if you want to add media, quote, or deep link]",
+            description="Text of the tweet to post",
             placeholder="Enter your tweet",
-            advanced=False,
-            default="",
-        )
-
-        media_ids: list = SchemaField(
-            description="List of media IDs to attach to the tweet, [ex - 1455952740635586573]",
-            placeholder="Enter media IDs",
-            default=[],
-        )
-
-        media_tagged_user_ids: list = SchemaField(
-            description="List of user IDs to tag in media, [ex - 1455952740635586573]",
-            placeholder="Enter media tagged user IDs",
-            default=[],
-        )
-
-        direct_message_deep_link: str = SchemaField(
-            description="Link directly to a Direct Message conversation with an account [ex - https://twitter.com/messages/compose?recipient_id={your_id}]",
-            placeholder="Enter direct message deep link",
-            default="",
-        )
-
-        poll_options: list = SchemaField(
-            description="List of poll options",
-            placeholder="Enter poll options",
-            default=[],
-        )
-
-        poll_duration_minutes: int = SchemaField(
-            description="Duration of the poll in minutes",
-            placeholder="Enter poll duration in minutes",
-            default=0,
         )
 
         for_super_followers_only: bool = SchemaField(
             description="Tweet exclusively for Super Followers",
             placeholder="Enter for super followers only",
+            advanced=True,
             default=False,
         )
 
-        place_id: str = SchemaField(
-            description="Adds optional location information to a tweet if geo settings are enabled in your profile.",
-            placeholder="Enter place ID",
-            default="",
-        )
-
-        quote_tweet_id: str = SchemaField(
-            description="Link to the Tweet being quoted, [ex- 1455953449422516226]",
+        attachment: Union[Media, DeepLink, Poll, Place, Quote] | None  = SchemaField(
+            discriminator='discriminator',
+            description="Additional tweet data (media, deep link, poll, place or quote)",
             advanced=True,
-            placeholder="Enter quote tweet ID",
-            default="",
         )
 
-        exclude_reply_user_ids: list = SchemaField(
-            description="User IDs to exclude from reply Tweet thread. [ex - 6253282] ",
+        exclude_reply_user_ids: Optional[List[str]] = SchemaField(
+            description="User IDs to exclude from reply Tweet thread. [ex - 6253282]",
             placeholder="Enter user IDs to exclude",
             advanced=True,
-            default=[],
+            default=None,
         )
 
-        in_reply_to_tweet_id: str = SchemaField(
+        in_reply_to_tweet_id: Optional[str] = SchemaField(
             description="Tweet ID being replied to. Please note that in_reply_to_tweet_id needs to be in the request if exclude_reply_user_ids is present",
-            default="",
+            default=None,
             placeholder="Enter in reply to tweet ID",
             advanced=True,
         )
@@ -141,12 +125,11 @@ class TwitterPostTweetBlock(Block):
             test_input={
                 "tweet_text": "This is a test tweet.",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "direct_message_deep_link": "",
+                "attachment": {
+                    "discriminator": "deep_link",
+                    "direct_message_deep_link": "https://twitter.com/messages/compose"
+                },
                 "for_super_followers_only": False,
-                "place_id": "",
-                "media_ids": [],
-                "media_tagged_user_ids": [],
-                "quote_tweet_id": "",
                 "exclude_reply_user_ids": [],
                 "in_reply_to_tweet_id": "",
             },
@@ -163,20 +146,14 @@ class TwitterPostTweetBlock(Block):
             },
         )
 
-    @staticmethod
     def post_tweet(
+        self,
         credentials: TwitterCredentials,
         input_txt: str,
-        media_ids: list,
-        media_tagged_user_ids: list,
-        direct_message_deep_link: str,
+        attachment: Union[Media, DeepLink, Poll, Place, Quote],
         for_super_followers_only: bool,
-        place_id: str,
-        poll_options: list,
-        poll_duration_minutes: int,
-        quote_tweet_id: str,
-        exclude_reply_user_ids: list,
-        in_reply_to_tweet_id: str,
+        exclude_reply_user_ids: Optional[List[str]],
+        in_reply_to_tweet_id: Optional[str],
         reply_settings: TweetReplySettingsFilter,
     ):
         try:
@@ -187,20 +164,27 @@ class TwitterPostTweetBlock(Block):
             params = (
                 TweetPostBuilder()
                 .add_text(input_txt)
-                .add_media(media_ids, media_tagged_user_ids)
-                .add_deep_link(direct_message_deep_link)
                 .add_super_followers(for_super_followers_only)
-                .add_poll_options(poll_options)
-                .add_poll_duration(poll_duration_minutes)
-                .add_place(place_id)
-                .add_quote(quote_tweet_id)
                 .add_reply_settings(
-                    exclude_reply_user_ids, in_reply_to_tweet_id, reply_settings
+                    exclude_reply_user_ids or [],
+                    in_reply_to_tweet_id or "",
+                    reply_settings
                 )
-                .build()
             )
 
-            tweet = cast(Response, client.create_tweet(**params))
+            if isinstance(attachment, Media):
+                params.add_media(attachment.media_ids or [], attachment.media_tagged_user_ids or [])
+            elif isinstance(attachment, DeepLink):
+                params.add_deep_link(attachment.direct_message_deep_link or "")
+            elif isinstance(attachment, Poll):
+                params.add_poll_options(attachment.poll_options or [])
+                params.add_poll_duration(attachment.poll_duration_minutes or 0)
+            elif isinstance(attachment, Place):
+                params.add_place(attachment.place_id or "")
+            elif isinstance(attachment, Quote):
+                params.add_quote(attachment.quote_tweet_id or "")
+
+            tweet = cast(Response, client.create_tweet(**params.build()))
 
             if not tweet.data:
                 raise Exception("Failed to create tweet")
@@ -225,14 +209,8 @@ class TwitterPostTweetBlock(Block):
             tweet_id, tweet_url = self.post_tweet(
                 credentials,
                 input_data.tweet_text,
-                input_data.media_ids,
-                input_data.media_tagged_user_ids,
-                input_data.direct_message_deep_link,
+                input_data.attachment,
                 input_data.for_super_followers_only,
-                input_data.place_id,
-                input_data.poll_options,
-                input_data.poll_duration_minutes,
-                input_data.quote_tweet_id,
                 input_data.exclude_reply_user_ids,
                 input_data.in_reply_to_tweet_id,
                 input_data.reply_settings,

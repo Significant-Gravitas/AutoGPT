@@ -227,6 +227,8 @@ export const NodeGenericInputField: FC<{
     );
   }
 
+  console.log("propSchema", propSchema);
+
   if ("properties" in propSchema) {
     // Render a multi-select for all-boolean sub-schemas with more than 3 properties
     if (
@@ -292,6 +294,29 @@ export const NodeGenericInputField: FC<{
   }
 
   if ("anyOf" in propSchema) {
+    // Optional oneOf
+    if (
+      "oneOf" in propSchema.anyOf[0] &&
+      propSchema.anyOf[0].oneOf &&
+      "discriminator" in propSchema.anyOf[0] &&
+      propSchema.anyOf[0].discriminator
+    ) {
+      return (
+        <NodeOneOfDiscriminatorField
+          nodeId={nodeId}
+          propKey={propKey}
+          propSchema={propSchema.anyOf[0]}
+          currentValue={currentValue}
+          errors={errors}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
+        />
+      );
+    }
+
     // optional items
     const types = propSchema.anyOf.map((s) =>
       "type" in s ? s.type : undefined,
@@ -579,7 +604,7 @@ const NodeOneOfDiscriminatorField: FC<{
   propSchema: any;
   currentValue?: any;
   errors: { [key: string]: string | undefined };
-  connections: any;
+  connections: ConnectionData;
   handleInputChange: (key: string, value: any) => void;
   handleInputClick: (key: string) => void;
   className?: string;
@@ -594,7 +619,6 @@ const NodeOneOfDiscriminatorField: FC<{
   handleInputChange,
   handleInputClick,
   className,
-  displayName,
 }) => {
   const discriminator = propSchema.discriminator;
 
@@ -610,7 +634,7 @@ const NodeOneOfDiscriminatorField: FC<{
 
         return {
           value: variantDiscValue,
-          schema: variant,
+          schema: variant as BlockIOSubSchema,
         };
       })
       .filter((v: any) => v.value != null);
@@ -641,8 +665,23 @@ const NodeOneOfDiscriminatorField: FC<{
     (opt: any) => opt.value === chosenType,
   )?.schema;
 
+  function getEntryKey(key: string): string {
+    return `${propKey}_#_${key}`;
+  }
+
+  function isConnected(key: string): boolean {
+    return connections.some(
+      (c) => c.targetHandle === getEntryKey(key) && c.target === nodeId,
+    );
+  }
+
   return (
-    <div className={cn("flex flex-col space-y-2", className)}>
+    <div
+      className={cn(
+        "flex min-w-[400px] max-w-[95%] flex-col space-y-4",
+        className,
+      )}
+    >
       <Select value={chosenType || ""} onValueChange={handleVariantChange}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Select a type..." />
@@ -667,28 +706,32 @@ const NodeOneOfDiscriminatorField: FC<{
               return (
                 <div
                   key={childKey}
-                  className="flex w-full flex-row justify-between space-y-2"
+                  className="mb-4 flex w-full flex-col justify-between space-y-2"
                 >
-                  <span className="mr-2 mt-3 dark:text-gray-300">
-                    {(childSchema as BlockIOSubSchema).title ||
-                      beautifyString(someKey)}
-                  </span>
-                  <NodeGenericInputField
-                    nodeId={nodeId}
-                    key={propKey}
-                    propKey={childKey}
-                    propSchema={childSchema as BlockIOSubSchema}
-                    currentValue={
-                      currentValue ? currentValue[someKey] : undefined
-                    }
-                    errors={errors}
-                    connections={connections}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                    displayName={
-                      chosenVariantSchema.title || beautifyString(someKey)
-                    }
+                  <NodeHandle
+                    keyName={getEntryKey(childKey)}
+                    schema={childSchema as BlockIOSubSchema}
+                    isConnected={isConnected(getEntryKey(childKey))}
+                    isRequired={false}
+                    side="left"
                   />
+
+                  {!isConnected(childKey) && (
+                    <NodeGenericInputField
+                      nodeId={nodeId}
+                      key={propKey}
+                      propKey={childKey}
+                      propSchema={childSchema as BlockIOSubSchema}
+                      currentValue={
+                        currentValue ? currentValue[someKey] : undefined
+                      }
+                      errors={errors}
+                      connections={connections}
+                      handleInputChange={handleInputChange}
+                      handleInputClick={handleInputClick}
+                      displayName={beautifyString(someKey)}
+                    />
+                  )}
                 </div>
               );
             },
