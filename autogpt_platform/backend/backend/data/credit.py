@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
 from prisma import Json
-from prisma.enums import CreditTransactionType, UserBlockCreditType
+from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
-from prisma.models import CreditTransaction, UserBlockCredit
+from prisma.models import CreditTransaction
 
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
