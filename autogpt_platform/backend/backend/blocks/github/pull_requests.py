@@ -1,3 +1,4 @@
+import base64
 import re
 
 from typing_extensions import TypedDict
@@ -512,3 +513,222 @@ def prepare_pr_api_url(pr_url: str, path: str) -> str:
 
     base_url, pr_number = match.groups()
     return f"{base_url}/pulls/{pr_number}/{path}"
+
+
+class GithubCreateFileBlock(Block):
+    class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+        file_path: str = SchemaField(
+            description="Path where the file should be created",
+            placeholder="path/to/file.txt",
+        )
+        content: str = SchemaField(
+            description="Content to write to the file",
+            placeholder="File content here",
+        )
+        branch: str = SchemaField(
+            description="Branch where the file should be created",
+            default="main",
+        )
+        commit_message: str = SchemaField(
+            description="Message for the commit",
+            default="Create new file",
+        )
+
+    class Output(BlockSchema):
+        url: str = SchemaField(description="URL of the created file")
+        sha: str = SchemaField(description="SHA of the commit")
+        error: str = SchemaField(
+            description="Error message if the file creation failed"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="8fd132ac-b917-428a-8159-d62893e8a3fe",
+            description="This block creates a new file in a GitHub repository.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubCreateFileBlock.Input,
+            output_schema=GithubCreateFileBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "file_path": "test/file.txt",
+                "content": "Test content",
+                "branch": "main",
+                "commit_message": "Create test file",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("url", "https://github.com/owner/repo/blob/main/test/file.txt"),
+                ("sha", "abc123"),
+            ],
+            test_mock={
+                "create_file": lambda *args, **kwargs: (
+                    "https://github.com/owner/repo/blob/main/test/file.txt",
+                    "abc123",
+                )
+            },
+        )
+
+    @staticmethod
+    def create_file(
+        credentials: GithubCredentials,
+        repo_url: str,
+        file_path: str,
+        content: str,
+        branch: str,
+        commit_message: str,
+    ) -> tuple[str, str]:
+        api = get_api(credentials)
+        # Convert content to base64
+        content_bytes = content.encode("utf-8")
+        content_base64 = base64.b64encode(content_bytes).decode("utf-8")
+
+        # Create the file using the GitHub API
+        contents_url = f"{repo_url}/contents/{file_path}"
+        data = {
+            "message": commit_message,
+            "content": content_base64,
+            "branch": branch,
+        }
+        response = api.put(contents_url, json=data)
+        result = response.json()
+
+        return result["content"]["html_url"], result["commit"]["sha"]
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            url, sha = self.create_file(
+                credentials,
+                input_data.repo_url,
+                input_data.file_path,
+                input_data.content,
+                input_data.branch,
+                input_data.commit_message,
+            )
+            yield "url", url
+            yield "sha", sha
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GithubUpdateFileBlock(Block):
+    class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+        file_path: str = SchemaField(
+            description="Path to the file to update",
+            placeholder="path/to/file.txt",
+        )
+        content: str = SchemaField(
+            description="New content for the file",
+            placeholder="Updated content here",
+        )
+        branch: str = SchemaField(
+            description="Branch containing the file",
+            default="main",
+        )
+        commit_message: str = SchemaField(
+            description="Message for the commit",
+            default="Update file",
+        )
+
+    class Output(BlockSchema):
+        url: str = SchemaField(description="URL of the updated file")
+        sha: str = SchemaField(description="SHA of the commit")
+        error: str = SchemaField(description="Error message if the file update failed")
+
+    def __init__(self):
+        super().__init__(
+            id="30be12a4-57cb-4aa4-baf5-fcc68d136076",
+            description="This block updates an existing file in a GitHub repository.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubUpdateFileBlock.Input,
+            output_schema=GithubUpdateFileBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "file_path": "test/file.txt",
+                "content": "Updated content",
+                "branch": "main",
+                "commit_message": "Update test file",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("url", "https://github.com/owner/repo/blob/main/test/file.txt"),
+                ("sha", "def456"),
+            ],
+            test_mock={
+                "update_file": lambda *args, **kwargs: (
+                    "https://github.com/owner/repo/blob/main/test/file.txt",
+                    "def456",
+                )
+            },
+        )
+
+    @staticmethod
+    def update_file(
+        credentials: GithubCredentials,
+        repo_url: str,
+        file_path: str,
+        content: str,
+        branch: str,
+        commit_message: str,
+    ) -> tuple[str, str]:
+        api = get_api(credentials)
+
+        # First get the current file to get its SHA
+        contents_url = f"{repo_url}/contents/{file_path}"
+        params = {"ref": branch}
+        response = api.get(contents_url, params=params)
+        current_file = response.json()
+
+        # Convert new content to base64
+        content_bytes = content.encode("utf-8")
+        content_base64 = base64.b64encode(content_bytes).decode("utf-8")
+
+        # Update the file
+        data = {
+            "message": commit_message,
+            "content": content_base64,
+            "sha": current_file["sha"],
+            "branch": branch,
+        }
+        response = api.put(contents_url, json=data)
+        result = response.json()
+
+        return result["content"]["html_url"], result["commit"]["sha"]
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            url, sha = self.update_file(
+                credentials,
+                input_data.repo_url,
+                input_data.file_path,
+                input_data.content,
+                input_data.branch,
+                input_data.commit_message,
+            )
+            yield "url", url
+            yield "sha", sha
+        except Exception as e:
+            yield "error", str(e)
