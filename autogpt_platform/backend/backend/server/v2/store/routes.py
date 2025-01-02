@@ -620,7 +620,7 @@ async def download_agent_file(
                 del obj["credentials"]
             if "creds" in obj:
                 del obj["creds"]
-        
+
             for value in obj.values():
                 remove_credentials(value)
         elif isinstance(obj, list):
