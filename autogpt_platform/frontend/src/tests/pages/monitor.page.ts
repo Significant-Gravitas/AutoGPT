@@ -46,7 +46,7 @@ export class MonitorPage extends BasePage {
       // Wait for network to settle first
       await this.page.waitForLoadState("networkidle", { timeout: 10_000 });
 
-      // Wait for the monitor page container
+      // Wait for the monitor page
       await this.page.getByTestId("monitor-page").waitFor({
         state: "visible",
         timeout: 10_000,

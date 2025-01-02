@@ -134,12 +134,18 @@ def SchemaField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
-    advanced: Optional[bool] = False,
+    advanced: Optional[bool] = None,
     secret: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
+    depends_on: list[str] | None = None,
     **kwargs,
 ) -> T:
+    if default is PydanticUndefined and default_factory is None:
+        advanced = False
+    elif advanced is None:
+        advanced = True
+
     json_extra = {
         k: v
         for k, v in {
@@ -147,6 +153,7 @@ def SchemaField(
             "secret": secret,
             "advanced": advanced,
             "hidden": hidden,
+            "depends_on": depends_on,
         }.items()
         if v is not None
     }
@@ -160,7 +167,7 @@ def SchemaField(
         exclude=exclude,
         json_schema_extra=json_extra,
         **kwargs,
-    )
+    )  # type: ignore
 
 
 class _BaseCredentials(BaseModel):

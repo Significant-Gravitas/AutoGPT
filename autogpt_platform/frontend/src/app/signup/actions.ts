@@ -1,22 +1,18 @@
 "use server";
-import { createServerClient } from "@/lib/supabase/server";
-import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
+import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { signupFormSchema } from "@/types/auth";
 
-const SignupFormSchema = z.object({
-  email: z.string().email().min(2).max(64),
-  password: z.string().min(6).max(64),
-});
-
-export async function signup(values: z.infer<typeof SignupFormSchema>) {
+export async function signup(values: z.infer<typeof signupFormSchema>) {
   "use server";
   return await Sentry.withServerActionInstrumentation(
     "signup",
     {},
     async () => {
-      const supabase = createServerClient();
+      const supabase = getServerSupabase();
 
       if (!supabase) {
         redirect("/error");
@@ -26,6 +22,8 @@ export async function signup(values: z.infer<typeof SignupFormSchema>) {
       const { data, error } = await supabase.auth.signUp(values);
 
       if (error) {
+        console.error("Error signing up", error);
+        // FIXME: supabase doesn't return the correct error message for this case
         if (error.message.includes("P0001")) {
           return "Please join our waitlist for your turn: https://agpt.co/waitlist";
         }
@@ -38,9 +36,9 @@ export async function signup(values: z.infer<typeof SignupFormSchema>) {
       if (data.session) {
         await supabase.auth.setSession(data.session);
       }
-
+      console.log("Signed up");
       revalidatePath("/", "layout");
-      redirect("/");
+      redirect("/store/profile");
     },
   );
 }

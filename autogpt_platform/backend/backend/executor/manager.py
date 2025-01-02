@@ -804,10 +804,13 @@ class ExecutionManager(AppService):
             # Extract webhook payload, and assign it to the input pin
             webhook_payload_key = f"webhook_{node.webhook_id}_payload"
             if (
-                block.block_type == BlockType.WEBHOOK
+                block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
                 and node.webhook_id
-                and webhook_payload_key in data
             ):
+                if webhook_payload_key not in data:
+                    raise ValueError(
+                        f"Node {block.name} #{node.id} webhook payload is missing"
+                    )
                 input_data = {"payload": data[webhook_payload_key]}
 
             input_data, error = validate_exec(node, input_data)
@@ -948,7 +951,8 @@ def synchronized(key: str, timeout: int = 60):
         lock.acquire()
         yield
     finally:
-        lock.release()
+        if lock.locked():
+            lock.release()
 
 
 def llprint(message: str):

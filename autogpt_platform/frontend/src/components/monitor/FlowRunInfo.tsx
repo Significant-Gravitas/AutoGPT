@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import AutoGPTServerAPI, {
+import React, { useCallback, useEffect, useState } from "react";
+import {
   GraphExecution,
   GraphMeta,
   NodeExecutionResult,
@@ -13,6 +13,7 @@ import { ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
 import RunnerOutputUI, { BlockOutput } from "../runner-ui/RunnerOutputUI";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowRunInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
@@ -22,7 +23,7 @@ export const FlowRunInfo: React.FC<
 > = ({ flow, execution, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);
   const [blockOutputs, setBlockOutputs] = useState<BlockOutput[]>([]);
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useBackendAPI();
 
   const fetchBlockResults = useCallback(async () => {
     const executionResults = await api.getGraphExecutionInfo(
@@ -96,12 +97,6 @@ export const FlowRunInfo: React.FC<
               {flow.name}{" "}
               <span className="font-light">v{execution.graph_version}</span>
             </CardTitle>
-            <p className="mt-2">
-              Agent ID: <code>{flow.id}</code>
-            </p>
-            <p className="mt-1">
-              Run ID: <code>{execution.execution_id}</code>
-            </p>
           </div>
           <div className="flex space-x-2">
             {execution.status === "RUNNING" && (
@@ -121,6 +116,12 @@ export const FlowRunInfo: React.FC<
           </div>
         </CardHeader>
         <CardContent>
+          <p className="hidden">
+            <strong>Agent ID:</strong> <code>{flow.id}</code>
+          </p>
+          <p className="hidden">
+            <strong>Run ID:</strong> <code>{execution.execution_id}</code>
+          </p>
           <div>
             <strong>Status:</strong>{" "}
             <FlowRunStatusBadge status={execution.status} />

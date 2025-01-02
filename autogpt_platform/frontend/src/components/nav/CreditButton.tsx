@@ -3,16 +3,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { IconRefresh } from "@/components/ui/icons";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-
-const api = new AutoGPTServerAPI();
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export default function CreditButton() {
   const [credit, setCredit] = useState<number | null>(null);
+  const api = useBackendAPI();
 
   const fetchCredit = useCallback(async () => {
-    const response = await api.getUserCredit();
-    setCredit(response.credits);
+    try {
+      const response = await api.getUserCredit();
+      setCredit(response.credits);
+    } catch (error) {
+      console.error("Error fetching credit:", error);
+      setCredit(null);
+    }
   }, []);
 
   useEffect(() => {

@@ -45,3 +45,6 @@ node_modules/
 
 *storybook.log
 storybook-static
+*.ignore.*
+*.ign.*
+.cursorrules

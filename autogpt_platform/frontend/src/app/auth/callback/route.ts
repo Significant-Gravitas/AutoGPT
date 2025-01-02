@@ -1,5 +1,5 @@
+import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import { NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const next = searchParams.get("next") ?? "/";
 
   if (code) {
-    const supabase = createServerClient();
+    const supabase = getServerSupabase();
 
     if (!supabase) {
       return NextResponse.redirect(`${origin}/error`);
