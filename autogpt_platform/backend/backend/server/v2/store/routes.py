@@ -27,12 +27,16 @@ router = fastapi.APIRouter()
 ##############################################
 
 
-@router.get("/profile", tags=["store", "private"])
+@router.get(
+    "/profile",
+    tags=["store", "private"],
+    response_model=backend.server.v2.store.model.ProfileDetails,
+)
 async def get_profile(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ]
-) -> backend.server.v2.store.model.ProfileDetails:
+):
     """
     Get the profile details for the authenticated user.
     """
@@ -41,20 +45,24 @@ async def get_profile(
         return profile
     except Exception:
         logger.exception("Exception occurred whilst getting user profile")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the user profile"},
+        )
 
 
 @router.post(
     "/profile",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    response_model=backend.server.v2.store.model.CreatorDetails,
 )
 async def update_or_create_profile(
     profile: backend.server.v2.store.model.Profile,
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
-) -> backend.server.v2.store.model.CreatorDetails:
+):
     """
     Update the store profile for the authenticated user.
 
@@ -75,7 +83,10 @@ async def update_or_create_profile(
         return updated_profile
     except Exception:
         logger.exception("Exception occurred whilst updating profile")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while updating the user profile"},
+        )
 
 
 ##############################################
@@ -83,7 +94,11 @@ async def update_or_create_profile(
 ##############################################
 
 
-@router.get("/agents", tags=["store", "public"])
+@router.get(
+    "/agents",
+    tags=["store", "public"],
+    response_model=backend.server.v2.store.model.StoreAgentsResponse,
+)
 async def get_agents(
     featured: bool = False,
     creator: str | None = None,
@@ -92,7 +107,7 @@ async def get_agents(
     category: str | None = None,
     page: int = 1,
     page_size: int = 20,
-) -> backend.server.v2.store.model.StoreAgentsResponse:
+):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
 
@@ -142,13 +157,18 @@ async def get_agents(
         return agents
     except Exception:
         logger.exception("Exception occured whilst getting store agents")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the store agents"},
+        )
 
 
-@router.get("/agents/{username}/{agent_name}", tags=["store", "public"])
-async def get_agent(
-    username: str, agent_name: str
-) -> backend.server.v2.store.model.StoreAgentDetails:
+@router.get(
+    "/agents/{username}/{agent_name}",
+    tags=["store", "public"],
+    response_model=backend.server.v2.store.model.StoreAgentDetails,
+)
+async def get_agent(username: str, agent_name: str):
     """
     This is only used on the AgentDetails Page
 
@@ -157,20 +177,26 @@ async def get_agent(
     try:
         username = urllib.parse.unquote(username).lower()
         # URL decode the agent name since it comes from the URL path
-        agent_name = urllib.parse.unquote(agent_name)
+        agent_name = urllib.parse.unquote(agent_name).lower()
         agent = await backend.server.v2.store.db.get_store_agent_details(
             username=username, agent_name=agent_name
         )
         return agent
     except Exception:
         logger.exception("Exception occurred whilst getting store agent details")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An error occurred while retrieving the store agent details"
+            },
+        )
 
 
 @router.post(
     "/agents/{username}/{agent_name}/review",
     tags=["store"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    response_model=backend.server.v2.store.model.StoreReview,
 )
 async def create_review(
     username: str,
@@ -179,7 +205,7 @@ async def create_review(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
-) -> backend.server.v2.store.model.StoreReview:
+):
     """
     Create a review for a store agent.
 
@@ -206,7 +232,10 @@ async def create_review(
         return created_review
     except Exception:
         logger.exception("Exception occurred whilst creating store review")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while creating the store review"},
+        )
 
 
 ##############################################
@@ -214,14 +243,18 @@ async def create_review(
 ##############################################
 
 
-@router.get("/creators", tags=["store", "public"])
+@router.get(
+    "/creators",
+    tags=["store", "public"],
+    response_model=backend.server.v2.store.model.CreatorsResponse,
+)
 async def get_creators(
     featured: bool = False,
     search_query: str | None = None,
     sorted_by: str | None = None,
     page: int = 1,
     page_size: int = 20,
-) -> backend.server.v2.store.model.CreatorsResponse:
+):
     """
     This is needed for:
     - Home Page Featured Creators
@@ -255,11 +288,20 @@ async def get_creators(
         return creators
     except Exception:
         logger.exception("Exception occurred whilst getting store creators")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the store creators"},
+        )
 
 
-@router.get("/creator/{username}", tags=["store", "public"])
-async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDetails:
+@router.get(
+    "/creator/{username}",
+    tags=["store", "public"],
+    response_model=backend.server.v2.store.model.CreatorDetails,
+)
+async def get_creator(
+    username: str,
+):
     """
     Get the details of a creator
     - Creator Details Page
@@ -272,7 +314,12 @@ async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDet
         return creator
     except Exception:
         logger.exception("Exception occurred whilst getting creator details")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An error occurred while retrieving the creator details"
+            },
+        )
 
 
 ############################################
@@ -282,31 +329,36 @@ async def get_creator(username: str) -> backend.server.v2.store.model.CreatorDet
     "/myagents",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    response_model=backend.server.v2.store.model.MyAgentsResponse,
 )
 async def get_my_agents(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ]
-) -> backend.server.v2.store.model.MyAgentsResponse:
+):
     try:
         agents = await backend.server.v2.store.db.get_my_agents(user_id)
         return agents
     except Exception:
         logger.exception("Exception occurred whilst getting my agents")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the my agents"},
+        )
 
 
 @router.delete(
     "/submissions/{submission_id}",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    response_model=bool,
 )
 async def delete_submission(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
     submission_id: str,
-) -> bool:
+):
     """
     Delete a store listing submission.
 
@@ -325,13 +377,17 @@ async def delete_submission(
         return result
     except Exception:
         logger.exception("Exception occurred whilst deleting store submission")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while deleting the store submission"},
+        )
 
 
 @router.get(
     "/submissions",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    response_model=backend.server.v2.store.model.StoreSubmissionsResponse,
 )
 async def get_submissions(
     user_id: typing.Annotated[
@@ -339,7 +395,7 @@ async def get_submissions(
     ],
     page: int = 1,
     page_size: int = 20,
-) -> backend.server.v2.store.model.StoreSubmissionsResponse:
+):
     """
     Get a paginated list of store submissions for the authenticated user.
 
@@ -372,20 +428,26 @@ async def get_submissions(
         return listings
     except Exception:
         logger.exception("Exception occurred whilst getting store submissions")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An error occurred while retrieving the store submissions"
+            },
+        )
 
 
 @router.post(
     "/submissions",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    response_model=backend.server.v2.store.model.StoreSubmission,
 )
 async def create_submission(
     submission_request: backend.server.v2.store.model.StoreSubmissionRequest,
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
-) -> backend.server.v2.store.model.StoreSubmission:
+):
     """
     Create a new store listing submission.
 
@@ -415,7 +477,10 @@ async def create_submission(
         return submission
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
-        raise
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while creating the store submission"},
+        )
 
 
 @router.post(
@@ -428,7 +493,7 @@ async def upload_submission_media(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
-) -> str:
+):
     """
     Upload media (images/videos) for a store listing submission.
 
@@ -447,10 +512,11 @@ async def upload_submission_media(
             user_id=user_id, file=file
         )
         return media_url
-    except Exception as e:
+    except Exception:
         logger.exception("Exception occurred whilst uploading submission media")
-        raise fastapi.HTTPException(
-            status_code=500, detail=f"Failed to upload media file: {str(e)}"
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while uploading the media file"},
         )
 
 
@@ -507,10 +573,11 @@ async def generate_image(
         )
 
         return fastapi.responses.JSONResponse(content={"image_url": image_url})
-    except Exception as e:
+    except Exception:
         logger.exception("Exception occurred whilst generating submission image")
-        raise fastapi.HTTPException(
-            status_code=500, detail=f"Failed to generate image: {str(e)}"
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while generating the image"},
         )
 
 
