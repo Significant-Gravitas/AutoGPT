@@ -908,8 +908,8 @@ class GithubListStargazersBlock(Block):
 
         stargazers: list[GithubListStargazersBlock.Output.StargazerItem] = [
             {
-                "username": stargazer["user"]["login"],
-                "url": stargazer["user"]["html_url"],
+                "username": stargazer["login"],
+                "url": stargazer["html_url"],
             }
             for stargazer in data
         ]
