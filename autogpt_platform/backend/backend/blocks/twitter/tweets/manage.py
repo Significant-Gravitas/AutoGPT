@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import List, Literal, Optional, Union, cast
-from pydantic import BaseModel
 
 import tweepy
+from pydantic import BaseModel
 from tweepy.client import Response
 
 from backend.blocks.twitter._auth import (
@@ -37,27 +37,33 @@ from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+
 class Media(BaseModel):
-    discriminator: Literal['media']
+    discriminator: Literal["media"]
     media_ids: Optional[List[str]] = None
     media_tagged_user_ids: Optional[List[str]] = None
 
+
 class DeepLink(BaseModel):
-    discriminator: Literal['deep_link']
+    discriminator: Literal["deep_link"]
     direct_message_deep_link: Optional[str] = None
 
+
 class Poll(BaseModel):
-    discriminator: Literal['poll']
+    discriminator: Literal["poll"]
     poll_options: Optional[List[str]] = None
     poll_duration_minutes: Optional[int] = None
 
+
 class Place(BaseModel):
-    discriminator: Literal['place']
+    discriminator: Literal["place"]
     place_id: Optional[str] = None
 
+
 class Quote(BaseModel):
-    discriminator: Literal['quote']
+    discriminator: Literal["quote"]
     quote_tweet_id: Optional[str] = None
+
 
 class TwitterPostTweetBlock(Block):
     """
@@ -72,8 +78,8 @@ class TwitterPostTweetBlock(Block):
         tweet_text: str | None = SchemaField(
             description="Text of the tweet to post",
             placeholder="Enter your tweet",
-            default = None,
-            advanced= False
+            default=None,
+            advanced=False,
         )
 
         for_super_followers_only: bool = SchemaField(
@@ -83,8 +89,8 @@ class TwitterPostTweetBlock(Block):
             default=False,
         )
 
-        attachment: Union[Media, DeepLink, Poll, Place, Quote] | None  = SchemaField(
-            discriminator='discriminator',
+        attachment: Union[Media, DeepLink, Poll, Place, Quote] | None = SchemaField(
+            discriminator="discriminator",
             description="Additional tweet data (media, deep link, poll, place or quote)",
             advanced=True,
         )
@@ -129,7 +135,7 @@ class TwitterPostTweetBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "attachment": {
                     "discriminator": "deep_link",
-                    "direct_message_deep_link": "https://twitter.com/messages/compose"
+                    "direct_message_deep_link": "https://twitter.com/messages/compose",
                 },
                 "for_super_followers_only": False,
                 "exclude_reply_user_ids": [],
@@ -170,12 +176,14 @@ class TwitterPostTweetBlock(Block):
                 .add_reply_settings(
                     exclude_reply_user_ids or [],
                     in_reply_to_tweet_id or "",
-                    reply_settings
+                    reply_settings,
                 )
             )
 
             if isinstance(attachment, Media):
-                params.add_media(attachment.media_ids or [], attachment.media_tagged_user_ids or [])
+                params.add_media(
+                    attachment.media_ids or [], attachment.media_tagged_user_ids or []
+                )
             elif isinstance(attachment, DeepLink):
                 params.add_deep_link(attachment.direct_message_deep_link or "")
             elif isinstance(attachment, Poll):

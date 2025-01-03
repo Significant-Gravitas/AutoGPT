@@ -279,6 +279,7 @@ class TwitterGetUserMentionsBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterGetHomeTimelineBlock(Block):
     """
     Returns a collection of the most recent Tweets and Retweets posted by you and users you follow
@@ -508,6 +509,7 @@ class TwitterGetHomeTimelineBlock(Block):
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetUserTweetsBlock(Block):
     """

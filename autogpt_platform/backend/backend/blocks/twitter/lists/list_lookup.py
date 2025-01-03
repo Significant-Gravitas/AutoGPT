@@ -283,7 +283,7 @@ class TwitterGetOwnedListsBlock(Block):
             response = cast(Response, client.get_owned_lists(**params))
 
             meta = {}
-            included={}
+            included = {}
             list_ids = []
             list_names = []
             next_token = None
@@ -297,8 +297,12 @@ class TwitterGetOwnedListsBlock(Block):
 
             if response.data:
                 data = ResponseDataSerializer.serialize_list(response.data)
-                list_ids = [str(item.id) for item in response.data if hasattr(item, 'id')]
-                list_names = [item.name for item in response.data if hasattr(item, 'name')]
+                list_ids = [
+                    str(item.id) for item in response.data if hasattr(item, "id")
+                ]
+                list_names = [
+                    item.name for item in response.data if hasattr(item, "name")
+                ]
 
                 return data, included, meta, list_ids, list_names, next_token
 

@@ -77,6 +77,7 @@ class TwitterDeleteListBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterUpdateListBlock(Block):
     """
     Updates a Twitter List owned by the authenticated user
@@ -132,7 +133,10 @@ class TwitterUpdateListBlock(Block):
 
     @staticmethod
     def update_list(
-        credentials: TwitterCredentials, list_id: str, name: str | None, description: str | None
+        credentials: TwitterCredentials,
+        list_id: str,
+        name: str | None,
+        description: str | None,
     ):
         try:
             client = tweepy.Client(
@@ -161,15 +165,13 @@ class TwitterUpdateListBlock(Block):
     ) -> BlockOutput:
         try:
             success = self.update_list(
-                credentials,
-                input_data.list_id,
-                input_data.name,
-                input_data.description
+                credentials, input_data.list_id, input_data.name, input_data.description
             )
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterCreateListBlock(Block):
     """
@@ -229,7 +231,10 @@ class TwitterCreateListBlock(Block):
 
     @staticmethod
     def create_list(
-        credentials: TwitterCredentials, name: str, description: str | None, private: bool
+        credentials: TwitterCredentials,
+        name: str,
+        description: str | None,
+        private: bool,
     ):
         try:
             client = tweepy.Client(

@@ -244,7 +244,6 @@ class TwitterGetPinnedListsBlock(Block):
             if response.includes:
                 included = IncludesSerializer.serialize(response.includes)
 
-
             if response.data:
                 data = ResponseDataSerializer.serialize_list(response.data)
                 list_ids = [str(item.id) for item in response.data]

@@ -79,6 +79,7 @@ class TwitterUnfollowListBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
+
 class TwitterFollowListBlock(Block):
     """
     Follows a Twitter list for the authenticated user

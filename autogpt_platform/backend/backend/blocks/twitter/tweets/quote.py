@@ -52,9 +52,7 @@ class TwitterGetQuoteTweetsBlock(Block):
         )
 
         exclude: TweetExcludesFilter | None = SchemaField(
-            description="Types of tweets to exclude",
-            advanced=True,
-            default=None
+            description="Types of tweets to exclude", advanced=True, default=None
         )
 
         pagination_token: str | None = SchemaField(

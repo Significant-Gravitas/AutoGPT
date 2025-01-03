@@ -1,7 +1,7 @@
 from typing import Literal, Union, cast
 
-from pydantic import BaseModel
 import tweepy
+from pydantic import BaseModel
 from tweepy.client import Response
 
 from backend.blocks.twitter._auth import (
@@ -26,26 +26,23 @@ from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+
 class UserId(BaseModel):
-    discriminator: Literal['user_id']
-    user_id: str = SchemaField(
-        description="The ID of the user to lookup",
-        default=""
-    )
+    discriminator: Literal["user_id"]
+    user_id: str = SchemaField(description="The ID of the user to lookup", default="")
+
 
 class Username(BaseModel):
-    discriminator: Literal['username']
+    discriminator: Literal["username"]
     username: str = SchemaField(
-        description="The Twitter username (handle) of the user",
-        default=""
+        description="The Twitter username (handle) of the user", default=""
     )
+
 
 class TwitterGetUserBlock(Block):
     """
     Gets information about a single Twitter user specified by ID or username
     """
-
-
 
     class Input(UserExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
@@ -53,7 +50,7 @@ class TwitterGetUserBlock(Block):
         )
 
         identifier: Union[UserId, Username] = SchemaField(
-            discriminator='discriminator',
+            discriminator="discriminator",
             description="Choose whether to identify the user by their unique Twitter ID or by their username",
             advanced=False,
         )
@@ -79,10 +76,7 @@ class TwitterGetUserBlock(Block):
             input_schema=TwitterGetUserBlock.Input,
             output_schema=TwitterGetUserBlock.Output,
             test_input={
-                "identifier": {
-                    "discriminator": "username",
-                    "username": "twitter"
-                },
+                "identifier": {"discriminator": "username", "username": "twitter"},
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": None,
                 "tweet_fields": None,
@@ -136,7 +130,9 @@ class TwitterGetUserBlock(Block):
 
             params = {
                 "id": identifier.user_id if isinstance(identifier, UserId) else None,
-                "username": identifier.username if isinstance(identifier, Username) else None,
+                "username": (
+                    identifier.username if isinstance(identifier, Username) else None
+                ),
                 "user_auth": False,
             }
 
@@ -183,7 +179,7 @@ class TwitterGetUserBlock(Block):
                 input_data.identifier,
                 input_data.expansions,
                 input_data.tweet_fields,
-                input_data.user_fields
+                input_data.user_fields,
             )
             if id:
                 yield "id", id
@@ -200,7 +196,7 @@ class TwitterGetUserBlock(Block):
 
 
 class UserIdList(BaseModel):
-    discriminator: Literal['user_id_list']
+    discriminator: Literal["user_id_list"]
     user_ids: list[str] = SchemaField(
         description="List of user IDs to lookup (max 100)",
         placeholder="Enter user IDs",
@@ -208,14 +204,16 @@ class UserIdList(BaseModel):
         advanced=False,
     )
 
+
 class UsernameList(BaseModel):
-    discriminator: Literal['username_list']
+    discriminator: Literal["username_list"]
     usernames: list[str] = SchemaField(
         description="List of Twitter usernames/handles to lookup (max 100)",
         placeholder="Enter usernames",
         default=[],
         advanced=False,
     )
+
 
 class TwitterGetUsersBlock(Block):
     """
@@ -228,7 +226,7 @@ class TwitterGetUsersBlock(Block):
         )
 
         identifier: Union[UserIdList, UsernameList] = SchemaField(
-            discriminator='discriminator',
+            discriminator="discriminator",
             description="Choose whether to identify users by their unique Twitter IDs or by their usernames",
             advanced=False,
         )
@@ -256,7 +254,7 @@ class TwitterGetUsersBlock(Block):
             test_input={
                 "identifier": {
                     "discriminator": "username_list",
-                    "usernames": ["twitter", "twitterdev"]
+                    "usernames": ["twitter", "twitterdev"],
                 },
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": None,
@@ -312,8 +310,16 @@ class TwitterGetUsersBlock(Block):
             )
 
             params = {
-                "ids": ",".join(identifier.user_ids) if isinstance(identifier, UserIdList) else None,
-                "usernames": ",".join(identifier.usernames) if isinstance(identifier, UsernameList) else None,
+                "ids": (
+                    ",".join(identifier.user_ids)
+                    if isinstance(identifier, UserIdList)
+                    else None
+                ),
+                "usernames": (
+                    ",".join(identifier.usernames)
+                    if isinstance(identifier, UsernameList)
+                    else None
+                ),
                 "user_auth": False,
             }
 

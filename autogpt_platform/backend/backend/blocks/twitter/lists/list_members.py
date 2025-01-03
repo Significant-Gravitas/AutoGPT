@@ -480,7 +480,7 @@ class TwitterGetListMembershipsBlock(Block):
                 next_token = meta.get("next_token")
 
             if response.includes:
-               included = IncludesSerializer.serialize(response.includes)
+                included = IncludesSerializer.serialize(response.includes)
 
             if response.data:
                 data = ResponseDataSerializer.serialize_list(response.data)

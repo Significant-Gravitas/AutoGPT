@@ -1,7 +1,7 @@
 from typing import Literal, Union, cast
 
-from pydantic import BaseModel
 import tweepy
+from pydantic import BaseModel
 from tweepy.client import Response
 
 from backend.blocks.twitter._auth import (
@@ -38,8 +38,9 @@ from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
+
 class SpaceList(BaseModel):
-    discriminator: Literal['space_list']
+    discriminator: Literal["space_list"]
     space_ids: list[str] = SchemaField(
         description="List of Space IDs to lookup (up to 100)",
         placeholder="Enter Space IDs",
@@ -47,14 +48,16 @@ class SpaceList(BaseModel):
         advanced=False,
     )
 
+
 class UserList(BaseModel):
-    discriminator: Literal['user_list']
+    discriminator: Literal["user_list"]
     user_ids: list[str] = SchemaField(
         description="List of user IDs to lookup their Spaces (up to 100)",
         placeholder="Enter user IDs",
         default=[],
         advanced=False,
     )
+
 
 class TwitterGetSpacesBlock(Block):
     """
@@ -67,7 +70,7 @@ class TwitterGetSpacesBlock(Block):
         )
 
         identifier: Union[SpaceList, UserList] = SchemaField(
-            discriminator='discriminator',
+            discriminator="discriminator",
             description="Choose whether to lookup spaces by their IDs or by creator user IDs",
             advanced=False,
         )
@@ -94,7 +97,7 @@ class TwitterGetSpacesBlock(Block):
             test_input={
                 "identifier": {
                     "discriminator": "space_list",
-                    "space_ids": ["1DXxyRYNejbKM"]
+                    "space_ids": ["1DXxyRYNejbKM"],
                 },
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expansions": None,
@@ -146,8 +149,12 @@ class TwitterGetSpacesBlock(Block):
             )
 
             params = {
-                "ids": identifier.space_ids if isinstance(identifier, SpaceList) else None,
-                "user_ids": identifier.user_ids if isinstance(identifier, UserList) else None,
+                "ids": (
+                    identifier.space_ids if isinstance(identifier, SpaceList) else None
+                ),
+                "user_ids": (
+                    identifier.user_ids if isinstance(identifier, UserList) else None
+                ),
             }
 
             params = (
@@ -205,6 +212,7 @@ class TwitterGetSpacesBlock(Block):
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 class TwitterGetSpaceByIdBlock(Block):
     """
@@ -365,6 +373,7 @@ class TwitterGetSpaceByIdBlock(Block):
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
 
 # Not tested yet, might have some problem
 class TwitterGetSpaceBuyersBlock(Block):
