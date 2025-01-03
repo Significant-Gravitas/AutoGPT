@@ -1,14 +1,24 @@
 "use client";
 import { Button } from "@/components/agptui/Button";
 import useCredits from "@/hooks/useCredits";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function CreditsPage() {
   const { credits, requestTopUp } = useCredits();
   const [amount, setAmount] = useState(5);
+  const [patched, setPatched] = useState(false);
   const searchParams = useSearchParams();
   const topupStatus = searchParams.get("topup");
+  const api = useBackendAPI();
+
+  useEffect(() => {
+    if (!patched && topupStatus === "success") {
+      api.fulfillCheckout();
+      setPatched(true);
+    }
+  }, [topupStatus]);
 
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">

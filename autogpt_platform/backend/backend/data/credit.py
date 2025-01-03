@@ -80,12 +80,13 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def fulfill_checkout(self, session_id):
+    async def fulfill_checkout(self, *, session_id: str | None = None, user_id: str | None = None):
         """
         Fulfill the Stripe checkout session.
 
         Args:
-            session_id (str): The checkout session ID.
+            session_id (str | None): The checkout session ID. Will try to fulfill most recent if None.
+            user_id (str | None): The user ID must be provided if session_id is None.
         """
         pass
 
@@ -296,10 +297,21 @@ class UserCredit(UserCreditBase):
         return checkout_session.url or ""
 
     # https://docs.stripe.com/checkout/fulfillment
-    async def fulfill_checkout(self, session_id):
+    async def fulfill_checkout(self, *, session_id: str | None = None, user_id: str | None = None):
+        if (not session_id and not user_id) or (session_id and user_id):
+            raise ValueError("Either session_id or user_id must be provided")
+        
         # Retrieve CreditTransaction
         credit_transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={"transactionKey": session_id}
+            where={
+                "OR": [
+                    {"transactionKey": session_id} if session_id is not None else {"transactionKey": ""},
+                    {"userId": user_id} if user_id is not None else {"userId": ""}
+                ]
+            },
+            order={
+                "createdAt": "desc"
+            }
         )
 
         # This can be called multiple times for one id, so ignore if already fulfilled
@@ -307,7 +319,7 @@ class UserCredit(UserCreditBase):
             return
 
         # Retrieve the Checkout Session from the API
-        checkout_session = stripe.checkout.Session.retrieve(session_id)
+        checkout_session = stripe.checkout.Session.retrieve(credit_transaction.transactionKey)
 
         # Check the Checkout Session's payment_status property
         # to determine if fulfillment should be peformed
@@ -316,7 +328,7 @@ class UserCredit(UserCreditBase):
             await CreditTransaction.prisma().update(
                 where={
                     "creditTransactionIdentifier": {
-                        "transactionKey": session_id,
+                        "transactionKey": credit_transaction.transactionKey,
                         "userId": credit_transaction.userId,
                     }
                 },

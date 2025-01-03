@@ -149,6 +149,14 @@ async def request_top_up(
     return {"checkout_url": checkout_url}
 
 
+@v1_router.patch(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
+async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
+    await _user_credit_model.fulfill_checkout(user_id=user_id)
+    return Response(status_code=200)
+
+
 @v1_router.post(path="/credits/stripe_webhook", tags=["credits"])
 async def stripe_webhook(request: Request):
     # Get the raw request body
@@ -171,7 +179,7 @@ async def stripe_webhook(request: Request):
         event["type"] == "checkout.session.completed"
         or event["type"] == "checkout.session.async_payment_succeeded"
     ):
-        await _user_credit_model.fulfill_checkout(event["data"]["object"]["id"])
+        await _user_credit_model.fulfill_checkout(session_id=event["data"]["object"]["id"])
 
     return Response(status_code=200)
 
