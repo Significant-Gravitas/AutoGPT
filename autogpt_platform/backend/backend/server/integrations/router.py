@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
-    get_all_webhooks,
+    get_all_webhooks_by_creds,
     get_webhook,
     publish_webhook_event,
     wait_for_webhook_event,
@@ -363,7 +363,7 @@ async def remove_all_webhooks_for_credentials(
     Raises:
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
     """
-    webhooks = await get_all_webhooks(credentials.id)
+    webhooks = await get_all_webhooks_by_creds(credentials.id)
     if credentials.provider not in WEBHOOK_MANAGERS_BY_NAME:
         if webhooks:
             logger.error(

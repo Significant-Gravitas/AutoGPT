@@ -6,10 +6,12 @@ import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
 import CreditsCard from "./CreditsCard";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-import { ThemeToggle } from "./ThemeToggle";
 import { NavbarLink } from "./NavbarLink";
 import getServerUser from "@/lib/supabase/getServerUser";
 import BackendAPI from "@/lib/autogpt-server-api";
+
+// Disable theme toggle for now
+// import { ThemeToggle } from "./ThemeToggle";
 
 interface NavLink {
   name: string;
@@ -55,7 +57,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 hidden h-16 w-[1408px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+      <nav className="sticky top-0 z-50 mx-[16px] hidden h-16 w-full max-w-[1600px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
         <div className="flex items-center gap-11">
           <div className="relative h-10 w-[88.87px]">
             <IconAutoGPTLogo className="h-full w-full" />
@@ -93,7 +95,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
               </Button>
             </Link>
           )}
-          <ThemeToggle />
+          {/* <ThemeToggle /> */}
         </div>
       </nav>
       {/* Mobile Navbar - Adjust positioning */}
@@ -107,7 +109,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
                   groupName: "Navigation",
                   items: links.map((link) => ({
                     icon:
-                      link.name === "Agent Store"
+                      link.name === "Marketplace"
                         ? IconType.Marketplace
                         : link.name === "Library"
                           ? IconType.Library

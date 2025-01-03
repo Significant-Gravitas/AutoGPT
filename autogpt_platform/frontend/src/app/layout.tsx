@@ -37,7 +37,7 @@ export default async function RootLayout({
             <Navbar
               links={[
                 {
-                  name: "Agent Store",
+                  name: "Marketplace",
                   href: "/store",
                 },
                 {

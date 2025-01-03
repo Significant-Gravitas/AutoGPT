@@ -34,17 +34,19 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
 }) => {
   const router = useRouter();
 
-  // Take only the first 9 agents
-  const displayedAgents = allAgents.slice(0, 9);
+  // TODO: Update this when we have pagination
+  const displayedAgents = allAgents;
 
   const handleCardClick = (creator: string, slug: string) => {
-    router.push(`/store/agent/${creator}/${slug}`);
+    router.push(
+      `/store/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+    );
   };
 
   return (
     <div className="flex flex-col items-center justify-center py-4 lg:py-8">
       <div className="w-full max-w-[1360px]">
-        <div className="mb-6 font-neue text-[23px] font-bold leading-9 tracking-tight text-[#282828] dark:text-neutral-200">
+        <div className="font-poppins decoration-skip-ink-none mb-8 text-left text-[18px] font-[600] leading-7 text-[#282828] underline-offset-[from-font] dark:text-neutral-200">
           {sectionTitle}
         </div>
         {!displayedAgents || displayedAgents.length === 0 ? (

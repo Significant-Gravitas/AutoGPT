@@ -174,7 +174,7 @@ export type Node = {
     position: { x: number; y: number };
     [key: string]: any;
   };
-  webhook_id?: string;
+  webhook?: Webhook;
 };
 
 /* Mirror of backend/data/graph.py:Link */
@@ -316,6 +316,20 @@ export type APIKeyCredentials = BaseCredentials & {
   expires_at?: number;
 };
 
+/* Mirror of backend/data/integrations.py:Webhook */
+type Webhook = {
+  id: string;
+  url: string;
+  provider: CredentialsProviderName;
+  credentials_id: string;
+  webhook_type: string;
+  resource?: string;
+  events: string[];
+  secret: string;
+  config: Record<string, any>;
+  provider_webhook_id?: string;
+};
+
 export type User = {
   id: string;
   email: string;
@@ -327,6 +341,7 @@ export enum BlockUIType {
   OUTPUT = "Output",
   NOTE = "Note",
   WEBHOOK = "Webhook",
+  WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
 }
 
@@ -475,6 +490,7 @@ export type MyAgent = {
   agent_version: number;
   agent_name: string;
   last_edited: string;
+  description: string;
 };
 
 export type MyAgentsResponse = {

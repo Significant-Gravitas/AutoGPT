@@ -24,6 +24,7 @@ class MyAgent(pydantic.BaseModel):
     agent_id: str
     agent_version: int
     agent_name: str
+    description: str
     last_edited: datetime.datetime
 
 
@@ -99,7 +100,7 @@ class Profile(pydantic.BaseModel):
     description: str
     links: list[str]
     avatar_url: str
-    is_featured: bool
+    is_featured: bool = False
 
 
 class StoreSubmission(pydantic.BaseModel):
