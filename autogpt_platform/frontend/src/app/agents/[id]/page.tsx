@@ -27,8 +27,8 @@ const agentRunStatusMap: Record<GraphExecution["status"], AgentRunStatus> = {
   FAILED: "failed",
   QUEUED: "queued",
   RUNNING: "running",
-  // TODO: implement "draft"
-  // TODO: implement "stopped"
+  // TODO: implement "draft" - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
+  // TODO: implement "stopped" - https://github.com/Significant-Gravitas/AutoGPT/issues/9182
 };
 
 export default function AgentRunsPage(): React.ReactElement {
@@ -62,7 +62,7 @@ export default function AgentRunsPage(): React.ReactElement {
   }, [fetchAgents]);
 
   const fetchSchedules = useCallback(async () => {
-    // TODO: filter in backend
+    // TODO: filter in backend - https://github.com/Significant-Gravitas/AutoGPT/issues/9183
     setSchedules(
       (await api.listSchedules()).filter((s) => s.graph_id == agentID),
     );
@@ -80,7 +80,7 @@ export default function AgentRunsPage(): React.ReactElement {
     [schedules, api],
   );
 
-  /* TODO: use websockets instead of polling */
+  /* TODO: use websockets instead of polling - https://github.com/Significant-Gravitas/AutoGPT/issues/8782 */
   useEffect(() => {
     const intervalId = setInterval(() => fetchAgents(), 5000);
     return () => clearInterval(intervalId);
@@ -115,7 +115,7 @@ export default function AgentRunsPage(): React.ReactElement {
               label: "Duration",
               value: `${moment.duration(selectedRun.duration, "seconds").humanize()}`,
             },
-            // { label: "Cost", value: selectedRun.cost },  // TODO: implement cost
+            // { label: "Cost", value: selectedRun.cost },  // TODO: implement cost - https://github.com/Significant-Gravitas/AutoGPT/issues/9181
           ]
         : [{ label: "Scheduled for", value: selectedRun.next_run_time }]),
     ];
@@ -124,7 +124,7 @@ export default function AgentRunsPage(): React.ReactElement {
   const agentRunInputs: Record<string, { type: BlockIOSubType; value: any }> =
     useMemo(() => {
       if (!selectedRun) return {};
-      // return selectedRun.input; // TODO: implement run input view
+      // return selectedRun.input; // TODO: implement run input view - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
       return {
         "Mock Input": { type: "string", value: "Mock Value" },
       };
@@ -177,7 +177,7 @@ export default function AgentRunsPage(): React.ReactElement {
   }
 
   return (
-    <div className="flex gap-8 container">
+    <div className="container flex gap-8">
       <aside className="flex w-72 flex-col gap-4">
         <Button className="flex w-full items-center gap-2 py-6">
           <Plus className="h-6 w-6" />
@@ -239,7 +239,9 @@ export default function AgentRunsPage(): React.ReactElement {
 
       <div className="flex-1">
         <h1 className="mb-8 text-3xl font-medium">
-          {agent.name /* TODO: use dynamic/custom run title */}
+          {
+            agent.name /* TODO: use dynamic/custom run title - https://github.com/Significant-Gravitas/AutoGPT/issues/9184 */
+          }
         </h1>
 
         <Tabs defaultValue="info">
