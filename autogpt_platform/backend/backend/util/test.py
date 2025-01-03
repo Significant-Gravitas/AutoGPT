@@ -65,6 +65,9 @@ async def wait_execution(
         if status == ExecutionStatus.FAILED:
             log.info("Execution failed")
             raise Exception("Execution failed")
+        if status == ExecutionStatus.TERMINATED:
+            log.info("Execution terminated")
+            raise Exception("Execution terminated")
         return status == ExecutionStatus.COMPLETED
 
     # Wait for the executions to complete

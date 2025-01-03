@@ -591,7 +591,7 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        timing_info, (exec_stats, error) = cls._on_graph_execution(
+        timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
         exec_stats["walltime"] = timing_info.wall_time
@@ -599,6 +599,7 @@ class Executor:
         exec_stats["error"] = str(error) if error else None
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
+            status=status,
             stats=exec_stats,
         )
         cls.db_client.send_execution_update(result)
@@ -610,11 +611,12 @@ class Executor:
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[dict[str, Any], Exception | None]:
+    ) -> tuple[dict[str, Any], ExecutionStatus, Exception | None]:
         """
         Returns:
-            The execution statistics of the graph execution.
-            The error that occurred during the execution.
+            dict: The execution statistics of the graph execution.
+            ExecutionStatus: The final status of the graph execution.
+            Exception | None: The error that occurred during the execution, if any.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         exec_stats = {
@@ -659,8 +661,7 @@ class Executor:
 
             while not queue.empty():
                 if cancel.is_set():
-                    error = RuntimeError("Execution is cancelled")
-                    return exec_stats, error
+                    return exec_stats, ExecutionStatus.TERMINATED, error
 
                 exec_data = queue.get()
 
@@ -690,8 +691,7 @@ class Executor:
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
-                            error = RuntimeError("Execution is cancelled")
-                            return exec_stats, error
+                            return exec_stats, ExecutionStatus.TERMINATED, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -710,7 +710,11 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return exec_stats, error
+            return (
+                exec_stats,
+                ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED,
+                error,
+            )
 
 
 class ExecutionManager(AppService):
@@ -876,11 +880,8 @@ class ExecutionManager(AppService):
                 ExecutionStatus.COMPLETED,
                 ExecutionStatus.FAILED,
             ):
-                self.db_client.upsert_execution_output(
-                    node_exec.node_exec_id, "error", "TERMINATED"
-                )
                 exec_update = self.db_client.update_execution_status(
-                    node_exec.node_exec_id, ExecutionStatus.FAILED
+                    node_exec.node_exec_id, ExecutionStatus.TERMINATED
                 )
                 self.db_client.send_execution_update(exec_update)
 
