@@ -107,9 +107,9 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {agents.map((agent) => (
                     <div
-                      key={agent.name}
+                      key={agent.id}
                       className={`cursor-pointer overflow-hidden rounded-2xl transition-all ${
-                        selectedAgent === agent.name
+                        selectedAgentId === agent.id
                           ? "shadow-lg ring-4 ring-violet-600"
                           : "hover:shadow-md"
                       }`}
@@ -124,7 +124,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                       }}
                       tabIndex={0}
                       role="button"
-                      aria-pressed={selectedAgent === agent.name}
+                      aria-pressed={selectedAgentId === agent.id}
                     >
                       <div className="relative h-32 bg-gray-100 dark:bg-gray-700 sm:h-40">
                         <Image

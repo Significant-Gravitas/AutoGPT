@@ -4,7 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
 import { Status, StatusType } from "./Status";
-import * as ContextMenu from "@radix-ui/react-context-menu";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
 import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
 
@@ -139,30 +139,30 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
 
         {/* Actions - Three dots menu */}
         <div className="flex justify-end">
-          <ContextMenu.Root>
-            <ContextMenu.Trigger>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
               <button className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700">
                 <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
               </button>
-            </ContextMenu.Trigger>
-            <ContextMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
-              <ContextMenu.Item
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
+              <DropdownMenu.Item
                 onSelect={handleEdit}
                 className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />
                 <span className="dark:text-gray-100">Edit</span>
-              </ContextMenu.Item>
-              <ContextMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
-              <ContextMenu.Item
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
+              <DropdownMenu.Item
                 onSelect={handleDelete}
                 className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
                 <span className="dark:text-red-400">Delete</span>
-              </ContextMenu.Item>
-            </ContextMenu.Content>
-          </ContextMenu.Root>
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
         </div>
       </div>
     </div>

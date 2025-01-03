@@ -90,7 +90,12 @@ async def test_get_input_schema(server: SpinTestServer):
             Node(
                 id="node_0_a",
                 block_id=input_block,
-                input_default={"name": "in_key_a", "title": "Key A", "value": "A"},
+                input_default={
+                    "name": "in_key_a",
+                    "title": "Key A",
+                    "value": "A",
+                    "advanced": True,
+                },
                 metadata={"id": "node_0_a"},
             ),
             Node(
@@ -138,8 +143,8 @@ async def test_get_input_schema(server: SpinTestServer):
     )
 
     class ExpectedInputSchema(BlockSchema):
-        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=False)
-        in_key_b: Any = SchemaField(title="in_key_b", advanced=True)
+        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
+        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
 
     class ExpectedOutputSchema(BlockSchema):
         out_key: Any = SchemaField(

@@ -6,7 +6,7 @@ import React, {
   useContext,
   useMemo,
 } from "react";
-import { NodeProps, useReactFlow, Node, Edge } from "@xyflow/react";
+import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./customnode.css";
 import InputModalComponent from "./InputModalComponent";
@@ -16,6 +16,7 @@ import {
   BlockIOSubSchema,
   BlockIOStringSubSchema,
   Category,
+  Node,
   NodeExecutionResult,
   BlockUIType,
   BlockCost,
@@ -71,7 +72,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
-  webhookId?: string;
+  webhook?: Node["webhook"];
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -87,7 +88,7 @@ export type CustomNodeData = {
   uiType: BlockUIType;
 };
 
-export type CustomNode = Node<CustomNodeData, "custom">;
+export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export function CustomNode({
   data,
@@ -237,7 +238,11 @@ export function CustomNode({
           const isHidden = propSchema.hidden;
           const isConnectable =
             // No input connection handles on INPUT and WEBHOOK blocks
-            ![BlockUIType.INPUT, BlockUIType.WEBHOOK].includes(nodeType) &&
+            ![
+              BlockUIType.INPUT,
+              BlockUIType.WEBHOOK,
+              BlockUIType.WEBHOOK_MANUAL,
+            ].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
@@ -549,22 +554,25 @@ export function CustomNode({
   >(null);
 
   useEffect(() => {
-    if (data.uiType != BlockUIType.WEBHOOK) return;
-    if (!data.webhookId) {
+    if (
+      ![BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(data.uiType)
+    )
+      return;
+    if (!data.webhook) {
       setWebhookStatus("none");
       return;
     }
 
     setWebhookStatus("pending");
     api
-      .pingWebhook(data.webhookId)
+      .pingWebhook(data.webhook.id)
       .then((pinged) => setWebhookStatus(pinged ? "works" : "exists"))
       .catch((error: Error) =>
         error.message.includes("ping timed out")
           ? setWebhookStatus("broken")
           : setWebhookStatus("none"),
       );
-  }, [data.uiType, data.webhookId, api, setWebhookStatus]);
+  }, [data.uiType, data.webhook, api, setWebhookStatus]);
 
   const webhookStatusDot = useMemo(
     () =>
@@ -718,14 +726,38 @@ export function CustomNode({
       </div>
 
       {/* Body */}
-      <div className="ml-5 mt-6 rounded-b-xl">
+      <div className="mx-5 my-6 rounded-b-xl">
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
-          <div
-            className="flex w-fit items-start justify-between"
-            data-id="input-handles"
-          >
+          <div data-id="input-handles">
             <div>
+              {data.uiType === BlockUIType.WEBHOOK_MANUAL &&
+                (data.webhook ? (
+                  <div className="nodrag mr-5 flex flex-col gap-1">
+                    Webhook URL:
+                    <div className="flex gap-2 rounded-md bg-gray-50 p-2">
+                      <code className="select-all text-sm">
+                        {data.webhook.url}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-7 flex-none"
+                        onClick={() =>
+                          data.webhook &&
+                          navigator.clipboard.writeText(data.webhook.url)
+                        }
+                        title="Copy webhook URL"
+                      >
+                        <CopyIcon className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="italic text-gray-500">
+                    (A Webhook URL will be generated when you save the agent)
+                  </p>
+                ))}
               {data.inputSchema &&
                 generateInputHandles(data.inputSchema, data.uiType)}
             </div>
@@ -746,7 +778,6 @@ export function CustomNode({
               <Switch
                 onCheckedChange={toggleAdvancedSettings}
                 checked={isAdvancedOpen}
-                className="mr-5"
               />
             </div>
           </>
@@ -755,7 +786,7 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && (
           <>
             <LineSeparator />
-            <div className="flex items-start justify-end rounded-b-xl pb-2 pr-2 pt-6">
+            <div className="flex items-start justify-end rounded-b-xl pt-6">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}

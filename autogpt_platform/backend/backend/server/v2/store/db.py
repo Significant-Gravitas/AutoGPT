@@ -31,7 +31,7 @@ async def get_store_agents(
         sanitized_query = search_query.strip()
         if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
             raise backend.server.v2.store.exceptions.DatabaseError(
-                "Invalid search query"
+                f"Invalid search query: len({len(sanitized_query)}) query: {search_query}"
             )
 
         # Escape special SQL characters
@@ -173,7 +173,7 @@ async def get_store_creators(
     where = {}
 
     if featured:
-        where["isFeatured"] = featured
+        where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
     if search_query:
@@ -449,6 +449,11 @@ async def create_store_submission(
     )
 
     try:
+        # Sanitize slug to only allow letters and hyphens
+        slug = "".join(
+            c if c.isalpha() or c == "-" or c.isnumeric() else "" for c in slug
+        ).lower()
+
         # First verify the agent belongs to this user
         agent = await prisma.models.AgentGraph.prisma().find_first(
             where=prisma.types.AgentGraphWhereInput(
@@ -578,22 +583,22 @@ async def get_user_profile(
 
         if not profile:
             logger.warning(f"Profile not found for user {user_id}")
-            await prisma.models.Profile.prisma().create(
+            new_profile = await prisma.models.Profile.prisma().create(
                 data=prisma.types.ProfileCreateInput(
                     userId=user_id,
                     name="No Profile Data",
-                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}",
+                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower(),
                     description="No Profile Data",
                     links=[],
                     avatarUrl="",
                 )
             )
             return backend.server.v2.store.model.ProfileDetails(
-                name="No Profile Data",
-                username="No Profile Data",
-                description="No Profile Data",
-                links=[],
-                avatar_url="",
+                name=new_profile.name,
+                username=new_profile.username,
+                description=new_profile.description,
+                links=new_profile.links,
+                avatar_url=new_profile.avatarUrl,
             )
 
         return backend.server.v2.store.model.ProfileDetails(
@@ -620,6 +625,7 @@ async def update_or_create_profile(
     """
     Update the store profile for a user. Creates a new profile if one doesn't exist.
     Only allows updating if the user_id matches the owning user.
+    If a field is None, it will not overwrite the existing value in the case of an update.
 
     Args:
         user_id: ID of the authenticated user
@@ -630,27 +636,36 @@ async def update_or_create_profile(
 
     Raises:
         HTTPException: If user is not authorized to update this profile
+        DatabaseError: If profile cannot be updated due to database issues
     """
-    logger.debug(f"Updating profile for user {user_id}")
+    logger.info(f"Updating profile for user {user_id} data: {profile}")
 
     try:
-        # Check if profile exists for user
+        # Sanitize username to only allow letters and hyphens
+        username = "".join(
+            c if c.isalpha() or c == "-" or c.isnumeric() else ""
+            for c in profile.username
+        ).lower()
+
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
         )
 
         # If no profile exists, create a new one
         if not existing_profile:
-            logger.debug(f"Creating new profile for user {user_id}")
+            logger.debug(
+                f"No existing profile found. Creating new profile for user {user_id}"
+            )
             # Create new profile since one doesn't exist
             new_profile = await prisma.models.Profile.prisma().create(
                 data={
                     "userId": user_id,
                     "name": profile.name,
-                    "username": profile.username,
+                    "username": username,
                     "description": profile.description,
-                    "links": profile.links,
+                    "links": profile.links or [],
                     "avatarUrl": profile.avatar_url,
+                    "isFeatured": False,
                 }
             )
 
@@ -666,16 +681,23 @@ async def update_or_create_profile(
             )
         else:
             logger.debug(f"Updating existing profile for user {user_id}")
+            # Update only provided fields for the existing profile
+            update_data = {}
+            if profile.name is not None:
+                update_data["name"] = profile.name
+            if profile.username is not None:
+                update_data["username"] = username
+            if profile.description is not None:
+                update_data["description"] = profile.description
+            if profile.links is not None:
+                update_data["links"] = profile.links
+            if profile.avatar_url is not None:
+                update_data["avatarUrl"] = profile.avatar_url
+
             # Update the existing profile
             updated_profile = await prisma.models.Profile.prisma().update(
                 where={"id": existing_profile.id},
-                data=prisma.types.ProfileUpdateInput(
-                    name=profile.name,
-                    username=profile.username,
-                    description=profile.description,
-                    links=profile.links,
-                    avatarUrl=profile.avatar_url,
-                ),
+                data=prisma.types.ProfileUpdateInput(**update_data),
             )
             if updated_profile is None:
                 logger.error(f"Failed to update profile for user {user_id}")
@@ -745,6 +767,7 @@ async def get_my_agents(
                 agent_version=agent.version,
                 agent_name=agent.name or "",
                 last_edited=agent.updatedAt or agent.createdAt,
+                description=agent.description or "",
             )
             for agent in agents
         ]
