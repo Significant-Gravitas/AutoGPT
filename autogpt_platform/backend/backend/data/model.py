@@ -245,7 +245,8 @@ CP = TypeVar("CP", bound=ProviderName)
 CT = TypeVar("CT", bound=CredentialsType)
 
 
-CREDENTIALS_FIELD_NAME = "credentials"
+def is_credentials_field_name(field_name: str) -> bool:
+    return field_name == "credentials" or field_name.endswith("_credentials")
 
 
 class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
@@ -254,21 +255,21 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     provider: CP
     type: CT
 
-    @staticmethod
-    def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
-        schema["credentials_provider"] = get_args(
-            cls.model_fields["provider"].annotation
-        )
-        schema["credentials_types"] = get_args(cls.model_fields["type"].annotation)
+    @classmethod
+    def allowed_providers(cls) -> tuple[ProviderName, ...]:
+        return get_args(cls.model_fields["provider"].annotation)
 
-    model_config = ConfigDict(
-        json_schema_extra=_add_json_schema_extra,  # type: ignore
-    )
+    @classmethod
+    def allowed_cred_types(cls) -> tuple[CredentialsType, ...]:
+        return get_args(cls.model_fields["type"].annotation)
 
     @classmethod
     def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
-        """Validates the schema of a `credentials` field"""
-        field_schema = model.jsonschema()["properties"][CREDENTIALS_FIELD_NAME]
+        """Validates the schema of a credentials input field"""
+        field_name = next(
+            name for name, type in model.get_credentials_fields().items() if type is cls
+        )
+        field_schema = model.jsonschema()["properties"][field_name]
         try:
             schema_extra = _CredentialsFieldSchemaExtra[CP, CT].model_validate(
                 field_schema
@@ -282,11 +283,20 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
                 f"{field_schema}"
             ) from e
 
-        if (
-            len(schema_extra.credentials_provider) > 1
-            and not schema_extra.discriminator
-        ):
-            raise TypeError("Multi-provider CredentialsField requires discriminator!")
+        if len(cls.allowed_providers()) > 1 and not schema_extra.discriminator:
+            raise TypeError(
+                f"Multi-provider CredentialsField '{field_name}' "
+                "requires discriminator!"
+            )
+
+    @staticmethod
+    def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
+        schema["credentials_provider"] = cls.allowed_providers()
+        schema["credentials_types"] = cls.allowed_cred_types()
+
+    model_config = ConfigDict(
+        json_schema_extra=_add_json_schema_extra,  # type: ignore
+    )
 
 
 class _CredentialsFieldSchemaExtra(BaseModel, Generic[CP, CT]):
