@@ -1789,3 +1789,119 @@ It uses the Twitter API (Tweepy) to follow a List with the given List ID, handli
 Following Lists that match user interests or contain relevant content.
 
 ---
+## Common Input
+
+The Twitter API lets you choose what information you want to get back when you make a request. Here are the different types of information you can ask for:
+
+### expansions
+Extra information about tweets, pictures, and users that are mentioned or connected
+
+| Field | Description |
+|-------|-------------|
+| Poll_IDs | Gets information about any polls in the tweet, like voting options and results |
+| Media_Keys | Gets details about pictures, videos, or GIFs attached to the tweet |
+| Author_User_ID | Gets information about who wrote the tweet, like their profile details |
+| Edit_History_Tweet_IDs | Shows if and when the tweet was edited and what changed |
+| Mentioned_Usernames | Gets profile information about any @mentioned users |
+| Place_ID | Gets details about locations tagged in the tweet |
+| Reply_To_User_ID | Gets information about the person this tweet is replying to |
+| Referenced_Tweet_ID | Gets details about any tweets this one is quoting or retweeting |
+| Referenced_Tweet_Author_ID | Gets profile information about who wrote the original tweets being referenced |
+
+### media_fields
+Information about pictures, videos, and other media
+
+| Field | Description |
+|-------|-------------|
+| Duration_in_Milliseconds | How long a video or audio clip plays for (in milliseconds) |
+| Height | How tall the picture or video is in pixels |
+| Media_Key | A unique code that identifies this specific piece of media |
+| Preview_Image_URL | Web link to a smaller preview version of the picture |
+| Media_Type | What kind of media it is (photo, video, GIF, etc.) |
+| Media_URL | Web link to view the full media |
+| Width | How wide the picture or video is in pixels |
+| Public_Metrics | Numbers anyone can see (views, plays, etc.) |
+| Non_Public_Metrics | Private numbers only the tweet author can see |
+| Organic_Metrics | Numbers about natural engagement (non-promoted) |
+| Promoted_Metrics | Numbers about paid promotion performance |
+| Alternative_Text | Description of the media for accessibility |
+| Media_Variants | Different sizes/qualities available (like HD vs SD video) |
+
+### place_fields
+Information about locations mentioned in tweets
+
+| Field | Description |
+|-------|-------------|
+| Contained_Within_Places | Larger areas this place is part of (like a city within a state) |
+| Country | The full country name |
+| Country_Code | Short two-letter code for the country (like US for United States) |
+| Full_Location_Name | Complete name including city, state, country etc. |
+| Geographic_Coordinates | Exact location on a map (latitude and longitude) |
+| Place_ID | A unique code that identifies this specific location |
+| Place_Name | The main name of the place (like "Times Square") |
+| Place_Type | What kind of place it is (city, business, landmark etc.) |
+
+### poll_fields
+Information about polls in tweets
+
+| Field | Description |
+|-------|-------------|
+| Duration_Minutes | How long the poll stays open for voting |
+| End_DateTime | The exact date and time when voting closes |
+| Poll_ID | A unique code that identifies this specific poll |
+| Poll_Options | The different choices people can vote for |
+| Voting_Status | Whether voting is still open or closed |
+
+### tweet_fields
+Information about the tweets themselves
+
+| Field | Description |
+|-------|-------------|
+| Tweet_Attachments | All media, links, or polls included in the tweet |
+| Author_ID | A unique code identifying who wrote the tweet |
+| Context_Annotations | Extra information about what the tweet is about |
+| Conversation_ID | Code linking all replies in a conversation |
+| Creation_Time | When the tweet was posted |
+| Edit_Controls | Whether the tweet can be edited and for how long |
+| Tweet_Entities | Special parts of the tweet like #hashtags, @mentions, and links |
+| Geographic_Location | Where the tweet was posted from |
+| Tweet_ID | A unique code for this specific tweet |
+| Reply_To_User_ID | Who this tweet is responding to |
+| Language | What language the tweet is written in |
+| Public_Metrics | Numbers like retweets, likes, and replies |
+| Sensitive_Content_Flag | Warning if tweet might contain sensitive content |
+| Referenced_Tweets | Other tweets this one is connected to |
+| Reply_Settings | Who is allowed to reply to the tweet |
+| Tweet_Source | What app or website was used to post |
+| Tweet_Text | The actual words in the tweet |
+| Withheld_Content | If the tweet is hidden in certain countries |
+
+### user_fields
+Information about Twitter users
+
+| Field | Description |
+|-------|-------------|
+| Account_Creation_Date | When they joined Twitter |
+| User_Bio | The "About me" text on their profile |
+| User_Entities | Links and @mentions in their profile |
+| User_ID | Their unique Twitter user code |
+| User_Location | Where they say they are located |
+| Latest_Tweet_ID | Code for their most recent tweet |
+| Display_Name | Their full profile name (not @username) |
+| Pinned_Tweet_ID | Code for the tweet stuck to top of their profile |
+| Profile_Picture_URL | Link to their profile picture |
+| Is_Protected_Account | Whether their tweets are private |
+| Account_Statistics | Number of followers, following, and tweets |
+| Profile_URL | Link to their profile webpage |
+| Username | Their @handle they use on Twitter |
+| Is_Verified | Whether they have a verification checkmark |
+| Verification_Type | What kind of verification they have |
+| Content_Withholding_Info | If their content is hidden in certain places |
+
+## Extra notes
+
+- Use combinations of expansions and fields to build precise queries. For instance:
+  - To fetch a Tweet with media details, include `expansions=Media_Keys` and relevant `media_fields`.
+  - For user data in Tweets, add `expansions=Author_User_ID` and appropriate `user_fields`.
+
+- Data returned under `includes` helps cross-reference expanded data objects with their parent entities using IDs.
