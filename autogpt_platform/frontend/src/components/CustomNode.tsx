@@ -726,13 +726,10 @@ export function CustomNode({
       </div>
 
       {/* Body */}
-      <div className="ml-5 mt-6 rounded-b-xl">
+      <div className="mx-5 my-6 rounded-b-xl">
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
-          <div
-            className="flex w-fit items-start justify-between"
-            data-id="input-handles"
-          >
+          <div data-id="input-handles">
             <div>
               {data.uiType === BlockUIType.WEBHOOK_MANUAL &&
                 (data.webhook ? (
@@ -781,7 +778,6 @@ export function CustomNode({
               <Switch
                 onCheckedChange={toggleAdvancedSettings}
                 checked={isAdvancedOpen}
-                className="mr-5"
               />
             </div>
           </>
@@ -790,7 +786,7 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && (
           <>
             <LineSeparator />
-            <div className="flex items-start justify-end rounded-b-xl pb-2 pr-2 pt-6">
+            <div className="flex items-start justify-end rounded-b-xl pt-6">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
