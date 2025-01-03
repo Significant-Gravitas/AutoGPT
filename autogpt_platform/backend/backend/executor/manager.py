@@ -177,9 +177,6 @@ def execute_node(
 
     output_size = 0
     end_status = ExecutionStatus.COMPLETED
-    credit = db_client.get_or_refill_credit(user_id)
-    if credit < 0:
-        raise ValueError(f"Insufficient credit: {credit}")
 
     try:
         for output_name, output_data in node_block.execute(
@@ -235,7 +232,7 @@ def execute_node(
                 if res.end_time and res.start_time
                 else 0
             )
-            db_client.spend_credits(user_id, credit, node_block.id, input_data, s, t)
+            db_client.spend_credits(user_id, node_block.id, input_data, s, t)
 
         # Update execution stats
         if execution_stats is not None:

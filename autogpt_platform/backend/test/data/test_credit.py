@@ -4,22 +4,21 @@ import pytest
 from prisma.models import CreditTransaction
 
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.data.credit import UserCredit
+from backend.data.credit import BetaUserCredit
 from backend.data.user import DEFAULT_USER_ID
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
 REFILL_VALUE = 1000
-user_credit = UserCredit(REFILL_VALUE)
+user_credit = BetaUserCredit(REFILL_VALUE)
 
 
 @pytest.mark.asyncio(scope="session")
 async def test_block_credit_usage(server: SpinTestServer):
-    current_credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    current_credit = await user_credit.get_balance(DEFAULT_USER_ID)
 
     spending_amount_1 = await user_credit.spend_credits(
         DEFAULT_USER_ID,
-        current_credit,
         AITextGeneratorBlock().id,
         {
             "model": "gpt-4-turbo",
@@ -31,52 +30,49 @@ async def test_block_credit_usage(server: SpinTestServer):
         },
         0.0,
         0.0,
-        validate_balance=False,
     )
     assert spending_amount_1 > 0
 
     spending_amount_2 = await user_credit.spend_credits(
         DEFAULT_USER_ID,
-        current_credit,
         AITextGeneratorBlock().id,
         {"model": "gpt-4-turbo", "api_key": "owned_api_key"},
         0.0,
         0.0,
-        validate_balance=False,
     )
     assert spending_amount_2 == 0
 
-    new_credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    new_credit = await user_credit.get_balance(DEFAULT_USER_ID)
     assert new_credit == current_credit - spending_amount_1 - spending_amount_2
 
 
 @pytest.mark.asyncio(scope="session")
 async def test_block_credit_top_up(server: SpinTestServer):
-    current_credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    current_credit = await user_credit.get_balance(DEFAULT_USER_ID)
 
     await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
 
-    new_credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    new_credit = await user_credit.get_balance(DEFAULT_USER_ID)
     assert new_credit == current_credit + 100
 
 
 @pytest.mark.asyncio(scope="session")
 async def test_block_credit_reset(server: SpinTestServer):
-    month1 = datetime(2022, 1, 15)
-    month2 = datetime(2022, 2, 15)
+    old_month = datetime(2022, 1, 15)
 
-    user_credit.time_now = lambda: month2
-    month2credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    # Track the balance of the old month and the current month.
+    user_credit.time_now = lambda: old_month
+    old_month_credit = await user_credit.get_balance(DEFAULT_USER_ID)
+    user_credit.time_now = lambda: datetime.now()
+    cur_month_credit = await user_credit.get_balance(DEFAULT_USER_ID)
 
-    # Month 1 result should only affect month 1
-    user_credit.time_now = lambda: month1
-    month1credit = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    # Cur month credit is updated upon top-up.
     await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
-    assert await user_credit.get_or_refill_credit(DEFAULT_USER_ID) == month1credit + 100
+    assert await user_credit.get_balance(DEFAULT_USER_ID) == cur_month_credit + 100
 
-    # Month 2 balance is unaffected
-    user_credit.time_now = lambda: month2
-    assert await user_credit.get_or_refill_credit(DEFAULT_USER_ID) == month2credit
+    # Old month is unaffected by the top-up.
+    user_credit.time_now = lambda: old_month
+    assert await user_credit.get_balance(DEFAULT_USER_ID) == old_month_credit
 
 
 @pytest.mark.asyncio(scope="session")
@@ -94,5 +90,5 @@ async def test_credit_refill(server: SpinTestServer):
     )
     user_credit.time_now = lambda: datetime(2022, 2, 15)
 
-    balance = await user_credit.get_or_refill_credit(DEFAULT_USER_ID)
+    balance = await user_credit.get_balance(DEFAULT_USER_ID)
     assert balance == REFILL_VALUE

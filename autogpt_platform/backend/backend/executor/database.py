@@ -78,12 +78,12 @@ class DatabaseManager(AppService):
 
     # Credits
     user_credit_model = get_user_credit_model()
-    get_or_refill_credit = cast(
+    get_balance = cast(
         Callable[[Any, str], int],
-        exposed_run_and_wait(user_credit_model.get_or_refill_credit),
+        exposed_run_and_wait(user_credit_model.get_balance),
     )
     spend_credits = cast(
-        Callable[[Any, str, int, str, dict[str, str], float, float], int],
+        Callable[[Any, str, str, dict[str, str], float, float], int],
         exposed_run_and_wait(user_credit_model.spend_credits),
     )
 
