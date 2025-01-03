@@ -710,11 +710,12 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return (
-                exec_stats,
-                ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED,
-                error,
-            )
+
+        return (
+            exec_stats,
+            ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED,
+            error,
+        )
 
 
 class ExecutionManager(AppService):
