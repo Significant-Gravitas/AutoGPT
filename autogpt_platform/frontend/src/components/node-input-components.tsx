@@ -201,7 +201,7 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
-  className = cn(className, "my-2");
+  className = cn(className);
   displayName ||= propSchema.title || beautifyString(propKey);
 
   if ("allOf" in propSchema) {
@@ -876,18 +876,19 @@ const NodeArrayInput: FC<{
             (c) => c.targetHandle === entryKey && c.target === nodeId,
           );
         return (
-          <div key={entryKey} className="self-start">
+          <div key={entryKey}>
+            <NodeHandle
+              keyName={entryKey}
+              schema={schema.items!}
+              isConnected={isConnected}
+              isRequired={false}
+              side="left"
+            />
             <div className="mb-2 flex space-x-2">
-              <NodeHandle
-                keyName={entryKey}
-                schema={schema.items!}
-                isConnected={isConnected}
-                isRequired={false}
-                side="left"
-              />
               {!isConnected &&
                 (schema.items ? (
                   <NodeGenericInputField
+                    className="w-full"
                     nodeId={nodeId}
                     propKey={entryKey}
                     propSchema={schema.items}
