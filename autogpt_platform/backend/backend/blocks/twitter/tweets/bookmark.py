@@ -107,7 +107,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
             ["tweet.read", "bookmark.read", "users.read", "offline.access"]
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results to return (1-100)",
             placeholder="Enter max results",
             default=10,
@@ -183,7 +183,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
     @staticmethod
     def get_bookmarked_tweets(
         credentials: TwitterCredentials,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: ExpansionFilter | None,
         media_fields: TweetMediaFieldsFilter | None,

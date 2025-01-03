@@ -198,7 +198,7 @@ class TwitterGetListMembersBlock(Block):
             required=True,
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results per page (1-100)",
             placeholder="Enter max results",
             default=10,
@@ -274,7 +274,7 @@ class TwitterGetListMembersBlock(Block):
     def get_list_members(
         credentials: TwitterCredentials,
         list_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
@@ -305,6 +305,7 @@ class TwitterGetListMembersBlock(Block):
             response = cast(Response, client.get_list_members(**params))
 
             meta = {}
+            included = {}
             next_token = None
             user_ids = []
             usernames = []
@@ -313,10 +314,11 @@ class TwitterGetListMembersBlock(Block):
                 meta = response.meta
                 next_token = meta.get("next_token")
 
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
+            if response.includes:
+                included = IncludesSerializer.serialize(response.includes)
 
             if response.data:
+                data = ResponseDataSerializer.serialize_list(response.data)
                 user_ids = [str(user.id) for user in response.data]
                 usernames = [user.username for user in response.data]
                 return user_ids, usernames, data, included, meta, next_token
@@ -377,7 +379,7 @@ class TwitterGetListMembershipsBlock(Block):
             required=True,
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results per page (1-100)",
             placeholder="Enter max results",
             advanced=True,
@@ -438,7 +440,7 @@ class TwitterGetListMembershipsBlock(Block):
     def get_list_memberships(
         credentials: TwitterCredentials,
         user_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: ListExpansionsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
@@ -469,6 +471,7 @@ class TwitterGetListMembershipsBlock(Block):
             response = cast(Response, client.get_list_memberships(**params))
 
             meta = {}
+            included = {}
             next_token = None
             list_ids = []
 
@@ -476,10 +479,11 @@ class TwitterGetListMembershipsBlock(Block):
                 meta = response.meta
                 next_token = meta.get("next_token")
 
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
+            if response.includes:
+               included = IncludesSerializer.serialize(response.includes)
 
             if response.data:
+                data = ResponseDataSerializer.serialize_list(response.data)
                 list_ids = [str(lst.id) for lst in response.data]
                 return data, included, meta, list_ids, next_token
 

@@ -191,7 +191,7 @@ class TwitterGetRetweetersBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results per page (1-100)",
             default=10,
             placeholder="Enter max results",
@@ -270,7 +270,7 @@ class TwitterGetRetweetersBlock(Block):
     def get_retweeters(
         credentials: TwitterCredentials,
         tweet_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,

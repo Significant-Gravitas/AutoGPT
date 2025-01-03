@@ -234,16 +234,19 @@ class TwitterGetPinnedListsBlock(Block):
             response = cast(Response, client.get_pinned_lists(**params))
 
             meta = {}
+            included = {}
             list_ids = []
             list_names = []
 
             if response.meta:
                 meta = response.meta
 
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
+            if response.includes:
+                included = IncludesSerializer.serialize(response.includes)
+
 
             if response.data:
+                data = ResponseDataSerializer.serialize_list(response.data)
                 list_ids = [str(item.id) for item in response.data]
                 list_names = [item.name for item in response.data]
                 return data, included, meta, list_ids, list_names

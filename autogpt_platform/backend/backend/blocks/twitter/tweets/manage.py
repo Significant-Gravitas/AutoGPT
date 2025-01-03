@@ -69,9 +69,11 @@ class TwitterPostTweetBlock(Block):
             ["tweet.read", "tweet.write", "users.read", "offline.access"]
         )
 
-        tweet_text: str = SchemaField(
+        tweet_text: str | None = SchemaField(
             description="Text of the tweet to post",
             placeholder="Enter your tweet",
+            default = None,
+            advanced= False
         )
 
         for_super_followers_only: bool = SchemaField(
@@ -149,8 +151,8 @@ class TwitterPostTweetBlock(Block):
     def post_tweet(
         self,
         credentials: TwitterCredentials,
-        input_txt: str,
-        attachment: Union[Media, DeepLink, Poll, Place, Quote],
+        input_txt: str | None,
+        attachment: Union[Media, DeepLink, Poll, Place, Quote] | None,
         for_super_followers_only: bool,
         exclude_reply_user_ids: Optional[List[str]],
         in_reply_to_tweet_id: Optional[str],

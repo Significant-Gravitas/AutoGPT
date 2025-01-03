@@ -28,7 +28,8 @@ from backend.data.model import SchemaField
 
 class TwitterUnfollowUserBlock(Block):
     """
-    Allows a user to unfollow another user specified by target user ID
+    Allows a user to unfollow another user specified by target user ID.
+    The request succeeds with no action when the authenticated user sends a request to a user they're not following or have already unfollowed.
     """
 
     class Input(BlockSchema):
@@ -96,7 +97,10 @@ class TwitterUnfollowUserBlock(Block):
 
 class TwitterFollowUserBlock(Block):
     """
-    Allows a user to follow another user specified by target user ID
+    Allows a user to follow another user specified by target user ID. If the target user does not have public Tweets,
+    this endpoint will send a follow request. The request succeeds with no action when the authenticated user sends a
+    request to a user they're already following, or if they're sending a follower request to a user that does not have
+    public Tweets.
     """
 
     class Input(BlockSchema):
@@ -175,7 +179,7 @@ class TwitterGetFollowersBlock(Block):
             placeholder="Enter target user ID",
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results to return (1-1000, default 100)",
             placeholder="Enter max results",
             default=10,
@@ -240,7 +244,7 @@ class TwitterGetFollowersBlock(Block):
     def get_followers(
         credentials: TwitterCredentials,
         target_user_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
@@ -348,7 +352,7 @@ class TwitterGetFollowingBlock(Block):
             placeholder="Enter target user ID",
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results to return (1-1000, default 100)",
             placeholder="Enter max results",
             default=10,
@@ -413,7 +417,7 @@ class TwitterGetFollowingBlock(Block):
     def get_following(
         credentials: TwitterCredentials,
         target_user_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,

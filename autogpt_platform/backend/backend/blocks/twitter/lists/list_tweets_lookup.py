@@ -45,7 +45,7 @@ class TwitterGetListTweetsBlock(Block):
             required=True,
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results per page (1-100)",
             placeholder="Enter max results",
             default=10,
@@ -116,7 +116,7 @@ class TwitterGetListTweetsBlock(Block):
     def get_list_tweets(
         credentials: TwitterCredentials,
         list_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: ExpansionFilter | None,
         media_fields: TweetMediaFieldsFilter | None,
@@ -153,6 +153,7 @@ class TwitterGetListTweetsBlock(Block):
             response = cast(Response, client.get_list_tweets(**params))
 
             meta = {}
+            included = {}
             tweet_ids = []
             texts = []
             next_token = None
@@ -161,10 +162,11 @@ class TwitterGetListTweetsBlock(Block):
                 meta = response.meta
                 next_token = meta.get("next_token")
 
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
+            if response.includes:
+                included = IncludesSerializer.serialize(response.includes)
 
             if response.data:
+                data = ResponseDataSerializer.serialize_list(response.data)
                 tweet_ids = [str(item.id) for item in response.data]
                 texts = [item.text for item in response.data]
 

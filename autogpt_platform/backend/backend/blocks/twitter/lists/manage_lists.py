@@ -77,7 +77,6 @@ class TwitterDeleteListBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
-
 class TwitterUpdateListBlock(Block):
     """
     Updates a Twitter List owned by the authenticated user
@@ -94,14 +93,14 @@ class TwitterUpdateListBlock(Block):
             advanced=False,
         )
 
-        name: str = SchemaField(
+        name: str | None = SchemaField(
             description="New name for the List",
             placeholder="Enter list name",
             default="",
             advanced=False,
         )
 
-        description: str = SchemaField(
+        description: str | None = SchemaField(
             description="New description for the List",
             placeholder="Enter list description",
             default="",
@@ -133,7 +132,7 @@ class TwitterUpdateListBlock(Block):
 
     @staticmethod
     def update_list(
-        credentials: TwitterCredentials, list_id: str, name: str, description: str
+        credentials: TwitterCredentials, list_id: str, name: str | None, description: str | None
     ):
         try:
             client = tweepy.Client(
@@ -165,13 +164,12 @@ class TwitterUpdateListBlock(Block):
                 credentials,
                 input_data.list_id,
                 input_data.name,
-                input_data.description,
+                input_data.description
             )
             yield "success", success
 
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
-
 
 class TwitterCreateListBlock(Block):
     """
@@ -190,7 +188,7 @@ class TwitterCreateListBlock(Block):
             default="",
         )
 
-        description: str = SchemaField(
+        description: str | None = SchemaField(
             description="Description of the List",
             placeholder="Enter list description",
             advanced=False,
@@ -231,7 +229,7 @@ class TwitterCreateListBlock(Block):
 
     @staticmethod
     def create_list(
-        credentials: TwitterCredentials, name: str, description: str, private: bool
+        credentials: TwitterCredentials, name: str, description: str | None, private: bool
     ):
         try:
             client = tweepy.Client(

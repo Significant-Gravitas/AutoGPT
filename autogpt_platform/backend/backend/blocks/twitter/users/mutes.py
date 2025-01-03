@@ -28,7 +28,8 @@ from backend.data.model import SchemaField
 
 class TwitterUnmuteUserBlock(Block):
     """
-    Allows a user to unmute another user specified by target user ID
+    Allows a user to unmute another user specified by target user ID.
+    The request succeeds with no action when the user sends a request to a user they're not muting or have already unmuted.
     """
 
     class Input(BlockSchema):
@@ -104,7 +105,7 @@ class TwitterGetMutedUsersBlock(Block):
             ["users.read", "offline.access"]
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="The maximum number of results to be returned per page (1-1000). Default is 100.",
             placeholder="Enter max results",
             default=10,
@@ -176,7 +177,7 @@ class TwitterGetMutedUsersBlock(Block):
     @staticmethod
     def get_muted_users(
         credentials: TwitterCredentials,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,

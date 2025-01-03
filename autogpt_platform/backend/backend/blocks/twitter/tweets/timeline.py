@@ -49,7 +49,7 @@ class TwitterGetUserMentionsBlock(Block):
             placeholder="Enter user ID",
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Number of tweets to retrieve (5-100)",
             default=10,
             advanced=True,
@@ -143,7 +143,7 @@ class TwitterGetUserMentionsBlock(Block):
     def get_mentions(
         credentials: TwitterCredentials,
         user_id: str,
-        max_results: int,
+        max_results: int | None,
         start_time: datetime | None,
         end_time: datetime | None,
         since_id: str | None,
@@ -279,7 +279,6 @@ class TwitterGetUserMentionsBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
-
 class TwitterGetHomeTimelineBlock(Block):
     """
     Returns a collection of the most recent Tweets and Retweets posted by you and users you follow
@@ -290,7 +289,7 @@ class TwitterGetHomeTimelineBlock(Block):
             ["tweet.read", "users.read", "offline.access"]
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Number of tweets to retrieve (5-100)",
             default=10,
             advanced=True,
@@ -376,7 +375,7 @@ class TwitterGetHomeTimelineBlock(Block):
     @staticmethod
     def get_timeline(
         credentials: TwitterCredentials,
-        max_results: int,
+        max_results: int | None,
         start_time: datetime | None,
         end_time: datetime | None,
         since_id: str | None,
@@ -510,7 +509,6 @@ class TwitterGetHomeTimelineBlock(Block):
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
-
 class TwitterGetUserTweetsBlock(Block):
     """
     Returns Tweets composed by a single user, specified by the requested user ID
@@ -526,7 +524,7 @@ class TwitterGetUserTweetsBlock(Block):
             placeholder="Enter user ID",
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Number of tweets to retrieve (5-100)",
             default=10,
             advanced=True,
@@ -620,7 +618,7 @@ class TwitterGetUserTweetsBlock(Block):
     def get_user_tweets(
         credentials: TwitterCredentials,
         user_id: str,
-        max_results: int,
+        max_results: int | None,
         start_time: datetime | None,
         end_time: datetime | None,
         since_id: str | None,

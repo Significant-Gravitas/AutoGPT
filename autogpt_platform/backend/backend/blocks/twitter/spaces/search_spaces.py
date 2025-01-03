@@ -42,7 +42,7 @@ class TwitterSearchSpacesBlock(Block):
             placeholder="Enter search query",
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results to return (1-100)",
             placeholder="Enter max results",
             default=10,
@@ -111,7 +111,7 @@ class TwitterSearchSpacesBlock(Block):
     def search_spaces(
         credentials: TwitterCredentials,
         query: str,
-        max_results: int,
+        max_results: int | None,
         state: SpaceStatesFilter,
         expansions: SpaceExpansionsFilter | None,
         space_fields: SpaceFieldsFilter | None,
@@ -145,9 +145,9 @@ class TwitterSearchSpacesBlock(Block):
             data = ResponseDataSerializer.serialize_list(response.data)
 
             if response.data:
-                ids = [str(space["id"]) for space in response.data]
-                titles = [space["title"] for space in data]
-                host_ids = [space["host_ids"] for space in data]
+                ids = [str(space["id"]) for space in response.data if "id" in space]
+                titles = [space["title"] for space in data if "title" in space]
+                host_ids = [space["host_ids"] for space in data if "host_ids" in space]
 
                 return data, included, meta, ids, titles, host_ids, next_token
 

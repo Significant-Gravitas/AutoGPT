@@ -118,9 +118,10 @@ class TwitterGetListBlock(Block):
             meta = {}
             owner_id = ""
             owner_username = ""
+            included = {}
 
-            included = IncludesSerializer.serialize(response.includes)
-            data_dict = ResponseDataSerializer.serialize_dict(response.data)
+            if response.includes:
+                included = IncludesSerializer.serialize(response.includes)
 
             if "users" in included:
                 owner_id = str(included["users"][0]["id"])
@@ -130,6 +131,7 @@ class TwitterGetListBlock(Block):
                 meta = response.meta
 
             if response.data:
+                data_dict = ResponseDataSerializer.serialize_dict(response.data)
                 return data_dict, included, meta, owner_id, owner_username
 
             raise Exception("List not found")
@@ -185,7 +187,7 @@ class TwitterGetOwnedListsBlock(Block):
             required=True,
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results per page (1-100)",
             placeholder="Enter max results (default 100)",
             advanced=True,
@@ -250,7 +252,7 @@ class TwitterGetOwnedListsBlock(Block):
     def get_owned_lists(
         credentials: TwitterCredentials,
         user_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: ListExpansionsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
@@ -281,6 +283,7 @@ class TwitterGetOwnedListsBlock(Block):
             response = cast(Response, client.get_owned_lists(**params))
 
             meta = {}
+            included={}
             list_ids = []
             list_names = []
             next_token = None
@@ -289,16 +292,17 @@ class TwitterGetOwnedListsBlock(Block):
                 meta = response.meta
                 next_token = meta.get("next_token")
 
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
+            if response.includes:
+                included = IncludesSerializer.serialize(response.includes)
 
             if response.data:
-                list_ids = [str(item.id) for item in response.data]
-                list_names = [item.name for item in response.data]
+                data = ResponseDataSerializer.serialize_list(response.data)
+                list_ids = [str(item.id) for item in response.data if hasattr(item, 'id')]
+                list_names = [item.name for item in response.data if hasattr(item, 'name')]
 
                 return data, included, meta, list_ids, list_names, next_token
 
-            raise Exception("Lists not found")
+            raise Exception("User have no owned list")
 
         except tweepy.TweepyException:
             raise

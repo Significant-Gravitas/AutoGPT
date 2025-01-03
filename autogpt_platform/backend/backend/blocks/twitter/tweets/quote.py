@@ -45,7 +45,7 @@ class TwitterGetQuoteTweetsBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Number of results to return (max 100)",
             default=10,
             advanced=True,
@@ -125,7 +125,7 @@ class TwitterGetQuoteTweetsBlock(Block):
     def get_quote_tweets(
         credentials: TwitterCredentials,
         tweet_id: str,
-        max_results: int,
+        max_results: int | None,
         exclude: TweetExcludesFilter | None,
         pagination_token: str | None,
         expansions: ExpansionFilter | None,

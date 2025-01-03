@@ -25,7 +25,7 @@ from backend.data.model import SchemaField
 
 class TwitterUnblockUserBlock(Block):
     """
-    Unblock a specific user on Twitter
+    Unblock a specific user on Twitter. The request succeeds with no action when the user sends a request to a user they're not blocking or have already unblocked.
     """
 
     class Input(BlockSchema):
@@ -98,7 +98,7 @@ class TwitterGetBlockedUsersBlock(Block):
             ["users.read", "offline.access", "block.read"]
         )
 
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results to return (1-1000, default 100)",
             placeholder="Enter max results",
             default=10,
@@ -156,7 +156,7 @@ class TwitterGetBlockedUsersBlock(Block):
     @staticmethod
     def get_blocked_users(
         credentials: TwitterCredentials,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,

@@ -119,7 +119,7 @@ class TwitterGetLikingUsersBlock(Block):
             description="ID of the tweet to get liking users for",
             placeholder="Enter tweet ID",
         )
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results to return (1-100)",
             placeholder="Enter max results",
             default=10,
@@ -190,7 +190,7 @@ class TwitterGetLikingUsersBlock(Block):
     def get_liking_users(
         credentials: TwitterCredentials,
         tweet_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
@@ -293,7 +293,7 @@ class TwitterGetLikedTweetsBlock(Block):
             description="ID of the user to get liked tweets for",
             placeholder="Enter user ID",
         )
-        max_results: int = SchemaField(
+        max_results: int | None = SchemaField(
             description="Maximum number of results to return (5-100)",
             placeholder="100",
             default=10,
@@ -384,7 +384,7 @@ class TwitterGetLikedTweetsBlock(Block):
     def get_liked_tweets(
         credentials: TwitterCredentials,
         user_id: str,
-        max_results: int,
+        max_results: int | None,
         pagination_token: str | None,
         expansions: ExpansionFilter | None,
         media_fields: TweetMediaFieldsFilter | None,

@@ -342,7 +342,7 @@ class TweetPostBuilder:
     def __init__(self):
         self.params: Dict[str, Any] = {"user_auth": False}
 
-    def add_text(self, text: str):
+    def add_text(self, text: str | None):
         if text:
             self.params["text"] = text
         return self

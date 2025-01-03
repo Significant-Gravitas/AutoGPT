@@ -409,7 +409,7 @@ export const NodeGenericInputField: FC<{
           (subSchema) => "type" in subSchema && subSchema.type == "boolean",
         ) &&
         Object.keys((propSchema.anyOf[0] as BlockIOObjectSubSchema).properties)
-          .length >= 3
+          .length >= 1
       ) {
         const options = Object.keys(
           (propSchema.anyOf[0] as BlockIOObjectSubSchema).properties,
@@ -666,6 +666,7 @@ const NodeOneOfDiscriminatorField: FC<{
   )?.schema;
 
   function getEntryKey(key: string): string {
+    // use someKey for handle purpose (not childKey)
     return `${propKey}_#_${key}`;
   }
 
@@ -702,21 +703,21 @@ const NodeOneOfDiscriminatorField: FC<{
               if (someKey === "discriminator") {
                 return null;
               }
-              const childKey = propKey ? `${propKey}.${someKey}` : someKey;
+              const childKey = propKey ? `${propKey}.${someKey}` : someKey; // for history redo/undo purpose
               return (
                 <div
                   key={childKey}
                   className="mb-4 flex w-full flex-col justify-between space-y-2"
                 >
                   <NodeHandle
-                    keyName={getEntryKey(childKey)}
+                    keyName={getEntryKey(someKey)}
                     schema={childSchema as BlockIOSubSchema}
-                    isConnected={isConnected(getEntryKey(childKey))}
+                    isConnected={isConnected(getEntryKey(someKey))}
                     isRequired={false}
                     side="left"
                   />
 
-                  {!isConnected(childKey) && (
+                  {!isConnected(someKey) && (
                     <NodeGenericInputField
                       nodeId={nodeId}
                       key={propKey}
