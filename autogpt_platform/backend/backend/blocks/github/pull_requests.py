@@ -1,4 +1,3 @@
-import base64
 import re
 
 from typing_extensions import TypedDict
@@ -513,4 +512,3 @@ def prepare_pr_api_url(pr_url: str, path: str) -> str:
 
     base_url, pr_number = match.groups()
     return f"{base_url}/pulls/{pr_number}/{path}"
-
