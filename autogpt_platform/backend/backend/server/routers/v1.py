@@ -179,7 +179,9 @@ async def stripe_webhook(request: Request):
         event["type"] == "checkout.session.completed"
         or event["type"] == "checkout.session.async_payment_succeeded"
     ):
-        await _user_credit_model.fulfill_checkout(session_id=event["data"]["object"]["id"])
+        await _user_credit_model.fulfill_checkout(
+            session_id=event["data"]["object"]["id"]
+        )
 
     return Response(status_code=200)
 

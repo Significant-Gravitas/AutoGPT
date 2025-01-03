@@ -18,7 +18,7 @@ export default function CreditsPage() {
       api.fulfillCheckout();
       setPatched(true);
     }
-  }, [topupStatus]);
+  }, [api, patched, topupStatus]);
 
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">

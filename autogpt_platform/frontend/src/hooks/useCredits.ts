@@ -19,7 +19,7 @@ export default function useCredits(): {
   const fetchCredits = useCallback(async () => {
     const response = await api.getUserCredit();
     setCredits(response.credits);
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     fetchCredits();
