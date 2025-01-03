@@ -424,6 +424,26 @@ class GraphModel(Graph):
                 result[key] = value
         return result
 
+    def clean_graph(self):
+        blocks = [block() for block in get_blocks().values()]
+
+        input_blocks = [
+            node
+            for node in self.nodes
+            if next(
+                (
+                    b
+                    for b in blocks
+                    if b.id == node.block_id and b.block_type == BlockType.INPUT
+                ),
+                None,
+            )
+        ]
+
+        for node in self.nodes:
+            if any(input_block.id == node.id for input_block in input_blocks):
+                node.input_default["value"] = ""
+
 
 # --------------------- CRUD functions --------------------- #
 
