@@ -105,20 +105,8 @@ class UserCreditBase(ABC):
         block_id: str | None = None,
         metadata: Json = Json({}),
     ):
-        async with db.transaction() as tx:
-
-            # Acquire lock on latest balance snapshot
-            await tx.execute_raw(
-                f"""SELECT *
-                FROM platform."CreditTransaction"
-                WHERE "userId" = '{user_id}'
-                AND "isActive" = true
-                ORDER BY "createdAt" DESC
-                FOR UPDATE
-            """
-            )
-
-            # Lock latest balance snapshot
+        async with db.locked_transaction(f"usr_trx_{user_id}"):
+            # Get latest balance snapshot
             user_balance = await self._get_balance(user_id)
             if amount < 0 and user_balance < abs(amount):
                 raise ValueError(
