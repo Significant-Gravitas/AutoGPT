@@ -348,6 +348,17 @@ export default class BackendAPI {
     return this._get("/store/myagents", params);
   }
 
+  downloadStoreAgent(
+    storeListingVersionId: string,
+    version?: number,
+  ): Promise<BlobPart> {
+    const url = version
+      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
+      : `/store/download/agents/${storeListingVersionId}`;
+
+    return this._get(url);
+  }
+
   /////////////////////////////////////////
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////

@@ -34,8 +34,8 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
 }) => {
   const router = useRouter();
 
-  // Take only the first 9 agents
-  const displayedAgents = allAgents.slice(0, 9);
+  // TODO: Update this when we have pagination
+  const displayedAgents = allAgents;
 
   const handleCardClick = (creator: string, slug: string) => {
     router.push(

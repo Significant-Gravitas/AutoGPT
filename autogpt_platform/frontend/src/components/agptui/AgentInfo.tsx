@@ -6,6 +6,10 @@ import { Separator } from "@/components/ui/separator";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useToast } from "@/components/ui/use-toast";
+
+import useSupabase from "@/hooks/useSupabase";
+import { DownloadIcon, LoaderIcon } from "lucide-react";
 interface AgentInfoProps {
   name: string;
   creator: string;
@@ -32,8 +36,11 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   storeListingVersionId,
 }) => {
   const router = useRouter();
-
   const api = React.useMemo(() => new BackendAPI(), []);
+  const { user } = useSupabase();
+  const { toast } = useToast();
+
+  const [downloading, setDownloading] = React.useState(false);
 
   const handleAddToLibrary = async () => {
     try {
@@ -43,6 +50,46 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
     } catch (error) {
       console.error("Failed to add agent to library:", error);
     }
+  };
+
+  const handleDownloadToLibrary = async () => {
+    const downloadAgent = async (): Promise<void> => {
+      setDownloading(true);
+      try {
+        const file = await api.downloadStoreAgent(storeListingVersionId);
+
+        // Similar to Marketplace v1
+        const jsonData = JSON.stringify(file, null, 2);
+        // Create a Blob from the file content
+        const blob = new Blob([jsonData], { type: "application/json" });
+
+        // Create a temporary URL for the Blob
+        const url = window.URL.createObjectURL(blob);
+
+        // Create a temporary anchor element
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `agent_${storeListingVersionId}.json`; // Set the filename
+
+        // Append the anchor to the body, click it, and remove it
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Revoke the temporary URL
+        window.URL.revokeObjectURL(url);
+
+        toast({
+          title: "Download Complete",
+          description: "Your agent has been successfully downloaded.",
+        });
+      } catch (error) {
+        console.error(`Error downloading agent:`, error);
+        throw error;
+      }
+    };
+    await downloadAgent();
+    setDownloading(false);
   };
 
   return (
@@ -72,15 +119,36 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Run Agent Button */}
       <div className="mb-4 w-full lg:mb-[60px]">
-        <button
-          onClick={handleAddToLibrary}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
-        >
-          <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-          <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-            Add To Library
-          </span>
-        </button>
+        {user ? (
+          <button
+            onClick={handleAddToLibrary}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
+          >
+            <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+            <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
+              Add To Library
+            </span>
+          </button>
+        ) : (
+          <button
+            onClick={handleDownloadToLibrary}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-[38px] px-4 py-3 transition-colors sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4 ${
+              downloading
+                ? "bg-neutral-400"
+                : "bg-violet-600 hover:bg-violet-700"
+            }`}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <LoaderIcon className="h-5 w-5 animate-spin text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+            ) : (
+              <DownloadIcon className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+            )}
+            <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
+              {downloading ? "Downloading..." : "Download Agent as File"}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Rating and Runs */}

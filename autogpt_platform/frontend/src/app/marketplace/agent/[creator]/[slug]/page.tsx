@@ -40,7 +40,8 @@ export default async function Page({
   const agent = await api.getStoreAgent(creator_lower, params.slug);
   const otherAgents = await api.getStoreAgents({ creator: creator_lower });
   const similarAgents = await api.getStoreAgents({
-    search_query: agent.categories[0],
+    // We are using slug as we know its has been sanitized and is not null
+    search_query: agent.slug.replace(/-/g, " "),
   });
 
   const breadcrumbs = [
