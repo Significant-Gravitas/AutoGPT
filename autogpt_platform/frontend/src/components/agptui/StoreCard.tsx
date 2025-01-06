@@ -71,23 +71,23 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       {/* Content Section */}
       <div className="w-full px-2 py-4">
         {/* Title and Creator */}
-        <h3 className="font-poppins mb-2 text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
+        <h3 className="font-h3-poppins mb-2 text-[#272727!important] dark:text-neutral-100">
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (
-          <p className="font-lead mb-4 text-base font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="font-lead mb-4 text-[#525252!important] dark:text-neutral-400">
             by {creatorName}
           </p>
         )}
 
         {/* Description */}
-        <p className="font-geist mb-4 line-clamp-3 text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+        <p className="font-p-ui mb-4 line-clamp-3 dark:text-neutral-400">
           {description}
         </p>
 
         {/* Stats Row */}
         <div className="flex items-center justify-between">
-          <div className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+          <div className="font-large-geist text-[#262626] dark:text-neutral-200">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center gap-2">

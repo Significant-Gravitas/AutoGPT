@@ -52,7 +52,7 @@ export default async function Page({
             ]}
           />
 
-          <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
+          <div className="relative mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
             <div className="w-full md:w-auto md:shrink-0">
               <CreatorInfoCard
                 username={creator.name}
@@ -63,12 +63,10 @@ export default async function Page({
                 totalRuns={creator.agent_runs}
               />
             </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
-              <p className="font-geist text-underline-position-from-font text-decoration-skip-none text-left text-base font-medium leading-6">
-                About
-              </p>
+            <div className="sticky top-24 flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
+              <p className="font-p-medium">About</p>
               <div
-                className="font-poppins text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
+                className="font-poppin text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
                 style={{ whiteSpace: "pre-line" }}
               >
                 {creator.description}

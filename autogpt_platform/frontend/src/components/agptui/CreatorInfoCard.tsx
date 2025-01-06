@@ -33,10 +33,10 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
           </AvatarFallback>
         </Avatar>
         <div className="flex w-full flex-col items-start justify-start gap-1.5">
-          <div className="font-poppins w-full text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
+          <div className="font-h2 w-full text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
             {username}
           </div>
-          <div className="font-geist w-full text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
+          <div className="font-lead w-full text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
             @{handle}
           </div>
         </div>
@@ -46,7 +46,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
         <div className="flex w-full flex-col items-start justify-start gap-3">
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex flex-col items-start justify-start gap-2.5">
-            <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <div className="font-p-medium w-full text-neutral-800 dark:text-neutral-200">
               Top categories
             </div>
             <div
@@ -60,7 +60,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
                   className="flex items-center justify-center gap-2.5 rounded-[34px] border border-neutral-600 px-4 py-3 dark:border-neutral-400"
                   role="listitem"
                 >
-                  <div className="font-neue text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
+                  <div className="font-p-ui text-neutral-800 dark:text-neutral-200">
                     {category}
                   </div>
                 </div>
@@ -73,7 +73,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex w-full flex-col items-start justify-between gap-4 sm:flex-row sm:gap-0">
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+              <div className="font-p-medium w-full text-neutral-800 dark:text-neutral-200">
                 Average rating
               </div>
               <div className="inline-flex items-center gap-2">
@@ -81,7 +81,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
                   {averageRating.toFixed(1)}
                 </div>
                 <div
-                  className="flex items-center gap-px"
+                  className="font-p-medium flex items-center gap-px"
                   role="img"
                   aria-label={`Rating: ${averageRating} out of 5 stars`}
                 >
@@ -90,10 +90,10 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
               </div>
             </div>
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+              <div className="font-p-medium w-full text-neutral-800 dark:text-neutral-200">
                 Number of runs
               </div>
-              <div className="font-geist text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+              <div className="font-p-medium text-neutral-800 dark:text-neutral-200">
                 {new Intl.NumberFormat().format(totalRuns)} runs
               </div>
             </div>

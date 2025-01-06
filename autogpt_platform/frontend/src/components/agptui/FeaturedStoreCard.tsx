@@ -34,16 +34,14 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
       data-testid="featured-store-card"
     >
       <div className="flex h-[188px] flex-col items-start justify-start gap-3 self-stretch">
-        <h2 className="font-poppins self-stretch text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100">
-          {agentName}
-        </h2>
-        <div className="font-lead self-stretch text-xl font-normal leading-7 text-neutral-800 dark:text-neutral-200">
+        <h2 className="font-h2 dark:text-neutral-100">{agentName}</h2>
+        <div className="font-lead text-[#262626!important] dark:text-neutral-200">
           {subHeading}
         </div>
       </div>
 
       <div className="flex h-[489px] flex-col items-start justify-start gap-[18px] self-stretch">
-        <div className="font-lead self-stretch text-xl font-normal leading-7 text-neutral-800 dark:text-neutral-200">
+        <div className="font-lead text-[#262626!important] dark:text-neutral-200">
           by {creatorName}
         </div>
 
@@ -74,7 +72,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
         </div>
 
         <div className="inline-flex items-center justify-between self-stretch">
-          <div className="font-large-geist text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+          <div className="font-large-geist text-[#262626] dark:text-neutral-200">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center justify-start gap-[5px]">

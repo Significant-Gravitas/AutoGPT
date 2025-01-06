@@ -321,6 +321,7 @@ async def main():
                 "description": faker.text(),
                 "links": [faker.url() for _ in range(3)],
                 "avatarUrl": get_image(),
+                "isFeatured": faker.boolean(),
             }
         )
         profiles.append(profile)

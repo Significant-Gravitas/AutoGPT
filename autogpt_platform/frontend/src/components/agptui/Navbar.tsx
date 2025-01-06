@@ -90,7 +90,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
                 size="sm"
                 className="flex items-center justify-end space-x-2"
               >
-                <IconLogIn className="h-5 h-[48px] w-5" />
+                <IconLogIn className="h-[48px] w-5" />
                 <span>Log In</span>
               </Button>
             </Link>

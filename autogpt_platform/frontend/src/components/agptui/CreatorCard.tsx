@@ -34,7 +34,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
       data-testid="creator-card"
     >
       <div className="relative h-[64px] w-[64px]">
-        <div className="absolute inset-0 overflow-hidden rounded-full">
+        <div className="h-[64px] w-[64px] overflow-hidden rounded-full">
           {creatorImage ? (
             <Image
               src={creatorImage}
@@ -51,13 +51,11 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
       </div>
 
       <div className="flex flex-col gap-2">
-        <h3 className="font-poppins text-2xl font-semibold leading-tight text-neutral-900 dark:text-neutral-100">
+        <h3 className="font-h3-poppins text-[#171717!important] dark:text-neutral-100">
           {creatorName}
         </h3>
-        <p className="font-geist text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
-          {bio}
-        </p>
-        <div className="font-geist text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+        <p className="font-p-ui line-clamp-3 dark:text-neutral-400">{bio}</p>
+        <div className="font-large-geist text-neutral-800 dark:text-neutral-200">
           {agentsUploaded} agents
         </div>
       </div>

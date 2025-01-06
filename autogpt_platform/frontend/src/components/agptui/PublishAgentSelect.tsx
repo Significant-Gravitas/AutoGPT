@@ -65,10 +65,10 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           </button>
         </div>
         <div className="text-center">
-          <h3 className="font-poppins text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+          <h3 className="font-h3-poppins text-[#171717!important] dark:text-neutral-100">
             Publish Agent
           </h3>
-          <p className="font-geist text-sm font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="font-p text-[#525252!important] dark:text-neutral-400">
             Select your project that you&apos;d like to publish
           </p>
         </div>
@@ -76,7 +76,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
 
       {agents.length === 0 ? (
         <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
-          <div className="w-full text-center font-['Geist'] text-lg font-normal leading-7 text-neutral-600 dark:text-neutral-400 sm:w-[573px] sm:text-xl">
+          <div className="font-lead w-full text-center text-[#525252] dark:text-neutral-400 sm:w-[573px] sm:text-xl">
             Uh-oh.. It seems like you don&apos;t have any agents in your
             library.
             <br />
@@ -85,8 +85,8 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           <Button
             onClick={onOpenBuilder}
             variant="default"
-            size="lg"
-            className="bg-neutral-800 text-white hover:bg-neutral-900"
+            size="sm"
+            className="font-body-medium bg-neutral-800 text-white hover:bg-neutral-900"
           >
             Open builder
           </Button>
@@ -135,10 +135,10 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         />
                       </div>
                       <div className="p-3">
-                        <p className="font-poppins text-base font-medium leading-normal text-neutral-800 dark:text-neutral-100 sm:text-base">
+                        <p className="font-p-medium text-[#262626!important] dark:text-neutral-100 sm:text-base">
                           {agent.name}
                         </p>
-                        <small className="font-geist text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
+                        <small className="font-small text-[#737373!important] dark:text-neutral-400 sm:text-sm">
                           Edited {agent.lastEdited}
                         </small>
                       </div>
@@ -153,8 +153,8 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             <Button
               onClick={onCancel}
               variant="outline"
-              size="default"
-              className="w-full sm:flex-1"
+              size="sm"
+              className="font-body-medium w-full sm:flex-1"
             >
               Back
             </Button>
@@ -166,8 +166,8 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
               }}
               disabled={!selectedAgentId || !selectedAgentVersion}
               variant="default"
-              size="default"
-              className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
+              size="sm"
+              className="font-body-medium w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
             >
               Next
             </Button>

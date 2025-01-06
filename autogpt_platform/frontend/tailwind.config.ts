@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import autogptCustomTypographyPlugin from "./src/plugins/typography";
 
 const config = {
   darkMode: ["class"],
@@ -139,7 +140,7 @@ const config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [require("tailwindcss-animate"), autogptCustomTypographyPlugin],
 } satisfies Config;
 
 export default config;

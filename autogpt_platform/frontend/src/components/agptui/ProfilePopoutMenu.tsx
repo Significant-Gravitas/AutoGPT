@@ -74,7 +74,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center space-x-3"
+          className="flex cursor-pointer items-center space-x-6"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
@@ -91,7 +91,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
 
       <PopoverContent
         id={popupId}
-        className="flex h-[380px] w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
+        className="mr-4 mt-4 flex h-fit w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-3xl dark:bg-zinc-800/70"
       >
         {/* Header with avatar and user info */}
         <div className="inline-flex items-center justify-start gap-4 self-stretch">
@@ -102,10 +102,10 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
             </AvatarFallback>
           </Avatar>
           <div className="relative h-[47px] w-[173px]">
-            <div className="absolute left-0 top-0 font-['Geist'] text-base font-semibold leading-7 text-white dark:text-neutral-200">
+            <div className="font-p-semibold absolute left-0 top-0 text-white dark:text-neutral-200">
               {userName}
             </div>
-            <div className="absolute left-0 top-[23px] font-['Geist'] text-base font-normal leading-normal text-white dark:text-neutral-400">
+            <div className="font-p-ui absolute left-0 top-[23px] text-white dark:text-neutral-400">
               {userEmail}
             </div>
           </div>
@@ -129,7 +129,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
                       <div className="relative h-6 w-6">
                         {getIcon(item.icon)}
                       </div>
-                      <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+                      <div className="font-p-medium text-neutral-800 dark:text-neutral-200">
                         {item.text}
                       </div>
                     </Link>
@@ -145,7 +145,7 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
                           <div className="relative h-6 w-6">
                             {getIcon(item.icon)}
                           </div>
-                          <div className="font-['Geist'] text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+                          <div className="font-p-medium text-neutral-800 dark:text-neutral-200">
                             {item.text}
                           </div>
                         </div>
