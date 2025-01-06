@@ -9,6 +9,7 @@
 
 # Platform - Backend
 !autogpt_platform/backend/backend/
+!autogpt_platform/backend/migrations/
 !autogpt_platform/backend/schema.prisma
 !autogpt_platform/backend/pyproject.toml
 !autogpt_platform/backend/poetry.lock
