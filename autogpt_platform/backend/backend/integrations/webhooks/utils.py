@@ -1,5 +1,5 @@
-from backend.util.settings import Config
 from backend.integrations.providers import ProviderName
+from backend.util.settings import Config
 
 app_config = Config()
 
