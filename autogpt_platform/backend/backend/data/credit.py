@@ -66,6 +66,10 @@ class UserCreditBase(ABC):
         pass
 
     @staticmethod
+    def time_now():
+        return datetime.now(timezone.utc)
+
+    @staticmethod
     async def _get_balance(user_id: str, end_time: datetime = datetime.max) -> int:
         # Find the latest captured balance snapshot.
         snapshot = await CreditTransaction.prisma().find_first(
@@ -121,6 +125,7 @@ class UserCreditBase(ABC):
                 "type": transaction_type,
                 "blockId": block_id,
                 "metadata": metadata,
+                "createdAt": self.time_now(),
             }
             if transaction_key:
                 transaction_data["transactionKey"] = transaction_key
@@ -226,10 +231,6 @@ class UserCredit(UserCreditBase):
 
 
 class BetaUserCredit(UserCredit):
-
-    @staticmethod
-    def time_now():
-        return datetime.now(timezone.utc)
 
     async def get_balance(self, user_id: str) -> int:
         cur_time = self.time_now()
