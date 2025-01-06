@@ -158,6 +158,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The user agent for the Reddit API",
     )
 
+    scheduler_db_pool_size: int = Field(
+        default=3,
+        description="The pool size for the scheduler database connection pool",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:

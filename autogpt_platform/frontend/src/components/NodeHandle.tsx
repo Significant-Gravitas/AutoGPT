@@ -82,7 +82,7 @@ const NodeHandle: FC<HandleProps> = ({
           data-testid={`output-handle-${keyName}`}
           position={Position.Right}
           id={keyName}
-          className="group -mr-[26px]"
+          className="group -mr-[38px]"
         >
           <div className="pointer-events-none flex items-center">
             {label}

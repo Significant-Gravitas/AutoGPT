@@ -28,7 +28,9 @@ export type CredentialsData =
       isLoading: false;
     });
 
-export default function useCredentials(): CredentialsData | null {
+export default function useCredentials(
+  inputFieldName: string,
+): CredentialsData | null {
   const nodeId = useNodeId();
   const allProviders = useContext(CredentialsProvidersContext);
 
@@ -37,8 +39,9 @@ export default function useCredentials(): CredentialsData | null {
   }
 
   const data = useNodesData<Node<CustomNodeData>>(nodeId)!.data;
-  const credentialsSchema = data.inputSchema.properties
-    .credentials as BlockIOCredentialsSubSchema;
+  const credentialsSchema = data.inputSchema.properties[
+    inputFieldName
+  ] as BlockIOCredentialsSubSchema;
 
   const discriminatorValue: CredentialsProviderName | null =
     (credentialsSchema.discriminator &&

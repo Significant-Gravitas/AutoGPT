@@ -90,7 +90,12 @@ async def test_get_input_schema(server: SpinTestServer):
             Node(
                 id="node_0_a",
                 block_id=input_block,
-                input_default={"name": "in_key_a", "title": "Key A", "value": "A"},
+                input_default={
+                    "name": "in_key_a",
+                    "title": "Key A",
+                    "value": "A",
+                    "advanced": True,
+                },
                 metadata={"id": "node_0_a"},
             ),
             Node(
@@ -138,8 +143,8 @@ async def test_get_input_schema(server: SpinTestServer):
     )
 
     class ExpectedInputSchema(BlockSchema):
-        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=False)
-        in_key_b: Any = SchemaField(title="in_key_b", advanced=True)
+        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
+        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
 
     class ExpectedOutputSchema(BlockSchema):
         out_key: Any = SchemaField(
@@ -155,3 +160,45 @@ async def test_get_input_schema(server: SpinTestServer):
     output_schema = created_graph.output_schema
     output_schema["title"] = "ExpectedOutputSchema"
     assert output_schema == ExpectedOutputSchema.jsonschema()
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_clean_graph(server: SpinTestServer):
+    """
+    Test the clean_graph function that:
+    1. Clears input block values
+    2. Removes credentials from nodes
+    """
+    # Create a graph with input blocks and credentials
+    graph = Graph(
+        id="test_clean_graph",
+        name="Test Clean Graph",
+        description="Test graph cleaning",
+        nodes=[
+            Node(
+                id="input_node",
+                block_id=AgentInputBlock().id,
+                input_default={
+                    "name": "test_input",
+                    "value": "test value",
+                    "description": "Test input description",
+                },
+            ),
+        ],
+        links=[],
+    )
+
+    # Create graph and get model
+    create_graph = CreateGraph(graph=graph)
+    created_graph = await server.agent_server.test_create_graph(
+        create_graph, DEFAULT_USER_ID
+    )
+
+    # Clean the graph
+    created_graph.clean_graph()
+
+    # # Verify input block value is cleared
+    input_node = next(
+        n for n in created_graph.nodes if n.block_id == AgentInputBlock().id
+    )
+    assert input_node.input_default["value"] == ""
