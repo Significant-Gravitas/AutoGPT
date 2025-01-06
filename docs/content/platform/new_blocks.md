@@ -238,6 +238,16 @@ Naturally, to add an authenticated block for a new provider, you'll have to add 
 ```
 </details>
 
+#### Multiple credentials inputs
+Multiple credentials inputs are supported, under the following conditions:
+- The name of each of the credentials input fields must end with `_credentials`.
+- The names of the credentials input fields must match the names of the corresponding
+  parameters on the `run(..)` method of the block.
+- If more than one of the credentials parameters are required, `test_credentials`
+  is a `dict[str, Credentials]`, with for each required credentials input the
+  parameter name as the key and suitable test credentials as the value.
+
+
 #### Adding an OAuth2 service integration
 
 To add support for a new OAuth2-authenticated service, you'll need to add an `OAuthHandler`.
