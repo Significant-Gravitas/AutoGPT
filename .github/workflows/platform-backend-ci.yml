@@ -81,7 +81,7 @@ jobs:
 
       - name: Check poetry.lock
         run: |
-          poetry lock --no-update
+          poetry lock
 
           if ! git diff --quiet poetry.lock; then
             echo "Error: poetry.lock not up to date."
