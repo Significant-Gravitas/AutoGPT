@@ -110,7 +110,7 @@ repos:
       - id: isort
         name: Lint (isort) - AutoGPT Platform - Backend
         alias: isort-platform-backend
-        entry: poetry -C autogpt_platform/backend run isort -p backend
+        entry: poetry -P autogpt_platform/backend run isort -p backend
         files: ^autogpt_platform/backend/
         types: [file, python]
         language: system
@@ -118,7 +118,7 @@ repos:
       - id: isort
         name: Lint (isort) - Classic - AutoGPT
         alias: isort-classic-autogpt
-        entry: poetry -C classic/original_autogpt run isort -p autogpt
+        entry: poetry -P classic/original_autogpt run isort -p autogpt
         files: ^classic/original_autogpt/
         types: [file, python]
         language: system
@@ -126,7 +126,7 @@ repos:
       - id: isort
         name: Lint (isort) - Classic - Forge
         alias: isort-classic-forge
-        entry: poetry -C classic/forge run isort -p forge
+        entry: poetry -P classic/forge run isort -p forge
         files: ^classic/forge/
         types: [file, python]
         language: system
@@ -134,7 +134,7 @@ repos:
       - id: isort
         name: Lint (isort) - Classic - Benchmark
         alias: isort-classic-benchmark
-        entry: poetry -C classic/benchmark run isort -p agbenchmark
+        entry: poetry -P classic/benchmark run isort -p agbenchmark
         files: ^classic/benchmark/
         types: [file, python]
         language: system
