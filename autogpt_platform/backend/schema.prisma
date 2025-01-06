@@ -216,6 +216,7 @@ enum AgentExecutionStatus {
   QUEUED
   RUNNING
   COMPLETED
+  TERMINATED
   FAILED
 }
 
