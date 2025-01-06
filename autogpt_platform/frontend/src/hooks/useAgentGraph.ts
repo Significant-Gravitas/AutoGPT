@@ -558,8 +558,9 @@ export default function useAgentGraph(
                   return;
                 }
                 if (
-                  nodeResult.status != "COMPLETED" &&
-                  nodeResult.status != "FAILED"
+                  !["COMPLETED", "TERMINATED", "FAILED"].includes(
+                    nodeResult.status,
+                  )
                 ) {
                   pendingNodeExecutions.add(nodeResult.node_exec_id);
                 } else {
