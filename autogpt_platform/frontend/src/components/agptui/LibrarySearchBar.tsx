@@ -18,21 +18,17 @@ export const LibrarySearchBar = ({
   const [isFocused, setIsFocused] = useState(false);
   const api = useBackendAPI();
 
-  const debouncedSearch = useCallback(
-    debounce(async (searchTerm: string) => {
-      try {
-        setAgentLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        const response = await api.librarySearchAgent(searchTerm);
-        setAgents(response.agents);
-        setAgentLoading(false);
-      } catch (error) {
-        console.error("Search failed:", error);
-      }
-    }, 300),
-    [setAgents],
-  );
-
+  const debouncedSearch = debounce(async (searchTerm: string) => {
+    try {
+      setAgentLoading(true);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await api.librarySearchAgent(searchTerm);
+      setAgents(response.agents);
+      setAgentLoading(false);
+    } catch (error) {
+      console.error("Search failed:", error);
+    }
+  }, 300);
   const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const searchTerm = e.target.value;
     debouncedSearch(searchTerm);

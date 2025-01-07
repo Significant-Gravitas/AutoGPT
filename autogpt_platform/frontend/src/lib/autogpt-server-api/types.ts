@@ -507,3 +507,11 @@ export type StoreReviewCreate = {
   score: number;
   comments?: string;
 };
+
+// Types for v2 Library
+export enum LibraryAgentFilterEnum {
+  CREATED_AT = "createdAt",
+  UPDATED_AT = "updatedAt",
+  IS_FAVOURITE = "isFavourite",
+  IS_CREATED_BY_USER = "isCreatedByUser",
+}
