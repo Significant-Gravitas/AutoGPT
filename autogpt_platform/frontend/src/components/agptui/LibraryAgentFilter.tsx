@@ -1,5 +1,4 @@
-import { GraphMeta, LibraryAgentFilterEnum } from "@/lib/autogpt-server-api";
-import { Dispatch, SetStateAction } from "react";
+import { LibraryAgentFilterEnum } from "@/lib/autogpt-server-api";
 import {
   Select,
   SelectContent,
@@ -10,19 +9,17 @@ import {
 } from "../ui/select";
 import { Filter } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useLibraryPageContext } from "./providers/LibraryAgentProvider";
 
-const LibraryAgentFilter = ({
-  setAgents,
-  setAgentLoading,
-}: {
-  setAgents: Dispatch<SetStateAction<GraphMeta[]>>;
-  setAgentLoading: Dispatch<SetStateAction<boolean>>;
-}) => {
+const LibraryAgentFilter = ({}: {}) => {
   const api = useBackendAPI();
+  const { setAgentLoading, setAgents, setLibraryFilter, searchTerm } =
+    useLibraryPageContext();
   const handleSortChange = async (value: LibraryAgentFilterEnum) => {
+    setLibraryFilter(value);
     setAgentLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    let response = await api.librarySearchAgent("", value, undefined);
+    let response = await api.librarySearchAgent(searchTerm, value, undefined);
     setAgents(response.agents);
     setAgentLoading(false);
   };

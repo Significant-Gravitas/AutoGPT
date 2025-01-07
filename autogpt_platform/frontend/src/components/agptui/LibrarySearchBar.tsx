@@ -1,28 +1,25 @@
 "use client";
 import { Search, X } from "lucide-react";
 import { Input } from "../ui/input";
-import { Dispatch, SetStateAction, useRef, useState, useCallback } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GraphMeta } from "@/lib/autogpt-server-api";
 import debounce from "lodash/debounce";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useLibraryPageContext } from "./providers/LibraryAgentProvider";
 
-export const LibrarySearchBar = ({
-  setAgents,
-  setAgentLoading,
-}: {
-  setAgents: Dispatch<SetStateAction<GraphMeta[]>>;
-  setAgentLoading: Dispatch<SetStateAction<boolean>>;
-}) => {
+export const LibrarySearchBar = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isFocused, setIsFocused] = useState(false);
   const api = useBackendAPI();
+  const { setAgentLoading, setAgents, libraryFilter, setSearchTerm } =
+    useLibraryPageContext();
 
-  const debouncedSearch = debounce(async (searchTerm: string) => {
+  const debouncedSearch = debounce(async (value: string) => {
     try {
       setAgentLoading(true);
+      setSearchTerm(value);
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const response = await api.librarySearchAgent(searchTerm);
+      const response = await api.librarySearchAgent(value, libraryFilter);
       setAgents(response.agents);
       setAgentLoading(false);
     } catch (error) {
