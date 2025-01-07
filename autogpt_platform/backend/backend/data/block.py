@@ -61,6 +61,9 @@ class BlockCategory(Enum):
     HARDWARE = "Block that interacts with hardware."
     AGENT = "Block that interacts with other agents."
     CRM = "Block that interacts with CRM services."
+    SAFETY = (
+        "Block that provides AI safety mechanisms such as detecting harmful content"
+    )
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
