@@ -104,7 +104,7 @@ async def get_library_agents(
 async def search_library_agents(
     user_id: str,
     search_term: str,
-    sort_by: typing.Literal["most_recent", "highest_runtime", "most_runs", "alphabetical", "last_modified"],
+    sort_by: backend.server.v2.library.model.LibraryAgentFilter,
     limit: int = 20,
     offset: int = 0,
 ) -> List[backend.server.v2.library.model.LibraryAgent]:
@@ -115,17 +115,6 @@ async def search_library_agents(
     logger.debug(f"Searching library agents for user {user_id} with term '{search_term}', limit {limit} offset {offset}")
 
     try:
-        # Get sort field
-        sort_order = "desc" if sort_by in ["most_recent", "highest_runtime", "most_runs", "last_modified"] else "asc"
-
-        sort_field = {
-            "most_recent": "createdAt",
-            "last_modified": "updatedAt",
-            "highest_runtime": "totalRuntime",
-            "most_runs": "runCount",
-            "alphabetical": "name"
-        }.get(sort_by, "updatedAt")
-
         # Get user created agents matching search
         user_created = await prisma.models.AgentGraph.prisma().find_many(
             where=prisma.types.AgentGraphWhereInput(
@@ -137,26 +126,45 @@ async def search_library_agents(
                 ]
             ),
             include=backend.data.includes.AGENT_GRAPH_INCLUDE,
-            order={sort_field: sort_order},
             skip=offset,
             take=limit,
         )
 
         # Get library agents matching search
-        library_agents = await prisma.models.UserAgent.prisma().find_many(
-            where=prisma.types.UserAgentWhereInput(
-                userId=user_id,
-                isDeleted=False,
-                isArchived=False,
-                Agent={
-                    "is": {
-                        "OR": [
-                            {"name": {"contains": search_term, "mode": "insensitive"}},
-                            {"description": {"contains": search_term, "mode": "insensitive"}}
-                        ]
-                    }
+        # Only applying filters on UserAgent table
+        order_by : prisma.types.UserAgentOrderByInput = {"updatedAt": "desc"}
+        where = prisma.types.UserAgentWhereInput(
+            userId=user_id,
+            isDeleted=False,
+            isArchived=False,
+            Agent={
+                "is": {
+                    "OR": [
+                        {"name": {"contains": search_term, "mode": "insensitive"}},
+                        {"description": {"contains": search_term, "mode": "insensitive"}}
+                    ]
                 }
-            ),
+            }
+        )
+
+
+        if sort_by == backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT:
+            order_by = {"updatedAt": "desc"}
+
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.CREATED_AT:
+            order_by = {"createdAt": "desc"}
+
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_FAVOURITE:
+            where["isFavorite"] = True
+            order_by = {"updatedAt": "desc"}
+
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_CREATED_BY_USER:
+            where["isCreatedByUser"] = True
+            order_by = {"updatedAt": "desc"}
+
+
+        library_agents = await prisma.models.UserAgent.prisma().find_many(
+            where=where,
             include={
                 "Agent": {
                     "include": {
@@ -172,6 +180,7 @@ async def search_library_agents(
                 }
             },
             skip=offset,
+            order = order_by,
             take=limit,
         )
 

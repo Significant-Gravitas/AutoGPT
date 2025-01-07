@@ -18,7 +18,7 @@ integration_creds_manager = (
     backend.integrations.creds_manager.IntegrationCredentialsManager()
 )
 
-
+# ✅
 @router.get(
     "/agents",
     tags=["library", "private"],
@@ -76,7 +76,7 @@ async def search_library_agents(
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
     search_term: str = fastapi.Query(..., description="Search term to filter agents"),
-    sort_by: typing.Literal["most_recent", "highest_runtime", "most_runs", "alphabetical", "last_modified"] = fastapi.Query("most_recent", description="Sort results by criteria"),
+    sort_by: backend.server.v2.library.model.LibraryAgentFilter = fastapi.Query(backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT, description="Sort results by criteria"),
     pagination_token: str | None = fastapi.Query(None)
 ) -> dict[str, typing.Any]:
     """

@@ -11,7 +11,7 @@ export const LibraryAgentCard = ({ id, name, isCreatedByUser }: GraphMeta) => {
       )}
     >
       <div className="flex flex-1">
-        <h3 className="font-inter flex-1 text-[18px] font-semibold leading-4">
+        <h3 className="flex-1 font-inter text-[18px] font-semibold leading-4">
           {name}
         </h3>
         {/* <span
@@ -29,17 +29,19 @@ export const LibraryAgentCard = ({ id, name, isCreatedByUser }: GraphMeta) => {
         <div className="mt-6 flex gap-3">
           <Link
             href={`/agents/${id}`}
-            className="font-inter text-[14px] font-[700] leading-[24px] text-neutral-800 hover:underline"
+            className="font-inter text-[14px] font-[700] leading-[24px] text-neutral-800 hover:cursor-pointer hover:underline"
           >
             See runs
           </Link>
 
-          <Link
-            href={`/build?flowID=${id}`}
-            className="font-inter text-[14px] font-[700] leading-[24px] text-neutral-800 hover:underline"
-          >
-            Open in builder
-          </Link>
+          {isCreatedByUser && (
+            <Link
+              href={`/build?flowID=${id}`}
+              className="font-inter text-[14px] font-[700] leading-[24px] text-neutral-800 hover:underline"
+            >
+              Open in builder
+            </Link>
+          )}
         </div>
         {/* {output && (
           <div className="h-[24px] w-fit rounded-[45px] bg-neutral-600 px-[9px] py-[2px] font-sans text-[12px] font-[700] text-neutral-50">

@@ -1,4 +1,4 @@
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphMeta, LibraryAgentFilterEnum } from "@/lib/autogpt-server-api";
 import { Dispatch, SetStateAction } from "react";
 import {
   Select,
@@ -11,13 +11,6 @@ import {
 import { Filter } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-type SortValue =
-  | "most_recent"
-  | "highest_runtime"
-  | "most_runs"
-  | "alphabetical"
-  | "last_modified";
-
 const LibraryAgentFilter = ({
   setAgents,
   setAgentLoading,
@@ -26,10 +19,10 @@ const LibraryAgentFilter = ({
   setAgentLoading: Dispatch<SetStateAction<boolean>>;
 }) => {
   const api = useBackendAPI();
-  const handleSortChange = async (value: SortValue) => {
+  const handleSortChange = async (value: LibraryAgentFilterEnum) => {
     setAgentLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    let response = await api.librarySearchAgent("", undefined, value);
+    let response = await api.librarySearchAgent("", value, undefined);
     setAgents(response.agents);
     setAgentLoading(false);
   };
@@ -41,7 +34,7 @@ const LibraryAgentFilter = ({
         <SelectTrigger className="ml-1 w-fit space-x-1 border-none pl-2 shadow-md">
           <Filter className="h-4 w-4 sm:hidden" />
           <SelectValue
-            placeholder="most Recent"
+            placeholder="Last Modified"
             className={
               "font-sans text-[14px] font-[500] leading-[24px] text-neutral-600"
             }
@@ -53,11 +46,18 @@ const LibraryAgentFilter = ({
               "font-sans text-[14px] font-[500] leading-[24px] text-neutral-600"
             }
           >
-            <SelectItem value="most_recent">Most Recent</SelectItem>
-            <SelectItem value="highest_runtime">Highest Runtime</SelectItem>
-            <SelectItem value="most_runs">Most Runs</SelectItem>
-            <SelectItem value="alphabetical">Alphabetical</SelectItem>
-            <SelectItem value="last_modified">Last Modified</SelectItem>
+            <SelectItem value={LibraryAgentFilterEnum.CREATED_AT}>
+              Creation Date
+            </SelectItem>
+            <SelectItem value={LibraryAgentFilterEnum.UPDATED_AT}>
+              Last Modified
+            </SelectItem>
+            <SelectItem value={LibraryAgentFilterEnum.IS_FAVOURITE}>
+              Favorites
+            </SelectItem>
+            <SelectItem value={LibraryAgentFilterEnum.IS_CREATED_BY_USER}>
+              Created By Me
+            </SelectItem>
           </SelectGroup>
         </SelectContent>
       </Select>

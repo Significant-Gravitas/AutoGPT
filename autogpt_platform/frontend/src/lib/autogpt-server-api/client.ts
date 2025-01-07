@@ -456,19 +456,22 @@ export default class BackendAPI {
 
   async librarySearchAgent(
     search: string,
-    paginationToken?: string,
-    filter?:
-      | "most_recent"
-      | "highest_runtime"
-      | "most_runs"
-      | "alphabetical"
-      | "last_modified",
+    filter?: LibraryAgentFilterEnum,
+    token?: string,
   ): Promise<{ agents: GraphMeta[]; next_token: string | null }> {
-    return this._get("/library/agents/search", {
+    const queryParams: Record<string, any> = {
       search_term: search,
-      ...(paginationToken && { pagination_token: paginationToken }),
-      ...(filter && { sort_by: filter }),
-    });
+    };
+
+    if (filter) {
+      queryParams.sort_by = filter;
+    }
+
+    if (token) {
+      queryParams.pagination_token = token;
+    }
+
+    return this._get("/library/agents/search", queryParams);
   }
 
   async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
