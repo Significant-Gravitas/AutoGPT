@@ -1,9 +1,8 @@
 import logging
 from typing import TYPE_CHECKING, Callable, Optional, cast
 
-from backend.data.block import BlockWebhookConfig, get_block
+from backend.data.block import BlockSchema, BlockWebhookConfig, get_block
 from backend.data.graph import set_node_webhook
-from backend.data.model import CREDENTIALS_FIELD_NAME
 from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
 
 if TYPE_CHECKING:
@@ -30,14 +29,28 @@ async def on_graph_activate(
     # Compare nodes in new_graph_version with previous_graph_version
     updated_nodes = []
     for new_node in graph.nodes:
+        block = get_block(new_node.block_id)
+        if not block:
+            raise ValueError(
+                f"Node #{new_node.id} is instance of unknown block #{new_node.block_id}"
+            )
+        block_input_schema = cast(BlockSchema, block.input_schema)
+
         node_credentials = None
-        if creds_meta := new_node.input_default.get(CREDENTIALS_FIELD_NAME):
-            node_credentials = get_credentials(creds_meta["id"])
-            if not node_credentials:
-                raise ValueError(
-                    f"Node #{new_node.id} updated with non-existent "
-                    f"credentials #{node_credentials}"
+        if (
+            # Webhook-triggered blocks are only allowed to have 1 credentials input
+            (
+                creds_field_name := next(
+                    iter(block_input_schema.get_credentials_fields()), None
                 )
+            )
+            and (creds_meta := new_node.input_default.get(creds_field_name))
+            and not (node_credentials := get_credentials(creds_meta["id"]))
+        ):
+            raise ValueError(
+                f"Node #{new_node.id} input '{creds_field_name}' updated with "
+                f"non-existent credentials #{creds_meta['id']}"
+            )
 
         updated_node = await on_node_activate(
             graph.user_id, new_node, credentials=node_credentials
@@ -62,14 +75,28 @@ async def on_graph_deactivate(
     """
     updated_nodes = []
     for node in graph.nodes:
+        block = get_block(node.block_id)
+        if not block:
+            raise ValueError(
+                f"Node #{node.id} is instance of unknown block #{node.block_id}"
+            )
+        block_input_schema = cast(BlockSchema, block.input_schema)
+
         node_credentials = None
-        if creds_meta := node.input_default.get(CREDENTIALS_FIELD_NAME):
-            node_credentials = get_credentials(creds_meta["id"])
-            if not node_credentials:
-                logger.error(
-                    f"Node #{node.id} referenced non-existent "
-                    f"credentials #{creds_meta['id']}"
+        if (
+            # Webhook-triggered blocks are only allowed to have 1 credentials input
+            (
+                creds_field_name := next(
+                    iter(block_input_schema.get_credentials_fields()), None
                 )
+            )
+            and (creds_meta := node.input_default.get(creds_field_name))
+            and not (node_credentials := get_credentials(creds_meta["id"]))
+        ):
+            logger.error(
+                f"Node #{node.id} input '{creds_field_name}' referenced non-existent "
+                f"credentials #{creds_meta['id']}"
+            )
 
         updated_node = await on_node_deactivate(node, credentials=node_credentials)
         updated_nodes.append(updated_node)
@@ -119,14 +146,17 @@ async def on_node_activate(
     else:
         resource = ""  # not relevant for manual webhooks
 
-    needs_credentials = CREDENTIALS_FIELD_NAME in block.input_schema.model_fields
+    block_input_schema = cast(BlockSchema, block.input_schema)
+    credentials_field_name = next(iter(block_input_schema.get_credentials_fields()), "")
     credentials_meta = (
-        node.input_default.get(CREDENTIALS_FIELD_NAME) if needs_credentials else None
+        node.input_default.get(credentials_field_name)
+        if credentials_field_name
+        else None
     )
     event_filter_input_name = block.webhook_config.event_filter_input
     has_everything_for_webhook = (
         resource is not None
-        and (credentials_meta or not needs_credentials)
+        and (credentials_meta or not credentials_field_name)
         and (
             not event_filter_input_name
             or (
@@ -230,7 +260,7 @@ async def on_node_deactivate(
         )
         await webhooks_manager.prune_webhook_if_dangling(webhook.id, credentials)
         if (
-            CREDENTIALS_FIELD_NAME in block.input_schema.model_fields
+            cast(BlockSchema, block.input_schema).get_credentials_fields()
             and not credentials
         ):
             logger.warning(

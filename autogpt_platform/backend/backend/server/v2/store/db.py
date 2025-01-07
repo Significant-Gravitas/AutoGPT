@@ -1,14 +1,18 @@
 import logging
 import random
 from datetime import datetime
+from typing import Optional
 
+import fastapi
 import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
 
+import backend.data.graph
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
+from backend.data.graph import GraphModel
 
 logger = logging.getLogger(__name__)
 
@@ -785,4 +789,46 @@ async def get_my_agents(
         logger.error(f"Error getting my agents: {str(e)}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch my agents"
+        ) from e
+
+
+async def get_agent(
+    store_listing_version_id: str, version_id: Optional[int]
+) -> GraphModel:
+    """Get agent using the version ID and store listing version ID."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id}, include={"Agent": True}
+            )
+        )
+
+        if not store_listing_version or not store_listing_version.Agent:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing version {store_listing_version_id} not found",
+            )
+
+        agent = store_listing_version.Agent
+
+        graph = await backend.data.graph.get_graph(
+            agent.id, agent.version, template=True
+        )
+
+        if not graph:
+            raise fastapi.HTTPException(
+                status_code=404, detail=f"Agent {agent.id} not found"
+            )
+
+        graph.version = 1
+        graph.is_template = False
+        graph.is_active = True
+        delattr(graph, "user_id")
+
+        return graph
+
+    except Exception as e:
+        logger.error(f"Error getting agent: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch agent"
         ) from e
