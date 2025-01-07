@@ -53,7 +53,7 @@ aiml_credentials = APIKeyCredentials(
     id="aad82a89-9794-4ebb-977f-d736aa5260a3",
     provider="aiml",
     api_key=SecretStr(settings.secrets.aiml_api_key),
-    title="Use Credits for AI/ML",
+    title="Use Credits for AI/ML API",
     expires_at=None,
 )
 anthropic_credentials = APIKeyCredentials(
