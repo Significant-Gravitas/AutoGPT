@@ -629,23 +629,18 @@ async def __create_graph(tx, graph: Graph, user_id: str):
             "isTemplate": graph.is_template,
             "isActive": graph.is_active,
             "userId": user_id,
+            "AgentNodes": {
+                "create": [
+                    {
+                        "id": node.id,
+                        "agentBlockId": node.block_id,
+                        "constantInput": json.dumps(node.input_default),
+                        "metadata": json.dumps(node.metadata),
+                    }
+                    for node in graph.nodes
+                ]
+            },
         }
-    )
-
-    await asyncio.gather(
-        *[
-            AgentNode.prisma(tx).create(
-                {
-                    "id": node.id,
-                    "agentBlockId": node.block_id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "constantInput": json.dumps(node.input_default),
-                    "metadata": json.dumps(node.metadata),
-                }
-            )
-            for node in graph.nodes
-        ]
     )
 
     await asyncio.gather(
