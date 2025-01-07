@@ -306,7 +306,7 @@ class UserCredit(UserCreditBase):
             raise ValueError("Either session_id or user_id must be provided")
 
         # Retrieve CreditTransaction
-        credit_transaction = await CreditTransaction.prisma().find_first_or_raise(
+        credit_transaction = await CreditTransaction.prisma().find_first(
             where={
                 "OR": [
                     (
@@ -315,13 +315,14 @@ class UserCredit(UserCreditBase):
                         else {"transactionKey": ""}
                     ),
                     {"userId": user_id} if user_id is not None else {"userId": ""},
-                ]
+                ],
+                "isActive": False,
             },
             order={"createdAt": "desc"},
         )
 
         # This can be called multiple times for one id, so ignore if already fulfilled
-        if credit_transaction.isActive:
+        if not credit_transaction:
             return
 
         # Retrieve the Checkout Session from the API
@@ -366,8 +367,7 @@ class DisabledUserCredit(UserCreditBase):
 
 
 def get_user_credit_model() -> UserCreditBase:
-    # return UserCredit()
-    if settings.config.enable_credit.lower() == "true":
+    if settings.config.enable_credit:
         return UserCredit()
     else:
         return DisabledUserCredit()

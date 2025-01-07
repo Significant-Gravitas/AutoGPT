@@ -81,8 +81,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
-    enable_credit: str = Field(
-        default="false",
+    enable_credit: bool = Field(
+        default=False,
         description="If user credit system is enabled or not",
     )
     num_user_credits_refill: int = Field(
