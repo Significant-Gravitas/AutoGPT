@@ -15,7 +15,7 @@ user_credit = BetaUserCredit(REFILL_VALUE)
 
 @pytest.mark.asyncio(scope="session")
 async def test_block_credit_usage(server: SpinTestServer):
-    current_credit = await user_credit.get_balance(DEFAULT_USER_ID)
+    current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
     spending_amount_1 = await user_credit.spend_credits(
         DEFAULT_USER_ID,
@@ -42,17 +42,17 @@ async def test_block_credit_usage(server: SpinTestServer):
     )
     assert spending_amount_2 == 0
 
-    new_credit = await user_credit.get_balance(DEFAULT_USER_ID)
+    new_credit = await user_credit.get_credits(DEFAULT_USER_ID)
     assert new_credit == current_credit - spending_amount_1 - spending_amount_2
 
 
 @pytest.mark.asyncio(scope="session")
 async def test_block_credit_top_up(server: SpinTestServer):
-    current_credit = await user_credit.get_balance(DEFAULT_USER_ID)
+    current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
     await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
 
-    new_credit = await user_credit.get_balance(DEFAULT_USER_ID)
+    new_credit = await user_credit.get_credits(DEFAULT_USER_ID)
     assert new_credit == current_credit + 100
 
 
@@ -62,17 +62,17 @@ async def test_block_credit_reset(server: SpinTestServer):
 
     # Track the balance of the old month and the current month.
     user_credit.time_now = lambda: old_month
-    old_month_credit = await user_credit.get_balance(DEFAULT_USER_ID)
+    old_month_credit = await user_credit.get_credits(DEFAULT_USER_ID)
     user_credit.time_now = lambda: datetime.now()
-    cur_month_credit = await user_credit.get_balance(DEFAULT_USER_ID)
+    cur_month_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
     # Cur month credit is updated upon top-up.
     await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
-    assert await user_credit.get_balance(DEFAULT_USER_ID) == cur_month_credit + 100
+    assert await user_credit.get_credits(DEFAULT_USER_ID) == cur_month_credit + 100
 
     # Old month is unaffected by the top-up.
     user_credit.time_now = lambda: old_month
-    assert await user_credit.get_balance(DEFAULT_USER_ID) == old_month_credit
+    assert await user_credit.get_credits(DEFAULT_USER_ID) == old_month_credit
 
 
 @pytest.mark.asyncio(scope="session")
@@ -90,5 +90,5 @@ async def test_credit_refill(server: SpinTestServer):
     )
     user_credit.time_now = lambda: datetime(2022, 2, 15)
 
-    balance = await user_credit.get_balance(DEFAULT_USER_ID)
+    balance = await user_credit.get_credits(DEFAULT_USER_ID)
     assert balance == REFILL_VALUE

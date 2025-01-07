@@ -136,7 +136,7 @@ async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
     # Credits can go negative, so ensure it's at least 0 for user to see.
-    return {"credits": max(await _user_credit_model.get_balance(user_id), 0)}
+    return {"credits": max(await _user_credit_model.get_credits(user_id), 0)}
 
 
 @v1_router.post(

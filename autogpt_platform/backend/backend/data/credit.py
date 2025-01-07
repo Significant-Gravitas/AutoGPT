@@ -21,7 +21,7 @@ stripe.api_key = settings.secrets.stripe_api_key
 
 class UserCreditBase(ABC):
     @abstractmethod
-    async def get_balance(self, user_id: str) -> int:
+    async def get_credits(self, user_id: str) -> int:
         """
         Get the current credits for the user.
 
@@ -100,7 +100,7 @@ class UserCreditBase(ABC):
     # Any modifications to the transaction table should only be done through these methods #
 
     @staticmethod
-    async def _get_balance(user_id: str, end_time: datetime = datetime.max) -> int:
+    async def _get_credits(user_id: str, end_time: datetime = datetime.max) -> int:
         # Find the latest captured balance snapshot.
         snapshot = await CreditTransaction.prisma().find_first(
             where={
@@ -142,7 +142,7 @@ class UserCreditBase(ABC):
             return
 
         async with db.locked_transaction(f"usr_trx_{user_id}"):
-            user_balance = await self._get_balance(user_id)
+            user_balance = await self._get_credits(user_id)
 
             await CreditTransaction.prisma().update(
                 where={
@@ -171,7 +171,7 @@ class UserCreditBase(ABC):
     ):
         async with db.locked_transaction(f"usr_trx_{user_id}"):
             # Get latest balance snapshot
-            user_balance = await self._get_balance(user_id)
+            user_balance = await self._get_credits(user_id)
             if amount < 0 and user_balance < abs(amount):
                 raise ValueError(
                     f"Insufficient balance for user {user_id}, balance: {user_balance}, amount: {amount}"
@@ -376,8 +376,8 @@ class UserCredit(UserCreditBase):
                 metadata=Json({"checkout_session": checkout_session}),
             )
 
-    async def get_balance(self, user_id: str) -> int:
-        return await self._get_balance(user_id)
+    async def get_credits(self, user_id: str) -> int:
+        return await self._get_credits(user_id)
 
 
 class BetaUserCredit(UserCredit):
@@ -385,7 +385,7 @@ class BetaUserCredit(UserCredit):
     def __init__(self, num_user_credits_refill: int):
         self.num_user_credits_refill = num_user_credits_refill
 
-    async def get_balance(self, user_id: str) -> int:
+    async def get_credits(self, user_id: str) -> int:
         cur_time = self.time_now()
         cur_month = cur_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         nxt_month = (
@@ -394,8 +394,8 @@ class BetaUserCredit(UserCredit):
             else cur_month.replace(year=cur_month.year + 1, month=1)
         )
 
-        curr_month_balance = await self._get_balance(user_id, nxt_month)
-        prev_month_balance = await self._get_balance(user_id, cur_month)
+        curr_month_balance = await self._get_credits(user_id, nxt_month)
+        prev_month_balance = await self._get_credits(user_id, cur_month)
         balance = curr_month_balance - prev_month_balance
         if balance != 0:
             return balance
@@ -414,7 +414,7 @@ class BetaUserCredit(UserCredit):
 
 
 class DisabledUserCredit(UserCreditBase):
-    async def get_balance(self, *args, **kwargs) -> int:
+    async def get_credits(self, *args, **kwargs) -> int:
         return 0
 
     async def spend_credits(self, *args, **kwargs) -> int:
