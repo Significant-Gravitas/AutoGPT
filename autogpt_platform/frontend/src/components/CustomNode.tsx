@@ -848,8 +848,10 @@ export function CustomNode({
                           data.status === "COMPLETED",
                         "border-yellow-600 bg-yellow-600 text-white":
                           data.status === "RUNNING",
-                        "border-red-600 bg-red-600 text-white":
-                          data.status === "FAILED",
+                        "border-red-600 bg-red-600 text-white": [
+                          "FAILED",
+                          "TERMINATED",
+                        ].includes(data.status || ""),
                         "border-blue-600 bg-blue-600 text-white":
                           data.status === "QUEUED",
                         "border-gray-600 bg-gray-600 font-black":
