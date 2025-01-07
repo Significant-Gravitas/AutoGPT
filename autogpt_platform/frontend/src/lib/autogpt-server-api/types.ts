@@ -196,7 +196,7 @@ export type GraphExecution = {
   ended_at: number;
   duration: number;
   total_run_time: number;
-  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   graph_id: string;
   graph_version: number;
 };
@@ -246,7 +246,13 @@ export type NodeExecutionResult = {
   node_exec_id: string;
   node_id: string;
   block_id: string;
-  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  status:
+    | "INCOMPLETE"
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED";
   input_data: { [key: string]: any };
   output_data: { [key: string]: Array<any> };
   add_time: Date;

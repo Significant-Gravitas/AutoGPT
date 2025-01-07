@@ -270,9 +270,9 @@ async def update_graph_execution_start_time(graph_exec_id: str):
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
+    status: ExecutionStatus,
     stats: dict[str, Any],
 ) -> ExecutionResult:
-    status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
