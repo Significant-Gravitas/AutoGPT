@@ -1,32 +1,32 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
+import stripe
 from prisma import Json
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction
-from prisma.types import CreditTransactionCreateInput
+from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
 
 from backend.data import db
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
-from backend.util.settings import Config
+from backend.data.user import get_user_by_id
+from backend.util.settings import Settings
 
-config = Config()
+settings = Settings()
+stripe.api_key = settings.secrets.stripe_api_key
 
 
 class UserCreditBase(ABC):
-    def __init__(self, num_user_credits_refill: int):
-        self.num_user_credits_refill = num_user_credits_refill
-
     @abstractmethod
     async def get_balance(self, user_id: str) -> int:
         """
-        Get the current credit for the user.
+        Get the current credits for the user.
 
         Returns:
-            int: The current credit for the user.
+            int: The current credits for the user.
         """
         pass
 
@@ -57,7 +57,7 @@ class UserCreditBase(ABC):
     @abstractmethod
     async def top_up_credits(self, user_id: str, amount: int):
         """
-        Top up the credits for the user.
+        Top up the credits for the user immediately.
 
         Args:
             user_id (str): The user ID.
@@ -65,9 +65,39 @@ class UserCreditBase(ABC):
         """
         pass
 
+    @abstractmethod
+    async def top_up_intent(self, user_id: str, amount: int) -> str:
+        """
+        Create a payment intent to top up the credits for the user.
+
+        Args:
+            user_id (str): The user ID.
+            amount (int): The amount of credits to top up.
+
+        Returns:
+            str: The redirect url to the payment page.
+        """
+        pass
+
+    @abstractmethod
+    async def fulfill_checkout(
+        self, *, session_id: str | None = None, user_id: str | None = None
+    ):
+        """
+        Fulfill the Stripe checkout session.
+
+        Args:
+            session_id (str | None): The checkout session ID. Will try to fulfill most recent if None.
+            user_id (str | None): The user ID must be provided if session_id is None.
+        """
+        pass
+
     @staticmethod
     def time_now():
         return datetime.now(timezone.utc)
+    
+    # ====== Transaction Helper Methods ====== #
+    # Any modifications to the transaction table should only be done through these methods #
 
     @staticmethod
     async def _get_balance(user_id: str, end_time: datetime = datetime.max) -> int:
@@ -100,11 +130,41 @@ class UserCreditBase(ABC):
 
         return snapshot_balance + transaction_balance
 
+    async def _enable_transaction(
+        self, transaction_key: str, user_id: str, metadata: Json
+    ):
+
+        transaction = await CreditTransaction.prisma().find_first_or_raise(
+            where={"transactionKey": transaction_key, "userId": user_id}
+        )
+
+        if transaction.isActive:
+            return
+
+        async with db.locked_transaction(f"usr_trx_{user_id}"):
+            user_balance = await self._get_balance(user_id)
+
+            await CreditTransaction.prisma().update(
+                where={
+                    "creditTransactionIdentifier": {
+                        "transactionKey": transaction_key,
+                        "userId": user_id,
+                    }
+                },
+                data={
+                    "isActive": True,
+                    "runningBalance": user_balance + transaction.amount,
+                    "createdAt": self.time_now(),
+                    "metadata": metadata,
+                },
+            )
+
     async def _add_transaction(
         self,
         user_id: str,
         amount: int,
         transaction_type: CreditTransactionType,
+        is_active: bool = True,
         transaction_key: str | None = None,
         block_id: str | None = None,
         metadata: Json = Json({}),
@@ -125,6 +185,7 @@ class UserCreditBase(ABC):
                 "type": transaction_type,
                 "blockId": block_id,
                 "metadata": metadata,
+                "isActive": is_active,
                 "createdAt": self.time_now(),
             }
             if transaction_key:
@@ -173,8 +234,8 @@ class UserCredit(UserCreditBase):
     ) -> bool:
         """
         Filter rules:
-          - If costFilter is an object, then check if costFilter is the subset of inputValues
-          - Otherwise, check if costFilter is equal to inputValues.
+          - If cost_filter is an object, then check if cost_filter is the subset of input_data
+          - Otherwise, check if cost_filter is equal to input_data.
           - Undefined, null, and empty string are considered as equal.
         """
         if not isinstance(cost_filter, dict) or not isinstance(input_data, dict):
@@ -220,17 +281,109 @@ class UserCredit(UserCreditBase):
         return cost
 
     async def top_up_credits(self, user_id: str, amount: int):
+        if amount < 0:
+            raise ValueError(f"Top up amount must not be negative: {amount}")
+
         await self._add_transaction(
             user_id=user_id,
             amount=amount,
             transaction_type=CreditTransactionType.TOP_UP,
         )
 
+    @staticmethod
+    async def _get_stripe_customer_id(user_id: str) -> str:
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise ValueError(f"User not found: {user_id}")
+
+        if not user.stripeCustomerId:
+            raise ValueError(f"User {user_id} does not have a stripe customer id")
+
+        return user.stripeCustomerId
+
+    async def top_up_intent(self, user_id: str, amount: int) -> str:
+        # Create checkout session
+        # https://docs.stripe.com/checkout/quickstart?client=react
+        # unit_amount param is always in the smallest currency unit (so cents for usd)
+        # which is equal to amount of credits
+        checkout_session = stripe.checkout.Session.create(
+            customer=await self._get_stripe_customer_id(user_id),
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {
+                            "name": "AutoGPT Platform Credits",
+                        },
+                        "unit_amount": amount,
+                    },
+                    "quantity": 1,
+                }
+            ],
+            mode="payment",
+            success_url=settings.config.platform_base_url
+            + "/store/credits?topup=success",
+            cancel_url=settings.config.platform_base_url
+            + "/store/credits?topup=cancel",
+        )
+
+        # Create pending transaction
+        await self._add_transaction(
+            user_id=user_id,
+            amount=amount,
+            transaction_type=CreditTransactionType.TOP_UP,
+            transaction_key=checkout_session.id,
+            is_active=False,
+            metadata=Json({"checkout_session": checkout_session}),
+        )
+
+        return checkout_session.url or ""
+
+    # https://docs.stripe.com/checkout/fulfillment
+    async def fulfill_checkout(
+        self, *, session_id: str | None = None, user_id: str | None = None
+    ):
+        if (not session_id and not user_id) or (session_id and user_id):
+            raise ValueError("Either session_id or user_id must be provided")
+
+        # Retrieve CreditTransaction
+        find_filter: CreditTransactionWhereInput = {
+            "type": CreditTransactionType.TOP_UP,
+            "isActive": False,
+        }
+        if session_id:
+            find_filter["transactionKey"] = session_id
+        if user_id:
+            find_filter["userId"] = user_id
+
+        # Find the most recent inactive top-up transaction
+        credit_transaction = await CreditTransaction.prisma().find_first_or_raise(
+            where=find_filter,
+            order={"createdAt": "desc"},
+        )
+
+        # Retrieve the Checkout Session from the API
+        checkout_session = stripe.checkout.Session.retrieve(
+            credit_transaction.transactionKey
+        )
+
+        # Check the Checkout Session's payment_status property
+        # to determine if fulfillment should be performed
+        if checkout_session.payment_status in ["paid", "no_payment_required"]:
+            await self._enable_transaction(
+                transaction_key=credit_transaction.transactionKey,
+                user_id=credit_transaction.userId,
+                metadata=Json({"checkout_session": checkout_session}),
+            )
+
     async def get_balance(self, user_id: str) -> int:
         return await self._get_balance(user_id)
 
 
 class BetaUserCredit(UserCredit):
+
+    def __init__(self, num_user_credits_refill: int):
+        self.num_user_credits_refill = num_user_credits_refill
 
     async def get_balance(self, user_id: str) -> int:
         cur_time = self.time_now()
@@ -270,15 +423,21 @@ class DisabledUserCredit(UserCreditBase):
     async def top_up_credits(self, *args, **kwargs):
         pass
 
+    async def top_up_intent(self, *args, **kwargs) -> str:
+        return ""
+
+    async def fulfill_checkout(self, *args, **kwargs):
+        pass
+
 
 def get_user_credit_model() -> UserCreditBase:
-    if not config.enable_credit:
-        return DisabledUserCredit(0)
+    if not settings.config.enable_credit:
+        return DisabledUserCredit()
 
-    if config.enable_beta_monthly_credit:
-        return BetaUserCredit(config.num_user_credits_refill)
+    if settings.config.enable_beta_monthly_credit:
+        return BetaUserCredit(settings.config.num_user_credits_refill)
 
-    return UserCredit(config.num_user_credits_refill)
+    return UserCredit()
 
 
 def get_block_costs() -> dict[str, list[BlockCost]]:
