@@ -103,11 +103,11 @@ class UserCreditBase(ABC):
         """
         Returns the current balance of the user & the latest balance snapshot time.
         """
-        current_time = self.time_now()
+        top_time = self.time_now()
         snapshot = await CreditTransaction.prisma().find_first(
             where={
                 "userId": user_id,
-                "createdAt": {"lte": current_time},
+                "createdAt": {"lte": top_time},
                 "isActive": True,
                 "runningBalance": {"not": None},  # type: ignore
             },
@@ -116,13 +116,14 @@ class UserCreditBase(ABC):
         if snapshot:
             return snapshot.runningBalance or 0, snapshot.createdAt
 
-        # Manually calculate the balance if no snapshot is found (old users).
+        # No snapshot: Manually calculate balance using current month's transactions.
+        low_time = top_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         transactions = await CreditTransaction.prisma().group_by(
             by=["userId"],
             sum={"amount": True},
             where={
                 "userId": user_id,
-                "createdAt": {"lte": current_time},
+                "createdAt": {"gte": low_time, "lte": top_time},
                 "isActive": True,
             },
         )
