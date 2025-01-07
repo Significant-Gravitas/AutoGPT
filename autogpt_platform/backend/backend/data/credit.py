@@ -5,7 +5,7 @@ import stripe
 from prisma import Json
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
-from prisma.models import CreditTransaction
+from prisma.models import CreditTransaction, User
 from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
 
 from backend.data import db
@@ -297,10 +297,14 @@ class UserCredit(UserCreditBase):
         if not user:
             raise ValueError(f"User not found: {user_id}")
 
-        if not user.stripeCustomerId:
-            raise ValueError(f"User {user_id} does not have a stripe customer id")
+        if user.stripeCustomerId:
+            return user.stripeCustomerId
 
-        return user.stripeCustomerId
+        customer = stripe.Customer.create(name=user.name or "", email=user.email)
+        await User.prisma().update(
+            where={"id": user_id}, data={"stripeCustomerId": customer.id}
+        )
+        return customer.id
 
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         # Create checkout session
@@ -393,8 +397,8 @@ class BetaUserCredit(UserCredit):
 
     async def get_credits(self, user_id: str) -> int:
         cur_time = self.time_now().date()
-        balance, snapshot = await self._get_credits(user_id)
-        if (snapshot.year, snapshot.month) == (cur_time.year, cur_time.month):
+        balance, snapshot_time = await self._get_credits(user_id)
+        if (snapshot_time.year, snapshot_time.month) == (cur_time.year, cur_time.month):
             return balance
 
         try:
