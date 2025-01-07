@@ -99,10 +99,10 @@ class GetRedditPostsBlock(Block):
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             description="This block fetches Reddit posts from a defined subreddit name.",
             categories={BlockCategory.SOCIAL},
-            # disabled=(
-            #     not settings.secrets.reddit_client_id
-            #     or not settings.secrets.reddit_client_secret
-            # ),
+            disabled=(
+                not settings.secrets.reddit_client_id
+                or not settings.secrets.reddit_client_secret
+            ),
             input_schema=GetRedditPostsBlock.Input,
             output_schema=GetRedditPostsBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -182,10 +182,10 @@ class PostRedditCommentBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=PostRedditCommentBlock.Input,
             output_schema=PostRedditCommentBlock.Output,
-            # disabled=(
-            #     not settings.secrets.reddit_client_id
-            #     or not settings.secrets.reddit_client_secret
-            # ),
+            disabled=(
+                not settings.secrets.reddit_client_id
+                or not settings.secrets.reddit_client_secret
+            ),
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
