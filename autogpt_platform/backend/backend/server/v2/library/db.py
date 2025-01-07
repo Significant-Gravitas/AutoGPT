@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import List
 
@@ -7,6 +8,7 @@ import prisma.types
 
 import backend.data.graph
 import backend.data.includes
+import backend.server.model
 import backend.server.v2.library.model
 import backend.server.v2.store.exceptions
 
@@ -162,4 +164,123 @@ async def add_agent_to_library(store_listing_version_id: str, user_id: str) -> N
         logger.error(f"Database error adding agent to library: {str(e)}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to add agent to library"
+        ) from e
+
+
+##############################################
+########### Presets DB Functions #############
+##############################################
+
+
+async def get_presets(
+    user_id: str, page: int, page_size: int
+) -> backend.server.v2.library.model.LibraryAgentPresetResponse:
+
+    try:
+        presets = await prisma.models.AgentPreset.prisma().find_many(
+            where={"userId": user_id},
+            skip=page * page_size,
+            take=page_size,
+        )
+
+        total_items = await prisma.models.AgentPreset.prisma().count(
+            where={"userId": user_id},
+        )
+        total_pages = (total_items + page_size - 1) // page_size
+
+        presets = [
+            backend.server.v2.library.model.LibraryAgentPreset.from_db(preset)
+            for preset in presets
+        ]
+
+        return backend.server.v2.library.model.LibraryAgentPresetResponse(
+            presets=presets,
+            pagination=backend.server.model.Pagination(
+                total_items=total_items,
+                total_pages=total_pages,
+                current_page=page,
+                page_size=page_size,
+            ),
+        )
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error getting presets: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch presets"
+        ) from e
+
+
+async def get_preset(
+    user_id: str, preset_id: str
+) -> backend.server.v2.library.model.LibraryAgentPreset | None:
+    try:
+        preset = await prisma.models.AgentPreset.prisma().find_unique(
+            where={"id": preset_id, "userId": user_id}
+        )
+        if not preset:
+            return None
+        return backend.server.v2.library.model.LibraryAgentPreset.from_db(preset)
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error getting preset: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch preset"
+        ) from e
+
+
+async def create_or_update_preset(
+    user_id: str,
+    preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+    preset_id: str | None = None,
+) -> backend.server.v2.library.model.LibraryAgentPreset:
+    try:
+        new_preset = await prisma.models.AgentPreset.prisma().upsert(
+            where={
+                "id": preset_id if preset_id else "",
+            },
+            data={
+                "create": prisma.types.AgentPresetCreateInput(
+                    userId=user_id,
+                    name=preset.name,
+                    description=preset.description,
+                    agentId=preset.agent_id,
+                    agentVersion=preset.agent_version,
+                    Agent=prisma.types.AgentGraphUpdateOneWithoutRelationsInput(
+                        connect=prisma.types.AgentGraphWhereUniqueInput(
+                            id=preset.agent_id,
+                            version=preset.agent_version,
+                        ),
+                    ),
+                    isActive=preset.is_active,
+                    InputPresets={
+                        "create": [
+                            {"name": name, "data": json.dumps(data)}
+                            for name, data in preset.inputs.items()
+                        ]
+                    },
+                ),
+                "update": prisma.types.AgentPresetUpdateInput(
+                    name=preset.name,
+                    description=preset.description,
+                    isActive=preset.is_active,
+                ),
+            },
+        )
+        return backend.server.v2.library.model.LibraryAgentPreset.from_db(new_preset)
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error creating preset: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to create preset"
+        ) from e
+
+
+async def delete_preset(user_id: str, preset_id: str) -> None:
+    try:
+        await prisma.models.AgentPreset.prisma().update(
+            where={"id": preset_id, "userId": user_id},
+            data={"isDeleted": True},
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error deleting preset: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to delete preset"
         ) from e

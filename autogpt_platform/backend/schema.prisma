@@ -106,6 +106,8 @@ model AgentPreset {
   UserAgents             UserAgent[]
   AgentExecution         AgentGraphExecution[]
 
+  isDeleted Boolean @default(false)
+
   @@index([userId])
 }
 

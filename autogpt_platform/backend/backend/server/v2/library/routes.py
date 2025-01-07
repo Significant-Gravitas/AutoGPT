@@ -121,3 +121,89 @@ async def add_agent_to_library(
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to add agent to library"
         )
+
+
+@router.get("/presets")
+async def get_presets(
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+    page: int = 1,
+    page_size: int = 10,
+) -> backend.server.v2.library.model.LibraryAgentPresetResponse:
+    try:
+        presets = await backend.server.v2.library.db.get_presets(
+            user_id, page, page_size
+        )
+        return presets
+    except Exception:
+        logger.exception("Exception occurred whilst getting presets")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to get presets")
+
+
+@router.get("/presets/{preset_id}")
+async def get_preset(
+    preset_id: str,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> backend.server.v2.library.model.LibraryAgentPreset:
+    try:
+        preset = await backend.server.v2.library.db.get_preset(user_id, preset_id)
+        if not preset:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Preset {preset_id} not found",
+            )
+        return preset
+    except Exception:
+        logger.exception("Exception occurred whilst getting preset")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to get preset")
+
+
+@router.post("/presets")
+async def create_preset(
+    preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> backend.server.v2.library.model.LibraryAgentPreset:
+    try:
+        return await backend.server.v2.library.db.create_or_update_preset(
+            user_id, preset
+        )
+    except Exception:
+        logger.exception("Exception occurred whilst creating preset")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to create preset")
+
+
+@router.put("/presets/{preset_id}")
+async def update_preset(
+    preset_id: str,
+    preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> backend.server.v2.library.model.LibraryAgentPreset:
+    try:
+        return await backend.server.v2.library.db.create_or_update_preset(
+            user_id, preset, preset_id
+        )
+    except Exception:
+        logger.exception("Exception occurred whilst updating preset")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to update preset")
+
+
+@router.delete("/presets/{preset_id}")
+async def delete_preset(
+    preset_id: str,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+):
+    try:
+        await backend.server.v2.library.db.delete_preset(user_id, preset_id)
+        return fastapi.Response(status_code=204)
+    except Exception:
+        logger.exception("Exception occurred whilst deleting preset")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to delete preset")
