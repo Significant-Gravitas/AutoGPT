@@ -1,22 +1,12 @@
 "use client";
-import {
-  useEffect,
-  useState,
-  useCallback,
-  Dispatch,
-  SetStateAction,
-} from "react";
+import { useEffect, useState, useCallback } from "react";
 import { LibraryAgentCard } from "../LibraryAgentCard";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { useThreshold } from "@/hooks/useThreshold";
+import { useLibraryPageContext } from "../providers/LibraryAgentProvider";
 
-interface LibraryAgentListContainerProps {
-  setAgents: Dispatch<SetStateAction<GraphMeta[]>>;
-  agents: GraphMeta[];
-  setAgentLoading: Dispatch<SetStateAction<boolean>>;
-  agentLoading: boolean;
-}
+interface LibraryAgentListContainerProps {}
 
 export type AgentStatus =
   | "healthy"
@@ -28,26 +18,25 @@ export type AgentStatus =
  * LibraryAgentListContainer is a React component that displays a grid of library agents with infinite scroll functionality.
  */
 
-const LibraryAgentListContainer: React.FC<LibraryAgentListContainerProps> = ({
-  setAgents,
-  agents,
-  setAgentLoading,
-  agentLoading,
-}) => {
+const LibraryAgentListContainer: React.FC<
+  LibraryAgentListContainerProps
+> = ({}) => {
   const [nextToken, setNextToken] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const api = useBackendAPI();
+  const { agents, setAgents, setAgentLoading, agentLoading } =
+    useLibraryPageContext();
 
   const fetchAgents = useCallback(
     async (paginationToken?: string) => {
       try {
         const response = await api.listLibraryAgents(paginationToken);
-        setAgents((prevAgents) =>
-          paginationToken
-            ? [...prevAgents, ...response.agents]
-            : response.agents,
-        );
+        if (paginationToken) {
+          setAgents((prevAgent) => [...prevAgent, ...response.agents]);
+        } else {
+          setAgents(response.agents);
+        }
         setNextToken(response.next_token);
       } finally {
         setAgentLoading(false);

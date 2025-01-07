@@ -455,13 +455,15 @@ export default class BackendAPI {
   }
 
   async librarySearchAgent(
-    search: string,
+    search?: string,
     filter?: LibraryAgentFilterEnum,
     token?: string,
   ): Promise<{ agents: GraphMeta[]; next_token: string | null }> {
-    const queryParams: Record<string, any> = {
-      search_term: search,
-    };
+    const queryParams: Record<string, any> = {};
+
+    if (search != undefined) {
+      queryParams.search_term = search;
+    }
 
     if (filter) {
       queryParams.sort_by = filter;

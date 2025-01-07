@@ -4,21 +4,11 @@ import { LibraryNotificationDropdown } from "../LibraryNotificationDropdown";
 import { LibraryUploadAgent } from "../LibraryUploadAgent";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { cn } from "@/lib/utils";
-import {
-  Dispatch,
-  SetStateAction,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import { useEffect, useState, useCallback } from "react";
 import LibraryAgentFilter from "../LibraryAgentFilter";
+import { useLibraryPageContext } from "../providers/LibraryAgentProvider";
 
-interface LibraryActionHeaderProps {
-  setAgents: Dispatch<SetStateAction<GraphMeta[]>>;
-  setAgentLoading: Dispatch<SetStateAction<boolean>>;
-  numberOfAgents: number;
-}
+interface LibraryActionHeaderProps {}
 
 // Constants for header animation behavior
 const SCROLL_THRESHOLD = 30;
@@ -30,13 +20,10 @@ const TRANSITION_DURATION = 0.3;
  * LibraryActionHeader component - Renders a sticky header with search, notifications and filters
  * Animates and collapses based on scroll position
  */
-const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({
-  setAgents,
-  setAgentLoading,
-  numberOfAgents,
-}) => {
+const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({}) => {
   const { scrollY } = useScroll();
   const [scrollPosition, setScrollPosition] = useState(0);
+  const { agents } = useLibraryPageContext();
 
   const height = useTransform(
     scrollY,
@@ -77,15 +64,12 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({
               My agents
             </span>
             <span className="w-[70px] font-sans text-[14px] font-normal leading-6">
-              {numberOfAgents} agents
+              {agents.length} agents
             </span>
           </motion.div>
         </motion.div>
 
-        <LibrarySearchBar
-          setAgents={setAgents}
-          setAgentLoading={setAgentLoading}
-        />
+        <LibrarySearchBar />
         <motion.div
           className="flex flex-1 flex-col items-end space-y-[32px]"
           style={{ height }}
@@ -96,10 +80,7 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({
             className="flex items-center gap-[10px] pl-2 pr-2 font-sans text-[14px] font-[500] leading-[24px] text-neutral-600"
             animate={getScrollAnimation(-60, -68)}
           >
-            <LibraryAgentFilter
-              setAgents={setAgents}
-              setAgentLoading={setAgentLoading}
-            />
+            <LibraryAgentFilter />
           </motion.div>
         </motion.div>
       </div>
@@ -112,10 +93,7 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({
         </div>
 
         <div className="flex items-center justify-center">
-          <LibrarySearchBar
-            setAgents={setAgents}
-            setAgentLoading={setAgentLoading}
-          />
+          <LibrarySearchBar />
         </div>
 
         <div className="flex w-full justify-between">
@@ -124,13 +102,10 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({
               My agents
             </span>
             <span className="font-sans text-[14px] font-normal leading-6">
-              {numberOfAgents} agents
+              {agents.length} agents
             </span>
           </div>
-          <LibraryAgentFilter
-            setAgents={setAgents}
-            setAgentLoading={setAgentLoading}
-          />
+          <LibraryAgentFilter />
         </div>
       </div>
     </>
