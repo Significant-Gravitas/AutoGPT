@@ -35,7 +35,7 @@ LLMProviderName = Literal[
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
-    ProviderName.AIML,
+    ProviderName.AIML_API,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
