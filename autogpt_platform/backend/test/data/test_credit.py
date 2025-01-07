@@ -9,7 +9,7 @@ from backend.data.user import DEFAULT_USER_ID
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
-REFILL_VALUE = 1000
+REFILL_VALUE = 1500
 user_credit = UserCredit()
 
 
