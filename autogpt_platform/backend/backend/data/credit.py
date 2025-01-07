@@ -368,6 +368,10 @@ class UserCredit(UserCreditBase):
             order={"createdAt": "desc"},
         )
 
+        # This can be called multiple times for one id, so ignore if already fulfilled
+        if not credit_transaction:
+            return
+
         # Retrieve the Checkout Session from the API
         checkout_session = stripe.checkout.Session.retrieve(
             credit_transaction.transactionKey
