@@ -93,42 +93,43 @@ class UserCreditBase(ABC):
         pass
 
     @staticmethod
-    def time_now():
+    def time_now() -> datetime:
         return datetime.now(timezone.utc)
-    
+
     # ====== Transaction Helper Methods ====== #
     # Any modifications to the transaction table should only be done through these methods #
 
-    @staticmethod
-    async def _get_credits(user_id: str, end_time: datetime = datetime.max) -> int:
-        # Find the latest captured balance snapshot.
+    async def _get_credits(self, user_id: str) -> tuple[int, datetime]:
+        """
+        Returns the current balance of the user & the latest balance snapshot time.
+        """
+        current_time = self.time_now()
         snapshot = await CreditTransaction.prisma().find_first(
             where={
                 "userId": user_id,
-                "createdAt": {"lt": end_time},
+                "createdAt": {"lte": current_time},
                 "isActive": True,
                 "runningBalance": {"not": None},  # type: ignore
             },
             order={"createdAt": "desc"},
         )
-        snapshot_balance = (snapshot.runningBalance or 0) if snapshot else 0
-        begin_time = snapshot.createdAt if snapshot else datetime.min
+        if snapshot:
+            return snapshot.runningBalance or 0, snapshot.createdAt
 
-        # Sum all transactions after the last captured balance snapshot.
+        # Manually calculate the balance if no snapshot is found (old users).
         transactions = await CreditTransaction.prisma().group_by(
             by=["userId"],
             sum={"amount": True},
             where={
                 "userId": user_id,
-                "createdAt": {"gt": begin_time, "lt": end_time},
+                "createdAt": {"lte": current_time},
                 "isActive": True,
             },
         )
         transaction_balance = (
             transactions[0].get("_sum", {}).get("amount", 0) if transactions else 0
         )
-
-        return snapshot_balance + transaction_balance
+        return transaction_balance, datetime.min
 
     async def _enable_transaction(
         self, transaction_key: str, user_id: str, metadata: Json
@@ -142,7 +143,7 @@ class UserCreditBase(ABC):
             return
 
         async with db.locked_transaction(f"usr_trx_{user_id}"):
-            user_balance = await self._get_credits(user_id)
+            user_balance, _ = await self._get_credits(user_id)
 
             await CreditTransaction.prisma().update(
                 where={
@@ -171,7 +172,7 @@ class UserCreditBase(ABC):
     ):
         async with db.locked_transaction(f"usr_trx_{user_id}"):
             # Get latest balance snapshot
-            user_balance = await self._get_credits(user_id)
+            user_balance, _ = await self._get_credits(user_id)
             if amount < 0 and user_balance < abs(amount):
                 raise ValueError(
                     f"Insufficient balance for user {user_id}, balance: {user_balance}, amount: {amount}"
@@ -377,35 +378,37 @@ class UserCredit(UserCreditBase):
             )
 
     async def get_credits(self, user_id: str) -> int:
-        return await self._get_credits(user_id)
+        balance, _ = await self._get_credits(user_id)
+        return balance
 
 
 class BetaUserCredit(UserCredit):
+    """
+    This is a temporary class to handle the test user utilizing monthly credit refill.
+    TODO: Remove this class & its feature toggle.
+    """
 
     def __init__(self, num_user_credits_refill: int):
         self.num_user_credits_refill = num_user_credits_refill
 
     async def get_credits(self, user_id: str) -> int:
-        cur_time = self.time_now()
-        cur_month = cur_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        nxt_month = (
-            cur_month.replace(month=cur_month.month + 1)
-            if cur_month.month < 12
-            else cur_month.replace(year=cur_month.year + 1, month=1)
-        )
-
-        curr_month_balance = await self._get_credits(user_id, nxt_month)
-        prev_month_balance = await self._get_credits(user_id, cur_month)
-        balance = curr_month_balance - prev_month_balance
-        if balance != 0:
+        cur_time = self.time_now().date()
+        balance, snapshot = await self._get_credits(user_id)
+        if (snapshot.year, snapshot.month) == (cur_time.year, cur_time.month):
             return balance
 
         try:
-            await self._add_transaction(
-                user_id=user_id,
-                amount=self.num_user_credits_refill,
-                transaction_type=CreditTransactionType.TOP_UP,
-                transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_month}",
+            await CreditTransaction.prisma().create(
+                data={
+                    "transactionKey": f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
+                    "userId": user_id,
+                    "amount": self.num_user_credits_refill,
+                    "runningBalance": self.num_user_credits_refill,
+                    "type": CreditTransactionType.TOP_UP,
+                    "metadata": Json({}),
+                    "isActive": True,
+                    "createdAt": self.time_now(),
+                }
             )
         except UniqueViolationError:
             pass  # Already refilled this month
