@@ -541,7 +541,7 @@ def get_execution_schedules(
 
 @v1_router.post(
     "/api-keys",
-    response_model=CreateAPIKeyResponse ,
+    response_model=CreateAPIKeyResponse,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
