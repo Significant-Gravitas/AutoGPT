@@ -575,7 +575,7 @@ async def get_graph(
 
     store_listing = await StoreListing.prisma().find_first(where=store_listing_where)
 
-    # If it is not a store listing, return None
+    # If it does not belong to the user nor is not a store listing, return None
     if not store_listing:
         return None
 
