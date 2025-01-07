@@ -430,6 +430,26 @@ class GraphModel(Graph):
                 result[key] = value
         return result
 
+    def clean_graph(self):
+        blocks = [block() for block in get_blocks().values()]
+
+        input_blocks = [
+            node
+            for node in self.nodes
+            if next(
+                (
+                    b
+                    for b in blocks
+                    if b.id == node.block_id and b.block_type == BlockType.INPUT
+                ),
+                None,
+            )
+        ]
+
+        for node in self.nodes:
+            if any(input_block.id == node.id for input_block in input_blocks):
+                node.input_default["value"] = ""
+
 
 # --------------------- CRUD functions --------------------- #
 
@@ -630,23 +650,18 @@ async def __create_graph(tx, graph: Graph, user_id: str):
             "isTemplate": graph.is_template,
             "isActive": graph.is_active,
             "userId": user_id,
+            "AgentNodes": {
+                "create": [
+                    {
+                        "id": node.id,
+                        "agentBlockId": node.block_id,
+                        "constantInput": json.dumps(node.input_default),
+                        "metadata": json.dumps(node.metadata),
+                    }
+                    for node in graph.nodes
+                ]
+            },
         }
-    )
-
-    await asyncio.gather(
-        *[
-            AgentNode.prisma(tx).create(
-                {
-                    "id": node.id,
-                    "agentBlockId": node.block_id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "constantInput": json.dumps(node.input_default),
-                    "metadata": json.dumps(node.metadata),
-                }
-            )
-            for node in graph.nodes
-        ]
     )
 
     await asyncio.gather(

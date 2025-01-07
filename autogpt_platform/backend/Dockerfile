@@ -17,12 +17,11 @@ RUN apt-get install -y libz-dev
 RUN apt-get install -y libssl-dev
 RUN apt-get install -y postgresql-client
 
-ENV POETRY_VERSION=1.8.3
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_NO_INTERACTION=1
 ENV POETRY_VIRTUALENVS_CREATE=false
 ENV PATH=/opt/poetry/bin:$PATH
-    
+
 # Upgrade pip and setuptools to fix security vulnerabilities
 RUN pip3 install --upgrade pip setuptools
 
@@ -32,24 +31,20 @@ RUN pip3 install poetry
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 WORKDIR /app/autogpt_platform/backend
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
+RUN poetry install --no-ansi --no-root
 
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
-RUN poetry config virtualenvs.create false \
-    && poetry run prisma generate
+RUN poetry run prisma generate
 
 FROM python:3.11.10-slim-bookworm AS server_dependencies
 
 WORKDIR /app
 
-ENV POETRY_VERSION=1.8.3
-ENV POETRY_HOME=/opt/poetry
-ENV POETRY_NO_INTERACTION=1
-ENV POETRY_VIRTUALENVS_CREATE=false
+ENV POETRY_HOME=/opt/poetry \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false
 ENV PATH=/opt/poetry/bin:$PATH
-
 
 # Upgrade pip and setuptools to fix security vulnerabilities
 RUN pip3 install --upgrade pip setuptools
@@ -76,6 +71,7 @@ WORKDIR /app/autogpt_platform/backend
 FROM server_dependencies AS server
 
 COPY autogpt_platform/backend /app/autogpt_platform/backend
+RUN poetry install --no-ansi --only-root
 
 ENV DATABASE_URL=""
 ENV PORT=8000

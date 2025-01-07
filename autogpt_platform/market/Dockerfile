@@ -16,8 +16,7 @@ RUN apt-get install -y libpq5
 RUN apt-get install -y libz-dev
 RUN apt-get install -y libssl-dev
 
-ENV POETRY_VERSION=1.8.3 \
-    POETRY_HOME="/opt/poetry" \
+ENV POETRY_HOME="/opt/poetry" \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false
 ENV PATH="$POETRY_HOME/bin:$PATH"
@@ -31,17 +30,21 @@ RUN pip3 install poetry
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/market/poetry.lock autogpt_platform/market/pyproject.toml /app/autogpt_platform/market/
 WORKDIR /app/autogpt_platform/market
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
+RUN poetry install --no-ansi --no-root
 
 # Generate Prisma client
 COPY autogpt_platform/market /app/autogpt_platform/market
-RUN poetry config virtualenvs.create false \
-    && poetry run prisma generate
+RUN poetry install --no-ansi && \
+    poetry run prisma generate
 
 FROM python:3.11.10-slim-bookworm AS server_dependencies
 
 WORKDIR /app
+
+ENV POETRY_HOME="/opt/poetry" \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false
+ENV PATH="$POETRY_HOME/bin:$PATH"
 
 # Upgrade pip and setuptools to fix security vulnerabilities
 RUN pip3 install --upgrade pip setuptools

@@ -35,7 +35,7 @@ class Webhook(BaseDbModel):
     @computed_field
     @property
     def url(self) -> str:
-        return webhook_ingress_url(self.provider.value, self.id)
+        return webhook_ingress_url(self.provider, self.id)
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):

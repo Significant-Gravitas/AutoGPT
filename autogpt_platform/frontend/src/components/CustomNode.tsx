@@ -245,6 +245,7 @@ export function CustomNode({
             ].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
+            !propKey.endsWith("_credentials") &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
             !(nodeType == BlockUIType.OUTPUT && propKey == "name");
           const isConnected = isInputHandleConnected(propKey);
@@ -261,7 +262,8 @@ export function CustomNode({
                     side="left"
                   />
                 ) : (
-                  propKey != "credentials" && (
+                  propKey !== "credentials" &&
+                  !propKey.endsWith("_credentials") && (
                     <div className="flex gap-1">
                       <span className="text-m green mb-0 text-gray-900 dark:text-gray-100">
                         {propSchema.title || beautifyString(propKey)}
@@ -846,8 +848,10 @@ export function CustomNode({
                           data.status === "COMPLETED",
                         "border-yellow-600 bg-yellow-600 text-white":
                           data.status === "RUNNING",
-                        "border-red-600 bg-red-600 text-white":
-                          data.status === "FAILED",
+                        "border-red-600 bg-red-600 text-white": [
+                          "FAILED",
+                          "TERMINATED",
+                        ].includes(data.status || ""),
                         "border-blue-600 bg-blue-600 text-white":
                           data.status === "QUEUED",
                         "border-gray-600 bg-gray-600 font-black":

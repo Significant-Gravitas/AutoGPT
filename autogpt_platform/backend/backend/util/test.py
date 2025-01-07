@@ -1,11 +1,11 @@
 import logging
 import time
-from typing import Sequence
+from typing import Sequence, cast
 
 from backend.data import db
-from backend.data.block import Block, initialize_blocks
+from backend.data.block import Block, BlockSchema, initialize_blocks
 from backend.data.execution import ExecutionResult, ExecutionStatus
-from backend.data.model import CREDENTIALS_FIELD_NAME
+from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
 from backend.server.rest_api import AgentServer
@@ -65,6 +65,9 @@ async def wait_execution(
         if status == ExecutionStatus.FAILED:
             log.info("Execution failed")
             raise Exception("Execution failed")
+        if status == ExecutionStatus.TERMINATED:
+            log.info("Execution terminated")
+            raise Exception("Execution terminated")
         return status == ExecutionStatus.COMPLETED
 
     # Wait for the executions to complete
@@ -100,14 +103,22 @@ def execute_block_test(block: Block):
         else:
             log.info(f"{prefix} mock {mock_name} not found in block")
 
+    # Populate credentials argument(s)
     extra_exec_kwargs = {}
-
-    if CREDENTIALS_FIELD_NAME in block.input_schema.model_fields:
-        if not block.test_credentials:
-            raise ValueError(
-                f"{prefix} requires credentials but has no test_credentials"
-            )
-        extra_exec_kwargs[CREDENTIALS_FIELD_NAME] = block.test_credentials
+    input_model = cast(type[BlockSchema], block.input_schema)
+    credentials_input_fields = input_model.get_credentials_fields()
+    if len(credentials_input_fields) == 1 and isinstance(
+        block.test_credentials, _BaseCredentials
+    ):
+        field_name = next(iter(credentials_input_fields))
+        extra_exec_kwargs[field_name] = block.test_credentials
+    elif credentials_input_fields and block.test_credentials:
+        if not isinstance(block.test_credentials, dict):
+            raise TypeError(f"Block {block.name} has no usable test credentials")
+        else:
+            for field_name in credentials_input_fields:
+                if field_name in block.test_credentials:
+                    extra_exec_kwargs[field_name] = block.test_credentials[field_name]
 
     for input_data in block.test_input:
         log.info(f"{prefix} in: {input_data}")
