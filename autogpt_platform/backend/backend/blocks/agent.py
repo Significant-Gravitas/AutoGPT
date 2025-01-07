@@ -76,7 +76,11 @@ class AgentExecutorBlock(Block):
             )
 
             if not event.node_id:
-                if event.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]:
+                if event.status in [
+                    ExecutionStatus.COMPLETED,
+                    ExecutionStatus.TERMINATED,
+                    ExecutionStatus.FAILED,
+                ]:
                     logger.info(f"Execution {log_id} ended with status {event.status}")
                     break
                 else:

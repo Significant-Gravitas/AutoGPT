@@ -88,6 +88,11 @@ jobs:
         run: |
           yarn test --project=${{ matrix.browser }}
 
+      - name: Print Docker Compose logs in debug mode
+        if: runner.debug
+        run: |
+          docker compose -f ../docker-compose.yml logs
+
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

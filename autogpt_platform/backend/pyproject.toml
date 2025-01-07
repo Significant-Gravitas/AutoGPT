@@ -4,7 +4,7 @@ version = "0.3.4"
 description = "A platform for building AI-powered agentic workflows"
 authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
-packages = [{ include = "backend" }]
+packages = [{ include = "backend", format = "sdist" }]
 
 
 [tool.poetry.dependencies]

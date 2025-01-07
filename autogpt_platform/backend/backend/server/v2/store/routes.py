@@ -1,4 +1,6 @@
+import json
 import logging
+import tempfile
 import typing
 import urllib.parse
 
@@ -6,7 +8,9 @@ import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
+from fastapi.encoders import jsonable_encoder
 
+import backend.data.block
 import backend.data.graph
 import backend.server.v2.store.db
 import backend.server.v2.store.image_gen
@@ -574,4 +578,67 @@ async def generate_image(
         return fastapi.responses.JSONResponse(
             status_code=500,
             content={"detail": "An error occurred while generating the image"},
+        )
+
+
+@router.get(
+    "/download/agents/{store_listing_version_id}",
+    tags=["store", "public"],
+)
+async def download_agent_file(
+    store_listing_version_id: str = fastapi.Path(
+        ..., description="The ID of the agent to download"
+    ),
+    version: typing.Optional[int] = fastapi.Query(
+        None, description="Specific version of the agent"
+    ),
+) -> fastapi.responses.FileResponse:
+    """
+    Download the agent file by streaming its content.
+
+    Args:
+        agent_id (str): The ID of the agent to download.
+        version (Optional[int]): Specific version of the agent to download.
+
+    Returns:
+        StreamingResponse: A streaming response containing the agent's graph data.
+
+    Raises:
+        HTTPException: If the agent is not found or an unexpected error occurs.
+    """
+
+    graph_data = await backend.server.v2.store.db.get_agent(
+        store_listing_version_id=store_listing_version_id, version_id=version
+    )
+
+    graph_data.clean_graph()
+    graph_date_dict = jsonable_encoder(graph_data)
+
+    def remove_credentials(obj):
+        if obj and isinstance(obj, dict):
+            if "credentials" in obj:
+                del obj["credentials"]
+            if "creds" in obj:
+                del obj["creds"]
+
+            for value in obj.values():
+                remove_credentials(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                remove_credentials(item)
+        return obj
+
+    graph_date_dict = remove_credentials(graph_date_dict)
+
+    file_name = f"agent_{store_listing_version_id}_v{version or 'latest'}.json"
+
+    # Sending graph as a stream (similar to marketplace v1)
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as tmp_file:
+        tmp_file.write(json.dumps(graph_date_dict))
+        tmp_file.flush()
+
+        return fastapi.responses.FileResponse(
+            tmp_file.name, filename=file_name, media_type="application/json"
         )
