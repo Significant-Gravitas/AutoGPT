@@ -17,7 +17,7 @@ const isValidVideoUrl = (url: string): boolean => {
 };
 
 const isValidImageUrl = (url: string): boolean => {
-  if (url.startsWith('data:image/')) {
+  if (url.startsWith("data:image/")) {
     return true;
   }
   const imageExtensions = /\.(jpeg|jpg|gif|png|svg|webp)$/i;
@@ -97,7 +97,7 @@ export const ContentRenderer: React.FC<{
   truncateLongData?: boolean;
 }> = ({ value, truncateLongData }) => {
   if (typeof value === "string") {
-    if (value.startsWith('data:image/')) {
+    if (value.startsWith("data:image/")) {
       return <ImageRenderer imageUrl={value} />;
     }
     if (isValidVideoUrl(value)) {
