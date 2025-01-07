@@ -3714,10 +3714,10 @@
   resolved "https://registry.yarnpkg.com/@types/negotiator/-/negotiator-0.6.3.tgz#29e8fce64e35f57f6fe9c624f8e4ed304357745a"
   integrity sha512-JkXTOdKs5MF086b/pt8C3+yVp3iDUwG635L7oCH6HvJvvr6lSUU5oe/gLXnPEfYRROHjJIPgCV6cuAg8gGkntQ==
 
-"@types/node@*", "@types/node@^22.0.0", "@types/node@^22.9.0":
-  version "22.10.2"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-22.10.2.tgz#a485426e6d1fdafc7b0d4c7b24e2c78182ddabb9"
-  integrity sha512-Xxr6BBRCAOQixvonOye19wnzyDiUtTeqldOOmj3CkeblonbccA12PFwlufvRdrpjXxqnmUaeiU5EOA+7s5diUQ==
+"@types/node@*", "@types/node@^22.0.0", "@types/node@^22.10.5":
+  version "22.10.5"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-22.10.5.tgz#95af89a3fb74a2bb41ef9927f206e6472026e48b"
+  integrity sha512-F8Q+SeGimwOo86fiovQh8qiXfFEh2/ocYv7tU5pJ3EXMSSxk1Joj5wefpFK2fHTf/N6HKGSxIDBT9f3gCxXPkQ==
   dependencies:
     undici-types "~6.20.0"
 
@@ -4990,10 +4990,10 @@ chokidar@^3.5.3, chokidar@^3.6.0:
   optionalDependencies:
     fsevents "~2.3.2"
 
-chromatic@^11.12.5, chromatic@^11.15.0:
-  version "11.20.2"
-  resolved "https://registry.yarnpkg.com/chromatic/-/chromatic-11.20.2.tgz#10b309179cdc0b9195a5b68970366f9ebe67dfd1"
-  integrity sha512-c+M3HVl5Y60c7ipGTZTyeWzWubRW70YsJ7PPDpO1D735ib8+Lu3yGF90j61pvgkXGngpkTPHZyBw83lcu2JMxA==
+chromatic@^11.15.0, chromatic@^11.22.0:
+  version "11.22.0"
+  resolved "https://registry.yarnpkg.com/chromatic/-/chromatic-11.22.0.tgz#9c2b05a0c5a94c5c0cc2b6be6969c112ac4543d0"
+  integrity sha512-u1kAPR9lj9aFzsCp0iWPXBbsKgcxFU7iJO6mFbgNHGVg+YPBqiJMuvgB8EQHdNbHjk5amFnGnIz/Ww8fK3t9Hw==
 
 chrome-trace-event@^1.0.2:
   version "1.0.4"
@@ -5192,10 +5192,10 @@ concat-map@0.0.1:
   resolved "https://registry.yarnpkg.com/concat-map/-/concat-map-0.0.1.tgz#d8a96bd77fd68df7793a73036a3ba0d5405d477b"
   integrity sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==
 
-concurrently@^9.1.1:
-  version "9.1.1"
-  resolved "https://registry.yarnpkg.com/concurrently/-/concurrently-9.1.1.tgz#609dde2ce12f4f12d6a5ea6eace4c38bb7ab2ead"
-  integrity sha512-6VX8lrBIycgZKTwBsWS+bLrmkGRkDmvtGsYylRN9b93CygN6CbK46HmnQ3rdSOR8HRjdahDrxb5MqD9cEFOg5Q==
+concurrently@^9.1.2:
+  version "9.1.2"
+  resolved "https://registry.yarnpkg.com/concurrently/-/concurrently-9.1.2.tgz#22d9109296961eaee773e12bfb1ce9a66bc9836c"
+  integrity sha512-H9MWcoPsYddwbOGM6difjVwVZHl63nwMEwDJG/L7VGtuaJhb12h2caPG2tVPWs7emuYix252iGfqOyrz1GczTQ==
   dependencies:
     chalk "^4.1.2"
     lodash "^4.17.21"
@@ -6246,10 +6246,10 @@ eslint-plugin-react@^7.37.0:
     string.prototype.matchall "^4.0.11"
     string.prototype.repeat "^1.0.0"
 
-eslint-plugin-storybook@^0.11.0:
-  version "0.11.1"
-  resolved "https://registry.yarnpkg.com/eslint-plugin-storybook/-/eslint-plugin-storybook-0.11.1.tgz#4ef4f3550855fdc4a902296dfc278340ec287506"
-  integrity sha512-yGKpAYkBm/Q2hZg476vRUAvd9lAccjjSvzU5nYy3BSQbKTPy7uopx7JEpwk2vSuw4weTMZzWF64z9/gp/K5RCg==
+eslint-plugin-storybook@^0.11.2:
+  version "0.11.2"
+  resolved "https://registry.yarnpkg.com/eslint-plugin-storybook/-/eslint-plugin-storybook-0.11.2.tgz#a46f8fa2b87d15f66251e832a10d5481fc73a028"
+  integrity sha512-0Z4DUklJrC+GHjCRXa7PYfPzWC15DaVnwaOYenpgXiCEijXPZkLKCms+rHhtoRcWccP7Z8DpOOaP1gc3P9oOwg==
   dependencies:
     "@storybook/csf" "^0.1.11"
     "@typescript-eslint/utils" "^8.8.1"
