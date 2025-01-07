@@ -36,8 +36,8 @@ async def get_library_agents(
     try:
         agents = await backend.server.v2.library.db.get_library_agents(user_id)
         return agents
-    except Exception:
-        logger.exception("Exception occurred whilst getting library agents")
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst getting library agents: {e}")
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to get library agents"
         )
@@ -116,8 +116,8 @@ async def add_agent_to_library(
 
         return fastapi.Response(status_code=201)
 
-    except Exception:
-        logger.exception("Exception occurred whilst adding agent to library")
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst adding agent to library: {e}")
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to add agent to library"
         )
@@ -136,8 +136,8 @@ async def get_presets(
             user_id, page, page_size
         )
         return presets
-    except Exception:
-        logger.exception("Exception occurred whilst getting presets")
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst getting presets: {e}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to get presets")
 
 
@@ -156,8 +156,8 @@ async def get_preset(
                 detail=f"Preset {preset_id} not found",
             )
         return preset
-    except Exception:
-        logger.exception("Exception occurred whilst getting preset")
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst getting preset: {e}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to get preset")
 
 
@@ -172,8 +172,8 @@ async def create_preset(
         return await backend.server.v2.library.db.create_or_update_preset(
             user_id, preset
         )
-    except Exception:
-        logger.exception("Exception occurred whilst creating preset")
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst creating preset: {e}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to create preset")
 
 
@@ -189,8 +189,8 @@ async def update_preset(
         return await backend.server.v2.library.db.create_or_update_preset(
             user_id, preset, preset_id
         )
-    except Exception:
-        logger.exception("Exception occurred whilst updating preset")
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst updating preset: {e}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to update preset")
 
 
@@ -204,6 +204,6 @@ async def delete_preset(
     try:
         await backend.server.v2.library.db.delete_preset(user_id, preset_id)
         return fastapi.Response(status_code=204)
-    except Exception:
-        logger.exception("Exception occurred whilst deleting preset")
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst deleting preset: {e}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to delete preset")
