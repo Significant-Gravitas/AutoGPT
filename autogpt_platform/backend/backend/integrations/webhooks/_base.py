@@ -169,7 +169,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         id = str(uuid4())
         secret = secrets.token_hex(32)
         provider_name: ProviderName = self.PROVIDER_NAME
-        ingress_url = webhook_ingress_url(provider_name=provider_name.value, webhook_id=id)
+        ingress_url = webhook_ingress_url(provider_name=provider_name, webhook_id=id)
         if register:
             if not credentials:
                 raise TypeError("credentials are required if register = True")
