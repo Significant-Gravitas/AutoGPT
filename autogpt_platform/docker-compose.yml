@@ -51,18 +51,6 @@ services:
       file: ./docker-compose.platform.yml
       service: websocket_server
 
-  market:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: market
-
-  market-migrations:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: market-migrations
-
 #  frontend:
 #    <<: *agpt-services
 #    extends:
