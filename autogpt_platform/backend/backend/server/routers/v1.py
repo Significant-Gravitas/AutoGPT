@@ -541,7 +541,7 @@ def get_execution_schedules(
 
 @v1_router.post(
     "/api-keys",
-    response_model=list[CreateAPIKeyResponse] | dict[str, str],
+    response_model=CreateAPIKeyResponse,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -583,7 +583,7 @@ async def get_api_keys(
 
 @v1_router.get(
     "/api-keys/{key_id}",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -604,7 +604,7 @@ async def get_api_key(
 
 @v1_router.delete(
     "/api-keys/{key_id}",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -626,7 +626,7 @@ async def delete_api_key(
 
 @v1_router.post(
     "/api-keys/{key_id}/suspend",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -648,7 +648,7 @@ async def suspend_key(
 
 @v1_router.put(
     "/api-keys/{key_id}/permissions",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
