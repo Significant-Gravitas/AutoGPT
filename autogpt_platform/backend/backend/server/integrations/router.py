@@ -60,11 +60,12 @@ def login(
     requested_scopes = scopes.split(",") if scopes else []
 
     # Generate and store a secure random state token along with the scopes
-    state_token = creds_manager.store.store_state_token(
+    state_token, code_challenge = creds_manager.store.store_state_token(
         user_id, provider, requested_scopes
     )
-
-    login_url = handler.get_login_url(requested_scopes, state_token)
+    login_url = handler.get_login_url(
+        requested_scopes, state_token, code_challenge=code_challenge
+    )
 
     return LoginResponse(login_url=login_url, state_token=state_token)
 
@@ -92,19 +93,21 @@ def callback(
     handler = _get_provider_oauth_handler(request, provider)
 
     # Verify the state token
-    if not creds_manager.store.verify_state_token(user_id, state_token, provider):
+    valid_state = creds_manager.store.verify_state_token(user_id, state_token, provider)
+
+    if not valid_state:
         logger.warning(f"Invalid or expired state token for user {user_id}")
         raise HTTPException(status_code=400, detail="Invalid or expired state token")
-
     try:
-        scopes = creds_manager.store.get_any_valid_scopes_from_state_token(
-            user_id, state_token, provider
-        )
+        scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
 
         scopes = handler.handle_default_scopes(scopes)
 
-        credentials = handler.exchange_code_for_tokens(code, scopes)
+        credentials = handler.exchange_code_for_tokens(
+            code, scopes, valid_state.code_verifier
+        )
+
         logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
 
         # Check if the granted scopes are sufficient for the requested scopes
