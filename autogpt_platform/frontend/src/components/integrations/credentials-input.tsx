@@ -235,6 +235,7 @@ export const CredentialsInput: FC<{
       )}
       {supportsUserPassword && (
         <UserPasswordCredentialsModal
+          credentialsFieldName={selfKey}
           open={isUserPasswordCredentialsModalOpen}
           onClose={() => setUserPasswordCredentialsModalOpen(false)}
           onCredentialsCreate={(creds) => {
@@ -299,13 +300,29 @@ export const CredentialsInput: FC<{
     );
   }
 
-  //TODO: This is a mess that won't scale. We need to refactor this single credential logic
-  const singleCredential =
-    savedApiKeys.length === 1 && savedOAuthCredentials.length === 0
-      ? savedApiKeys[0]
-      : savedOAuthCredentials.length === 1 && savedApiKeys.length === 0
-        ? savedOAuthCredentials[0]
-        : null;
+  const getCredentialCounts = () => ({
+    apiKeys: savedApiKeys.length,
+    oauth: savedOAuthCredentials.length,
+    userPass: savedUserPasswordCredentials.length,
+  });
+
+  const getSingleCredential = () => {
+    const counts = getCredentialCounts();
+    const totalCredentials = Object.values(counts).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+
+    if (totalCredentials !== 1) return null;
+
+    if (counts.apiKeys === 1) return savedApiKeys[0];
+    if (counts.oauth === 1) return savedOAuthCredentials[0];
+    if (counts.userPass === 1) return savedUserPasswordCredentials[0];
+
+    return null;
+  };
+
+  const singleCredential = getSingleCredential();
 
   if (singleCredential) {
     if (!selectedCredentials) {
@@ -541,11 +558,12 @@ export const APIKeyCredentialsModal: FC<{
 };
 
 export const UserPasswordCredentialsModal: FC<{
+  credentialsFieldName: string;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials();
+}> = ({ credentialsFieldName, open, onClose, onCredentialsCreate }) => {
+  const credentials = useCredentials(credentialsFieldName);
 
   const formSchema = z.object({
     username: z.string().min(1, "Username is required"),
