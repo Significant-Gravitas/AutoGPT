@@ -140,6 +140,8 @@ def SchemaField(
     exclude: bool = False,
     hidden: Optional[bool] = None,
     depends_on: list[str] | None = None,
+    image_upload: Optional[bool] = None,
+    image_output: Optional[bool] = None,
     **kwargs,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
@@ -155,6 +157,8 @@ def SchemaField(
             "advanced": advanced,
             "hidden": hidden,
             "depends_on": depends_on,
+            "image_upload": image_upload,
+            "image_output": image_output,
         }.items()
         if v is not None
     }
@@ -238,6 +242,7 @@ class OAuthState(BaseModel):
     token: str
     provider: str
     expires_at: int
+    code_verifier: Optional[str] = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
     scopes: list[str]
 

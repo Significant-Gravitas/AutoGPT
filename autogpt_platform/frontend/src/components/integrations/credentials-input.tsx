@@ -7,8 +7,15 @@ import SchemaTooltip from "@/components/SchemaTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
-import { FaDiscord, FaGithub, FaGoogle, FaMedium, FaKey } from "react-icons/fa";
-import { FC, useState } from "react";
+import {
+  FaDiscord,
+  FaGithub,
+  FaTwitter,
+  FaGoogle,
+  FaMedium,
+  FaKey,
+} from "react-icons/fa";
+import { FC, useMemo, useState } from "react";
 import {
   CredentialsMetaInput,
   CredentialsProviderName,
@@ -53,6 +60,7 @@ export const providerIcons: Record<
   google: FaGoogle,
   groq: fallbackIcon,
   notion: NotionLogoIcon,
+  nvidia: fallbackIcon,
   discord: FaDiscord,
   d_id: fallbackIcon,
   google_maps: FaGoogle,
@@ -69,6 +77,7 @@ export const providerIcons: Record<
   reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
+  twitter: FaTwitter,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
   hubspot: fallbackIcon,

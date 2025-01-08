@@ -32,6 +32,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   jina: "Jina",
   medium: "Medium",
   notion: "Notion",
+  nvidia: "Nvidia",
   ollama: "Ollama",
   openai: "OpenAI",
   openweathermap: "OpenWeatherMap",
@@ -41,6 +42,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   reddit: "Reddit",
   replicate: "Replicate",
   revid: "Rev.ID",
+  twitter: "Twitter",
   unreal_speech: "Unreal Speech",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
