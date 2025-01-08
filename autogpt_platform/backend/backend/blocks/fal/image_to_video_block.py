@@ -45,9 +45,7 @@ class ImageToVideoBlock(Block):
         error: str = SchemaField(
             description="Error message if video generation failed."
         )
-        logs: list[str] = SchemaField(
-            description="Generation progress logs."
-        )
+        logs: list[str] = SchemaField(description="Generation progress logs.")
 
     def __init__(self):
         super().__init__(
