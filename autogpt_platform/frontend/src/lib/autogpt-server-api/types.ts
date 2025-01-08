@@ -113,6 +113,7 @@ export const PROVIDER_NAMES = {
   JINA: "jina",
   MEDIUM: "medium",
   NOTION: "notion",
+  NVIDIA: "nvidia",
   OLLAMA: "ollama",
   OPENAI: "openai",
   OPENWEATHERMAP: "openweathermap",
