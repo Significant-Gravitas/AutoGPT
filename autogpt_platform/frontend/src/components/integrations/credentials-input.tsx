@@ -53,6 +53,7 @@ export const providerIcons: Record<
   google: FaGoogle,
   groq: fallbackIcon,
   notion: NotionLogoIcon,
+  nvidia: fallbackIcon,
   discord: FaDiscord,
   d_id: fallbackIcon,
   google_maps: FaGoogle,
