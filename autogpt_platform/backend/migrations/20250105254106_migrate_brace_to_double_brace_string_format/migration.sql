@@ -11,7 +11,7 @@ WITH to_update AS (
     SELECT
         "agentBlockId",
         "constantInput"::jsonb AS j
-    FROM platform."AgentNode"
+    FROM "AgentNode"
     WHERE
         "agentBlockId" IN (
             '363ae599-353e-4804-937e-b2ee3cef3da4', -- AgentOutputBlock
@@ -72,7 +72,7 @@ updated_rows AS (
         )::text AS "newConstantInput"
     FROM to_update
 )
-UPDATE platform."AgentNode" AS an
+UPDATE "AgentNode" AS an
 SET "constantInput" = ur."newConstantInput"
 FROM updated_rows ur
 WHERE an."agentBlockId" = ur."agentBlockId";
