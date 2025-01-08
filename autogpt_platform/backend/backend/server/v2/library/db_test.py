@@ -77,40 +77,16 @@ async def test_get_library_agents(mocker):
     result = await db.get_library_agents("test-user")
 
     # Verify results
-    assert len(result) == 2
-    assert result[0].id == "agent1"
-    assert result[0].name == "Test Agent 1"
-    assert result[0].description == "Test Description 1"
-    assert result[0].is_created_by_user is True
-    assert result[1].id == "agent2"
-    assert result[1].name == "Test Agent 2"
-    assert result[1].description == "Test Description 2"
-    assert result[1].is_created_by_user is False
-
-    # Verify mocks called correctly
-    mock_agent_graph.return_value.find_many.assert_called_once_with(
-        where=prisma.types.AgentGraphWhereInput(userId="test-user", isActive=True),
-        include=backend.data.includes.AGENT_GRAPH_INCLUDE,
-    )
-    mock_library_agent.return_value.find_many.assert_called_once_with(
-        where=prisma.types.LibraryAgentWhereInput(
-            userId="test-user", isDeleted=False, isArchived=False
-        ),
-        include={
-            "Agent": {
-                "include": {
-                    "AgentNodes": {
-                        "include": {
-                            "Input": True,
-                            "Output": True,
-                            "Webhook": True,
-                            "AgentBlock": True,
-                        }
-                    }
-                }
-            }
-        },
-    )
+    assert len(result) == 1
+    assert result[0].id == "ua1"
+    assert result[0].name == "Test Agent 2"
+    assert result[0].description == "Test Description 2"
+    assert result[0].is_created_by_user is False
+    assert result[0].is_latest_version is True
+    assert result[0].is_favorite is False
+    assert result[0].agent_id == "agent2"
+    assert result[0].agent_version == 1
+    assert result[0].preset_id is None
 
 
 @pytest.mark.asyncio
