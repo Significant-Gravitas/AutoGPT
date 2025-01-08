@@ -15,7 +15,6 @@ import {
   GraphUpdateable,
   NodeExecutionResult,
   MyAgentsResponse,
-  OAuth2Credentials,
   ProfileDetails,
   User,
   StoreAgentsResponse,
