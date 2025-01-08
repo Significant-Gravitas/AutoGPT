@@ -17,8 +17,9 @@ const scopes = [
   "read_orders",
   "write_orders",
 ];
-
-const hostName = process.env.SHOPIFY_INTEGRATION_HOSTNAME || "localhost:8080";
+const PORT = process.env.PORT || 8021;
+const hostName =
+  process.env.SHOPIFY_INTEGRATION_HOSTNAME || `localhost:${PORT}`;
 const shopify = shopifyApi({
   apiKey: SHOPIFY_API_KEY,
   apiSecretKey: SHOPIFY_SECRET_KEY,
@@ -48,14 +49,14 @@ app.get("/shopify/oauth", async (req, res) => {
 
   await shopify.auth.begin({
     shop,
-    callbackPath: "/shopify/oauth/callback",
+    callbackPath: "/oauth/callback",
     isOnline: false,
     rawRequest: req,
     rawResponse: res,
   });
 });
 
-app.get("/shopify/oauth/callback", async (req, res) => {
+app.get("/oauth/callback", async (req, res) => {
   // The library will automatically set the appropriate HTTP headers
   const callback = await shopify.auth.callback({
     rawRequest: req,
@@ -65,7 +66,6 @@ app.get("/shopify/oauth/callback", async (req, res) => {
   res.json(callback.session.toObject());
 });
 
-const PORT = process.env.PORT || 8021;
 app.listen(PORT, () => {
-  console.log("listening on port 8080");
+  console.log(`:${PORT}`);
 });
