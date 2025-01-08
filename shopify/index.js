@@ -38,6 +38,10 @@ const app = express();
 app.use(cors());
 app.use(json());
 
+app.get("/", (req, res) => {
+  res.json({ ts: new Date().toISOString() });
+});
+
 app.get("/oauth", async (req, res) => {
   const shopName = req.query.shop;
   if (!shopName) {

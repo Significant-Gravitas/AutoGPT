@@ -16,4 +16,6 @@ curl 'https://partners.shopify.com/3594908/api/graphql' \
   -H 'sec-fetch-site: same-origin' \
   -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
   -H 'x-csrf-token: OM18ppmz6MbIlUgTJLQtdfTnN_KaleqPohzX7l2YlhG1SDrI9qIVx64MNiq_zP07u9_EHh0b6uSgumaufhmDRQ' \
-  --data-raw $'{"operationName":"ShopCreateMutation","variables":{"input":{"storeType":"DEV_STORE","storeName":"tuannguyen-20250108-0942","address":{"countryCode":"VN"},"subdomain":"tuannguyen-20250108-0942","brickAndMortarPresence":false,"merchantSellingThroughAnotherPlatform":true}},"query":"mutation ShopCreateMutation($input: ShopCreateInput\u0021) {\\n  shopCreate(input: $input) {\\n    redirectUrl\\n    userErrors {\\n      field\\n      message\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n"}'
+  --data-raw $'{"operationName":"ShopCreateMutation","variables":{"input":{"storeType":"DEV_STORE","storeName":"tuannguyen-20250108-1505","address":{"countryCode":"VN"},"subdomain":"tuannguyen-20250108-1505","brickAndMortarPresence":false,"merchantSellingThroughAnotherPlatform":true}},"query":"mutation ShopCreateMutation($input: ShopCreateInput\u0021) {\\n  shopCreate(input: $input) {\\n    redirectUrl\\n    userErrors {\\n      field\\n      message\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n"}'
+
+  {"data":{"shopCreate":{"redirectUrl":"https://admin.shopify.com/store/tuannguyen-20250108-1505","userErrors":[],"__typename":"ShopCreatePayload"}}}
