@@ -148,17 +148,17 @@ async def search_library_agents(
         )
 
 
-        if sort_by == backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT:
+        if sort_by == backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT.value:
             order_by = {"updatedAt": "desc"}
 
-        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.CREATED_AT:
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.CREATED_AT.value:
             order_by = {"createdAt": "desc"}
 
-        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_FAVOURITE:
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_FAVOURITE.value:
             where["isFavorite"] = True
             order_by = {"updatedAt": "desc"}
 
-        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_CREATED_BY_USER:
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_CREATED_BY_USER.value:
             where["isCreatedByUser"] = True
             order_by = {"updatedAt": "desc"}
 

@@ -32,7 +32,7 @@ interface LibraryPageProviderProps {
 export function LibraryPageProvider({ children }: LibraryPageProviderProps) {
   const [agents, setAgents] = useState<GraphMeta[]>([]);
   const [agentLoading, setAgentLoading] = useState<boolean>(true);
-  const [searchTerm, setSearchTerm] = useState<string | undefined>(undefined);
+  const [searchTerm, setSearchTerm] = useState<string | undefined>("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [libraryFilter, setLibraryFilter] = useState<LibraryAgentFilterEnum>(
     LibraryAgentFilterEnum.UPDATED_AT,
