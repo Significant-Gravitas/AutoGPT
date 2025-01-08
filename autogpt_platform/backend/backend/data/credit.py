@@ -266,7 +266,6 @@ class UserCredit(UserCreditBase):
             transaction_type=CreditTransactionType.USAGE,
             metadata=Json(
                 {
-                    "user_id": entry.user_id,
                     "graph_exec_id": entry.graph_exec_id,
                     "graph_id": entry.graph_id,
                     "node_id": entry.node_id,
