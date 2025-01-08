@@ -236,7 +236,9 @@ class AIStructuredResponseGeneratorBlock(Block):
             description="Number of times to retry the LLM call if the response does not match the expected format.",
         )
         prompt_values: dict[str, str] = SchemaField(
-            advanced=False, default={}, description="Values used to fill in the prompt."
+            advanced=False,
+            default={},
+            description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         max_tokens: int | None = SchemaField(
             advanced=True,
@@ -578,7 +580,9 @@ class AITextGeneratorBlock(Block):
             description="Number of times to retry the LLM call if the response does not match the expected format.",
         )
         prompt_values: dict[str, str] = SchemaField(
-            advanced=False, default={}, description="Values used to fill in the prompt."
+            advanced=False,
+            default={},
+            description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         ollama_host: str = SchemaField(
             advanced=True,
