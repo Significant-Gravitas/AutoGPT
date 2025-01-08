@@ -99,7 +99,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # Anthropic models
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
-    # AIML_API models
+    # AI/ML API models
     AIML_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
     AIML_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
     AIML_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
