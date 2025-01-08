@@ -1,0 +1,19 @@
+curl 'https://partners.shopify.com/3594908/api/graphql' \
+  -H 'accept: */*, application/json' \
+  -H 'accept-language: en,en-US;q=0.9' \
+  -H 'cache-control: no-cache' \
+  -H 'content-type: application/json' \
+  -H 'cookie: monorail_user_token=5633570e-1c98-4c19-80a9-ad5d712e6ed5; master_device_id=f8c1ae5a-7ff5-42e4-a4b8-e2d1c6519bc8; logged_in=true; _partners_session=92a1899a215a29558029c403fafc2c72; is_shopify_merchant=1; _shopify_s=4f10d998-fea1-4b3d-8973-c1d80811ec48; monorail_session_token=5f54b33d-22bf-4f83-80e5-e54eddc0ddbc; _shopify_y=345673b8-C2A8-4626-F85A-07EE29414352' \
+  -H 'origin: https://partners.shopify.com' \
+  -H 'pragma: no-cache' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://partners.shopify.com/3594908/stores/new?store_type=client_store' \
+  -H 'sec-ch-ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+  -H 'x-csrf-token: OM18ppmz6MbIlUgTJLQtdfTnN_KaleqPohzX7l2YlhG1SDrI9qIVx64MNiq_zP07u9_EHh0b6uSgumaufhmDRQ' \
+  --data-raw $'{"operationName":"ShopCreateMutation","variables":{"input":{"storeType":"DEV_STORE","storeName":"tuannguyen-20250108-0942","address":{"countryCode":"VN"},"subdomain":"tuannguyen-20250108-0942","brickAndMortarPresence":false,"merchantSellingThroughAnotherPlatform":true}},"query":"mutation ShopCreateMutation($input: ShopCreateInput\u0021) {\\n  shopCreate(input: $input) {\\n    redirectUrl\\n    userErrors {\\n      field\\n      message\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n"}'

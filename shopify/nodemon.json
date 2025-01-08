@@ -1,0 +1,7 @@
+{
+  "watch": [
+    "index.js"
+  ],
+  "ext": "js",
+  "exec": "node index.js"
+}

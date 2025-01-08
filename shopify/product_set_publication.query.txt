@@ -1,0 +1,12 @@
+mutation product_set_publication($productId: ID!, $publications: [PublicationInput!]!) {
+  publishablePublish(id: $productId, input: $publications) {
+    publishable {
+      availablePublicationsCount {
+        count
+      }
+    }
+    userErrors {
+      message
+    }
+  }
+}

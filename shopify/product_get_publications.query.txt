@@ -1,0 +1,8 @@
+query product_get_publications($limit: Int = 10) {
+  publications(first: $limit, catalogType: APP) {
+    nodes {
+      id
+      name
+    }
+  }
+}

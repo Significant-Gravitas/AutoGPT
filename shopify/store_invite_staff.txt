@@ -1,0 +1,24 @@
+curl 'https://admin.shopify.com/api/shopify/tuannguyen-20250108-0942?operation=InviteStaffMember&type=mutation' \
+  -H 'accept: application/json' \
+  -H 'accept-language: en,en-US;q=0.9' \
+  -H 'cache-control: no-cache' \
+  -H 'caller-pathname: /store/tuannguyen-20250108-0942/settings/account/new' \
+  -H 'content-type: application/json' \
+  -H 'cookie: master_device_id=f8c1ae5a-7ff5-42e4-a4b8-e2d1c6519bc8; logged_in=true; is_shopify_merchant=1; _shopify_s=4f10d998-fea1-4b3d-8973-c1d80811ec48; _shopify_y=345673b8-C2A8-4626-F85A-07EE29414352; koa.sid=RnqKb6wTnC_jh3srgfbl912KOmcPy0co; koa.sid.sig=pA9MwhoJ4RfY6WJmFkAjr5xu2V0' \
+  -H 'origin: https://admin.shopify.com' \
+  -H 'pragma: no-cache' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://admin.shopify.com/store/tuannguyen-20250108-0942/settings/account/new' \
+  -H 'sec-ch-ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'target-manifest-route-id: settings-account:invite' \
+  -H 'target-pathname: /store/:storeHandle/settings/account/new' \
+  -H 'target-slice: account-section' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+  -H 'x-csrf-token: nyfjud54-_c3a_uKiY6LDRVHsHuONklDYkco' \
+  -H 'x-shopify-web-force-proxy: 1' \
+  --data-raw $'{"operationName":"InviteStaffMember","variables":{"details":{"email":"tuan.nguyen930708+1@gmail.com","firstName":"Tuan Nguyen","lastName":"20250108-0912","pin":"","permissions":["APPLICATIONS_BILLING","APPLY_DISCOUNTS_TO_DRAFT_ORDERS","APPLY_DISCOUNTS_TO_ORDERS","AUTHENTICATION_MANAGEMENT","BILLING_CHARGES","BILLING_INVOICES_PAY","BILLING_INVOICES_VIEW","BILLING_PAYMENT_METHODS_MANAGE","BILLING_PAYMENT_METHODS_VIEW","BILLING_SETTINGS","BILLING_SUBSCRIPTIONS","BUY_SHIPPING_LABELS","CANCEL_ORDERS","CAPTURE_PAYMENTS_FOR_ORDERS","COLLABORATOR_REQUEST_MANAGEMENT","COLLABORATOR_REQUEST_SETTINGS","CREATE_AND_EDIT_COMPANIES","CREATE_AND_EDIT_CUSTOMERS","CREATE_AND_EDIT_DRAFT_ORDERS","CREATE_AND_EDIT_GIFT_CARDS","CREATE_FILES","CREATE_STORE_CREDIT_ACCOUNT_TRANSACTIONS","CUSTOMERS","CUSTOM_PIXELS_MANAGEMENT","CUSTOM_PIXELS_VIEW","DASHBOARD","DEACTIVATE_GIFT_CARDS","DELETE_COMPANIES","DELETE_CUSTOMERS","DELETE_DRAFT_ORDERS","DELETE_FILES","DELETE_ORDERS","DELETE_PRODUCTS","DOMAINS","DOMAINS_MANAGEMENT","DRAFT_ORDERS","EDIT_FILES","EDIT_ORDERS","EDIT_PRIVATE_APPS","EDIT_PRODUCT_COST","EDIT_PRODUCT_PRICE","EDIT_THEME_CODE","ENABLE_PRIVATE_APPS","ERASE_CUSTOMER_DATA","EXPORT_CUSTOMERS","EXPORT_DRAFT_ORDERS","EXPORT_GIFT_CARDS","EXPORT_ORDERS","EXPORT_PRODUCTS","FULFILL_AND_SHIP_ORDERS","GIFT_CARDS","LINKS","LOCATIONS","MANAGE_ABANDONED_CHECKOUTS","MANAGE_CHECKOUT_SETTINGS","MANAGE_COMPANY_LOCATION_ASSIGNMENTS","MANAGE_DELIVERY_SETTINGS","MANAGE_INVENTORY","MANAGE_ORDERS_INFORMATION","MANAGE_POLICIES","MANAGE_PRODUCTS","MANAGE_STORE_CREDIT_SETTINGS","MANAGE_TAXES_SETTINGS","MARKETING","MARKETING_SECTION","MARK_DRAFT_ORDERS_AS_PAID","MARK_ORDERS_AS_PAID","MERGE_CUSTOMERS","METAOBJECTS_DELETE","METAOBJECTS_EDIT","METAOBJECTS_VIEW","METAOBJECT_DEFINITIONS_DELETE","METAOBJECT_DEFINITIONS_EDIT","METAOBJECT_DEFINITIONS_VIEW","ORDERS","OVERVIEWS","PAGES","PAYMENT_SETTINGS","PAY_DRAFT_ORDERS_BY_CREDIT_CARD","PAY_DRAFT_ORDERS_BY_VAULTED_CARD","PAY_ORDERS_BY_CREDIT_CARD","PAY_ORDERS_BY_VAULTED_CARD","PREFERENCES","PRODUCTS","REFUND_ORDERS","REPORTS","REQUEST_CUSTOMER_DATA","RETURN_ORDERS","SET_PAYMENT_TERMS_FOR_DRAFT_ORDERS","SET_PAYMENT_TERMS_FOR_ORDERS","SHOPIFY_PAYMENTS_ACCOUNTS","SHOPIFY_PAYMENTS_TRANSFERS","STAFF_API_PERMISSION_MANAGEMENT","STAFF_AUDIT_LOG_VIEW","STAFF_MANAGEMENT","STAFF_MANAGEMENT_ACTIVATION","STAFF_MANAGEMENT_CREATE","STAFF_MANAGEMENT_DELETE","STAFF_MANAGEMENT_UPDATE","THEMES","VIEW_COMPANIES","VIEW_FILES","VIEW_PRIVATE_APPS","VIEW_PRODUCT_COSTS","VIEW_STORE_CREDIT_ACCOUNT_TRANSACTIONS","APPLICATIONS"],"appPermissions":[],"retailData":{"posAccess":false,"canInitializePos":false,"retailRoleId":null}}},"query":"mutation InviteStaffMember($details: StaffMemberInviteInput\u0021) {\\n  staffMemberInvite(input: $details) {\\n    staffMember {\\n      id\\n      email\\n      firstName\\n      lastName\\n      name\\n      retailData {\\n        posAccess\\n        retailRole {\\n          id\\n          name\\n          __typename\\n        }\\n        __typename\\n      }\\n      __typename\\n    }\\n    userErrors {\\n      field\\n      message\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n"}'

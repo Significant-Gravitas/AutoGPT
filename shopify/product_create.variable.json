@@ -1,0 +1,17 @@
+{
+  "product": {
+    "title": "Short sleeve t-shirt",
+    "descriptionHtml": "Short sleeve t-shirt",
+    "seo": {
+      "title": "Short sleeve t-shirt",
+      "description": "Short sleeve t-shirt"
+    },
+    "productType": "clothes",
+    "tags": [
+      "Christmas",
+      "NewYear"
+    ],
+    "vendor": "Chineese factory",
+    "status": "ACTIVE"
+  }
+}
