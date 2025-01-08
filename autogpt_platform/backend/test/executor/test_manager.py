@@ -31,7 +31,7 @@ async def execute_graph(
 
     # --- Test adding new executions --- #
     response = await agent_server.test_execute_graph(
-        test_graph.id, input_data, test_user.id
+        test_graph.id, test_graph.version, input_data, test_user.id
     )
     graph_exec_id = response["id"]
     logger.info(f"Created execution with ID: {graph_exec_id}")

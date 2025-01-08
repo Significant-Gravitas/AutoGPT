@@ -811,9 +811,7 @@ async def get_agent(
 
         agent = store_listing_version.Agent
 
-        graph = await backend.data.graph.get_graph(
-            agent.id, agent.version, template=True
-        )
+        graph = await backend.data.graph.get_graph(agent.id, agent.version)
 
         if not graph:
             raise fastapi.HTTPException(

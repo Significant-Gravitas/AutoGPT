@@ -237,7 +237,7 @@ model AgentGraphExecution {
 
   AgentNodeExecutions AgentNodeExecution[]
 
-  // Link to User model
+  // Link to User model -- Executed by this user
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
