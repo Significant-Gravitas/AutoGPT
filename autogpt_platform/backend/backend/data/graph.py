@@ -551,6 +551,8 @@ async def get_graph(
 
     if version is not None:
         where_clause["version"] = version
+    else:
+        where_clause["isActive"] = True
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
