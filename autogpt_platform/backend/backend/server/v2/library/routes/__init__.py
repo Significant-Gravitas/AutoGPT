@@ -1,9 +1,9 @@
 import fastapi
 
-import backend.server.v2.library.routes.agents
-import backend.server.v2.library.routes.presets
+from .agents import router as agents_router
+from .presets import router as presets_router
 
 router = fastapi.APIRouter()
 
-router.include_router(backend.server.v2.library.routes.presets.router)
-router.include_router(backend.server.v2.library.routes.agents.router)
+router.include_router(presets_router)
+router.include_router(agents_router)
