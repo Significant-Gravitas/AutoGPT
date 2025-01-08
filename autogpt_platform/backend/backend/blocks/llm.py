@@ -35,7 +35,7 @@ LLMProviderName = Literal[
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
-    ProviderName.AIML,
+    ProviderName.AIML_API,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
@@ -99,7 +99,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # Anthropic models
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
-    # Aiml models
+    # AIML_API models
     AIML_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
     AIML_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
     AIML_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -827,9 +827,7 @@ class AITextSummarizerBlock(Block):
                     chunk_overlap=input_data.chunk_overlap,
                 ),
                 credentials=credentials,
-            ).send(None)[
-                1
-            ]  # Get the first yielded value
+            ).send(None)[1]  # Get the first yielded value
 
 
 class AIConversationBlock(Block):
@@ -886,7 +884,8 @@ class AIConversationBlock(Block):
                 "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
             ),
             test_mock={
-                "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                "llm_call": lambda *args,
+                **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
             },
         )
 
