@@ -3,14 +3,17 @@ import typing
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
+import autogpt_libs.utils.cache
 import fastapi
 import prisma
 
 import backend.data.graph
+import backend.executor
 import backend.integrations.creds_manager
 import backend.integrations.webhooks.graph_lifecycle_hooks
 import backend.server.v2.library.db
 import backend.server.v2.library.model
+import backend.util.service
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,11 @@ router = fastapi.APIRouter()
 integration_creds_manager = (
     backend.integrations.creds_manager.IntegrationCredentialsManager()
 )
+
+
+@autogpt_libs.utils.cache.thread_cached
+def execution_manager_client() -> backend.executor.ExecutionManager:
+    return backend.util.service.get_service_client(backend.executor.ExecutionManager)
 
 
 @router.get(
@@ -207,3 +215,38 @@ async def delete_preset(
     except Exception as e:
         logger.exception(f"Exception occurred whilst deleting preset: {e}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to delete preset")
+
+
+@router.post(
+    path="/presets/{preset_id}/execute",
+    tags=["presets"],
+    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
+async def execute_preset(
+    graph_id: str,
+    graph_version: int,
+    preset_id: str,
+    node_input: dict[typing.Any, typing.Any],
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+) -> dict[str, typing.Any]:  # FIXME: add proper return type
+    try:
+        preset = await backend.server.v2.library.db.get_preset(user_id, preset_id)
+        if not preset:
+            raise fastapi.HTTPException(status_code=404, detail="Preset not found")
+
+        merged_input = {**preset.inputs, **node_input}
+
+        execution = execution_manager_client().add_execution(
+            graph_id=graph_id,
+            graph_version=graph_version,
+            data=merged_input,
+            user_id=user_id,
+            preset_id=preset_id,
+        )
+
+        return {"id": execution.graph_exec_id}
+    except Exception as e:
+        msg = e.__str__().encode().decode("unicode_escape")
+        raise fastapi.HTTPException(status_code=400, detail=msg)
