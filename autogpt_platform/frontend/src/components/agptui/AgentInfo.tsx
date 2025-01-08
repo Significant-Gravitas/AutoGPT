@@ -45,14 +45,18 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   const [processing, setProcessing] = React.useState(false);
 
   React.useEffect(() => {
-    (async () => {
+    console.log("Fetching library agent...");
+    const fetchAgent = async () => {
       try {
+        console.log("Trying...");
         const agent = await api.getUserLibraryAgent(storeListingVersionId);
         setAgent(agent);
+        console.log("Fetched agent:", agent);
       } catch (error) {
         console.error("Failed to fetch library agent:", error);
       }
-    })();
+    };
+    fetchAgent();
   }, [api, storeListingVersionId]);
 
   const handleAddToLibrary = React.useCallback(async () => {

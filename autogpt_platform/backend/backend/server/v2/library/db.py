@@ -124,11 +124,11 @@ async def get_library_agent(
         agent = store_listing_version.Agent
 
         # Check if user already has this agent
-        existing_user_agent = await prisma.models.UserAgent.prisma().find_first(
+        existing_user_agent = await prisma.models.AgentGraph.prisma().find_first(
             where={
                 "userId": user_id,
-                "agentId": agent.id,
-                "agentVersion": agent.version,
+                "id": agent.id,
+                "version": agent.version,
             }
         )
 
