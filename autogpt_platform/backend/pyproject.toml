@@ -39,7 +39,7 @@ python-dotenv = "^1.0.1"
 redis = "^5.2.0"
 sentry-sdk = "2.19.2"
 strenum = "^0.4.9"
-supabase = "^2.10.0"
+supabase = "2.11.0"
 tenacity = "^9.0.0"
 tweepy = "^4.14.0"
 uvicorn = { extras = ["standard"], version = "^0.34.0" }
@@ -54,7 +54,6 @@ sqlalchemy = "^2.0.36"
 psycopg2-binary = "^2.9.10"
 google-cloud-storage = "^2.18.2"
 launchdarkly-server-sdk = "^9.8.0"
-aiohttp = "3.10.11"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.31.0"
