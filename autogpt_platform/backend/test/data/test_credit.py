@@ -5,6 +5,7 @@ from prisma.models import CreditTransaction
 
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.credit import BetaUserCredit
+from backend.data.execution import NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
@@ -24,25 +25,37 @@ async def test_block_credit_usage(server: SpinTestServer):
     current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
     spending_amount_1 = await user_credit.spend_credits(
-        DEFAULT_USER_ID,
-        AITextGeneratorBlock().id,
-        {
-            "model": "gpt-4-turbo",
-            "credentials": {
-                "id": openai_credentials.id,
-                "provider": openai_credentials.provider,
-                "type": openai_credentials.type,
+        NodeExecutionEntry(
+            user_id=DEFAULT_USER_ID,
+            graph_id="test_graph",
+            node_id="test_node",
+            graph_exec_id="test_graph_exec",
+            node_exec_id="test_node_exec",
+            block_id=AITextGeneratorBlock().id,
+            data={
+                "model": "gpt-4-turbo",
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
             },
-        },
+        ),
         0.0,
         0.0,
     )
     assert spending_amount_1 > 0
 
     spending_amount_2 = await user_credit.spend_credits(
-        DEFAULT_USER_ID,
-        AITextGeneratorBlock().id,
-        {"model": "gpt-4-turbo", "api_key": "owned_api_key"},
+        NodeExecutionEntry(
+            user_id=DEFAULT_USER_ID,
+            graph_id="test_graph",
+            node_id="test_node",
+            graph_exec_id="test_graph_exec",
+            node_exec_id="test_node_exec",
+            block_id=AITextGeneratorBlock().id,
+            data={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
+        ),
         0.0,
         0.0,
     )
