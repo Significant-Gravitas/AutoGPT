@@ -19,6 +19,7 @@ class ProviderName(str, Enum):
     JINA = "jina"
     MEDIUM = "medium"
     NOTION = "notion"
+    NVIDIA = "nvidia"
     OLLAMA = "ollama"
     OPENAI = "openai"
     OPENWEATHERMAP = "openweathermap"

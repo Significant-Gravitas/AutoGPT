@@ -4,7 +4,7 @@ version = "0.3.4"
 description = "A platform for building AI-powered agentic workflows"
 authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
-packages = [{ include = "backend" }]
+packages = [{ include = "backend", format = "sdist" }]
 
 
 [tool.poetry.dependencies]
@@ -14,7 +14,6 @@ anthropic = "^0.40.0"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 click = "^8.1.7"
-croniter = "^5.0.1"
 discord-py = "^2.4.0"
 e2b-code-interpreter = "^1.0.1"
 fastapi = "^0.115.5"

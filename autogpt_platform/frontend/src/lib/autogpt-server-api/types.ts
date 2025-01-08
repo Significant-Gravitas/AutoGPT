@@ -113,6 +113,7 @@ export const PROVIDER_NAMES = {
   JINA: "jina",
   MEDIUM: "medium",
   NOTION: "notion",
+  NVIDIA: "nvidia",
   OLLAMA: "ollama",
   OPENAI: "openai",
   OPENWEATHERMAP: "openweathermap",
@@ -196,7 +197,7 @@ export type GraphExecution = {
   ended_at: number;
   duration: number;
   total_run_time: number;
-  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   graph_id: string;
   graph_version: number;
 };
@@ -246,7 +247,13 @@ export type NodeExecutionResult = {
   node_exec_id: string;
   node_id: string;
   block_id: string;
-  status: "INCOMPLETE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  status:
+    | "INCOMPLETE"
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED";
   input_data: { [key: string]: any };
   output_data: { [key: string]: Array<any> };
   add_time: Date;
@@ -506,3 +513,36 @@ export type StoreReviewCreate = {
   score: number;
   comments?: string;
 };
+
+// API Key Types
+
+export enum APIKeyPermission {
+  EXECUTE_GRAPH = "EXECUTE_GRAPH",
+  READ_GRAPH = "READ_GRAPH",
+  EXECUTE_BLOCK = "EXECUTE_BLOCK",
+  READ_BLOCK = "READ_BLOCK",
+}
+
+export enum APIKeyStatus {
+  ACTIVE = "ACTIVE",
+  REVOKED = "REVOKED",
+  SUSPENDED = "SUSPENDED",
+}
+
+export interface APIKey {
+  id: string;
+  name: string;
+  prefix: string;
+  postfix: string;
+  status: APIKeyStatus;
+  permissions: APIKeyPermission[];
+  created_at: string;
+  last_used_at?: string;
+  revoked_at?: string;
+  description?: string;
+}
+
+export interface CreateAPIKeyResponse {
+  api_key: APIKey;
+  plain_text_key: string;
+}

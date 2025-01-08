@@ -101,6 +101,92 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
 
 export default NodeObjectInputTree;
 
+const NodeImageInput: FC<{
+  selfKey: string;
+  schema: BlockIOStringSubSchema;
+  value?: string;
+  error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value = "",
+  error,
+  handleInputChange,
+  className,
+  displayName,
+}) => {
+  const handleFileChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        console.error("Please upload an image file");
+        return;
+      }
+
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64String = (e.target?.result as string).split(",")[1];
+        handleInputChange(selfKey, base64String);
+      };
+      reader.readAsDataURL(file);
+    },
+    [selfKey, handleInputChange],
+  );
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <div className="nodrag flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              document.getElementById(`${selfKey}-upload`)?.click()
+            }
+            className="w-full"
+          >
+            {value ? "Change Image" : `Upload ${displayName}`}
+          </Button>
+          {value && (
+            <Button
+              variant="ghost"
+              className="text-red-500 hover:text-red-700"
+              onClick={() => handleInputChange(selfKey, "")}
+            >
+              <Cross2Icon className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        <input
+          id={`${selfKey}-upload`}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
+        {value && (
+          <div className="relative mt-2 rounded-md border border-gray-300 p-2 dark:border-gray-600">
+            <img
+              src={`data:image/jpeg;base64,${value}`}
+              alt="Preview"
+              className="max-h-32 w-full rounded-md object-contain"
+            />
+          </div>
+        )}
+      </div>
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
+
 const NodeDateTimeInput: FC<{
   selfKey: string;
   schema: BlockIOStringSubSchema;
@@ -201,7 +287,7 @@ export const NodeGenericInputField: FC<{
   className,
   displayName,
 }) => {
-  className = cn(className, "my-2");
+  className = cn(className);
   displayName ||= propSchema.title || beautifyString(propKey);
 
   if ("allOf" in propSchema) {
@@ -418,6 +504,19 @@ export const NodeGenericInputField: FC<{
 
   switch (propSchema.type) {
     case "string":
+      if ("image_upload" in propSchema && propSchema.image_upload === true) {
+        return (
+          <NodeImageInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      }
       if ("format" in propSchema && propSchema.format === "date-time") {
         return (
           <NodeDateTimeInput
@@ -653,6 +752,7 @@ const NodeCredentialsInput: FC<{
   return (
     <div className={cn("flex flex-col", className)}>
       <CredentialsInput
+        selfKey={selfKey}
         onSelectCredentials={(credsMeta) =>
           handleInputChange(selfKey, credsMeta)
         }
@@ -876,18 +976,19 @@ const NodeArrayInput: FC<{
             (c) => c.targetHandle === entryKey && c.target === nodeId,
           );
         return (
-          <div key={entryKey} className="self-start">
+          <div key={entryKey}>
+            <NodeHandle
+              keyName={entryKey}
+              schema={schema.items!}
+              isConnected={isConnected}
+              isRequired={false}
+              side="left"
+            />
             <div className="mb-2 flex space-x-2">
-              <NodeHandle
-                keyName={entryKey}
-                schema={schema.items!}
-                isConnected={isConnected}
-                isRequired={false}
-                side="left"
-              />
               {!isConnected &&
                 (schema.items ? (
                   <NodeGenericInputField
+                    className="w-full"
                     nodeId={nodeId}
                     propKey={entryKey}
                     propSchema={schema.items}
