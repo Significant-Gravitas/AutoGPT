@@ -160,7 +160,7 @@ class FillTextTemplateBlock(Block):
             test_input=[
                 {
                     "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
-                    "format": "{hello}, {world} {{name}}",
+                    "format": "{{hello}}, {{ world }} {{name}}",
                 },
                 {
                     "values": {"list": ["Hello", " World!"]},
