@@ -1,6 +1,8 @@
+import base64
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import SecretStr
 
@@ -210,18 +212,24 @@ class IntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
-    def store_state_token(self, user_id: str, provider: str, scopes: list[str]) -> str:
+    def store_state_token(
+        self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
+    ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+        (code_challenge, code_verifier) = self._generate_code_challenge()
 
         state = OAuthState(
             token=token,
             provider=provider,
+            code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
         )
 
         with self.locked_user_integrations(user_id):
+
             user_integrations = self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
             oauth_states.append(state)
@@ -231,39 +239,21 @@ class IntegrationCredentialsStore:
                 user_id=user_id, data=user_integrations
             )
 
-        return token
+        return token, code_challenge
 
-    def get_any_valid_scopes_from_state_token(
+    def _generate_code_challenge(self) -> tuple[str, str]:
+        """
+        Generate code challenge using SHA256 from the code verifier.
+        Currently only SHA256 is supported.(In future if we want to support more methods we can add them here)
+        """
+        code_verifier = secrets.token_urlsafe(128)
+        sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8")
+        return code_challenge.replace("=", ""), code_verifier
+
+    def verify_state_token(
         self, user_id: str, token: str, provider: str
-    ) -> list[str]:
-        """
-        Get the valid scopes from the OAuth state token. This will return any valid scopes
-        from any OAuth state token for the given provider. If no valid scopes are found,
-        an empty list is returned. DO NOT RELY ON THIS TOKEN TO AUTHENTICATE A USER, AS IT
-        IS TO CHECK IF THE USER HAS GIVEN PERMISSIONS TO THE APPLICATION BEFORE EXCHANGING
-        THE CODE FOR TOKENS.
-        """
-        user_integrations = self._get_user_integrations(user_id)
-        oauth_states = user_integrations.oauth_states
-
-        now = datetime.now(timezone.utc)
-        valid_state = next(
-            (
-                state
-                for state in oauth_states
-                if state.token == token
-                and state.provider == provider
-                and state.expires_at > now.timestamp()
-            ),
-            None,
-        )
-
-        if valid_state:
-            return valid_state.scopes
-
-        return []
-
-    def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
+    ) -> Optional[OAuthState]:
         with self.locked_user_integrations(user_id):
             user_integrations = self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
@@ -285,9 +275,9 @@ class IntegrationCredentialsStore:
                 oauth_states.remove(valid_state)
                 user_integrations.oauth_states = oauth_states
                 self.db_manager.update_user_integrations(user_id, user_integrations)
-                return True
+                return valid_state
 
-        return False
+        return None
 
     def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]

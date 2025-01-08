@@ -129,4 +129,42 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [GitHub Unassign PR Reviewer](github/pull_requests.md#github-unassign-pr-reviewer) | Removes an assigned reviewer from a specific GitHub pull request |
 | [GitHub List PR Reviewers](github/pull_requests.md#github-list-pr-reviewers) | Retrieves a list of all assigned reviewers for a specific GitHub pull request |
 
+## Twitter Integration
+| Block Name | Description |
+|------------|-------------|
+| [Twitter Post Tweet](twitter/twitter.md#twitter-post-tweet-block) | Creates a tweet on Twitter with text content and optional attachments including media, polls, quotes, or deep links |
+| [Twitter Delete Tweet](twitter/twitter.md#twitter-delete-tweet-block) | Deletes a specified tweet using its tweet ID |
+| [Twitter Search Recent](twitter/twitter.md#twitter-search-recent-block) | Searches for tweets matching specified criteria with options for filtering and pagination |
+| [Twitter Get Quote Tweets](twitter/twitter.md#twitter-get-quote-tweets-block) | Gets tweets that quote a specified tweet ID with options for pagination and filtering |
+| [Twitter Retweet](twitter/twitter.md#twitter-retweet-block) | Creates a retweet of a specified tweet using its tweet ID |
+| [Twitter Remove Retweet](twitter/twitter.md#twitter-remove-retweet-block) | Removes an existing retweet of a specified tweet |
+| [Twitter Get Retweeters](twitter/twitter.md#twitter-get-retweeters-block) | Gets list of users who have retweeted a specified tweet with pagination and filtering options |
+| [Twitter Get User Mentions](twitter/twitter.md#twitter-get-user-mentions-block) | Gets tweets where a specific user is mentioned using their user ID |
+| [Twitter Get Home Timeline](twitter/twitter.md#twitter-get-home-timeline-block) | Gets recent tweets and retweets from authenticated user and followed accounts |
+| [Twitter Get User](twitter/twitter.md#twitter-get-user-block) | Gets detailed profile information for a single Twitter user |
+| [Twitter Get Users](twitter/twitter.md#twitter-get-users-block) | Gets profile information for multiple Twitter users (up to 100) |
+| [Twitter Search Spaces](twitter/twitter.md#twitter-search-spaces-block) | Searches for Twitter Spaces matching title keywords with state filtering |
+| [Twitter Get Spaces](twitter/twitter.md#twitter-get-spaces-block) | Gets information about multiple Twitter Spaces by Space IDs or creator IDs |
+| [Twitter Get Space By Id](twitter/twitter.md#twitter-get-space-by-id-block) | Gets detailed information about a single Twitter Space |
+| [Twitter Get Space Tweets](twitter/twitter.md#twitter-get-space-tweets-block) | Gets tweets that were shared during a Twitter Space session |
+| [Twitter Follow List](twitter/twitter.md#twitter-follow-list-block) | Follows a Twitter List using its List ID |
+| [Twitter Unfollow List](twitter/twitter.md#twitter-unfollow-list-block) | Unfollows a previously followed Twitter List |
+| [Twitter Get List](twitter/twitter.md#twitter-get-list-block) | Gets detailed information about a specific Twitter List |
+| [Twitter Get Owned Lists](twitter/twitter.md#twitter-get-owned-lists-block) | Gets all Twitter Lists owned by a specified user |
+| [Twitter Get List Members](twitter/twitter.md#twitter-get-list-members-block) | Gets information about members of a specified Twitter List |
+| [Twitter Add List Member](twitter/twitter.md#twitter-add-list-member-block) | Adds a specified user as a member to a Twitter List |
+| [Twitter Remove List Member](twitter/twitter.md#twitter-remove-list-member-block) | Removes a specified user from a Twitter List |
+| [Twitter Get List Tweets](twitter/twitter.md#twitter-get-list-tweets-block) | Gets tweets posted within a specified Twitter List |
+| [Twitter Create List](twitter/twitter.md#twitter-create-list-block) | Creates a new Twitter List with specified name and settings |
+| [Twitter Update List](twitter/twitter.md#twitter-update-list-block) | Updates name and/or description of an existing Twitter List |
+| [Twitter Delete List](twitter/twitter.md#twitter-delete-list-block) | Deletes a specified Twitter List |
+| [Twitter Pin List](twitter/twitter.md#twitter-pin-list-block) | Pins a Twitter List to appear at top of Lists |
+| [Twitter Unpin List](twitter/twitter.md#twitter-unpin-list-block) | Removes a Twitter List from pinned Lists |
+| [Twitter Get Pinned Lists](twitter/twitter.md#twitter-get-pinned-lists-block) | Gets all Twitter Lists that are currently pinned |
+| Twitter List Get Followers | Working... Gets all followers of a specified Twitter List |
+| Twitter Get Followed Lists | Working... Gets all Lists that a user follows |
+| Twitter Get DM Events | Working... Retrieves direct message events for a user |
+| Twitter Send Direct Message | Working... Sends a direct message to a specified user |
+| Twitter Create DM Conversation | Working... Creates a new direct message conversation |
+
 This comprehensive list covers all the blocks available in AutoGPT. Each block is designed to perform a specific task, and they can be combined to create powerful, automated workflows. For more detailed information on each block, click on its name to view the full documentation.
