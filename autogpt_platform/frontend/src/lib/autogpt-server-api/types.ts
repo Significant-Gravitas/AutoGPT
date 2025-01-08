@@ -41,7 +41,7 @@ export type BlockIOSubSchema =
   | BlockIOSimpleTypeSubSchema
   | BlockIOCombinedTypeSubSchema;
 
-type BlockIOSimpleTypeSubSchema =
+export type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
   | BlockIOCredentialsSubSchema
   | BlockIOKVSubSchema
@@ -126,6 +126,7 @@ export const PROVIDER_NAMES = {
   UNREAL_SPEECH: "unreal_speech",
   EXA: "exa",
   HUBSPOT: "hubspot",
+  TWITTER: "twitter",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
