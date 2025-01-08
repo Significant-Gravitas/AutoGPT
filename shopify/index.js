@@ -20,6 +20,9 @@ const scopes = [
 const PORT = process.env.PORT || 8021;
 const hostName =
   process.env.SHOPIFY_INTEGRATION_HOSTNAME || `localhost:${PORT}`;
+const callbackPath =
+  process.env.SHOPIFY_INTEGRATION_CALLBACK_APTH || "/oauth/callback";
+
 const shopify = shopifyApi({
   apiKey: SHOPIFY_API_KEY,
   apiSecretKey: SHOPIFY_SECRET_KEY,
@@ -49,7 +52,7 @@ app.get("/oauth", async (req, res) => {
 
   await shopify.auth.begin({
     shop,
-    callbackPath: "/oauth/callback",
+    callbackPath,
     isOnline: false,
     rawRequest: req,
     rawResponse: res,
