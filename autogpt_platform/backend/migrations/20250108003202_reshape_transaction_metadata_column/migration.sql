@@ -15,7 +15,4 @@ UPDATE "CreditTransaction" SET "metadata" = jsonb_set("metadata"::jsonb, '{block
 -- AlterTable drop blockId
 ALTER TABLE "CreditTransaction" DROP COLUMN "blockId";
 
--- CreateIndex graphExecId
-CREATE INDEX "CreditTransaction_graphExecId_idx" ON "CreditTransaction"(("metadata"->>'graph_exec_id'));
-
 COMMIT;
