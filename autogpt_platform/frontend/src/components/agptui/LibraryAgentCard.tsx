@@ -1,53 +1,82 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import Image from "next/image";
 import { GraphMeta } from "@/lib/autogpt-server-api";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export const LibraryAgentCard = ({ id, name, isCreatedByUser }: GraphMeta) => {
+  const descriptions = `An intelligent agent that helps automate your workflow,
+    saving valuable time and improving productivity with smart automations,
+    and enabling you to focus on what matters most.`;
+
+  const imageUrl = null;
   return (
-    <div
-      className={cn(
-        "flex h-[158px] flex-col rounded-[14px] border border-[#E5E5E5] bg-white p-5 transition-all duration-300 ease-in-out hover:scale-[1.02]",
-        !isCreatedByUser && "shadow-[0_-5px_0_0_rgb(196_181_253)]",
-      )}
-    >
-      <div className="flex flex-1">
-        <h3 className="flex-1 font-inter text-[18px] font-semibold leading-4">
-          {name}
-        </h3>
-        {/* <span
-          className={cn(
-            "h-[14px] w-[14px] rounded-full",
-            status == "Nothing running" && "bg-[#64748B]",
-            status == "healthy" && "bg-[#22C55E]",
-            status == "something wrong" && "bg-[#EF4444]",
-            status == "waiting for trigger" && "bg-[#FBBF24]",
-          )}
-        ></span> */}
+    <div className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
+      <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
+        {!imageUrl ? (
+          <div
+            className={`h-full w-full ${
+              [
+                "bg-gradient-to-r from-green-200 to-blue-200",
+                "bg-gradient-to-r from-pink-200 to-purple-200",
+                "bg-gradient-to-r from-yellow-200 to-orange-200",
+                "bg-gradient-to-r from-blue-200 to-cyan-200",
+                "bg-gradient-to-r from-indigo-200 to-purple-200",
+              ][Math.floor(Math.random() * 5)]
+            }`}
+            style={{
+              backgroundSize: "200% 200%",
+              animation: "gradient 15s ease infinite",
+            }}
+          />
+        ) : (
+          <Image
+            src={imageUrl}
+            alt={`${name} preview image`}
+            fill
+            className="object-cover"
+            priority
+          />
+        )}
+        <div className="absolute bottom-4 left-4">
+          <Avatar className="h-16 w-16 border-2 border-white dark:border-gray-800">
+            <AvatarImage
+              src="/avatar-placeholder.png"
+              alt={`${name} creator avatar`}
+            />
+            <AvatarFallback>{name.charAt(0)}</AvatarFallback>
+          </Avatar>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="mt-6 flex gap-3">
-          <Link
-            href={`/agents/${id}`}
-            className="font-inter text-[14px] font-[700] leading-[24px] text-neutral-800 hover:cursor-pointer hover:underline"
-          >
-            See runs
-          </Link>
+      <div className="w-full px-4 py-4">
+        <h3 className="font-poppins mb-2 text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
+          {name}
+        </h3>
 
-          {isCreatedByUser && (
+        <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+          {descriptions}
+        </p>
+
+        <div className="items-between mt-4 flex w-full justify-between">
+          <div className="flex gap-3">
             <Link
-              href={`/build?flowID=${id}`}
-              className="font-inter text-[14px] font-[700] leading-[24px] text-neutral-800 hover:underline"
+              href={`/agents/${id}`}
+              className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
             >
-              Open in builder
+              See runs
             </Link>
-          )}
-        </div>
-        {/* {output && (
-          <div className="h-[24px] w-fit rounded-[45px] bg-neutral-600 px-[9px] py-[2px] font-sans text-[12px] font-[700] text-neutral-50">
-            New output
+
+            {!isCreatedByUser && (
+              <Link
+                href={`/build?flowID=${id}`}
+                className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
+              >
+                Open in builder
+              </Link>
+            )}
           </div>
-        )} */}
+        </div>
       </div>
     </div>
   );

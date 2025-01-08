@@ -129,12 +129,3 @@
 body {
   overflow-x: hidden;
 }
-
-.drop-style {
-  border: dashed 2px #a3a3a3 !important;
-  border-radius: 20px;
-}
-
-.drop-style:hover {
-  border: dashed 2px #525252 !important;
-}
