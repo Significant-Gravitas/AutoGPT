@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 
 import useSupabase from "@/hooks/useSupabase";
-import { DownloadIcon, LoaderIcon } from "lucide-react";
+import { DownloadIcon, LoaderIcon, CheckIcon } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 interface AgentInfoProps {
   name: string;
@@ -40,18 +40,15 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   const api = useBackendAPI();
   const { user } = useSupabase();
   const { toast } = useToast();
-  const [userAgent, setAgent] = React.useState<GraphMeta | null>(null);
+  const [userAgent, setUserAgent] = React.useState<GraphMeta | null>(null);
   // Either downloading or adding to library
   const [processing, setProcessing] = React.useState(false);
 
   React.useEffect(() => {
-    console.log("Fetching library agent...");
     const fetchAgent = async () => {
       try {
-        console.log("Trying...");
         const agent = await api.getUserLibraryAgent(storeListingVersionId);
-        setAgent(agent);
-        console.log("Fetched agent:", agent);
+        setUserAgent(agent);
       } catch (error) {
         console.error("Failed to fetch library agent:", error);
       }
@@ -77,7 +74,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         throw new Error();
       }
       console.log("Agent added to library successfully");
-      router.push(`/builder?flowID=${agent.id}`);
+      router.push(`/build?flowID=${agent.id}`);
     } catch (error) {
       console.error("Failed to add agent to library:", error);
     }
@@ -159,7 +156,10 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
             {processing ? (
               <LoaderIcon className="h-5 w-5 animate-spin text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
             ) : (
-              <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+              userAgent ? (
+              <CheckIcon className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+              ) : (
+              <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />)
             )}
             <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
               {processing
