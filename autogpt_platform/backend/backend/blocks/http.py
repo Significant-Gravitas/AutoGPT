@@ -57,7 +57,7 @@ class SendWebRequestBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         body = input_data.body
-        
+
         if input_data.json_format:
             if isinstance(body, str):
                 try:
@@ -67,7 +67,7 @@ class SendWebRequestBlock(Block):
                     # If it's not valid JSON and just plain text,
                     # we should send it as plain text instead
                     input_data.json_format = False
-        
+
         response = requests.request(
             input_data.method.value,
             input_data.url,
