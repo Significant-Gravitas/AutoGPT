@@ -35,7 +35,7 @@ const app = express();
 app.use(cors());
 app.use(json());
 
-app.get("/shopify/oauth", async (req, res) => {
+app.get("/oauth", async (req, res) => {
   const shopName = req.query.shop;
   if (!shopName) {
     res.status(400).send("shop name is require");
