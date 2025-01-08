@@ -2,7 +2,7 @@ import * as React from "react";
 import Link from "next/link";
 import { Button } from "./Button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu } from "lucide-react";
+import { KeyIcon, Menu } from "lucide-react";
 import {
   IconDashboardLayout,
   IconIntegrations,
@@ -59,6 +59,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 </div>
               </Link>
               <Link
+                href="/store/api_keys"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              >
+                <KeyIcon className="h-6 w-6" />
+                <div className="p-ui-medium text-base font-medium leading-normal">
+                  API Keys
+                </div>
+              </Link>
+              <Link
                 href="/store/profile"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
@@ -100,6 +109,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               <IconIntegrations className="h-6 w-6" />
               <div className="p-ui-medium text-base font-medium leading-normal">
                 Integrations
+              </div>
+            </Link>
+            <Link
+              href="/store/api_keys"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+            >
+              <KeyIcon className="h-6 w-6" strokeWidth={1} />
+              <div className="p-ui-medium text-base font-medium leading-normal">
+                API Keys
               </div>
             </Link>
             <Link
