@@ -77,7 +77,7 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 class GetRedditPostsBlock(Block):
     class Input(BlockSchema):
-        subreddit: str = SchemaField(description="Subreddit name")
+        subreddit: str = SchemaField(description="Subreddit name, excluding the /r/ prefix", default="writingprompts")
         credentials: RedditCredentialsInput = RedditCredentialsField()
         last_minutes: int | None = SchemaField(
             description="Post time to stop minutes ago while fetching posts",
