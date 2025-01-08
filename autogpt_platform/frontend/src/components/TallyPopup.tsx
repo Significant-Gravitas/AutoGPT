@@ -61,7 +61,7 @@ const TallyPopupSimple = () => {
         <Button
           variant="default"
           onClick={resetTutorial}
-          className="font-inter mb-0 h-14 w-28 rounded-2xl bg-[rgba(65,65,64,1)] text-left text-lg font-medium leading-6"
+          className="mb-0 h-14 w-28 rounded-2xl bg-[rgba(65,65,64,1)] text-left font-inter text-lg font-medium leading-6"
         >
           Tutorial
         </Button>
