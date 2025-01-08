@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 ecosystem.config.js",
+    "start": "pm2 start ecosystem.config.js",
     "dev": "nodemon"
   },
   "keywords": [],

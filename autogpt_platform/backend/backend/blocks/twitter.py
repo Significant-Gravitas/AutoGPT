@@ -15,9 +15,6 @@ class TwitterCredentials(BaseModel):
     model_config = ConfigDict(title="Twitter Credentials")
 
 
-class TwitterPost(BaseModel):
-    content: str = f"Hello, Twitter! This tweet was posted using OAuth 2.0 User Context. 🚀 {datetime.now().isoformat()}"
-
 class PostTwitterTweetBlock(Block):
     class Input(BlockSchema):
         api: TwitterCredentials = SchemaField(
