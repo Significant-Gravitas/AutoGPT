@@ -102,7 +102,7 @@ async def assert_sample_graph_executions(
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!!!"]}
     assert exec.input_data == {
-        "format": "{a}, {b}{c}",
+        "format": "{{a}}, {{b}}{{c}}",
         "values": {"a": "Hello", "b": "World", "c": "!!!"},
         "values_#_a": "Hello",
         "values_#_b": "World",
