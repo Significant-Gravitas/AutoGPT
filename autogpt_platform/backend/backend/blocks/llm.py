@@ -109,6 +109,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     LLAMA3_1_70B = "llama-3.1-70b-versatile"
     LLAMA3_1_8B = "llama-3.1-8b-instant"
     # Ollama models
+    OLLAMA_LLAMA3_2 = "llama3.2"
     OLLAMA_LLAMA3_8B = "llama3"
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     OLLAMA_DOLPHIN = "dolphin-mistral:latest"
@@ -163,6 +164,7 @@ MODEL_METADATA = {
     # Limited to 16k during preview
     LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072),
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
+    LlmModel.OLLAMA_LLAMA3_2: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768),
