@@ -6,8 +6,10 @@
         - AITextGeneratorBlock
         - AIStructuredResponseGeneratorBlock
     with a double brace format.
+   - This migration can be slow for a large updated AgentNode tables.
 */
-SET statement_timeout = '15min';
+BEGIN;
+SET LOCAL statement_timeout = '15min';
 
 WITH to_update AS (
     SELECT
@@ -78,3 +80,5 @@ UPDATE "AgentNode" AS an
 SET "constantInput" = ur."newConstantInput"
 FROM updated_rows ur
 WHERE an."agentBlockId" = ur."agentBlockId";
+
+COMMIT;
