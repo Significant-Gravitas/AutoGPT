@@ -13,6 +13,7 @@ SET LOCAL statement_timeout = '15min';
 
 WITH to_update AS (
     SELECT
+        "id",
         "agentBlockId",
         "constantInput"::jsonb AS j
     FROM "AgentNode"
@@ -31,6 +32,7 @@ WITH to_update AS (
 ),
 updated_rows AS (
     SELECT
+        "id",
         "agentBlockId",
         (
             j
@@ -79,6 +81,6 @@ updated_rows AS (
 UPDATE "AgentNode" AS an
 SET "constantInput" = ur."newConstantInput"
 FROM updated_rows ur
-WHERE an."agentBlockId" = ur."agentBlockId";
+WHERE an."id" = ur."id";
 
 COMMIT;
