@@ -32,7 +32,7 @@ COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/market/poetry.lock autogpt_platform/market/pyproject.toml /app/autogpt_platform/market/
 WORKDIR /app/autogpt_platform/market
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
+    && poetry install --no-interaction --no-ansi --no-root
 
 # Generate Prisma client
 COPY autogpt_platform/market /app/autogpt_platform/market
