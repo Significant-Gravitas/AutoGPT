@@ -11,9 +11,9 @@ from prisma.models import (
     AgentGraphExecution,
     AgentNode,
     AgentNodeLink,
-    StoreListing,
+    StoreListingVersion,
 )
-from prisma.types import AgentGraphWhereInput, StoreListingWhereInput
+from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -560,25 +560,19 @@ async def get_graph(
         order={"version": "desc"},
     )
 
-    if not graph:
-        return None
-
-    if graph.userId == user_id:
-        return GraphModel.from_db(graph, for_export) if graph else None
-
-    # If the graph is not owned by the user, we need to check if it's a store listing.
-    if not version:
-        version = graph.version
-
-    store_listing_where: StoreListingWhereInput = {
-        "agentId": graph_id,
-        "agentVersion": version,
-    }
-
-    store_listing = await StoreListing.prisma().find_first(where=store_listing_where)
-
-    # If it does not belong to the user nor is not a store listing, return None
-    if not store_listing:
+    # The Graph has to be owned by the user or a store listing.
+    if (
+        graph
+        and graph.userId != user_id
+        and not (
+            await StoreListingVersion.prisma().find_first(
+                where={
+                    "agentId": graph_id,
+                    "agentVersion": version or graph.version,
+                }
+            )
+        )
+    ):
         return None
 
     # If it is a store listing, return the graph model
