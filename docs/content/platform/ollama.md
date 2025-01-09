@@ -10,9 +10,7 @@ Follow these steps to set up and run Ollama with the AutoGPT platform.
 ## Setup Steps
 
 ### 1. Launch Ollama
-
 Open a new terminal and execute:
-
 ```bash
 ollama run llama3.2
 ```
@@ -20,45 +18,46 @@ ollama run llama3.2
 > **Note**: This will download the [llama3.2](https://ollama.com/library/llama3.2) model and start the service. Keep this terminal running in the background.
 
 ### 2. Start the Backend
-
 Open a new terminal and navigate to the autogpt_platform directory:
-
 ```bash
 cd autogpt_platform
 docker compose up -d --build
 ```
 
-### 3. Launch the Frontend
-
+### 3. Start the Frontend
 Open a new terminal and navigate to the frontend directory:
-
 ```bash
 cd autogpt_platform/frontend
 npm run dev
 ```
 
-Then visit [http://localhost:3000](http://localhost:3000) to see the frontend running. After registering an account, navigate to the build page at [http://localhost:3000/build](http://localhost:3000/build)
+Then visit [http://localhost:3000](http://localhost:3000) to see the frontend running, after registering an account/logging in, navigate to the build page at [http://localhost:3000/build](http://localhost:3000/build)
 
 ### 4. Using Ollama with AutoGPT
 
 Now that both Ollama and the AutoGPT platform are running we can move onto using Ollama with AutoGPT:
 
-1. Add an AI Text Generator block to your workspace:
+1. Add an AI Text Generator block to your workspace (it can work with any AI LLM block but for this example will be using the AI Text Generator block):
    ![Add AI Text Generator Block](../imgs/ollama/Select-AI-block.png)
 
-2. Expand the block settings by toggling the "Advanced" option
-3. In the "LLM Model" dropdown, select "llama3.2" (This is the model we downloaded earlier)
+2. In the "LLM Model" dropdown, select "llama3.2" (This is the model we downloaded earlier)
    ![Select Ollama Model](../imgs/ollama/Ollama-Select-Llama32.png)
 
-4. Add your prompt and then run the graph:
+3. You will see it ask for "Ollama Credentials", simply press "Enter API key" 
+    ![Ollama Credentials](../imgs/ollama/Ollama-Enter-API-key.png)
 
-![Ollama-Output](../imgs/ollama/Ollama-Output.png)
+    And you will see "Add new API key for Ollama", In the API key field you can enter anything you want as Ollama does not require an API key, i usually just enter a space, for the Name call it "Ollama" then press "Save & use this API key"
+    ![Ollama Credentials](../imgs/ollama/Ollama-Credentials.png)
 
-That's it! You've successfully setup the AutoGPT platform and made your first Ollama call.
+4. After that you will now see the block again, add your prompts then save and then run the graph:
+![Add Prompt](../imgs/ollama/Ollama-Add-Prompts.png)
+
+That's it! You've successfully setup the AutoGPT platform and made a LLM call to Ollama.
+![Ollama Output](../imgs/ollama/Ollama-Output.png)
 
 
 ### Using Ollama on a Remote Server with AutoGPT 
-For running Ollama on an remote server, simply make sure the Ollama server is running and is accessible from other devices on your network/remotly through the port 11434, then you can use the same steps above but you need to add the Ollama servers IP address to the "Ollama Host" field in the block settings like so:
+For running Ollama on an remote server, simply make sure the Ollama server is running and is accessible from other devices on your network/remotely through the port 11434, then you can use the same steps above but you need to add the Ollama servers IP address to the "Ollama Host" field in the block settings like so:
 
 ![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)
 
