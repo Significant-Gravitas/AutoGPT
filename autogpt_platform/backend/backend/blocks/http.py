@@ -56,15 +56,24 @@ class SendWebRequestBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        if isinstance(input_data.body, str):
-            input_data.body = json.loads(input_data.body)
+        body = input_data.body
+
+        if input_data.json_format:
+            if isinstance(body, str):
+                try:
+                    # Try to parse as JSON first
+                    body = json.loads(body)
+                except json.JSONDecodeError:
+                    # If it's not valid JSON and just plain text,
+                    # we should send it as plain text instead
+                    input_data.json_format = False
 
         response = requests.request(
             input_data.method.value,
             input_data.url,
             headers=input_data.headers,
-            json=input_data.body if input_data.json_format else None,
-            data=input_data.body if not input_data.json_format else None,
+            json=body if input_data.json_format else None,
+            data=body if not input_data.json_format else None,
         )
         result = response.json() if input_data.json_format else response.text
 
