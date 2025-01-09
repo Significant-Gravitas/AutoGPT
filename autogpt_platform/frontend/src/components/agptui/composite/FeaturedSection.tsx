@@ -11,9 +11,7 @@ import {
   CarouselIndicator,
 } from "@/components/ui/carousel";
 import { useCallback, useState } from "react";
-import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
-import useEmblaCarousel from "embla-carousel-react";
 
 const BACKGROUND_COLORS = [
   "bg-violet-200 dark:bg-violet-800", // #ddd6fe / #5b21b6
@@ -42,7 +40,6 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
 }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const router = useRouter();
-  const [carouselRef, api] = useEmblaCarousel();
 
   const handleCardClick = (creator: string, slug: string) => {
     router.push(
@@ -54,8 +51,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
     setCurrentSlide((prev) =>
       prev === 0 ? featuredAgents.length - 1 : prev - 1,
     );
-    api?.scrollTo(2);
-  }, [featuredAgents.length, api]);
+  }, [featuredAgents.length]);
 
   const handleNextSlide = useCallback(() => {
     setCurrentSlide((prev) =>
