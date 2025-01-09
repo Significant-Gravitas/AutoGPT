@@ -29,6 +29,7 @@ class ProviderName(str, Enum):
     REPLICATE = "replicate"
     REVID = "revid"
     SLANT3D = "slant3d"
+    SMTP = "smtp"
     TWITTER = "twitter"
     UNREAL_SPEECH = "unreal_speech"
     # --8<-- [end:ProviderName]

@@ -73,6 +73,7 @@ export const providerIcons: Record<
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
   slant3d: fallbackIcon,
+  smtp: fallbackIcon,
   replicate: fallbackIcon,
   reddit: fallbackIcon,
   fal: fallbackIcon,
