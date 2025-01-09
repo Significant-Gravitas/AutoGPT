@@ -91,6 +91,7 @@ class SendEmailBlock(Block):
                 },
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
+            test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Email sent successfully")],
             test_mock={"send_email": lambda *args, **kwargs: "Email sent successfully"},
         )
