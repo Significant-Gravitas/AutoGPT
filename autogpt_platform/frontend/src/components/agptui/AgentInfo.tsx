@@ -155,11 +155,10 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           >
             {processing ? (
               <LoaderIcon className="h-5 w-5 animate-spin text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-            ) : (
-              userAgent ? (
+            ) : userAgent ? (
               <CheckIcon className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-              ) : (
-              <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />)
+            ) : (
+              <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
             )}
             <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
               {processing
