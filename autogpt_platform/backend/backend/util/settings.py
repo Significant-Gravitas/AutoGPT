@@ -307,6 +307,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
+    nvidia_api_key: str = Field(default="", description="Nvidia API key")
 
     # Add more secret fields as needed
 
