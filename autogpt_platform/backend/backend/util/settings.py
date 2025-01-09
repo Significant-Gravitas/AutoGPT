@@ -304,7 +304,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     jina_api_key: str = Field(default="", description="Jina API Key")
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
-    fal_key: str = Field(default="", description="FAL API key")
+    fal_api_key: str = Field(default="", description="FAL API key")
+    exa_api_key: str = Field(default="", description="Exa API key")
+    e2b_api_key: str = Field(default="", description="E2B API key")
 
     # Add more secret fields as needed
 

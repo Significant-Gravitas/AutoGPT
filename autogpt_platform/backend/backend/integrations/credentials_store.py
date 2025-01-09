@@ -93,6 +93,27 @@ open_router_credentials = APIKeyCredentials(
     title="Use Credits for Open Router",
     expires_at=None,
 )
+fal_credentials = APIKeyCredentials(
+    id="6c0f5bd0-9008-4638-9d79-4b40b631803e",
+    provider="fal",
+    api_key=SecretStr(settings.secrets.fal_api_key),
+    title="Use Credits for FAL",
+    expires_at=None,
+)
+exa_credentials = APIKeyCredentials(
+    id="96153e04-9c6c-4486-895f-5bb683b1ecec",
+    provider="exa",
+    api_key=SecretStr(settings.secrets.exa_api_key),
+    title="Use Credits for Exa search",
+    expires_at=None,
+)
+e2b_credentials = APIKeyCredentials(
+    id="78d19fd7-4d59-4a16-8277-3ce310acf2b7",
+    provider="e2b",
+    api_key=SecretStr(settings.secrets.e2b_api_key),
+    title="Use Credits for E2B",
+    expires_at=None,
+)
 
 
 DEFAULT_CREDENTIALS = [
@@ -106,6 +127,9 @@ DEFAULT_CREDENTIALS = [
     jina_credentials,
     unreal_credentials,
     open_router_credentials,
+    fal_credentials,
+    exa_credentials,
+    e2b_credentials,
 ]
 
 
@@ -157,6 +181,12 @@ class IntegrationCredentialsStore:
             all_credentials.append(unreal_credentials)
         if settings.secrets.open_router_api_key:
             all_credentials.append(open_router_credentials)
+        if settings.secrets.fal_api_key:
+            all_credentials.append(fal_credentials)
+        if settings.secrets.exa_api_key:
+            all_credentials.append(exa_credentials)
+        if settings.secrets.e2b_api_key:
+            all_credentials.append(e2b_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
