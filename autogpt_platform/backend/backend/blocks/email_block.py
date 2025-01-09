@@ -3,7 +3,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Literal
 
-from backend.integrations.providers import ProviderName
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -13,7 +12,7 @@ from backend.data.model import (
     SchemaField,
     UserPasswordCredentials,
 )
-
+from backend.integrations.providers import ProviderName
 
 TEST_CREDENTIALS = UserPasswordCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
