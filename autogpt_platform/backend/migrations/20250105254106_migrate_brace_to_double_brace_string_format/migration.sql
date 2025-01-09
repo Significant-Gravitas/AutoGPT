@@ -9,7 +9,7 @@
    - This migration can be slow for a large updated AgentNode tables.
 */
 BEGIN;
-SET LOCAL statement_timeout = '15min';
+SET LOCAL statement_timeout = '10min';
 
 WITH to_update AS (
     SELECT
