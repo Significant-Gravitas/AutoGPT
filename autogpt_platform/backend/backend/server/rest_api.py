@@ -2,6 +2,7 @@ import contextlib
 import logging
 import typing
 
+import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
 import starlette.middleware.cors
@@ -170,6 +171,13 @@ class AgentServer(backend.util.service.AppProcess):
         request: backend.server.v2.store.model.StoreSubmissionRequest, user_id: str
     ):
         return await backend.server.v2.store.routes.create_submission(request, user_id)
+
+    @staticmethod
+    async def test_review_store_listing(
+        request: backend.server.v2.store.model.ReviewSubmissionRequest,
+        user: autogpt_libs.auth.models.User,
+    ):
+        return await backend.server.v2.store.routes.review_submission(request, user)
 
     def set_test_dependency_overrides(self, overrides: dict):
         app.dependency_overrides.update(overrides)

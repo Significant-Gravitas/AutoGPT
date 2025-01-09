@@ -1,6 +1,7 @@
 from typing import Any
 from uuid import UUID
 
+import autogpt_libs.auth.models
 import fastapi.exceptions
 import pytest
 
@@ -258,8 +259,34 @@ async def test_access_store_listing_graph(server: SpinTestServer):
     assert "Graph" in str(exc_info.value.detail)
 
     # Now we create a store listing
-    await server.agent_server.test_create_store_listing(
+    store_listing = await server.agent_server.test_create_store_listing(
         store_submission_request, DEFAULT_USER_ID
+    )
+
+    if isinstance(store_listing, fastapi.responses.JSONResponse):
+        assert False, "Failed to create store listing"
+
+    slv_id = (
+        store_listing.store_listing_version_id
+        if store_listing.store_listing_version_id is not None
+        else None
+    )
+
+    assert slv_id is not None
+
+    admin = autogpt_libs.auth.models.User(
+        user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1b",
+        role="admin",
+        email="admin@example.com",
+        phone_number="1234567890",
+    )
+    await server.agent_server.test_review_store_listing(
+        backend.server.v2.store.model.ReviewSubmissionRequest(
+            store_listing_version_id=slv_id,
+            isApproved=True,
+            comments="Test comments",
+        ),
+        admin,
     )
 
     # Now we check the graph can be accessed by a user that does not own the graph

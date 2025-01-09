@@ -566,10 +566,12 @@ async def get_graph(
         and graph.userId != user_id
         and not (
             await StoreListingVersion.prisma().find_first(
-                where={
-                    "agentId": graph_id,
-                    "agentVersion": version or graph.version,
-                }
+                where=prisma.types.StoreListingVersionWhereInput(
+                    agentId=graph_id,
+                    agentVersion=version or graph.version,
+                    isDeleted=False,
+                    StoreListing={"is": {"isApproved": True}},
+                )
             )
         )
     ):
