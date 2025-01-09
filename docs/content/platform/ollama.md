@@ -1,5 +1,7 @@
 # Running Ollama with AutoGPT
 
+> **Important**: Ollama integration is only available when self-hosting the AutoGPT platform. It cannot be used with the cloud-hosted version.
+
 Follow these steps to set up and run Ollama with the AutoGPT platform.
 
 ## Prerequisites
@@ -46,7 +48,7 @@ Now that both Ollama and the AutoGPT platform are running we can move onto using
 3. You will see it ask for "Ollama Credentials", simply press "Enter API key" 
     ![Ollama Credentials](../imgs/ollama/Ollama-Enter-API-key.png)
 
-    And you will see "Add new API key for Ollama", In the API key field you can enter anything you want as Ollama does not require an API key, i usually just enter a space, for the Name call it "Ollama" then press "Save & use this API key"
+    And you will see "Add new API key for Ollama", In the API key field you can enter anything you want as Ollama does not require an API key, I usually just enter a space, for the Name call it "Ollama" then press "Save & use this API key"
     ![Ollama Credentials](../imgs/ollama/Ollama-Credentials.png)
 
 4. After that you will now see the block again, add your prompts then save and then run the graph:
@@ -57,7 +59,7 @@ That's it! You've successfully setup the AutoGPT platform and made a LLM call to
 
 
 ### Using Ollama on a Remote Server with AutoGPT 
-For running Ollama on an remote server, simply make sure the Ollama server is running and is accessible from other devices on your network/remotely through the port 11434, then you can use the same steps above but you need to add the Ollama servers IP address to the "Ollama Host" field in the block settings like so:
+For running Ollama on a remote server, simply make sure the Ollama server is running and is accessible from other devices on your network/remotely through the port 11434, then you can use the same steps above but you need to add the Ollama servers IP address to the "Ollama Host" field in the block settings like so:
 
 ![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)
 
