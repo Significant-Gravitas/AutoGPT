@@ -7,6 +7,8 @@
         - AIStructuredResponseGeneratorBlock
     with a double brace format.
 */
+SET statement_timeout = '15min';
+
 WITH to_update AS (
     SELECT
         "agentBlockId",
