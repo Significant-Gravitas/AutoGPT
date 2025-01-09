@@ -1,10 +1,11 @@
+// This file has been updated for the Store's "Featured Agent Section". If you want to add Carousel, keep these components in mind: CarouselIndicator, CarouselPrevious, and CarouselNext.
 "use client";
 
 import * as React from "react";
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from "embla-carousel-react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -210,9 +211,9 @@ const CarouselPrevious = React.forwardRef<
         variant={variant}
         size={size}
         className={cn(
-          "absolute h-8 w-8 rounded-full",
+          "absolute h-[52px] w-[52px] rounded-full",
           orientation === "horizontal"
-            ? "-bottom-16 right-16 -translate-y-1/2"
+            ? "-bottom-20 right-24 -translate-y-1/2"
             : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -225,7 +226,7 @@ const CarouselPrevious = React.forwardRef<
         }}
         {...props}
       >
-        <ArrowLeft className="h-4 w-4" />
+        <ChevronLeft className="h-8 w-8" strokeWidth={1.25} />
         <span className="sr-only">Previous slide</span>
       </Button>
     );
@@ -256,9 +257,9 @@ const CarouselNext = React.forwardRef<
         variant={variant}
         size={size}
         className={cn(
-          "absolute h-8 w-8 rounded-full",
+          "absolute h-[52px] w-[52px] rounded-full",
           orientation === "horizontal"
-            ? "-bottom-16 right-4 -translate-y-1/2"
+            ? "-bottom-20 right-4 -translate-y-1/2"
             : "-bottom-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -266,7 +267,7 @@ const CarouselNext = React.forwardRef<
         onClick={handleClick}
         {...props}
       >
-        <ArrowRight className="h-4 w-4" />
+        <ChevronRight className="h-8 w-8" strokeWidth={1.25} />
         <span className="sr-only">Next slide</span>
       </Button>
     );
@@ -274,11 +275,59 @@ const CarouselNext = React.forwardRef<
 );
 CarouselNext.displayName = "CarouselNext";
 
+const CarouselIndicator = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => {
+  const { api } = useCarousel();
+  const [selectedIndex, setSelectedIndex] = React.useState(0);
+  const [scrollSnaps, setScrollSnaps] = React.useState<number[]>([]);
+
+  const scrollTo = React.useCallback(
+    (index: number) => {
+      api?.scrollTo(index);
+    },
+    [api],
+  );
+
+  React.useEffect(() => {
+    if (!api) return;
+
+    setScrollSnaps(api.scrollSnapList());
+    api.on("select", () => {
+      setSelectedIndex(api.selectedScrollSnap());
+    });
+  }, [api]);
+
+  return (
+    <div
+      ref={ref}
+      className={cn("relative top-10 flex h-3 items-center gap-2", className)}
+      {...props}
+    >
+      {scrollSnaps.map((_, index) => (
+        <div
+          key={index}
+          onClick={() => scrollTo(index)}
+          className={cn(
+            selectedIndex === index
+              ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
+              : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600",
+            "cursor-pointer",
+          )}
+        />
+      ))}
+    </div>
+  );
+});
+CarouselIndicator.displayName = "CarouselIndicator";
+
 export {
   type CarouselApi,
   Carousel,
   CarouselContent,
   CarouselItem,
+  CarouselIndicator,
   CarouselPrevious,
   CarouselNext,
 };

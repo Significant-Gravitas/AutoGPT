@@ -8,6 +8,7 @@ import {
   CarouselItem,
   CarouselPrevious,
   CarouselNext,
+  CarouselIndicator,
 } from "@/components/ui/carousel";
 import { useCallback, useState } from "react";
 import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
@@ -73,14 +74,15 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           Featured agents
         </h2>
 
-        <div className="w-[99vw] pb-6">
+        <div className="w-[99vw] pb-[60px]">
           <Carousel
             className="mx-auto pb-10"
             opts={{
-              align: "start",
+              align: "center",
+              containScroll: "trimSnaps",
             }}
           >
-            <CarouselContent className="pl-[calc(50vw-680px+16px)] pr-8">
+            <CarouselContent className="ml-[calc(50vw-690px)]">
               {featuredAgents.map((agent, index) => (
                 <CarouselItem
                   key={index}
@@ -100,81 +102,12 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
                 </CarouselItem>
               ))}
             </CarouselContent>
-            <div className="relative mx-auto w-full max-w-[1360px]">
-              <div className="relative top-10 flex h-3 items-center gap-2">
-                {featuredAgents.map((_, index) => (
-                  <div
-                    key={index}
-                    className={`${
-                      currentSlide === index
-                        ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
-                        : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600"
-                    }`}
-                  />
-                ))}
-              </div>
+            <div className="relative mx-auto w-full max-w-[1360px] pl-4">
+              <CarouselIndicator />
               <CarouselPrevious afterClick={handlePrevSlide} />
               <CarouselNext afterClick={handleNextSlide} />
-              <button onClick={handlePrevSlide}>Scroll to Slide #3</button>
             </div>
           </Carousel>
-
-          {/* <Carousel
-            opts={{
-              startIndex: currentSlide,
-              duration: 500,
-              align: "start",
-              containScroll: "trimSnaps",
-              slidesToScroll: 1,
-            }}
-            orientation="horizontal"
-            className="w-full overflow-x-hidden"
-          >
-            <CarouselContent className="pl-[calc((100vw-1360px)/2)]">
-              {featuredAgents.map((agent, index) => (
-                <CarouselItem
-                  key={index}
-                  className="max-w-[460px] flex-[0_0_auto] pr-8"
-                >
-                  <FeaturedStoreCard
-                    agentName={agent.agent_name}
-                    subHeading={agent.sub_heading}
-                    agentImage={agent.agent_image}
-                    creatorName={agent.creator}
-                    description={agent.description}
-                    runs={agent.runs}
-                    rating={agent.rating}
-                    backgroundColor={getBackgroundColor(index)}
-                    onClick={() => handleCardClick(agent.creator, agent.slug)}
-                  />
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-            <CarouselPrevious />
-            <CarouselNext /> */}
-          {/* <div className="mx-auto mt-8 flex w-full max-w-[1360px] items-center justify-between">
-              <div className="flex h-3 items-center gap-2">
-                {featuredAgents.map((_, index) => (
-                  <div
-                    key={index}
-                    className={`${
-                      currentSlide === index
-                        ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
-                        : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600"
-                    }`}
-                  />
-                ))}
-              </div>
-              <div className="mb-[60px] flex items-center gap-3"> */}
-          {/* <button
-                  onClick={handleNextSlide}
-                  className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-900 bg-white dark:border-neutral-600 dark:bg-neutral-800"
-                >
-                  <IconRightArrow className="h-8 w-8 text-neutral-800 dark:text-neutral-200" />
-                </button> */}
-          {/* </div> */}
-          {/* </div> */}
-          {/* </Carousel> */}
         </div>
       </div>
     </div>
