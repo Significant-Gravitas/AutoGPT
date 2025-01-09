@@ -114,6 +114,13 @@ e2b_credentials = APIKeyCredentials(
     title="Use Credits for E2B",
     expires_at=None,
 )
+nvidia_credentials = APIKeyCredentials(
+    id="96b83908-2789-4dec-9968-18f0ece4ceb3",
+    provider="nvidia",
+    api_key=SecretStr(settings.secrets.nvidia_api_key),
+    title="Use Credits for Nvidia",
+    expires_at=None,
+)
 
 
 DEFAULT_CREDENTIALS = [
@@ -130,6 +137,7 @@ DEFAULT_CREDENTIALS = [
     fal_credentials,
     exa_credentials,
     e2b_credentials,
+    nvidia_credentials,
 ]
 
 
@@ -187,6 +195,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(exa_credentials)
         if settings.secrets.e2b_api_key:
             all_credentials.append(e2b_credentials)
+        if settings.secrets.nvidia_api_key:
+            all_credentials.append(nvidia_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
