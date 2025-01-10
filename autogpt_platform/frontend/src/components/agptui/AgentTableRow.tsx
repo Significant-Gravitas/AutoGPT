@@ -21,6 +21,7 @@ export interface AgentTableRowProps {
   rating: number;
   dateSubmitted: string;
   id: number;
+  selectedAgents: Set<string>
   onEditSubmission: (submission: StoreSubmissionRequest) => void;
   onDeleteSubmission: (submission_id: string) => void;
 }
@@ -37,6 +38,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   runs,
   rating,
   id,
+  selectedAgents,
   onEditSubmission,
   onDeleteSubmission,
 }) => {
@@ -77,6 +79,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
             id={checkboxId}
             aria-label={`Select ${agentName}`}
             className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
+            checked={selectedAgents.has(agent_id)}
           />
           {/* Single label instead of multiple */}
           <label htmlFor={checkboxId} className="sr-only">

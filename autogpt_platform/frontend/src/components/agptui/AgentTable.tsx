@@ -88,6 +88,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
             <div key={agent.id} className="md:block">
               <AgentTableRow
                 {...agent}
+                selectedAgents={selectedAgents}
                 onEditSubmission={onEditSubmission}
                 onDeleteSubmission={onDeleteSubmission}
               />
