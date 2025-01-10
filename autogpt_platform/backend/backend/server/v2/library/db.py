@@ -294,8 +294,6 @@ async def create_or_update_preset(
     preset_id: str | None = None,
 ) -> backend.server.v2.library.model.LibraryAgentPreset:
     try:
-
-        logger.info(f"DB Creating Preset with inputs: {preset.inputs}")
         new_preset = await prisma.models.AgentPreset.prisma().upsert(
             where={
                 "id": preset_id if preset_id else "",
