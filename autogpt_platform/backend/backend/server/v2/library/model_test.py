@@ -10,20 +10,26 @@ import backend.server.v2.library.model
 def test_library_agent():
     agent = backend.server.v2.library.model.LibraryAgent(
         id="test-agent-123",
-        version=1,
-        is_active=True,
+        agent_id="agent-123",
+        agent_version=1,
+        preset_id=None,
+        updated_at=datetime.datetime.now(),
         name="Test Agent",
         description="Test description",
-        isCreatedByUser=False,
         input_schema={"type": "object", "properties": {}},
         output_schema={"type": "object", "properties": {}},
+        is_favorite=False,
+        is_created_by_user=False,
+        is_latest_version=True,
     )
     assert agent.id == "test-agent-123"
-    assert agent.version == 1
-    assert agent.is_active is True
+    assert agent.agent_id == "agent-123"
+    assert agent.agent_version == 1
     assert agent.name == "Test Agent"
     assert agent.description == "Test description"
-    assert agent.isCreatedByUser is False
+    assert agent.is_favorite is False
+    assert agent.is_created_by_user is False
+    assert agent.is_latest_version is True
     assert agent.input_schema == {"type": "object", "properties": {}}
     assert agent.output_schema == {"type": "object", "properties": {}}
 
@@ -31,20 +37,26 @@ def test_library_agent():
 def test_library_agent_with_user_created():
     agent = backend.server.v2.library.model.LibraryAgent(
         id="user-agent-456",
-        version=2,
-        is_active=True,
+        agent_id="agent-456",
+        agent_version=2,
+        preset_id=None,
+        updated_at=datetime.datetime.now(),
         name="User Created Agent",
         description="An agent created by the user",
-        isCreatedByUser=True,
         input_schema={"type": "object", "properties": {}},
         output_schema={"type": "object", "properties": {}},
+        is_favorite=False,
+        is_created_by_user=True,
+        is_latest_version=True,
     )
     assert agent.id == "user-agent-456"
-    assert agent.version == 2
-    assert agent.is_active is True
+    assert agent.agent_id == "agent-456"
+    assert agent.agent_version == 2
     assert agent.name == "User Created Agent"
     assert agent.description == "An agent created by the user"
-    assert agent.isCreatedByUser is True
+    assert agent.is_favorite is False
+    assert agent.is_created_by_user is True
+    assert agent.is_latest_version is True
     assert agent.input_schema == {"type": "object", "properties": {}}
     assert agent.output_schema == {"type": "object", "properties": {}}
 
@@ -71,7 +83,11 @@ def test_library_agent_preset():
     assert preset.agent_id == "test-agent-123"
     assert preset.agent_version == 1
     assert preset.is_active is True
-    assert preset.inputs == {"input1": "test value"}
+    assert preset.inputs == {
+        "input1": backend.data.block.BlockInput(
+            name="input1", data={"type": "string", "value": "test value"}
+        )
+    }
 
 
 def test_library_agent_preset_response():
@@ -127,7 +143,11 @@ def test_create_library_agent_preset_request():
     assert request.agent_id == "agent-123"
     assert request.agent_version == 1
     assert request.is_active is True
-    assert request.inputs == {"input1": "test value"}
+    assert request.inputs == {
+        "input1": backend.data.block.BlockInput(
+            name="input1", data={"type": "string", "value": "test value"}
+        )
+    }
 
 
 def test_library_agent_from_db():
