@@ -141,10 +141,10 @@ class ExtractTextInformationBlock(Block):
 class FillTextTemplateBlock(Block):
     class Input(BlockSchema):
         values: dict[str, Any] = SchemaField(
-            description="Values (dict) to be used in format"
+            description="Values (dict) to be used in format. These values can be used by putting them in double curly braces in the format template. e.g. {{value_name}}.",
         )
         format: str = SchemaField(
-            description="Template to format the text using `values`"
+            description="Template to format the text using `values`. Use Jinja2 syntax."
         )
 
     class Output(BlockSchema):
@@ -160,7 +160,7 @@ class FillTextTemplateBlock(Block):
             test_input=[
                 {
                     "values": {"name": "Alice", "hello": "Hello", "world": "World!"},
-                    "format": "{hello}, {world} {{name}}",
+                    "format": "{{hello}}, {{ world }} {{name}}",
                 },
                 {
                     "values": {"list": ["Hello", " World!"]},
