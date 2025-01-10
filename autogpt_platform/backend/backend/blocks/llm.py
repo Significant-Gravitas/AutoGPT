@@ -26,8 +26,10 @@ from backend.data.model import (
 )
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
+from backend.util.text import TextFormatter
 
 logger = logging.getLogger(__name__)
+fmt = TextFormatter()
 
 LLMProviderName = Literal[
     ProviderName.ANTHROPIC,
@@ -109,6 +111,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     LLAMA3_1_70B = "llama-3.1-70b-versatile"
     LLAMA3_1_8B = "llama-3.1-8b-instant"
     # Ollama models
+    OLLAMA_LLAMA3_2 = "llama3.2"
     OLLAMA_LLAMA3_8B = "llama3"
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     OLLAMA_DOLPHIN = "dolphin-mistral:latest"
@@ -163,6 +166,7 @@ MODEL_METADATA = {
     # Limited to 16k during preview
     LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072),
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072),
+    LlmModel.OLLAMA_LLAMA3_2: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192),
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768),
@@ -234,7 +238,9 @@ class AIStructuredResponseGeneratorBlock(Block):
             description="Number of times to retry the LLM call if the response does not match the expected format.",
         )
         prompt_values: dict[str, str] = SchemaField(
-            advanced=False, default={}, description="Values used to fill in the prompt."
+            advanced=False,
+            default={},
+            description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         max_tokens: int | None = SchemaField(
             advanced=True,
@@ -448,8 +454,8 @@ class AIStructuredResponseGeneratorBlock(Block):
 
         values = input_data.prompt_values
         if values:
-            input_data.prompt = input_data.prompt.format(**values)
-            input_data.sys_prompt = input_data.sys_prompt.format(**values)
+            input_data.prompt = fmt.format_string(input_data.prompt, values)
+            input_data.sys_prompt = fmt.format_string(input_data.sys_prompt, values)
 
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
@@ -576,7 +582,9 @@ class AITextGeneratorBlock(Block):
             description="Number of times to retry the LLM call if the response does not match the expected format.",
         )
         prompt_values: dict[str, str] = SchemaField(
-            advanced=False, default={}, description="Values used to fill in the prompt."
+            advanced=False,
+            default={},
+            description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         ollama_host: str = SchemaField(
             advanced=True,
