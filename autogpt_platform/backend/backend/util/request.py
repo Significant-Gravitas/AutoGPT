@@ -33,20 +33,6 @@ ALLOWED_SCHEMES = ["http", "https"]
 HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname pattern
 
 
-def _canonicalize_url(url: str) -> str:
-    """
-    Normalizes the URL by:
-    1. Stripping whitespace and trailing slashes.
-    2. Ensuring the scheme is http:// or https:// if missing.
-    3. Replacing backslashes with forward slashes.
-    """
-    url = url.strip().strip("/")
-    if not url.startswith(("http://", "https://")):
-        url = "http://" + url
-    url = url.replace("\\", "/")
-    return url
-
-
 def _is_ip_blocked(ip: str) -> bool:
     """
     Checks if the IP address is in a blocked network.
@@ -61,9 +47,12 @@ def validate_url(url: str, trusted_origins: list[str]) -> str:
     to a private, link-local, or otherwise blocked IP address — unless
     the hostname is explicitly trusted.
     """
-    # Normalize/canonicalize input
-    url = _canonicalize_url(url)
+    # Canonicalize URL
+    url = url.strip("/ ").replace("\\", "/")
     parsed = urlparse(url)
+    if not parsed.scheme:
+        url = f"http://{url}"
+        parsed = urlparse(url)
 
     # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:

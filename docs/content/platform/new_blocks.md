@@ -103,6 +103,45 @@ Follow these steps to create and test a new block:
    - **Error handling**: Handle various exceptions that might occur during the API request and data processing. We don't need to catch all exceptions, only the ones we expect and can handle. The uncaught exceptions will be automatically yielded as `error` in the output. Any block that raises an exception (or yields an `error` output) will be marked as failed. Prefer raising exceptions over yielding `error`, as it will stop the execution immediately.
    - **Yield**: Use `yield` to output the results. Prefer to output one result object at a time. If you are calling a function that returns a list, you can yield each item in the list separately. You can also yield the whole list as well, but do both rather than yielding the list. For example: If you were writing a block that outputs emails, you'd yield each email as a separate result object, but you could also yield the whole list as an additional single result object. Yielding output named `error` will break the execution right away and mark the block execution as failed.
 
+### Field Types
+
+#### oneOf fields
+`oneOf` allows you to specify that a field must be exactly one of several possible options. This is useful when you want your block to accept different types of inputs that are mutually exclusive.
+
+Example:
+```python
+attachment: Union[Media, DeepLink, Poll, Place, Quote] = SchemaField(
+    discriminator='discriminator',
+    description="Attach either media, deep link, poll, place or quote - only one can be used"
+)
+```
+
+The `discriminator` parameter tells AutoGPT which field to look at in the input to determine which type it is.
+
+In each model, you need to define the discriminator value:
+```python
+class Media(BaseModel):
+    discriminator: Literal['media']
+    media_ids: List[str]
+
+class DeepLink(BaseModel):
+    discriminator: Literal['deep_link']
+    direct_message_deep_link: str
+```
+
+#### OptionalOneOf fields
+`OptionalOneOf` is similar to `oneOf` but allows the field to be optional (None). This means the field can be either one of the specified types or None.
+
+Example:
+```python
+attachment: Union[Media, DeepLink, Poll, Place, Quote] | None = SchemaField(
+    discriminator='discriminator',
+    description="Optional attachment - can be media, deep link, poll, place, quote or None"
+)
+```
+
+The key difference is the `| None` which makes the entire field optional.
+
 ### Blocks with authentication
 
 Our system supports auth offloading for API keys and OAuth2 authorization flows.
@@ -237,6 +276,16 @@ Naturally, to add an authenticated block for a new provider, you'll have to add 
 --8<-- "autogpt_platform/backend/backend/integrations/providers.py:ProviderName"
 ```
 </details>
+
+#### Multiple credentials inputs
+Multiple credentials inputs are supported, under the following conditions:
+- The name of each of the credentials input fields must end with `_credentials`.
+- The names of the credentials input fields must match the names of the corresponding
+  parameters on the `run(..)` method of the block.
+- If more than one of the credentials parameters are required, `test_credentials`
+  is a `dict[str, Credentials]`, with for each required credentials input the
+  parameter name as the key and suitable test credentials as the value.
+
 
 #### Adding an OAuth2 service integration
 
@@ -465,7 +514,7 @@ GitHub Webhooks Manager: <a href="https://github.com/Significant-Gravitas/AutoGP
 
 The testing of blocks is handled by `test_block.py`, which does the following:
 
-1. It calls the block with the provided `test_input`.  
+1. It calls the block with the provided `test_input`.
    If the block has a `credentials` field, `test_credentials` is passed in as well.
 2. If a `test_mock` is provided, it temporarily replaces the specified methods with the mock functions.
 3. It then asserts that the output matches the `test_output`.

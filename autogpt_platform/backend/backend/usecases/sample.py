@@ -38,7 +38,7 @@ def create_test_graph() -> graph.Graph:
         graph.Node(
             block_id=FillTextTemplateBlock().id,
             input_default={
-                "format": "{a}, {b}{c}",
+                "format": "{{a}}, {{b}}{{c}}",
                 "values_#_c": "!!!",
             },
         ),

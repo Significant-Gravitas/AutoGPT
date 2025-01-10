@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
 
-from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
 if TYPE_CHECKING:
@@ -20,7 +19,14 @@ from autogpt_libs.utils.cache import thread_cached
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
-from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
+from backend.data.block import (
+    Block,
+    BlockData,
+    BlockInput,
+    BlockSchema,
+    BlockType,
+    get_block,
+)
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionResult,
@@ -31,7 +37,6 @@ from backend.data.execution import (
     parse_execution_output,
 )
 from backend.data.graph import GraphModel, Link, Node
-from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
@@ -170,10 +175,11 @@ def execute_node(
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
     creds_lock = None
-    if CREDENTIALS_FIELD_NAME in input_data:
-        credentials_meta = CredentialsMetaInput(**input_data[CREDENTIALS_FIELD_NAME])
+    input_model = cast(type[BlockSchema], node_block.input_schema)
+    for field_name, input_type in input_model.get_credentials_fields().items():
+        credentials_meta = input_type(**input_data[field_name])
         credentials, creds_lock = creds_manager.acquire(user_id, credentials_meta.id)
-        extra_exec_kwargs["credentials"] = credentials
+        extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
     end_status = ExecutionStatus.COMPLETED
@@ -591,7 +597,7 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        timing_info, (exec_stats, error) = cls._on_graph_execution(
+        timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
         exec_stats["walltime"] = timing_info.wall_time
@@ -599,6 +605,7 @@ class Executor:
         exec_stats["error"] = str(error) if error else None
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
+            status=status,
             stats=exec_stats,
         )
         cls.db_client.send_execution_update(result)
@@ -610,11 +617,12 @@ class Executor:
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[dict[str, Any], Exception | None]:
+    ) -> tuple[dict[str, Any], ExecutionStatus, Exception | None]:
         """
         Returns:
-            The execution statistics of the graph execution.
-            The error that occurred during the execution.
+            dict: The execution statistics of the graph execution.
+            ExecutionStatus: The final status of the graph execution.
+            Exception | None: The error that occurred during the execution, if any.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         exec_stats = {
@@ -659,8 +667,7 @@ class Executor:
 
             while not queue.empty():
                 if cancel.is_set():
-                    error = RuntimeError("Execution is cancelled")
-                    return exec_stats, error
+                    return exec_stats, ExecutionStatus.TERMINATED, error
 
                 exec_data = queue.get()
 
@@ -690,8 +697,7 @@ class Executor:
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
-                            error = RuntimeError("Execution is cancelled")
-                            return exec_stats, error
+                            return exec_stats, ExecutionStatus.TERMINATED, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -710,7 +716,12 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return exec_stats, error
+
+        return (
+            exec_stats,
+            ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED,
+            error,
+        )
 
 
 class ExecutionManager(AppService):
@@ -876,11 +887,8 @@ class ExecutionManager(AppService):
                 ExecutionStatus.COMPLETED,
                 ExecutionStatus.FAILED,
             ):
-                self.db_client.upsert_execution_output(
-                    node_exec.node_exec_id, "error", "TERMINATED"
-                )
                 exec_update = self.db_client.update_execution_status(
-                    node_exec.node_exec_id, ExecutionStatus.FAILED
+                    node_exec.node_exec_id, ExecutionStatus.TERMINATED
                 )
                 self.db_client.send_execution_update(exec_update)
 
@@ -893,41 +901,39 @@ class ExecutionManager(AppService):
                 raise ValueError(f"Unknown block {node.block_id} for node #{node.id}")
 
             # Find any fields of type CredentialsMetaInput
-            model_fields = cast(type[BaseModel], block.input_schema).model_fields
-            if CREDENTIALS_FIELD_NAME not in model_fields:
+            credentials_fields = cast(
+                type[BlockSchema], block.input_schema
+            ).get_credentials_fields()
+            if not credentials_fields:
                 continue
 
-            field = model_fields[CREDENTIALS_FIELD_NAME]
-
-            # The BlockSchema class enforces that a `credentials` field is always a
-            # `CredentialsMetaInput`, so we can safely assume this here.
-            credentials_meta_type = cast(CredentialsMetaInput, field.annotation)
-            credentials_meta = credentials_meta_type.model_validate(
-                node.input_default[CREDENTIALS_FIELD_NAME]
-            )
-            # Fetch the corresponding Credentials and perform sanity checks
-            credentials = self.credentials_store.get_creds_by_id(
-                user_id, credentials_meta.id
-            )
-            if not credentials:
-                raise ValueError(
-                    f"Unknown credentials #{credentials_meta.id} "
-                    f"for node #{node.id}"
+            for field_name, credentials_meta_type in credentials_fields.items():
+                credentials_meta = credentials_meta_type.model_validate(
+                    node.input_default[field_name]
                 )
-            if (
-                credentials.provider != credentials_meta.provider
-                or credentials.type != credentials_meta.type
-            ):
-                logger.warning(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch: "
-                    f"{credentials_meta.type}<>{credentials.type};"
-                    f"{credentials_meta.provider}<>{credentials.provider}"
+                # Fetch the corresponding Credentials and perform sanity checks
+                credentials = self.credentials_store.get_creds_by_id(
+                    user_id, credentials_meta.id
                 )
-                raise ValueError(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch"
-                )
+                if not credentials:
+                    raise ValueError(
+                        f"Unknown credentials #{credentials_meta.id} "
+                        f"for node #{node.id} input '{field_name}'"
+                    )
+                if (
+                    credentials.provider != credentials_meta.provider
+                    or credentials.type != credentials_meta.type
+                ):
+                    logger.warning(
+                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                        "type/provider mismatch: "
+                        f"{credentials_meta.type}<>{credentials.type};"
+                        f"{credentials_meta.provider}<>{credentials.provider}"
+                    )
+                    raise ValueError(
+                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                        "type/provider mismatch"
+                    )
 
 
 # ------- UTILITIES ------- #

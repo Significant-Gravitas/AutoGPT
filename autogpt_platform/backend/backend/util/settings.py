@@ -264,6 +264,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     notion_client_secret: str = Field(
         default="", description="Notion OAuth client secret"
     )
+    twitter_client_id: str = Field(default="", description="Twitter/X OAuth client ID")
+    twitter_client_secret: str = Field(
+        default="", description="Twitter/X OAuth client secret"
+    )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
     aiml_api_key: str = Field(default="", description="'AI/ML API' key")
@@ -301,7 +305,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     jina_api_key: str = Field(default="", description="Jina API Key")
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
-    fal_key: str = Field(default="", description="FAL API key")
+    fal_api_key: str = Field(default="", description="FAL API key")
+    exa_api_key: str = Field(default="", description="Exa API key")
+    e2b_api_key: str = Field(default="", description="E2B API key")
+    nvidia_api_key: str = Field(default="", description="Nvidia API key")
 
     # Add more secret fields as needed
 
