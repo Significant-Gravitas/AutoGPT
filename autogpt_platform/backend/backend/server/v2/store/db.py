@@ -408,9 +408,7 @@ async def delete_store_submission(
             )
 
         # Delete the submission
-        await prisma.models.StoreListing.prisma().delete(
-            where=prisma.types.StoreListingWhereUniqueInput(id=submission.id)
-        )
+        await prisma.models.StoreListing.prisma().delete(where={"id": submission.id})
 
         logger.debug(
             f"Successfully deleted submission {submission_id} for user {user_id}"
