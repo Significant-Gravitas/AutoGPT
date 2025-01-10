@@ -76,6 +76,7 @@ class LibraryAgentPreset(pydantic.BaseModel):
     description: str
 
     is_active: bool
+
     inputs: dict[str, typing.Union[backend.data.block.BlockInput, typing.Any]]
 
     @staticmethod
