@@ -97,7 +97,7 @@ async def create_library_agent(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create agent to library"
         ) from e
-        
+
 
 async def update_agent_version_in_library(
     user_id: str, agent_id: str, agent_version: int
