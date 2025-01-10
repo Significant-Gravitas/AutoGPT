@@ -2,6 +2,7 @@ import contextlib
 import logging
 import typing
 
+import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
 import starlette.middleware.cors
@@ -18,6 +19,7 @@ import backend.data.user
 import backend.server.routers.v1
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
+import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
@@ -128,6 +130,16 @@ class AgentServer(backend.util.service.AppProcess):
         )
 
     @staticmethod
+    async def test_get_graph(
+        graph_id: str,
+        graph_version: int,
+        user_id: str,
+    ):
+        return await backend.server.routers.v1.get_graph(
+            graph_id, user_id, graph_version
+        )
+
+    @staticmethod
     async def test_create_graph(
         create_graph: backend.server.routers.v1.CreateGraph,
         user_id: str,
@@ -207,6 +219,19 @@ class AgentServer(backend.util.service.AppProcess):
             node_input=node_input,
             user_id=user_id,
         )
+
+    @staticmethod
+    async def test_create_store_listing(
+        request: backend.server.v2.store.model.StoreSubmissionRequest, user_id: str
+    ):
+        return await backend.server.v2.store.routes.create_submission(request, user_id)
+
+    @staticmethod
+    async def test_review_store_listing(
+        request: backend.server.v2.store.model.ReviewSubmissionRequest,
+        user: autogpt_libs.auth.models.User,
+    ):
+        return await backend.server.v2.store.routes.review_submission(request, user)
 
     def set_test_dependency_overrides(self, overrides: dict):
         app.dependency_overrides.update(overrides)

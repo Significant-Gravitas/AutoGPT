@@ -1,9 +1,12 @@
 import logging
 
+import autogpt_libs.auth.models
+import fastapi.responses
 import pytest
 from prisma.models import User
 
 import backend.server.v2.library.model
+import backend.server.v2.store.model
 from backend.blocks.basic import AgentInputBlock, FindInDictionaryBlock, StoreValueBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
@@ -475,3 +478,68 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
     # Hence executing extraction of "key" from {"key1": "value1", "key2": "value2"}
     assert executions[3].status == execution.ExecutionStatus.COMPLETED
     assert executions[3].output_data == {"output": ["Hello"]}
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_store_listing_graph(server: SpinTestServer):
+    logger.info("Starting test_agent_execution")
+    test_user = await create_test_user()
+    test_graph = await create_graph(server, create_test_graph(), test_user)
+
+    store_submission_request = backend.server.v2.store.model.StoreSubmissionRequest(
+        agent_id=test_graph.id,
+        agent_version=test_graph.version,
+        slug="test-slug",
+        name="Test name",
+        sub_heading="Test sub heading",
+        video_url=None,
+        image_urls=[],
+        description="Test description",
+        categories=[],
+    )
+
+    store_listing = await server.agent_server.test_create_store_listing(
+        store_submission_request, test_user.id
+    )
+
+    if isinstance(store_listing, fastapi.responses.JSONResponse):
+        assert False, "Failed to create store listing"
+
+    slv_id = (
+        store_listing.store_listing_version_id
+        if store_listing.store_listing_version_id is not None
+        else None
+    )
+
+    assert slv_id is not None
+
+    admin = autogpt_libs.auth.models.User(
+        user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1b",
+        role="admin",
+        email="admin@example.com",
+        phone_number="1234567890",
+    )
+    await server.agent_server.test_review_store_listing(
+        backend.server.v2.store.model.ReviewSubmissionRequest(
+            store_listing_version_id=slv_id,
+            isApproved=True,
+            comments="Test comments",
+        ),
+        admin,
+    )
+
+    alt_test_user = await create_test_user(alt_user=True)
+
+    data = {"input_1": "Hello", "input_2": "World"}
+    graph_exec_id = await execute_graph(
+        server.agent_server,
+        test_graph,
+        alt_test_user,
+        data,
+        4,
+    )
+
+    await assert_sample_graph_executions(
+        server.agent_server, test_graph, alt_test_user, graph_exec_id
+    )
+    logger.info("Completed test_agent_execution")
