@@ -100,11 +100,11 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
-    AIML_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
-    AIML_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
-    AIML_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    AIML_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
-    AIML_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
+    AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
+    AIML_API_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
+    AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+    AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
     # Groq models
     LLAMA3_8B = "llama3-8b-8192"
     LLAMA3_70B = "llama3-70b-8192"
@@ -161,11 +161,11 @@ MODEL_METADATA = {
     LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385),
     LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000),
     LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000),
-    LlmModel.AIML_QWEN2_5_72B: ModelMetadata("aiml", 32000),
-    LlmModel.AIML_LLAMA3_1_70B: ModelMetadata("aiml", 128000),
-    LlmModel.AIML_LLAMA3_3_70B: ModelMetadata("aiml", 128000),
-    LlmModel.AIML_META_LLAMA_3_1_70B: ModelMetadata("aiml", 131000),
-    LlmModel.AIML_LLAMA_3_2_3B: ModelMetadata("aiml", 128000),
+    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata("aiml_api", 32000),
+    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata("aiml_api", 128000),
+    LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata("aiml_api", 128000),
+    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata("aiml_api", 131000),
+    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata("aiml_api", 128000),
     LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192),
     LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192),
     LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768),
@@ -445,7 +445,7 @@ class AIStructuredResponseGeneratorBlock(Block):
                 response.usage.prompt_tokens if response.usage else 0,
                 response.usage.completion_tokens if response.usage else 0,
             )
-        elif provider == "aiml":
+        elif provider == "aiml_api":
             client = openai.OpenAI(
                 base_url="https://api.aimlapi.com/v2",
                 api_key=credentials.api_key.get_secret_value(),
@@ -827,9 +827,7 @@ class AITextSummarizerBlock(Block):
                     chunk_overlap=input_data.chunk_overlap,
                 ),
                 credentials=credentials,
-            ).send(None)[
-                1
-            ]  # Get the first yielded value
+            ).send(None)[1]  # Get the first yielded value
 
 
 class AIConversationBlock(Block):
@@ -886,7 +884,8 @@ class AIConversationBlock(Block):
                 "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
             ),
             test_mock={
-                "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                "llm_call": lambda *args,
+                **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
             },
         )
 

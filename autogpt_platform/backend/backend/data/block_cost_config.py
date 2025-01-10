@@ -20,7 +20,7 @@ from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.data.block import Block
 from backend.data.cost import BlockCost, BlockCostType
 from backend.integrations.credentials_store import (
-    aiml_credentials,
+    aiml_api_credentials,
     anthropic_credentials,
     did_credentials,
     groq_credentials,
@@ -44,11 +44,11 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GPT3_5_TURBO: 1,
     LlmModel.CLAUDE_3_5_SONNET: 4,
     LlmModel.CLAUDE_3_HAIKU: 1,
-    LlmModel.AIML_QWEN2_5_72B: 1,
-    LlmModel.AIML_LLAMA3_1_70B: 1,
-    LlmModel.AIML_LLAMA3_3_70B: 1,
-    LlmModel.AIML_META_LLAMA_3_1_70B: 1,
-    LlmModel.AIML_LLAMA_3_2_3B: 1,
+    LlmModel.AIML_API_QWEN2_5_72B: 1,
+    LlmModel.AIML_API_LLAMA3_1_70B: 1,
+    LlmModel.AIML_API_LLAMA3_3_70B: 1,
+    LlmModel.AIML_API_META_LLAMA_3_1_70B: 1,
+    LlmModel.AIML_API_LLAMA_3_2_3B: 1,
     LlmModel.LLAMA3_8B: 1,
     LlmModel.LLAMA3_70B: 1,
     LlmModel.MIXTRAL_8X7B: 1,
@@ -155,15 +155,15 @@ LLM_COST = (
             cost_filter={
                 "model": model,
                 "credentials": {
-                    "id": aiml_credentials.id,
-                    "provider": aiml_credentials.provider,
-                    "type": aiml_credentials.type,
+                    "id": aiml_api_credentials.id,
+                    "provider": aiml_api_credentials.provider,
+                    "type": aiml_api_credentials.type,
                 },
             },
             cost_amount=cost,
         )
         for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "aiml"
+        if MODEL_METADATA[model].provider == "aiml_api"
     ]
 )
 

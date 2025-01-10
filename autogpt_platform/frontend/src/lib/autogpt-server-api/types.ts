@@ -102,7 +102,7 @@ export type CredentialsType = "api_key" | "oauth2";
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
-  AIML: "aiml",
+  AIML_API: "aiml_api",
   D_ID: "d_id",
   DISCORD: "discord",
   E2B: "e2b",
@@ -150,16 +150,16 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
   (
     | {
-        allOf: [BlockIOSimpleTypeSubSchema];
-      }
+      allOf: [BlockIOSimpleTypeSubSchema];
+    }
     | {
-        anyOf: BlockIOSimpleTypeSubSchema[];
-        default?: string | number | boolean | null;
-      }
+      anyOf: BlockIOSimpleTypeSubSchema[];
+      default?: string | number | boolean | null;
+    }
     | {
-        oneOf: BlockIOSimpleTypeSubSchema[];
-        default?: string | number | boolean | null;
-      }
+      oneOf: BlockIOSimpleTypeSubSchema[];
+      default?: string | number | boolean | null;
+    }
   );
 
 /* Mirror of backend/data/graph.py:Node */

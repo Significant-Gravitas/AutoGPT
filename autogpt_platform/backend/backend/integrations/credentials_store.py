@@ -49,9 +49,9 @@ openai_credentials = APIKeyCredentials(
     title="Use Credits for OpenAI",
     expires_at=None,
 )
-aiml_credentials = APIKeyCredentials(
+aiml_api_credentials = APIKeyCredentials(
     id="aad82a89-9794-4ebb-977f-d736aa5260a3",
-    provider="aiml",
+    provider="aiml_api",
     api_key=SecretStr(settings.secrets.aiml_api_key),
     title="Use Credits for AI/ML API",
     expires_at=None,
@@ -105,7 +105,7 @@ DEFAULT_CREDENTIALS = [
     ideogram_credentials,
     replicate_credentials,
     openai_credentials,
-    aiml_credentials,
+    aiml_api_credentials,
     anthropic_credentials,
     groq_credentials,
     did_credentials,
@@ -154,7 +154,7 @@ class IntegrationCredentialsStore:
         if settings.secrets.openai_api_key:
             all_credentials.append(openai_credentials)
         if settings.secrets.aiml_api_key:
-            all_credentials.append(aiml_credentials)
+            all_credentials.append(aiml_api_credentials)
         if settings.secrets.anthropic_api_key:
             all_credentials.append(anthropic_credentials)
         if settings.secrets.did_api_key:
