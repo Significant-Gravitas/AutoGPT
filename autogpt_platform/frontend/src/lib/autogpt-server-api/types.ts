@@ -152,16 +152,16 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
   (
     | {
-      allOf: [BlockIOSimpleTypeSubSchema];
-    }
+        allOf: [BlockIOSimpleTypeSubSchema];
+      }
     | {
-      anyOf: BlockIOSimpleTypeSubSchema[];
-      default?: string | number | boolean | null;
-    }
+        anyOf: BlockIOSimpleTypeSubSchema[];
+        default?: string | number | boolean | null;
+      }
     | {
-      oneOf: BlockIOSimpleTypeSubSchema[];
-      default?: string | number | boolean | null;
-    }
+        oneOf: BlockIOSimpleTypeSubSchema[];
+        default?: string | number | boolean | null;
+      }
   );
 
 /* Mirror of backend/data/graph.py:Node */

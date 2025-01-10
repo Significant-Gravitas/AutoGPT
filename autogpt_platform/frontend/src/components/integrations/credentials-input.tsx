@@ -86,14 +86,14 @@ export const providerIcons: Record<
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {
-    success: true;
-    code: string;
-    state: string;
-  }
+      success: true;
+      code: string;
+      state: string;
+    }
   | {
-    success: false;
-    message: string;
-  }
+      success: false;
+      message: string;
+    }
 );
 
 export const CredentialsInput: FC<{
@@ -188,7 +188,8 @@ export const CredentialsInput: FC<{
         console.error("Error in OAuth callback:", error);
         setOAuthError(
           // type of error is unkown so we need to use String(error)
-          `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)
+          `Error in OAuth callback: ${
+            error instanceof Error ? error.message : String(error)
           }`,
         );
       } finally {
