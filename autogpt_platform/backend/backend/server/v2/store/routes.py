@@ -642,3 +642,33 @@ async def download_agent_file(
         return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
         )
+
+
+@router.post(
+    "/submissions/review/{store_listing_version_id}",
+    tags=["store", "private"],
+)
+async def review_submission(
+    request: backend.server.v2.store.model.ReviewSubmissionRequest,
+    user: typing.Annotated[
+        autogpt_libs.auth.models.User,
+        fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user),
+    ],
+):
+    # Proceed with the review submission logic
+    try:
+        submission = await backend.server.v2.store.db.review_store_submission(
+            store_listing_version_id=request.store_listing_version_id,
+            is_approved=request.isApproved,
+            comments=request.comments,
+            reviewer_id=user.user_id,
+        )
+        return submission
+    except Exception:
+        logger.exception("Exception occurred whilst reviewing store submission")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An error occurred while reviewing the store submission"
+            },
+        )
