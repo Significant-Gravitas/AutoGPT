@@ -51,6 +51,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA3_1_405B: 1,
     LlmModel.LLAMA3_1_70B: 1,
     LlmModel.LLAMA3_1_8B: 1,
+    LlmModel.OLLAMA_LLAMA3_2: 1,
     LlmModel.OLLAMA_LLAMA3_8B: 1,
     LlmModel.OLLAMA_LLAMA3_405B: 1,
     LlmModel.OLLAMA_DOLPHIN: 1,

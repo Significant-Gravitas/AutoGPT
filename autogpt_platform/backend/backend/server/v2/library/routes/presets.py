@@ -132,15 +132,23 @@ async def execute_preset(
         if not preset:
             raise fastapi.HTTPException(status_code=404, detail="Preset not found")
 
-        merged_input = {**preset.inputs, **node_input}
+        logger.info(f"Preset inputs: {preset.inputs}")
+
+        updated_node_input = node_input.copy()
+        # Merge in preset input values
+        for key, value in preset.inputs.items():
+            if key not in updated_node_input:
+                updated_node_input[key] = value
 
         execution = execution_manager_client().add_execution(
             graph_id=graph_id,
             graph_version=graph_version,
-            data=merged_input,
+            data=updated_node_input,
             user_id=user_id,
             preset_id=preset_id,
         )
+
+        logger.info(f"Execution added: {execution} with input: {updated_node_input}")
 
         return {"id": execution.graph_exec_id}
     except Exception as e:

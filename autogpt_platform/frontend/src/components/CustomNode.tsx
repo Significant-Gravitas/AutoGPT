@@ -253,7 +253,13 @@ export function CustomNode({
             !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
-                {isConnectable ? (
+                {isConnectable &&
+                !(
+                  "oneOf" in propSchema &&
+                  propSchema.oneOf &&
+                  "discriminator" in propSchema &&
+                  propSchema.discriminator
+                ) ? (
                   <NodeHandle
                     keyName={propKey}
                     isConnected={isConnected}

@@ -97,7 +97,7 @@ async def create_library_agent(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create agent to library"
         ) from e
-
+        
 
 async def update_agent_version_in_library(
     user_id: str, agent_id: str, agent_version: int
@@ -276,7 +276,7 @@ async def get_preset(
 ) -> backend.server.v2.library.model.LibraryAgentPreset | None:
     try:
         preset = await prisma.models.AgentPreset.prisma().find_unique(
-            where={"id": preset_id, "userId": user_id}
+            where={"id": preset_id, "userId": user_id}, include={"InputPresets": True}
         )
         if not preset:
             return None
@@ -299,31 +299,25 @@ async def create_or_update_preset(
                 "id": preset_id if preset_id else "",
             },
             data={
-                "create": prisma.types.AgentPresetCreateInput(
-                    userId=user_id,
-                    name=preset.name,
-                    description=preset.description,
-                    agentId=preset.agent_id,
-                    agentVersion=preset.agent_version,
-                    Agent=prisma.types.AgentGraphUpdateOneWithoutRelationsInput(
-                        connect=prisma.types.AgentGraphWhereUniqueInput(
-                            id=preset.agent_id,
-                            version=preset.agent_version,
-                        ),
-                    ),
-                    isActive=preset.is_active,
-                    InputPresets={
+                "create": {
+                    "userId": user_id,
+                    "name": preset.name,
+                    "description": preset.description,
+                    "agentId": preset.agent_id,
+                    "agentVersion": preset.agent_version,
+                    "isActive": preset.is_active,
+                    "InputPresets": {
                         "create": [
                             {"name": name, "data": json.dumps(data)}
                             for name, data in preset.inputs.items()
                         ]
                     },
-                ),
-                "update": prisma.types.AgentPresetUpdateInput(
-                    name=preset.name,
-                    description=preset.description,
-                    isActive=preset.is_active,
-                ),
+                },
+                "update": {
+                    "name": preset.name,
+                    "description": preset.description,
+                    "isActive": preset.is_active,
+                },
             },
         )
         return backend.server.v2.library.model.LibraryAgentPreset.from_db(new_preset)
