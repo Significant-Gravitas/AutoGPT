@@ -562,8 +562,8 @@ async def get_graph(
 
     # The Graph has to be owned by the user or a store listing.
     if (
-        graph
-        and graph.userId != user_id
+        graph is None
+        or graph.userId != user_id
         and not (
             await StoreListingVersion.prisma().find_first(
                 where=prisma.types.StoreListingVersionWhereInput(
@@ -577,8 +577,7 @@ async def get_graph(
     ):
         return None
 
-    # If it is a store listing, return the graph model
-    return GraphModel.from_db(graph, for_export) if graph else None
+    return GraphModel.from_db(graph, for_export)
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
