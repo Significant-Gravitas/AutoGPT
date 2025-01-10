@@ -200,12 +200,11 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
 ) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=False, user_id=user_id)
+    return await do_create_graph(create_graph, user_id=user_id)
 
 
 async def do_create_graph(
     create_graph: CreateGraph,
-    is_template: bool,
     # user_id doesn't have to be annotated like on other endpoints,
     # because create_graph isn't used directly as an endpoint
     user_id: str,
@@ -217,7 +216,6 @@ async def do_create_graph(
         graph = await graph_db.get_graph(
             create_graph.template_id,
             create_graph.template_version,
-            template=True,
             user_id=user_id,
         )
         if not graph:
@@ -230,8 +228,6 @@ async def do_create_graph(
             status_code=400, detail="Either graph or template_id must be provided."
         )
 
-    graph.is_template = is_template
-    graph.is_active = not is_template
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
@@ -368,12 +364,13 @@ async def set_graph_active_version(
 )
 def execute_graph(
     graph_id: str,
+    graph_version: int,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
         graph_exec = execution_manager_client().add_execution(
-            graph_id, node_input, user_id=user_id
+            graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
@@ -452,7 +449,7 @@ async def get_templates(
 async def get_template(
     graph_id: str, version: int | None = None
 ) -> graph_db.GraphModel:
-    graph = await graph_db.get_graph(graph_id, version, template=True)
+    graph = await graph_db.get_graph(graph_id, version)
     if not graph:
         raise HTTPException(status_code=404, detail=f"Template #{graph_id} not found.")
     return graph
@@ -466,7 +463,7 @@ async def get_template(
 async def create_new_template(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
 ) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=True, user_id=user_id)
+    return await do_create_graph(create_graph, user_id=user_id)
 
 
 ########################################################
