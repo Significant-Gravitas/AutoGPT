@@ -1,0 +1,111 @@
+curl 'https://admin.shopify.com/api/shopify/tuannguyen-20240109-2138?operation=GenerateSessionToken&type=mutation' \
+  -H 'accept: application/json' \
+  -H 'accept-language: en,en-US;q=0.9' \
+  -H 'cache-control: no-cache' \
+  -H 'caller-pathname: /store/tuannguyen-20240109-2138/themes' \
+  -H 'content-type: application/json' \
+  -H 'cookie: master_device_id=f8c1ae5a-7ff5-42e4-a4b8-e2d1c6519bc8; logged_in=true; is_shopify_merchant=1; koa.sid=RnqKb6wTnC_jh3srgfbl912KOmcPy0co; koa.sid.sig=pA9MwhoJ4RfY6WJmFkAjr5xu2V0; _y=345673b8-C2A8-4626-F85A-07EE29414352; _shopify_s=b9192529-bdc9-4469-ba5d-1264427e37f1; _shopify_y=345673b8-C2A8-4626-F85A-07EE29414352' \
+  -H 'origin: https://admin.shopify.com' \
+  -H 'pragma: no-cache' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://admin.shopify.com/store/tuannguyen-20240109-2138/themes' \
+  -H 'sec-ch-ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'target-manifest-route-id: themes:online-store' \
+  -H 'target-pathname: /store/:storeHandle/themes' \
+  -H 'target-slice: onlinestore-section' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+  -H 'x-csrf-token: 21ZphEBC-8tk2xvkdF9uMPXryUSiLCIHqHhU' \
+  -H 'x-shopify-web-force-proxy: 1' \
+  --data-raw $'{"operationName":"GenerateSessionToken","variables":{"appId":"gid://shopify/App/580111"},"query":"mutation GenerateSessionToken($appId: ID\u0021) {\\n  adminGenerateSession(appId: $appId) {\\n    session\\n    needsMerchantAuthorization\\n    __typename\\n  }\\n}\\n"}'
+
+
+
+curl 'https://admin.shopify.com/api/shopify/tuannguyen-20240109-2146?operation=GenerateAuthCode&type=mutation' \
+  -H 'accept: application/json' \
+  -H 'accept-language: en,en-US;q=0.9' \
+  -H 'cache-control: no-cache' \
+  -H 'caller-pathname: /store/tuannguyen-20240109-2146/themes' \
+  -H 'content-type: application/json' \
+  -H 'cookie: master_device_id=f8c1ae5a-7ff5-42e4-a4b8-e2d1c6519bc8; logged_in=true; is_shopify_merchant=1; koa.sid=RnqKb6wTnC_jh3srgfbl912KOmcPy0co; koa.sid.sig=pA9MwhoJ4RfY6WJmFkAjr5xu2V0; _y=345673b8-C2A8-4626-F85A-07EE29414352; _shopify_s=b9192529-bdc9-4469-ba5d-1264427e37f1; _shopify_y=345673b8-C2A8-4626-F85A-07EE29414352' \
+  -H 'origin: https://admin.shopify.com' \
+  -H 'pragma: no-cache' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://admin.shopify.com/store/tuannguyen-20240109-2146/themes?appLoadId=9daa0964-9347-429b-b7b3-505c2e31a253' \
+  -H 'sec-ch-ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'target-manifest-route-id: themes:online-store' \
+  -H 'target-pathname: /store/:storeHandle/themes' \
+  -H 'target-slice: onlinestore-section' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+  -H 'x-csrf-token: hqiGC0AZ-dW-WZCUDiasSsBXbgWnpYC5LAjw' \
+  -H 'x-shopify-web-force-proxy: 1' \
+  --data-raw $'{"operationName":"GenerateAuthCode","variables":{"appId":"gid://shopify/App/580111"},"query":"mutation GenerateAuthCode($appId: ID\u0021) {\\n  adminGenerateAuthorizationCode(appId: $appId) {\\n    authorizationCode {\\n      code\\n      hmac\\n      shop\\n      timestamp\\n      __typename\\n    }\\n    userErrors {\\n      field\\n      message\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n"}'
+  
+{"data":{"adminGenerateAuthorizationCode":{"authorizationCode":{"code":"a2f372a38c6d350f66b2461edeb751b4","hmac":"17cbf62c71fd73c5417a49354a950551cd041410d741a51023e7e9a6abc592f3","shop":"tuannguyen-20240109-2146.myshopify.com","timestamp":"1736561530","__typename":"AuthorizationCodeResponse"},"userErrors":[],"__typename":"AdminGenerateAuthorizationCodePayload"}},"extensions":{"cost":{"requestedQueryCost":10,"actualQueryCost":10}}}
+
+
+curl 'https://online-store-web.shopifyapps.com/admin/online-store/admin/api/unversioned/graphql?authCodePayload=%7B%22code%22%3A%22a406273202f1f0d6eb26cffb0c4f1397%22%2C%22hmac%22%3A%227683044665adbfd8d6053bdf9508a34175d2dee2d169aa800555ae861e8e64f0%22%2C%22shop%22%3A%22tuannguyen-20240109-2147.myshopify.com%22%2C%22timestamp%22%3A%221736434748%22%7D&operation=RequestDetails' \
+  -H 'accept: application/json' \
+  -H 'accept-language: en,en-US;q=0.9' \
+  -H 'authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczpcL1wvdHVhbm5ndXllbi0yMDI0MDEwOS0yMTQ3Lm15c2hvcGlmeS5jb21cL2FkbWluIiwiZGVzdCI6Imh0dHBzOlwvXC90dWFubmd1eWVuLTIwMjQwMTA5LTIxNDcubXlzaG9waWZ5LmNvbSIsImF1ZCI6IjY1MGYxYTE0ZmE5NzllYzVjNzRkMDYzZTk2ODQxMWQ0Iiwic3ViIjoiODMzNTM0NjkwNjMiLCJleHAiOjE3MzY0MzQ4MDYsIm5iZiI6MTczNjQzNDc0NiwiaWF0IjoxNzM2NDM0NzQ2LCJqdGkiOiI5ZmVkMDI4Yy1jY2QwLTQxNmUtYWI5ZC1jMzYyNzAzYjQxMmYiLCJzaWQiOiJlYTA1Mjg5YS04ZGU3LTQzYzktOGU4NC00MGQzZTllMWQzOTMiLCJzaWciOiJjOTc1YmZkMjQ3N2ZhZmQ5MThlMzBhYTEwYmU4ODljMTk4MzQxNjM5MGE4MTU4MWQ3ZTNmY2U5MzIxMDllZGVlIn0.AA82Ygne38HPwEN6pu6RN_mkWKMlvJ5yY6pkRtJ7BbE' \
+  -H 'cache-control: no-cache' \
+  -H 'content-type: application/json' \
+  -H 'origin: https://online-store-web.shopifyapps.com' \
+  -H 'pragma: no-cache' \
+  -H 'priority: u=1, i' \
+  -H 'sec-ch-ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+  -H 'x-online-store-web: 1' \
+  -H 'x-requested-with: XMLHttpRequest' \
+  --data-raw $'{"operationName":"RequestDetails","variables":{"flagNames":["d6b1323a","d3e1c4ff","74d45a1f","778675f5","d5340202","b7299212","852799de","2846dc74","0c10b561","9b4ca3e9","00c78352","e12bbf30","a219dd0c","10c98b12","336502b1","f71000cb","ccfc0423","c1821c61","fe744fa3","0d8ae56a","0eb46c71","6323254a","ab2debd1","e05e5f2c","6a354d68","32799051","120b5fa2","45817603","2e506cec","cbf4ad7c","4725354a"]},"query":"query RequestDetails($flagNames: [String\u0021]\u0021) {\\n  shop {\\n    id\\n    ...EveryRequestShopFragment\\n    shopifyEmployeeSession\\n    enabledFlags(names: $flagNames)\\n    consolidatedSalesTransitionCelebration: experimentAssignment(\\n      name: \\"consolidated_sales_transition_celebration\\"\\n    )\\n    developmentShop\\n    __typename\\n  }\\n  congratulatoryStoreOpenToastDismissed: elementDismissed(\\n    handle: \\"consolidated_sales_transition_celebration_toast\\"\\n  )\\n  onlineStore {\\n    ...EveryRequestOnlineStoreFragment\\n    __typename\\n  }\\n  staffMember {\\n    ...EveryRequestStaffMemberFragment\\n    __typename\\n  }\\n}\\n\\nfragment EveryRequestShopFragment on Shop {\\n  id\\n  url\\n  name\\n  email\\n  myshopifyDomain\\n  ianaTimezone\\n  timezoneOffsetMinutes\\n  currencyCode\\n  countryCode\\n  chinaCdnEnabled\\n  developerPreviewName\\n  starterPlan\\n  primaryDomain {\\n    id\\n    host\\n    __typename\\n  }\\n  plan {\\n    name\\n    shopifyPlus\\n    __typename\\n  }\\n  newCustomerAccountUrl: customerAccountNextUrl\\n  features {\\n    usBasedTracking\\n    hasGlobalEClassicApp\\n    hasGlobalEApp\\n    giftCards\\n    productProtection\\n    checkoutLiquidConfigurationEligible\\n    blogContentGenerationEnabled\\n    pageContentGenerationEnabled\\n    customDataTaxonomyEnabled\\n    themePreviewEnabled\\n    wooMagicThemeImportEnabled\\n    wixMagicThemeImportEnabled\\n    wordpressMagicThemeImportEnabled\\n    magicThemeImportEnabled\\n    __typename\\n  }\\n  developerPreview {\\n    name\\n    __typename\\n  }\\n  appPinningExperimentAssignment: experimentAssignment(\\n    name: \\"app_pinning_and_launching\\"\\n  )\\n  appPinningExperimentAssignmentExistingMerchants: experimentAssignment(\\n    name: \\"app_pinning_and_launching_existing_merchants\\"\\n  )\\n  __typename\\n}\\n\\nfragment EveryRequestOnlineStoreFragment on OnlineStore {\\n  domains\\n  urlWithPasswordBypass\\n  featureSet {\\n    themeLimitedPlan\\n    __typename\\n  }\\n  __typename\\n}\\n\\nfragment EveryRequestStaffMemberFragment on StaffMember {\\n  id\\n  locale\\n  email\\n  permissions {\\n    userPermissions\\n    __typename\\n  }\\n  __typename\\n}"}'
+
+
+  curl 'https://online-store-web.shopifyapps.com/admin/online-store/admin/api/unversioned/graphql?operation=FreeThemeInstallLegacy' \
+  -H 'accept: application/json' \
+  -H 'accept-language: en,en-US;q=0.9' \
+  -H 'authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczpcL1wvdHVhbm5ndXllbi0yMDI0MDEwOC0yMDI2Lm15c2hvcGlmeS5jb21cL2FkbWluIiwiZGVzdCI6Imh0dHBzOlwvXC90dWFubmd1eWVuLTIwMjQwMTA4LTIwMjYubXlzaG9waWZ5LmNvbSIsImF1ZCI6IjY1MGYxYTE0ZmE5NzllYzVjNzRkMDYzZTk2ODQxMWQ0Iiwic3ViIjoiOTYzMDgzMzA3MTkiLCJleHAiOjE3MzY0MzA0MTYsIm5iZiI6MTczNjQzMDM1NiwiaWF0IjoxNzM2NDMwMzU2LCJqdGkiOiI3Zjc5Njk0OC1lMDRmLTQ1MDgtYjhhNS03MzEwNzMzMmUxNDIiLCJzaWQiOiJlYTA1Mjg5YS04ZGU3LTQzYzktOGU4NC00MGQzZTllMWQzOTMiLCJzaWciOiI4OTBhN2ZjMzI1YTNmODUxNDRiYjE4OTE2YjQ5NTNhMWVhOTUxY2U3ZWQwYzEyODQ5NTRlMWY3ZGVhNGVhMzNiIn0.3IR5V1Vg0b1eII_9H6CF4z-0l8ayjrskIsPG1Rdp5mA' \
+  -H 'cache-control: no-cache' \
+  -H 'content-type: application/json' \
+  -H 'origin: https://online-store-web.shopifyapps.com' \
+  -H 'pragma: no-cache' \
+  -H 'priority: u=1, i' \
+  -H 'sec-ch-ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+  -H 'x-online-store-web: 1' \
+  -H 'x-requested-with: XMLHttpRequest' \
+  --data-raw $'{"operationName":"FreeThemeInstallLegacy","variables":{"publishTheme":false,"presetId":"gid://shopify/OnlineStoreInstallableThemePreset/131073"},"query":"mutation FreeThemeInstallLegacy($presetId: ID\u0021, $publishTheme: Boolean) {\\n  onlineStoreFreeThemeInstall(presetId: $presetId, publishTheme: $publishTheme) {\\n    newTheme {\\n      ...ThemeInfo\\n      __typename\\n    }\\n    userErrors {\\n      field\\n      message\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\\nfragment ThemeInfo on OnlineStoreTheme {\\n  id\\n  name\\n  role\\n  matchedTheme {\\n    name\\n    isPurchasable\\n    downloadUrl\\n    __typename\\n  }\\n  parentId\\n  prefix\\n  processing\\n  processingFailed\\n  editedAt\\n  createdAt\\n  mobileScreenshot: screenshot(height: 600, width: 350)\\n  laptopScreenshot: screenshot(height: 900, width: 1160)\\n  mobileScreenshotRedesign: screenshot(height: 900, width: 350)\\n  thumbnailScreenshot: screenshot(\\n    height: 1080\\n    width: 1350\\n    resizeHeight: 144\\n    resizeWidth: 180\\n  )\\n  previewUrl\\n  previewable\\n  editable\\n  themeStoreId\\n  themeStoreUrl\\n  source\\n  supportedFeatures\\n  metadata {\\n    author\\n    version\\n    name\\n    supportUrl: supportUrlV2\\n    supportEmail\\n    __typename\\n  }\\n  features {\\n    onlineStoreV2Compatible\\n    __typename\\n  }\\n  __typename\\n}"}'
+
+mutation store_set_theme($id: ID!) {
+  themePublish(id: $id) {
+    theme {
+      id
+      name
+    }
+    userErrors {
+      message
+    }
+  }
+}
+
+{
+  "id": "gid://shopify/OnlineStoreTheme/147513082079"
+}

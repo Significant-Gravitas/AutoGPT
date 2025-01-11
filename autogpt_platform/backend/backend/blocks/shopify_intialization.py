@@ -1,7 +1,7 @@
 import os
 import requests
 import base64
-from typing import Any
+import time
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -10,13 +10,17 @@ from backend.data.model import SchemaField
 class ShopifyInitializeBlock(Block):
 
     class Input(BlockSchema):
-        name: Any = SchemaField(
+        name: str = SchemaField(
             description="The name of Shopify shop and subdomain",
+        )
+        wait_for_complete_seconds: int = SchemaField(
+            description="The number of seconds to wait for the store to be created",
+            default=15,
         )
 
     class Output(BlockSchema):
-        shop_name: Any = SchemaField(description="The shop name on Shopify")
-        shop_url: Any = SchemaField(description="The shop url on Shopify")
+        shop_name: str = SchemaField(description="The shop name on Shopify")
+        shop_url: str = SchemaField(description="The shop url on Shopify")
 
     def __init__(self):
         super().__init__(
@@ -37,10 +41,12 @@ class ShopifyInitializeBlock(Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         shop_url = self.create_shopify_store(input_data.name)
 
+        # Delay for the specified amount of time
+        time.sleep(input_data.wait_for_complete_seconds)
         yield "shop_name", input_data.name
         yield "shop_url", shop_url
 
-    def create_shopify_store(self, store_name):
+    def create_shopify_store(self, shop_name):
         # Retrieve environment variables
         encoded_cookie = os.getenv("SHOPIFY_INTEGRATION_PARTNER_COOKIE")
         if not encoded_cookie:
@@ -85,11 +91,11 @@ class ShopifyInitializeBlock(Block):
             "variables": {
                 "input": {
                     "storeType": "DEV_STORE",
-                    "storeName": store_name,
+                    "storeName": shop_name,
                     "address": {
                         "countryCode": country_code
                     },
-                    "subdomain": store_name,
+                    "subdomain": shop_name,
                     "brickAndMortarPresence": False,
                     "merchantSellingThroughAnotherPlatform": True
                 }
@@ -116,8 +122,9 @@ class ShopifyInitializeBlock(Block):
         if response.status_code != 200:
             raise Exception(f"Request failed with status code {response.status_code}: {response.text}")
 
-        data = response.json()["data"]
+        raw = response.json()
+        data = raw["data"]
         if data and data["shopCreate"] and data["shopCreate"]["redirectUrl"]:
             return data["shopCreate"]["redirectUrl"]
         else:
-            raise Exception(f"Failed to create Shopify store: {data}")
+            raise Exception(f"Failed to create Shopify store {shop_name}: {raw}")

@@ -29,8 +29,10 @@ RUN pip3 install poetry
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
-COPY autogpt_platform/market/poetry.lock autogpt_platform/market/pyproject.toml /app/autogpt_platform/market/
+COPY autogpt_platform/backend /app/autogpt_platform/backend
+
 WORKDIR /app/autogpt_platform/market
+
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi
 

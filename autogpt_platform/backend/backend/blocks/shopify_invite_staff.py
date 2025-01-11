@@ -1,32 +1,36 @@
 import os
 import requests
 import base64
-from typing import Any
+import time
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
-class InviteStaffBlock(Block):
+class ShopifyInviteStaffBlock(Block):
 
     class Input(BlockSchema):
-        shop_name: Any = SchemaField(
+        shop_name: str = SchemaField(
             description="The name of Shopify shop and subdomain",
         )
-        email: Any = SchemaField(
+        wait_for_complete_seconds: int = SchemaField(
+            description="The number of seconds to wait for the invite to complete",
+            default=5,
+        )
+        email: str = SchemaField(
             description="The staff email you want to invite",
         )
-        first_name: Any = SchemaField(
+        first_name: str = SchemaField(
             description="The staff first name",
         )
-        last_name: Any = SchemaField(
+        last_name: str = SchemaField(
             description="The staff last name",
         )
 
     class Output(BlockSchema):
-        shop_name: Any = SchemaField(description="The shop that invited staff")
-        user_id: Any = SchemaField(description="The user id of invited staff")
-        oauth_url: Any = SchemaField(description="The oauth url of to let staff login and authorize")
+        shop_name: str = SchemaField(description="The shop that invited staff")
+        user_id: str = SchemaField(description="The user id of invited staff")
+        oauth_url: str = SchemaField(description="The oauth url of to let staff login and authorize")
 
     def __init__(self):
         oauth_url = os.getenv("SHOPIFY_INTEGRATION_OAUTH_URL")
@@ -38,8 +42,8 @@ class InviteStaffBlock(Block):
             id="e2f0ed4c-620a-4221-a2a3-c6787a97fa61",
             description="This block invites a staff to collaborate on a Shopify store.",
             categories={BlockCategory.SHOPIFY},
-            input_schema=InviteStaffBlock.Input,
-            output_schema=InviteStaffBlock.Output,
+            input_schema=ShopifyInviteStaffBlock.Input,
+            output_schema=ShopifyInviteStaffBlock.Output,
             test_input=[
                 {"shop_name": "3tn-demo", "email": "tuan.nguyen930708+1@gmail.com", "first_name": "Tuan", "last_name": "Nguyen"},
             ],
@@ -54,6 +58,8 @@ class InviteStaffBlock(Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         user_id = self.invite_staff_member(input_data.shop_name, input_data.email, input_data.first_name, input_data.last_name)
 
+        # Delay for the specified amount of time
+        time.sleep(input_data.wait_for_complete_seconds)
         yield "shop_name", input_data.shop_name
         yield "user_id", user_id
         yield "oauth_url",  self.get_oauth_url(input_data.shop_name)
@@ -264,8 +270,9 @@ class InviteStaffBlock(Block):
         if response.status_code != 200:
             raise Exception(f"Request failed with status code {response.status_code}: {response.text}")
 
-        data = response.json()["data"]
+        raw = response.json()
+        data = raw["data"]
         if data and data["staffMemberInvite"] and data["staffMemberInvite"]["staffMember"] and data["staffMemberInvite"]["staffMember"]["id"]:
             return data["staffMemberInvite"]["staffMember"]["id"]
         else:
-            raise Exception(f"Failed to create Shopify store: {data}")
+            raise Exception(f"Failed to invite staff to store {shop_name}: {raw}")
