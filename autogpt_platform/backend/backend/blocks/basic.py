@@ -241,7 +241,7 @@ class AgentOutputBlock(Block):
             advanced=True,
         )
         format: str = SchemaField(
-            description="The format string to be used to format the recorded_value.",
+            description="The format string to be used to format the recorded_value. Use Jinja2 syntax.",
             default="",
             advanced=True,
         )

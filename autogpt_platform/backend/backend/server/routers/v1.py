@@ -13,6 +13,7 @@ from typing_extensions import Optional, TypedDict
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
+import backend.server.v2.library.db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
@@ -180,11 +181,6 @@ async def get_graph(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-@v1_router.get(
-    path="/templates/{graph_id}/versions",
-    tags=["templates", "graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
 async def get_graph_all_versions(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Sequence[graph_db.GraphModel]:
@@ -200,12 +196,11 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
 ) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=False, user_id=user_id)
+    return await do_create_graph(create_graph, user_id=user_id)
 
 
 async def do_create_graph(
     create_graph: CreateGraph,
-    is_template: bool,
     # user_id doesn't have to be annotated like on other endpoints,
     # because create_graph isn't used directly as an endpoint
     user_id: str,
@@ -217,7 +212,6 @@ async def do_create_graph(
         graph = await graph_db.get_graph(
             create_graph.template_id,
             create_graph.template_version,
-            template=True,
             user_id=user_id,
         )
         if not graph:
@@ -225,13 +219,18 @@ async def do_create_graph(
                 400, detail=f"Template #{create_graph.template_id} not found"
             )
         graph.version = 1
+
+        # Create a library agent for the new graph
+        await backend.server.v2.library.db.create_library_agent(
+            graph.id,
+            graph.version,
+            user_id,
+        )
     else:
         raise HTTPException(
             status_code=400, detail="Either graph or template_id must be provided."
         )
 
-    graph.is_template = is_template
-    graph.is_active = not is_template
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
@@ -260,11 +259,6 @@ async def delete_graph(
 
 @v1_router.put(
     path="/graphs/{graph_id}", tags=["graphs"], dependencies=[Depends(auth_middleware)]
-)
-@v1_router.put(
-    path="/templates/{graph_id}",
-    tags=["templates", "graphs"],
-    dependencies=[Depends(auth_middleware)],
 )
 async def update_graph(
     graph_id: str,
@@ -297,6 +291,11 @@ async def update_graph(
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
+
+        # Keep the library agent up to date with the new active version
+        await backend.server.v2.library.db.update_agent_version_in_library(
+            user_id, graph.id, graph.version
+        )
 
         def get_credentials(credentials_id: str) -> "Credentials | None":
             return integration_creds_manager.get(user_id, credentials_id)
@@ -353,6 +352,12 @@ async def set_graph_active_version(
         version=new_active_version,
         user_id=user_id,
     )
+
+    # Keep the library agent up to date with the new active version
+    await backend.server.v2.library.db.update_agent_version_in_library(
+        user_id, new_active_graph.id, new_active_graph.version
+    )
+
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(
@@ -368,12 +373,13 @@ async def set_graph_active_version(
 )
 def execute_graph(
     graph_id: str,
+    graph_version: int,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
         graph_exec = execution_manager_client().add_execution(
-            graph_id, node_input, user_id=user_id
+            graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
@@ -426,47 +432,6 @@ async def get_graph_run_node_execution_results(
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     return await execution_db.get_execution_results(graph_exec_id)
-
-
-########################################################
-##################### Templates ########################
-########################################################
-
-
-@v1_router.get(
-    path="/templates",
-    tags=["graphs", "templates"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def get_templates(
-    user_id: Annotated[str, Depends(get_user_id)]
-) -> Sequence[graph_db.GraphModel]:
-    return await graph_db.get_graphs(filter_by="template", user_id=user_id)
-
-
-@v1_router.get(
-    path="/templates/{graph_id}",
-    tags=["templates", "graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def get_template(
-    graph_id: str, version: int | None = None
-) -> graph_db.GraphModel:
-    graph = await graph_db.get_graph(graph_id, version, template=True)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Template #{graph_id} not found.")
-    return graph
-
-
-@v1_router.post(
-    path="/templates",
-    tags=["templates", "graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def create_new_template(
-    create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
-) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=True, user_id=user_id)
 
 
 ########################################################
@@ -541,7 +506,7 @@ def get_execution_schedules(
 
 @v1_router.post(
     "/api-keys",
-    response_model=list[CreateAPIKeyResponse] | dict[str, str],
+    response_model=CreateAPIKeyResponse,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -583,7 +548,7 @@ async def get_api_keys(
 
 @v1_router.get(
     "/api-keys/{key_id}",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -604,7 +569,7 @@ async def get_api_key(
 
 @v1_router.delete(
     "/api-keys/{key_id}",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -626,7 +591,7 @@ async def delete_api_key(
 
 @v1_router.post(
     "/api-keys/{key_id}/suspend",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -648,7 +613,7 @@ async def suspend_key(
 
 @v1_router.put(
     "/api-keys/{key_id}/permissions",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
