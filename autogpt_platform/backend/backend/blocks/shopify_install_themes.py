@@ -1,6 +1,7 @@
 import os
 import requests
 import base64
+import hashlib
 import json
 import urllib
 from typing import  List, Dict
@@ -120,7 +121,9 @@ class ShopifyInstallThemeBlock(Block):
 
         auth_code = self.generate_activate_shop_code(input_data.shop_name)
         shop_preview_url = self.activate_shop(input_data.shop_name, auth_code, bearer_token)
-        theme_id = self.install_theme(input_data.shop_name, bearer_token, self.themes[0])
+
+        selected_theme = self.select_theme(input_data.user_prompt)
+        theme_id = self.install_theme(input_data.shop_name, bearer_token, selected_theme)
 
         # Delay for the specified amount of time
         time.sleep(input_data.wait_for_complete_seconds)
@@ -431,6 +434,13 @@ class ShopifyInstallThemeBlock(Block):
         else:
             raise Exception(f"Failed to activate Shopify store {shop_name}: {raw} --- \n {bearer_token}")
 
+    def select_theme(self, user_prompt: str) -> Dict[str, str]:
+        md5 = hashlib.md5()
+        md5.update(user_prompt.encode('utf-8'))
+        number = int(md5.hexdigest(), 16)
+        selected_theme = self.themes[number % len(self.themes)]
+        return selected_theme
+    
     def install_theme(self, shop_name: str, bearer_token: str, preset: Dict[str, str]):
         url = "https://online-store-web.shopifyapps.com/admin/online-store/admin/api/unversioned/graphql?operation=FreeThemeInstallLegacy"
         
