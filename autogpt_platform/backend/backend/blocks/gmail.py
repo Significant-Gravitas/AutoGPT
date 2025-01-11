@@ -15,7 +15,8 @@ GOOGLE_CLIENT_SCOPES = ["https://www.googleapis.com/auth/userinfo.email", "https
 class GmailBlock(Block):
     class Input(BlockSchema):
         email: str = SchemaField(
-            description="Email address that authorizes sending emails"
+            description="Email address that authorizes sending emails",
+            default=""
         )
         subject_text: str = SchemaField(
             description="Subject of the email",
@@ -71,7 +72,7 @@ class GmailBlock(Block):
         # "from" can be dynamically derived from the credentials if desired,
         # but in many cases you can simply specify the user’s known email address.
         mime_message["from"] = userinfo["email"]
-        mime_message["to"] = email
+        mime_message["to"] = email if email else userinfo["email"] 
         mime_message["subject"] = subject_text
 
         # Convert the MIMEText object to a base64-encoded string (URL-safe)
