@@ -40,7 +40,7 @@ class ShopifyInitializeBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        if os.getenv("DEBUG").lower() == "true":
+        if os.getenv("DEBUG", "false").lower() == "true":
             yield "shop_name", input_data.shop_name
             yield "shop_url", "https://example.com"
             return

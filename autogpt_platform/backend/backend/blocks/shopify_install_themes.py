@@ -118,7 +118,7 @@ class ShopifyInstallThemeBlock(Block):
 
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        if os.getenv("DEBUG").lower() == "true":
+        if os.getenv("DEBUG", "false").lower() == "true":
             yield "shop_name", input_data.shop_name
             yield "shop_preview_url", "https://example.com"
             yield "theme_id", "gid://shopify/OnlineStoreTheme/140466454723"

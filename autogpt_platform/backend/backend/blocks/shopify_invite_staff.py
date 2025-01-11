@@ -57,7 +57,7 @@ class ShopifyInviteStaffBlock(Block):
 
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        if os.getenv("DEBUG").lower() == "true":
+        if os.getenv("DEBUG", "false").lower() == "true":
             yield "shop_name", input_data.shop_name
             yield "user_id", "gid://shopify/StaffMember/116287635752"
             yield "oauth_url",  self.get_oauth_url(input_data.shop_name)
