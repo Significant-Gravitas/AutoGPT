@@ -265,7 +265,13 @@ async def add_store_agent_to_library(
             logger.debug(
                 f"User {user_id} already has agent {agent.id} in their library"
             )
-            return existing_user_agent.Agent
+            return backend.data.graph.Graph(
+                id=agent.id,
+                version=agent.version,
+                is_active=agent.isActive,
+                name=agent.name or "",
+                description=agent.description or "",
+            )
 
         # Create LibraryAgent entry
         library_agent = await prisma.models.LibraryAgent.prisma().create(
@@ -277,7 +283,13 @@ async def add_store_agent_to_library(
             )
         )
         logger.debug(f"Added agent {agent.id} to library for user {user_id}")
-        return library_agent.Agent
+        return backend.data.graph.Graph(
+            id=library_agent.agentId,
+            version=library_agent.agentVersion,
+            is_active=agent.isActive,
+            name=agent.name or "",
+            description=agent.description or "",
+        )
 
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise
