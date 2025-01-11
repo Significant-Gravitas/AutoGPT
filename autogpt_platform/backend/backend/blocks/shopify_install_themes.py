@@ -12,6 +12,7 @@ from backend.data.model import SchemaField
 
 
 class ShopifyInstallThemeBlock(Block):
+    block_id: str = "f0306d27-f7c2-4b7c-89b2-6b2811048443"
 
     themes: List[Dict[str, str]] = [
         {
@@ -100,7 +101,7 @@ class ShopifyInstallThemeBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f0306d27-f7c2-4b7c-89b2-6b2811048443",
+            id=ShopifyInstallThemeBlock.block_id,
             description="This block installs theme a theme on Shopify for user.",
             categories={BlockCategory.SHOPIFY},
             input_schema=ShopifyInstallThemeBlock.Input,
@@ -117,6 +118,12 @@ class ShopifyInstallThemeBlock(Block):
 
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        if os.getenv("DEBUG").lower() == "true":
+            yield "shop_name", input_data.shop_name
+            yield "shop_preview_url", "https://example.com"
+            yield "theme_id", "gid://shopify/OnlineStoreTheme/140466454723"
+            return
+
         bearer_token = self.generate_session_token(input_data.shop_name)
 
         auth_code = self.generate_activate_shop_code(input_data.shop_name)

@@ -8,9 +8,10 @@ from backend.data.model import SchemaField
 
 
 class ShopifyInitializeBlock(Block):
+    block_id: str = "0f173175-176b-4648-92c5-e6eb001f1bfc"
 
     class Input(BlockSchema):
-        name: str = SchemaField(
+        shop_name: str = SchemaField(
             description="The name of Shopify shop and subdomain",
         )
         wait_for_complete_seconds: int = SchemaField(
@@ -24,13 +25,13 @@ class ShopifyInitializeBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0f173175-176b-4648-92c5-e6eb001f1bfc",
+            id=ShopifyInitializeBlock.block_id,
             description="This block intializes a Shopify store.",
             categories={BlockCategory.SHOPIFY},
             input_schema=ShopifyInitializeBlock.Input,
             output_schema=ShopifyInitializeBlock.Output,
             test_input=[
-                {"name": "3tn-demo"},
+                {"shop_name": "3tn-demo"},
             ],
             test_output=[
                 ("shop_name", "3tn-demo"),
@@ -39,11 +40,16 @@ class ShopifyInitializeBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        shop_url = self.create_shopify_store(input_data.name)
+        if os.getenv("DEBUG").lower() == "true":
+            yield "shop_name", input_data.shop_name
+            yield "shop_url", "https://example.com"
+            return
+
+        shop_url = self.create_shopify_store(input_data.shop_name)
 
         # Delay for the specified amount of time
         time.sleep(input_data.wait_for_complete_seconds)
-        yield "shop_name", input_data.name
+        yield "shop_name", input_data.shop_name
         yield "shop_url", shop_url
 
     def create_shopify_store(self, shop_name):

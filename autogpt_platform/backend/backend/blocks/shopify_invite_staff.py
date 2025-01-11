@@ -8,6 +8,7 @@ from backend.data.model import SchemaField
 
 
 class ShopifyInviteStaffBlock(Block):
+    block_id: str = "e2f0ed4c-620a-4221-a2a3-c6787a97fa61"
 
     class Input(BlockSchema):
         shop_name: str = SchemaField(
@@ -39,7 +40,7 @@ class ShopifyInviteStaffBlock(Block):
         self.oauth_url = oauth_url
 
         super().__init__(
-            id="e2f0ed4c-620a-4221-a2a3-c6787a97fa61",
+            id=ShopifyInviteStaffBlock.block_id,
             description="This block invites a staff to collaborate on a Shopify store.",
             categories={BlockCategory.SHOPIFY},
             input_schema=ShopifyInviteStaffBlock.Input,
@@ -56,6 +57,12 @@ class ShopifyInviteStaffBlock(Block):
 
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        if os.getenv("DEBUG").lower() == "true":
+            yield "shop_name", input_data.shop_name
+            yield "user_id", "gid://shopify/StaffMember/116287635752"
+            yield "oauth_url",  self.get_oauth_url(input_data.shop_name)
+            return
+
         user_id = self.invite_staff_member(input_data.shop_name, input_data.email, input_data.first_name, input_data.last_name)
 
         # Delay for the specified amount of time

@@ -203,6 +203,40 @@ async def create_new_graph(
     return await do_create_graph(create_graph, is_template=False, user_id=user_id)
 
 
+class ShopifyUser(pydantic.BaseModel):
+    email: str
+    first_name: str
+    last_name: str
+
+class CreateShopifyGraph(CreateGraph):
+    shop_name: str
+    user_prompt: str
+    shopify_user: ShopifyUser
+
+from backend.blocks.shopify_intialization import ShopifyInitializeBlock
+from backend.blocks.shopify_install_themes import ShopifyInstallThemeBlock
+from backend.blocks.shopify_invite_staff import ShopifyInviteStaffBlock
+
+@v1_router.post(
+    path="/graphs/shopify", tags=["graphs"], dependencies=[Depends(auth_middleware)]
+)
+async def create_new_shopif_graph(
+    create_graph: CreateShopifyGraph, user_id: Annotated[str, Depends(get_user_id)]
+) -> graph_db.GraphModel:
+    for node in create_graph.graph.nodes:
+        if node.block_id == ShopifyInitializeBlock.block_id:
+            node.input_default["shop_name"] = create_graph.shop_name
+        if node.block_id == ShopifyInstallThemeBlock.block_id:
+            node.input_default["user_prompt"] = create_graph.user_prompt
+        if node.block_id == ShopifyInviteStaffBlock.block_id:
+            node.input_default["email"] = create_graph.shopify_user.email
+            node.input_default["first_name"] = create_graph.shopify_user.first_name
+            node.input_default["last_name"] = create_graph.shopify_user.last_name
+    if not create_graph.graph.name:
+        create_graph.graph.name = "Shopify Initialization " + create_graph.shop_name
+    return await do_create_graph(create_graph, is_template=False, user_id=user_id)
+
+
 async def do_create_graph(
     create_graph: CreateGraph,
     is_template: bool,
