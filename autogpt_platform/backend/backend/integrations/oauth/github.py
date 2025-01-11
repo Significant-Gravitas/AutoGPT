@@ -34,7 +34,9 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         self.token_url = "https://github.com/login/oauth/access_token"
         self.revoke_url = "https://api.github.com/applications/{client_id}/token"
 
-    def get_login_url(self, scopes: list[str], state: str) -> str:
+    def get_login_url(
+        self, scopes: list[str], state: str, code_challenge: Optional[str]
+    ) -> str:
         params = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
@@ -44,7 +46,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         return f"{self.auth_base_url}?{urlencode(params)}"
 
     def exchange_code_for_tokens(
-        self, code: str, scopes: list[str]
+        self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         return self._request_tokens({"code": code, "redirect_uri": self.redirect_uri})
 

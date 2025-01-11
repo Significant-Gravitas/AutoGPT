@@ -19,6 +19,7 @@ class ProviderName(str, Enum):
     JINA = "jina"
     MEDIUM = "medium"
     NOTION = "notion"
+    NVIDIA = "nvidia"
     OLLAMA = "ollama"
     OPENAI = "openai"
     OPENWEATHERMAP = "openweathermap"
@@ -27,5 +28,6 @@ class ProviderName(str, Enum):
     REPLICATE = "replicate"
     REVID = "revid"
     SLANT3D = "slant3d"
+    TWITTER = "twitter"
     UNREAL_SPEECH = "unreal_speech"
     # --8<-- [end:ProviderName]
