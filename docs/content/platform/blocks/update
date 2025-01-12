@@ -1,0 +1,47 @@
+
+
+## Code Execution Block
+
+### What it is
+A secure environment for executing code in various programming languages with internet access and customizable setup options.
+
+### What it does
+Provides a sandboxed environment where users can run code in multiple programming languages (Python, JavaScript, Java, R, and Bash), install packages, and execute setup commands before running the main code.
+
+### How it works
+1. Creates an isolated sandbox environment using E2B
+2. Runs any specified setup commands (like installing packages)
+3. Executes the provided code in the chosen programming language
+4. Captures and returns the execution results, including standard output and any errors
+5. Automatically terminates the sandbox after execution or in case of errors
+
+### Inputs
+- **API Key Credentials**: Your E2B Sandbox API key for authentication
+- **Setup Commands**: List of shell commands to prepare the environment (e.g., installing packages)
+- **Code**: The actual code you want to execute
+- **Programming Language**: Choice of Python (default), JavaScript, Bash, R, or Java
+- **Timeout**: Maximum execution time in seconds (default: 300 seconds)
+- **Template ID**: Optional E2B sandbox template ID for custom configurations
+
+### Outputs
+- **Response**: The main output from your code execution
+- **Standard Output Logs**: Detailed logs of what your code printed during execution
+- **Standard Error Logs**: Any error messages or warnings generated during execution
+- **Error**: Specific error message if the execution failed
+
+### Possible use cases
+- Testing code snippets in different programming languages
+- Running data analysis scripts with custom package requirements
+- Executing system commands in a safe environment
+- Teaching programming concepts with live code execution
+- Developing and testing scripts that require internet access
+- Running computational tasks in an isolated environment
+- Prototyping solutions with different programming languages
+
+### Notes
+- The sandbox provides internet access for downloading packages or accessing online resources
+- Pre-installed package managers include pip and npm
+- CPU and memory customization is available through sandbox templates
+- The environment is Debian-based, allowing for extensive package management
+- All executions are isolated, ensuring security and preventing system conflicts
+
