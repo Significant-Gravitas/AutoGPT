@@ -6,8 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs/promises";
 import path from "path";
 // --8<-- [start:AttachAgentId]
-
-test.describe.skip("Monitor", () => {
+test.describe("Monitor", () => {
   let buildPage: BuildPage;
   let monitorPage: MonitorPage;
 
