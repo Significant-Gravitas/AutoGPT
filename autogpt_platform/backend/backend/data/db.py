@@ -1,5 +1,6 @@
 import logging
 import os
+import zlib
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -51,6 +52,14 @@ async def disconnect():
 @asynccontextmanager
 async def transaction():
     async with prisma.tx() as tx:
+        yield tx
+
+
+@asynccontextmanager
+async def locked_transaction(key: str):
+    lock_key = zlib.crc32(key.encode("utf-8"))
+    async with transaction() as tx:
+        await tx.execute_raw(f"SELECT pg_advisory_xact_lock({lock_key})")
         yield tx
 
 

@@ -85,6 +85,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="If user credit system is enabled or not",
     )
+    enable_beta_monthly_credit: bool = Field(
+        default=True,
+        description="If beta monthly credits accounting is enabled or not",
+    )
     num_user_credits_refill: int = Field(
         default=1500,
         description="Number of credits to refill for each user",
