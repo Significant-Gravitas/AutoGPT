@@ -22,3 +22,26 @@ WHERE "blockId" IS NOT NULL;
 ALTER TABLE "CreditTransaction" DROP COLUMN "blockId";
 
 COMMIT;
+
+/*
+    These indices dropped below were part of the cleanup during the schema change applied above.
+    These indexes were not useful and will not impact anything upon their removal.
+*/
+
+-- DropIndex
+DROP INDEX "StoreListing_agentId_owningUserId_idx";
+
+-- DropIndex
+DROP INDEX "StoreListing_isDeleted_idx";
+
+-- DropIndex
+DROP INDEX "StoreListing_owningUserId_idx";
+
+-- DropIndex
+DROP INDEX "StoreListingReview_storeListingVersionId_idx";
+
+-- DropIndex
+DROP INDEX "StoreListingSubmission_Status_idx";
+
+-- DropIndex
+DROP INDEX "StoreListingVersion_agentId_agentVersion_isDeleted_idx";
