@@ -508,11 +508,8 @@ model StoreListing {
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentId])
-  @@index([agentId, owningUserId])
-  @@index([owningUserId])
   // Used in the view query
   @@index([isDeleted, isApproved])
-  @@index([isDeleted])
 }
 
 model StoreListingVersion {
@@ -553,7 +550,6 @@ model StoreListingVersion {
   StoreListingReview StoreListingReview[]
 
   @@unique([agentId, agentVersion])
-  @@index([agentId, agentVersion, isDeleted])
 }
 
 model StoreListingReview {
@@ -571,7 +567,6 @@ model StoreListingReview {
   comments String?
 
   @@unique([storeListingVersionId, reviewByUserId])
-  @@index([storeListingVersionId])
 }
 
 enum SubmissionStatus {
@@ -599,7 +594,6 @@ model StoreListingSubmission {
   reviewComments String?
 
   @@index([storeListingId])
-  @@index([Status])
 }
 
 enum APIKeyPermission {
