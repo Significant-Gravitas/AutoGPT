@@ -6,7 +6,9 @@ from prisma import Json
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User
+from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
 
+from backend.data import db
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
@@ -32,7 +34,6 @@ class UserCreditBase(ABC):
     async def spend_credits(
         self,
         user_id: str,
-        user_credit: int,
         block_id: str,
         input_data: BlockInput,
         data_size: float,
@@ -43,7 +44,6 @@ class UserCreditBase(ABC):
 
         Args:
             user_id (str): The user ID.
-            user_credit (int): The current credit for the user.
             block_id (str): The block ID.
             input_data (BlockInput): The input data for the block.
             data_size (float): The size of the data being processed.
@@ -92,54 +92,112 @@ class UserCreditBase(ABC):
         """
         pass
 
+    @staticmethod
+    def time_now() -> datetime:
+        return datetime.now(timezone.utc)
 
-class UserCredit(UserCreditBase):
-    def __init__(self):
-        self.num_user_credits_refill = settings.config.num_user_credits_refill
+    # ====== Transaction Helper Methods ====== #
+    # Any modifications to the transaction table should only be done through these methods #
 
-    async def get_credits(self, user_id: str) -> int:
-        cur_time = self.time_now()
-        cur_month = cur_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        nxt_month = (
-            cur_month.replace(month=cur_month.month + 1)
-            if cur_month.month < 12
-            else cur_month.replace(year=cur_month.year + 1, month=1)
+    async def _get_credits(self, user_id: str) -> tuple[int, datetime]:
+        """
+        Returns the current balance of the user & the latest balance snapshot time.
+        """
+        top_time = self.time_now()
+        snapshot = await CreditTransaction.prisma().find_first(
+            where={
+                "userId": user_id,
+                "createdAt": {"lte": top_time},
+                "isActive": True,
+                "runningBalance": {"not": None},  # type: ignore
+            },
+            order={"createdAt": "desc"},
         )
+        if snapshot:
+            return snapshot.runningBalance or 0, snapshot.createdAt
 
-        user_credit = await CreditTransaction.prisma().group_by(
+        # No snapshot: Manually calculate balance using current month's transactions.
+        low_time = top_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        transactions = await CreditTransaction.prisma().group_by(
             by=["userId"],
             sum={"amount": True},
             where={
                 "userId": user_id,
-                "createdAt": {"gte": cur_month, "lt": nxt_month},
+                "createdAt": {"gte": low_time, "lte": top_time},
                 "isActive": True,
             },
         )
+        transaction_balance = (
+            transactions[0].get("_sum", {}).get("amount", 0) if transactions else 0
+        )
+        return transaction_balance, datetime.min
 
-        if user_credit:
-            credit_sum = user_credit[0].get("_sum") or {}
-            return credit_sum.get("amount", 0)
+    async def _enable_transaction(
+        self, transaction_key: str, user_id: str, metadata: Json
+    ):
 
-        key = f"MONTHLY-CREDIT-TOP-UP-{cur_month}"
+        transaction = await CreditTransaction.prisma().find_first_or_raise(
+            where={"transactionKey": transaction_key, "userId": user_id}
+        )
 
-        try:
-            await CreditTransaction.prisma().create(
+        if transaction.isActive:
+            return
+
+        async with db.locked_transaction(f"usr_trx_{user_id}"):
+            user_balance, _ = await self._get_credits(user_id)
+
+            await CreditTransaction.prisma().update(
+                where={
+                    "creditTransactionIdentifier": {
+                        "transactionKey": transaction_key,
+                        "userId": user_id,
+                    }
+                },
                 data={
-                    "amount": self.num_user_credits_refill,
-                    "type": CreditTransactionType.TOP_UP,
-                    "userId": user_id,
-                    "transactionKey": key,
+                    "isActive": True,
+                    "runningBalance": user_balance + transaction.amount,
                     "createdAt": self.time_now(),
-                }
+                    "metadata": metadata,
+                },
             )
-        except UniqueViolationError:
-            pass  # Already refilled this month
 
-        return self.num_user_credits_refill
+    async def _add_transaction(
+        self,
+        user_id: str,
+        amount: int,
+        transaction_type: CreditTransactionType,
+        is_active: bool = True,
+        transaction_key: str | None = None,
+        block_id: str | None = None,
+        metadata: Json = Json({}),
+    ):
+        async with db.locked_transaction(f"usr_trx_{user_id}"):
+            # Get latest balance snapshot
+            user_balance, _ = await self._get_credits(user_id)
+            if amount < 0 and user_balance < abs(amount):
+                raise ValueError(
+                    f"Insufficient balance for user {user_id}, balance: {user_balance}, amount: {amount}"
+                )
 
-    @staticmethod
-    def time_now():
-        return datetime.now(timezone.utc)
+            # Create the transaction
+            transaction_data: CreditTransactionCreateInput = {
+                "userId": user_id,
+                "amount": amount,
+                "runningBalance": user_balance + amount,
+                "type": transaction_type,
+                "blockId": block_id,
+                "metadata": metadata,
+                "isActive": is_active,
+                "createdAt": self.time_now(),
+            }
+            if transaction_key:
+                transaction_data["transactionKey"] = transaction_key
+            await CreditTransaction.prisma().create(data=transaction_data)
+
+            return user_balance + amount
+
+
+class UserCredit(UserCreditBase):
 
     def _block_usage_cost(
         self,
@@ -194,12 +252,10 @@ class UserCredit(UserCreditBase):
     async def spend_credits(
         self,
         user_id: str,
-        user_credit: int,
         block_id: str,
         input_data: BlockInput,
         data_size: float,
         run_time: float,
-        validate_balance: bool = True,
     ) -> int:
         block = get_block(block_id)
         if not block:
@@ -208,63 +264,56 @@ class UserCredit(UserCreditBase):
         cost, matching_filter = self._block_usage_cost(
             block=block, input_data=input_data, data_size=data_size, run_time=run_time
         )
-        if cost <= 0:
+        if cost == 0:
             return 0
 
-        if validate_balance and user_credit < cost:
-            raise ValueError(f"Insufficient credit: {user_credit} < {cost}")
-
-        await CreditTransaction.prisma().create(
-            data={
-                "userId": user_id,
-                "amount": -cost,
-                "type": CreditTransactionType.USAGE,
-                "blockId": block.id,
-                "metadata": Json(
-                    {
-                        "block": block.name,
-                        "input": matching_filter,
-                    }
-                ),
-                "createdAt": self.time_now(),
-            }
+        await self._add_transaction(
+            user_id=user_id,
+            amount=-cost,
+            transaction_type=CreditTransactionType.USAGE,
+            block_id=block.id,
+            metadata=Json(
+                {
+                    "block": block.name,
+                    "input": matching_filter,
+                }
+            ),
         )
+
         return cost
 
     async def top_up_credits(self, user_id: str, amount: int):
         if amount < 0:
             raise ValueError(f"Top up amount must not be negative: {amount}")
 
-        await CreditTransaction.prisma().create(
-            data={
-                "userId": user_id,
-                "amount": amount,
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-                "createdAt": self.time_now(),
-            }
+        await self._add_transaction(
+            user_id=user_id,
+            amount=amount,
+            transaction_type=CreditTransactionType.TOP_UP,
         )
 
-    async def top_up_intent(self, user_id: str, amount: int) -> str:
+    @staticmethod
+    async def _get_stripe_customer_id(user_id: str) -> str:
         user = await get_user_by_id(user_id)
-
         if not user:
             raise ValueError(f"User not found: {user_id}")
 
-        # Create customer if not exists
-        if not user.stripeCustomerId:
-            customer = stripe.Customer.create(name=user.name or "", email=user.email)
-            await User.prisma().update(
-                where={"id": user_id}, data={"stripeCustomerId": customer.id}
-            )
-            user.stripeCustomerId = customer.id
+        if user.stripeCustomerId:
+            return user.stripeCustomerId
 
+        customer = stripe.Customer.create(name=user.name or "", email=user.email)
+        await User.prisma().update(
+            where={"id": user_id}, data={"stripeCustomerId": customer.id}
+        )
+        return customer.id
+
+    async def top_up_intent(self, user_id: str, amount: int) -> str:
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
-            customer=user.stripeCustomerId,
+            customer=await self._get_stripe_customer_id(user_id),
             line_items=[
                 {
                     "price_data": {
@@ -285,15 +334,13 @@ class UserCredit(UserCreditBase):
         )
 
         # Create pending transaction
-        await CreditTransaction.prisma().create(
-            data={
-                "transactionKey": checkout_session.id,
-                "userId": user_id,
-                "amount": amount,
-                "type": CreditTransactionType.TOP_UP,
-                "isActive": False,
-                "metadata": Json({"checkout_session": checkout_session}),
-            }
+        await self._add_transaction(
+            user_id=user_id,
+            amount=amount,
+            transaction_type=CreditTransactionType.TOP_UP,
+            transaction_key=checkout_session.id,
+            is_active=False,
+            metadata=Json({"checkout_session": checkout_session}),
         )
 
         return checkout_session.url or ""
@@ -306,18 +353,18 @@ class UserCredit(UserCreditBase):
             raise ValueError("Either session_id or user_id must be provided")
 
         # Retrieve CreditTransaction
-        credit_transaction = await CreditTransaction.prisma().find_first(
-            where={
-                "OR": [
-                    (
-                        {"transactionKey": session_id}
-                        if session_id is not None
-                        else {"transactionKey": ""}
-                    ),
-                    {"userId": user_id} if user_id is not None else {"userId": ""},
-                ],
-                "isActive": False,
-            },
+        find_filter: CreditTransactionWhereInput = {
+            "type": CreditTransactionType.TOP_UP,
+            "isActive": False,
+        }
+        if session_id:
+            find_filter["transactionKey"] = session_id
+        if user_id:
+            find_filter["userId"] = user_id
+
+        # Find the most recent inactive top-up transaction
+        credit_transaction = await CreditTransaction.prisma().find_first_or_raise(
+            where=find_filter,
             order={"createdAt": "desc"},
         )
 
@@ -331,22 +378,51 @@ class UserCredit(UserCreditBase):
         )
 
         # Check the Checkout Session's payment_status property
-        # to determine if fulfillment should be peformed
+        # to determine if fulfillment should be performed
         if checkout_session.payment_status in ["paid", "no_payment_required"]:
-            # Activate the CreditTransaction
-            await CreditTransaction.prisma().update(
-                where={
-                    "creditTransactionIdentifier": {
-                        "transactionKey": credit_transaction.transactionKey,
-                        "userId": credit_transaction.userId,
-                    }
-                },
+            await self._enable_transaction(
+                transaction_key=credit_transaction.transactionKey,
+                user_id=credit_transaction.userId,
+                metadata=Json({"checkout_session": checkout_session}),
+            )
+
+    async def get_credits(self, user_id: str) -> int:
+        balance, _ = await self._get_credits(user_id)
+        return balance
+
+
+class BetaUserCredit(UserCredit):
+    """
+    This is a temporary class to handle the test user utilizing monthly credit refill.
+    TODO: Remove this class & its feature toggle.
+    """
+
+    def __init__(self, num_user_credits_refill: int):
+        self.num_user_credits_refill = num_user_credits_refill
+
+    async def get_credits(self, user_id: str) -> int:
+        cur_time = self.time_now().date()
+        balance, snapshot_time = await self._get_credits(user_id)
+        if (snapshot_time.year, snapshot_time.month) == (cur_time.year, cur_time.month):
+            return balance
+
+        try:
+            await CreditTransaction.prisma().create(
                 data={
+                    "transactionKey": f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
+                    "userId": user_id,
+                    "amount": self.num_user_credits_refill,
+                    "runningBalance": self.num_user_credits_refill,
+                    "type": CreditTransactionType.TOP_UP,
+                    "metadata": Json({}),
                     "isActive": True,
                     "createdAt": self.time_now(),
-                    "metadata": Json({"checkout_session": checkout_session}),
-                },
+                }
             )
+        except UniqueViolationError:
+            pass  # Already refilled this month
+
+        return self.num_user_credits_refill
 
 
 class DisabledUserCredit(UserCreditBase):
@@ -367,10 +443,13 @@ class DisabledUserCredit(UserCreditBase):
 
 
 def get_user_credit_model() -> UserCreditBase:
-    if settings.config.enable_credit:
-        return UserCredit()
-    else:
+    if not settings.config.enable_credit:
         return DisabledUserCredit()
+
+    if settings.config.enable_beta_monthly_credit:
+        return BetaUserCredit(settings.config.num_user_credits_refill)
+
+    return UserCredit()
 
 
 def get_block_costs() -> dict[str, list[BlockCost]]:
