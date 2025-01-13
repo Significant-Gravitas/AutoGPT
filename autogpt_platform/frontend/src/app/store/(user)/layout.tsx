@@ -9,6 +9,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { text: "Agent dashboard", href: "/store/agent-dashboard" },
         { text: "Credits", href: "/store/credits" },
         { text: "Integrations", href: "/store/integrations" },
+        { text: "API Keys", href: "/store/api_keys" },
         { text: "Profile", href: "/store/profile" },
         { text: "Settings", href: "/store/settings" },
       ],
@@ -18,7 +19,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen w-screen max-w-[1360px] flex-col lg:flex-row">
       <Sidebar linkGroups={sidebarLinkGroups} />
-      <div className="pl-4">{children}</div>
+      <div className="flex-1 pl-4">{children}</div>
     </div>
   );
 }
