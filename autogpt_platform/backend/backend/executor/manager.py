@@ -780,7 +780,7 @@ class ExecutionManager(AppService):
         graph_id: str,
         data: BlockInput,
         user_id: str,
-        graph_version: int,
+        graph_version: int | None = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
