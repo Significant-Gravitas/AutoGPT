@@ -1,7 +1,7 @@
 import { ElementHandle, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
-interface Block {
+export interface Block {
   id: string;
   name: string;
   description: string;
@@ -479,6 +479,15 @@ export class BuildPage extends BasePage {
       },
       { newX, newY },
     );
+  }
+
+  async getBlocksToSkip(): Promise<string[]> {
+    return [
+      (await this.getAgentExecutorBlockDetails()).id,
+      (await this.getAgentInputBlockDetails()).id,
+      (await this.getAgentOutputBlockDetails()).id,
+      (await this.getGithubTriggerBlockDetails()).id,
+    ];
   }
 
   async waitForRunTutorialButton(): Promise<void> {
