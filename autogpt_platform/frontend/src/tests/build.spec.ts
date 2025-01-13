@@ -51,16 +51,23 @@ test.describe("Build", () => { //(1)!
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
-    // add all the blocks in order
+    const blocksToSkip = [
+      (await buildPage.getAgentExecutorBlockDetails()).id,
+      (await buildPage.getAgentInputBlockDetails()).id,
+      (await buildPage.getAgentOutputBlockDetails()).id,
+      (await buildPage.getGithubTriggerBlockDetails()).id,
+    ];
+
+    // add all the blocks in order except for the agent executor block
     for (const block of blocks) {
-      if (block.id !== "e189baac-8c20-45a1-94a7-55177ea42565") {
+      if (block.id !== (await buildPage.getAgentExecutorBlockDetails()).id) {
         await buildPage.addBlock(block);
       }
     }
     await buildPage.closeBlocksPanel();
     // check that all the blocks are visible
     for (const block of blocks) {
-      if (block.id !== "e189baac-8c20-45a1-94a7-55177ea42565") {
+      if (block.id !== (await buildPage.getAgentExecutorBlockDetails()).id) {
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
     }
