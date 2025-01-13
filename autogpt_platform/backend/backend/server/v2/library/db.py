@@ -27,11 +27,11 @@ async def get_library_agents(
             "Search query is too long."
         )
 
-    where_clause = prisma.types.LibraryAgentWhereInput(
-        userId=user_id,
-        isDeleted=False,
-        isArchived=False,
-    )
+    where_clause: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "isArchived": False,
+    }
 
     if search_query:
         where_clause["OR"] = [
@@ -81,16 +81,15 @@ async def create_library_agent(
     """
 
     try:
-        library_agent = await prisma.models.LibraryAgent.prisma().create(
-            data=prisma.types.LibraryAgentCreateInput(
-                userId=user_id,
-                agentId=agent_id,
-                agentVersion=agent_version,
-                isCreatedByUser=False,
-                useGraphIsActiveVersion=True,
-            )
+        return await prisma.models.LibraryAgent.prisma().create(
+            data={
+                "userId": user_id,
+                "agentId": agent_id,
+                "agentVersion": agent_version,
+                "isCreatedByUser": False,
+                "useGraphIsActiveVersion": True,
+            }
         )
-        return library_agent
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating agent to library: {str(e)}")
         raise backend.server.v2.store.exceptions.DatabaseError(
@@ -114,16 +113,13 @@ async def update_agent_version_in_library(
         )
         await prisma.models.LibraryAgent.prisma().update(
             where={"id": library_agent.id},
-            data=prisma.types.LibraryAgentUpdateInput(
-                Agent=prisma.types.AgentGraphUpdateOneWithoutRelationsInput(
-                    connect=prisma.types._AgentGraphCompoundPrimaryKey(
-                        graphVersionId=prisma.types._AgentGraphCompoundPrimaryKeyInner(
-                            id=agent_id,
-                            version=agent_version,
-                        )
-                    ),
-                ),
-            ),
+            data={
+                "Agent": {
+                    "connect": {
+                        "graphVersionId": {"id": agent_id, "version": agent_version}
+                    },
+                },
+            },
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating agent version in library: {str(e)}")
@@ -146,12 +142,12 @@ async def update_library_agent(
     try:
         await prisma.models.LibraryAgent.prisma().update_many(
             where={"id": library_agent_id, "userId": user_id},
-            data=prisma.types.LibraryAgentUpdateInput(
-                useGraphIsActiveVersion=auto_update_version,
-                isFavorite=is_favorite,
-                isArchived=is_archived,
-                isDeleted=is_deleted,
-            ),
+            data={
+                "useGraphIsActiveVersion": auto_update_version,
+                "isFavorite": is_favorite,
+                "isArchived": is_archived,
+                "isDeleted": is_deleted,
+            },
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
@@ -214,12 +210,12 @@ async def add_store_agent_to_library(
 
         # Create LibraryAgent entry
         await prisma.models.LibraryAgent.prisma().create(
-            data=prisma.types.LibraryAgentCreateInput(
-                userId=user_id,
-                agentId=agent.id,
-                agentVersion=agent.version,
-                isCreatedByUser=False,
-            )
+            data={
+                "userId": user_id,
+                "agentId": agent.id,
+                "agentVersion": agent.version,
+                "isCreatedByUser": False,
+            }
         )
         logger.debug(f"Added agent {agent.id} to library for user {user_id}")
 
