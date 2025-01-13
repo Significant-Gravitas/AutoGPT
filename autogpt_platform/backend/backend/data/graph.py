@@ -6,13 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Optional, Type
 
 import prisma
-from prisma.models import (
-    AgentGraph,
-    AgentGraphExecution,
-    AgentNode,
-    AgentNodeLink,
-    StoreListingVersion,
-)
+from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
 from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
@@ -535,6 +529,7 @@ async def get_execution(user_id: str, execution_id: str) -> GraphExecution | Non
 async def get_graph(
     graph_id: str,
     version: int | None = None,
+    template: bool = False,
     user_id: str | None = None,
     for_export: bool = False,
 ) -> GraphModel | None:
@@ -548,36 +543,21 @@ async def get_graph(
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
     }
-
     if version is not None:
         where_clause["version"] = version
-    else:
+    elif not template:
         where_clause["isActive"] = True
+
+    # TODO: Fix hack workaround to get adding store agents to work
+    if user_id is not None and not template:
+        where_clause["userId"] = user_id
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-
-    # The Graph has to be owned by the user or a store listing.
-    if (
-        graph is None
-        or graph.userId != user_id
-        and not (
-            await StoreListingVersion.prisma().find_first(
-                where=prisma.types.StoreListingVersionWhereInput(
-                    agentId=graph_id,
-                    agentVersion=version or graph.version,
-                    isDeleted=False,
-                    StoreListing={"is": {"isApproved": True}},
-                )
-            )
-        )
-    ):
-        return None
-
-    return GraphModel.from_db(graph, for_export)
+    return GraphModel.from_db(graph, for_export) if graph else None
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
@@ -631,7 +611,9 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
 
-    if created_graph := await get_graph(graph.id, graph.version, user_id=user_id):
+    if created_graph := await get_graph(
+        graph.id, graph.version, graph.is_template, user_id=user_id
+    ):
         return created_graph
 
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")

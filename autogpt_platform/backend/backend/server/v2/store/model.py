@@ -115,7 +115,6 @@ class StoreSubmission(pydantic.BaseModel):
     status: prisma.enums.SubmissionStatus
     runs: int
     rating: float
-    store_listing_version_id: str | None = None
 
 
 class StoreSubmissionsResponse(pydantic.BaseModel):
@@ -152,9 +151,3 @@ class StoreReviewCreate(pydantic.BaseModel):
     store_listing_version_id: str
     score: int
     comments: str | None = None
-
-
-class ReviewSubmissionRequest(pydantic.BaseModel):
-    store_listing_version_id: str
-    isApproved: bool
-    comments: str
