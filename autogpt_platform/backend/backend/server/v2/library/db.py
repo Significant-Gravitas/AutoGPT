@@ -105,12 +105,15 @@ async def update_agent_version_in_library(
     Updates the agent version in the library
     """
     try:
-        await prisma.models.LibraryAgent.prisma().update_many(
+        library_agent = await prisma.models.LibraryAgent.prisma().find_first_or_raise(
             where={
                 "userId": user_id,
                 "agentId": agent_id,
                 "useGraphIsActiveVersion": True,
             },
+        )
+        await prisma.models.LibraryAgent.prisma().update(
+            where={"id": library_agent.id},
             data=prisma.types.LibraryAgentUpdateInput(
                 Agent=prisma.types.AgentGraphUpdateOneWithoutRelationsInput(
                     connect=prisma.types._AgentGraphCompoundPrimaryKey(
