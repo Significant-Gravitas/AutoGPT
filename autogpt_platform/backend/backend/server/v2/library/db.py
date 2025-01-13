@@ -81,7 +81,6 @@ async def create_library_agent(
     """
 
     try:
-
         library_agent = await prisma.models.LibraryAgent.prisma().create(
             data=prisma.types.LibraryAgentCreateInput(
                 userId=user_id,
@@ -114,9 +113,11 @@ async def update_agent_version_in_library(
             },
             data=prisma.types.LibraryAgentUpdateInput(
                 Agent=prisma.types.AgentGraphUpdateOneWithoutRelationsInput(
-                    connect=prisma.types.AgentGraphWhereUniqueInput(
-                        id=agent_id,
-                        version=agent_version,
+                    connect=prisma.types._AgentGraphCompoundPrimaryKey(
+                        graphVersionId=prisma.types._AgentGraphCompoundPrimaryKeyInner(
+                            id=agent_id,
+                            version=agent_version,
+                        )
                     ),
                 ),
             ),
@@ -238,7 +239,6 @@ async def add_store_agent_to_library(
 async def get_presets(
     user_id: str, page: int, page_size: int
 ) -> backend.server.v2.library.model.LibraryAgentPresetResponse:
-
     try:
         presets = await prisma.models.AgentPreset.prisma().find_many(
             where={"userId": user_id},
