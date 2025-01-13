@@ -43,7 +43,6 @@ export class MonitorPage extends BasePage {
   async isLoaded(): Promise<boolean> {
     console.log(`checking if monitor page is loaded`);
     try {
-
       // Wait for the monitor page
       await this.page.getByTestId("monitor-page").waitFor({
         state: "visible",
