@@ -1,6 +1,7 @@
 import os
 import json
 import shopify
+import traceback
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
@@ -54,14 +55,16 @@ class ShopifyProductCreateBlock(Block):
         location = self.get_location()
         product = self.create_product()
         items = self.get_inventory_items(product["id"])
+        tracks = self.track_inventory(items)
 
         try :
-            tracks = self.track_inventory(items)
+            changes = self.update_inventory(items, location["id"])
             print("------------------------------------------------------------")
-            print(tracks)
+            print(changes)
             print("------------------------------------------------------------")
         except Exception as ex:
             print(ex)
+            traceback.print_exc()
 
         yield "shop_name", input_data.shop_name
         yield "products", []
@@ -200,3 +203,31 @@ class ShopifyProductCreateBlock(Block):
                 tracks[item["id"]] = item["tracked"]
 
         return tracks
+    
+    def update_inventory(self, inventory_items: list[dict[str, str]], localtion_id: str) -> list[str]:
+        queries = []
+        params_input = []
+        params = dict()
+        for index, item in enumerate(inventory_items):
+            param_name = "input_"+str(index)
+            params_input.append("$" + param_name+ ":InventoryAdjustQuantitiesInput!")
+            params[param_name] = {"reason": "correction", "name": "available", "changes": [{"delta": 10, "inventoryItemId": item["id"], "locationId": localtion_id}]}
+
+            item_query = "inventoryAdjustQuantities"+str(index)+": inventoryAdjustQuantities(input: $"+str(param_name)+") { inventoryAdjustmentGroup { id createdAt } userErrors { field message } }"
+            queries.append(item_query)
+
+        query = "mutation adjustInventory(" +  ",".join(params_input) + ") { " + " \n ".join(queries) + " }"
+        response = shopify.GraphQL().execute(query, params)
+        
+        raw = json.loads(response)
+        data = raw["data"]
+
+        changes = []
+        for key, value in data.items():
+            item = value.get("inventoryAdjustmentGroup", {})
+            if item and item.get("id", "") != "":
+                changes.append(item.get("id", ""))
+
+        return changes
+    
+    
