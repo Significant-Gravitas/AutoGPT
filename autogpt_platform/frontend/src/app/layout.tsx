@@ -10,10 +10,14 @@ import { cn } from "@/lib/utils";
 import "./globals.css";
 
 import { Navbar } from "@/components/agptui/Navbar";
+
+import "./globals.css";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
+import OttoChatWidget from "@/components/OttoChatWidget";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -116,6 +120,7 @@ export default async function RootLayout({
             )}
             <main className="w-full flex-grow">{children}</main>
             <TallyPopupSimple />
+            <OttoChatWidget />
           </div>
           <Toaster />
         </Providers>
