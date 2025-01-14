@@ -364,9 +364,9 @@ async def set_graph_active_version(
 )
 def execute_graph(
     graph_id: str,
-    graph_version: int,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
+    graph_version: Optional[int] = None,
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
         graph_exec = execution_manager_client().add_execution(

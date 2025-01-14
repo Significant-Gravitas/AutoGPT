@@ -125,7 +125,10 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
     ):
         return backend.server.routers.v1.execute_graph(
-            graph_id, graph_version, node_input, user_id
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            node_input=node_input,
         )
 
     @staticmethod
