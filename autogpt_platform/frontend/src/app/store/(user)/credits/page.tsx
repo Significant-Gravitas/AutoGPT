@@ -84,7 +84,8 @@ export default function CreditsPage() {
           <h2 className="text-lg">Manage Your Payment Methods</h2>
           <br />
           <p className="text-neutral-600">
-            You can manage your cards and see your payment history in the billing portal.
+            You can manage your cards and see your payment history in the
+            billing portal.
           </p>
           <br />
 
