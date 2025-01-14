@@ -111,6 +111,13 @@ export class MonitorPage extends BasePage {
       });
     }
 
+    agents.reduce((acc, agent) => {
+      if (!agent.id.includes("flow-run")) {
+        acc.push(agent);
+      }
+      return acc;
+    }, [] as Agent[]);
+
     return agents;
   }
 
@@ -216,7 +223,7 @@ export class MonitorPage extends BasePage {
   async exportToFile(agent: Agent) {
     await this.clickAgent(agent.id);
 
-    console.log(`exporting agent ${agent.id} ${agent.name} to file`);
+    console.log(`exporting agent id: ${agent.id} name: ${agent.name} to file`);
     await this.page.getByTestId("export-button").click();
   }
 

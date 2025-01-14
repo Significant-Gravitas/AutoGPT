@@ -60,14 +60,16 @@ test.describe("Monitor", () => {
     if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
       throw new Error("No agent id attached to the test");
     }
-    const id = testInfo.attachments[0].body.toString();
+    const testAttachName = testInfo.attachments[0].body.toString();
     // --8<-- [end:ReadAgentId]
     const agents = await monitorPage.listAgents();
 
     const downloadPromise = page.waitForEvent("download");
-    await monitorPage.exportToFile(
-      agents.find((a: any) => a.id === id) || agents[0],
-    );
+    const agent = agents.find((a: any) => a.name === `test-agent-${testAttachName}`);
+    if (!agent) {
+      throw new Error(`Agent ${testAttachName} not found`);
+    }
+    await monitorPage.exportToFile(agent);
     const download = await downloadPromise;
 
     // Wait for the download process to complete and save the downloaded file somewhere.
@@ -77,9 +79,6 @@ test.describe("Monitor", () => {
     console.log(`downloaded file to ${download.suggestedFilename()}`);
     await test.expect(download.suggestedFilename()).toBeDefined();
     // test-agent-uuid-v1.json
-    if (id) {
-      await test.expect(download.suggestedFilename()).toContain(id);
-    }
     await test.expect(download.suggestedFilename()).toContain("test-agent-");
     await test.expect(download.suggestedFilename()).toContain("v1.json");
 
@@ -88,9 +87,9 @@ test.describe("Monitor", () => {
     const filesInFolder = await fs.readdir(
       `${monitorPage.downloadsFolder}/monitor`,
     );
-    const importFile = filesInFolder.find((f) => f.includes(id));
+    const importFile = filesInFolder.find((f) => f.includes(testAttachName));
     if (!importFile) {
-      throw new Error(`No import file found for agent ${id}`);
+      throw new Error(`No import file found for agent ${testAttachName}`);
     }
     const baseName = importFile.split(".")[0];
     await monitorPage.importFromFile(
