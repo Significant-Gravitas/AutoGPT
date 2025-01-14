@@ -65,7 +65,9 @@ test.describe("Monitor", () => {
     const agents = await monitorPage.listAgents();
 
     const downloadPromise = page.waitForEvent("download");
-    const agent = agents.find((a: any) => a.name === `test-agent-${testAttachName}`);
+    const agent = agents.find(
+      (a: any) => a.name === `test-agent-${testAttachName}`,
+    );
     if (!agent) {
       throw new Error(`Agent ${testAttachName} not found`);
     }

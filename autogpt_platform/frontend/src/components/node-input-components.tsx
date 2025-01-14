@@ -313,7 +313,6 @@ export const NodeGenericInputField: FC<{
     );
   }
 
-
   if ("properties" in propSchema) {
     // Render a multi-select for all-boolean sub-schemas with more than 3 properties
     if (
