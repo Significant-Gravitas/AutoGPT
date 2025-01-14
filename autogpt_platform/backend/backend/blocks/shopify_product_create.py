@@ -44,24 +44,27 @@ class ShopifyProductCreateBlock(Block):
             return
         
         shop_url = f"https://{input_data.shop_name}.myshopify.com"
-       
-        with shopify.Session.temp(shop_url, self.api_version, input_data.api_key.get_secret_value()):
-            session = shopify.Session(
-                f"https://{input_data.shop_name}.myshopify.com", 
-                "2025-01",
-                self.api_key
-            )
-            shopify.ShopifyResource.activate_session(session)
+        session = shopify.Session(
+            shop_url, 
+            self.api_version,
+            input_data.api_key.get_secret_value()
+        )
+        shopify.ShopifyResource.activate_session(session)
 
-            location = self.get_location()
-            product = self.create_product()
-            items = self.get_inventory_items(product["id"])
-            print("------------------------------------------------------------")
-            print(items)
-            print("------------------------------------------------------------")
+        location = self.get_location()
+        product = self.create_product()
+        items = self.get_inventory_items(product["id"])
 
-            yield "shop_name", input_data.shop_name
-            yield "products", []
+        try :
+            tracks = self.track_inventory(items)
+            print("------------------------------------------------------------")
+            print(tracks)
+            print("------------------------------------------------------------")
+        except Exception as ex:
+            print(ex)
+
+        yield "shop_name", input_data.shop_name
+        yield "products", []
 
     def get_location(self) -> dict[str, str]:
         query = "query { locations(first: 1) { nodes { id name address { address1 city province country zip } isActive fulfillsOnlineOrders } } }"
@@ -171,3 +174,29 @@ class ShopifyProductCreateBlock(Block):
             items.append(dict(id= node["inventoryItem"]["id"], variant_id= node["inventoryItem"]["variant"]["id"]))
 
         return items
+
+    def track_inventory(self, inventory_items: list[dict[str, str]]) -> dict[str, bool]:
+        queries = []
+        params_input = []
+        params = dict()
+        for index, item in enumerate(inventory_items):
+            param_name = "id_"+str(index)
+            params_input.append("$" + param_name+ ":ID!")
+            params[param_name] = item["id"]
+
+            item_query = "inventoryItemUpdate"+str(index)+": inventoryItemUpdate(id: $"+param_name+", input: { tracked: true }) { inventoryItem { id tracked } userErrors { field message } }"
+            queries.append(item_query)
+
+        query = "mutation trackInventoryItems(" +  ",".join(params_input) + ") { " + " \n ".join(queries) + " }"
+        response = shopify.GraphQL().execute(query, params)
+        
+        raw = json.loads(response)
+        data = raw["data"]
+
+        tracks = dict()
+        for key, value in data.items():
+            item = value.get("inventoryItem", {})
+            if item and item.get("id", "") != "" and item.get("tracked", False):
+                tracks[item["id"]] = item["tracked"]
+
+        return tracks
