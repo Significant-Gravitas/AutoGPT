@@ -2,7 +2,7 @@ name: AutoGPT Platform - Frontend CI
 
 on:
   push:
-    branches: [master, dev]
+    branches: [master, dev, dev-*]
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
@@ -87,6 +87,11 @@ jobs:
       - name: Run tests
         run: |
           yarn test --project=${{ matrix.browser }}
+
+      - name: Print Docker Compose logs in debug mode
+        if: runner.debug
+        run: |
+          docker compose -f ../docker-compose.yml logs
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

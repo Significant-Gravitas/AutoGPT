@@ -29,6 +29,9 @@ import {
   StoreReview,
   ScheduleCreatable,
   Schedule,
+  APIKeyPermission,
+  CreateAPIKeyResponse,
+  APIKey,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -225,6 +228,36 @@ export default class BackendAPI {
     );
   }
 
+  // API Key related requests
+  async createAPIKey(
+    name: string,
+    permissions: APIKeyPermission[],
+    description?: string,
+  ): Promise<CreateAPIKeyResponse> {
+    return this._request("POST", "/api-keys", {
+      name,
+      permissions,
+      description,
+    });
+  }
+
+  async listAPIKeys(): Promise<APIKey[]> {
+    return this._get("/api-keys");
+  }
+
+  async revokeAPIKey(keyId: string): Promise<APIKey> {
+    return this._request("DELETE", `/api-keys/${keyId}`);
+  }
+
+  async updateAPIKeyPermissions(
+    keyId: string,
+    permissions: APIKeyPermission[],
+  ): Promise<APIKey> {
+    return this._request("PUT", `/api-keys/${keyId}/permissions`, {
+      permissions,
+    });
+  }
+
   /**
    * @returns `true` if a ping event was received, `false` if provider doesn't support pinging but the webhook exists.
    * @throws  `Error` if the webhook does not exist.
@@ -350,6 +383,17 @@ export default class BackendAPI {
     page_size?: number;
   }): Promise<MyAgentsResponse> {
     return this._get("/store/myagents", params);
+  }
+
+  downloadStoreAgent(
+    storeListingVersionId: string,
+    version?: number,
+  ): Promise<BlobPart> {
+    const url = version
+      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
+      : `/store/download/agents/${storeListingVersionId}`;
+
+    return this._get(url);
   }
 
   /////////////////////////////////////////
@@ -495,7 +539,22 @@ export default class BackendAPI {
       let errorDetail;
       try {
         const errorData = await response.json();
-        errorDetail = errorData.detail || response.statusText;
+        if (
+          Array.isArray(errorData.detail) &&
+          errorData.detail.length > 0 &&
+          errorData.detail[0].loc
+        ) {
+          // This appears to be a Pydantic validation error
+          const errors = errorData.detail.map(
+            (err: _PydanticValidationError) => {
+              const location = err.loc.join(" -> ");
+              return `${location}: ${err.msg}`;
+            },
+          );
+          errorDetail = errors.join("\n");
+        } else {
+          errorDetail = errorData.detail || response.statusText;
+        }
       } catch (e) {
         errorDetail = response.statusText;
       }
@@ -676,6 +735,13 @@ type WebsocketMessage = {
     data: WebsocketMessageTypeMap[M];
   };
 }[keyof WebsocketMessageTypeMap];
+
+type _PydanticValidationError = {
+  type: string;
+  loc: string[];
+  msg: string;
+  input: any;
+};
 
 /* *** HELPER FUNCTIONS *** */
 

@@ -136,6 +136,7 @@ async def create_graph_execution(
     graph_version: int,
     nodes_input: list[tuple[str, BlockInput]],
     user_id: str,
+    preset_id: str | None = None,
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -163,6 +164,7 @@ async def create_graph_execution(
                 ]
             },
             "userId": user_id,
+            "agentPresetId": preset_id,
         },
         include=GRAPH_EXECUTION_INCLUDE,
     )
@@ -270,9 +272,9 @@ async def update_graph_execution_start_time(graph_exec_id: str):
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
+    status: ExecutionStatus,
     stats: dict[str, Any],
 ) -> ExecutionResult:
-    status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={

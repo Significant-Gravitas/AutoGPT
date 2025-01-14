@@ -1,14 +1,18 @@
 import logging
 import random
 from datetime import datetime
+from typing import Optional
 
+import fastapi
 import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
 
+import backend.data.graph
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
+from backend.data.graph import GraphModel
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +325,10 @@ async def get_store_submissions(
         where = prisma.types.StoreSubmissionWhereInput(user_id=user_id)
         # Query submissions from database
         submissions = await prisma.models.StoreSubmission.prisma().find_many(
-            where=where, skip=skip, take=page_size, order=[{"date_submitted": "desc"}]
+            where=where,
+            skip=skip,
+            take=page_size,
+            order=[{"date_submitted": "desc"}],
         )
 
         # Get total count for pagination
@@ -401,9 +408,7 @@ async def delete_store_submission(
             )
 
         # Delete the submission
-        await prisma.models.StoreListing.prisma().delete(
-            where=prisma.types.StoreListingWhereUniqueInput(id=submission.id)
-        )
+        await prisma.models.StoreListing.prisma().delete(where={"id": submission.id})
 
         logger.debug(
             f"Successfully deleted submission {submission_id} for user {user_id}"
@@ -500,7 +505,15 @@ async def create_store_submission(
                         "subHeading": sub_heading,
                     }
                 },
-            }
+            },
+            include={"StoreListingVersions": True},
+        )
+
+        slv_id = (
+            listing.StoreListingVersions[0].id
+            if listing.StoreListingVersions is not None
+            and len(listing.StoreListingVersions) > 0
+            else None
         )
 
         logger.debug(f"Created store listing for agent {agent_id}")
@@ -517,6 +530,7 @@ async def create_store_submission(
             status=prisma.enums.SubmissionStatus.PENDING,
             runs=0,
             rating=0.0,
+            store_listing_version_id=slv_id,
         )
 
     except (
@@ -785,4 +799,115 @@ async def get_my_agents(
         logger.error(f"Error getting my agents: {str(e)}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch my agents"
+        ) from e
+
+
+async def get_agent(
+    store_listing_version_id: str, version_id: Optional[int]
+) -> GraphModel:
+    """Get agent using the version ID and store listing version ID."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id}, include={"Agent": True}
+            )
+        )
+
+        if not store_listing_version or not store_listing_version.Agent:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing version {store_listing_version_id} not found",
+            )
+
+        agent = store_listing_version.Agent
+
+        graph = await backend.data.graph.get_graph(agent.id, agent.version)
+
+        if not graph:
+            raise fastapi.HTTPException(
+                status_code=404, detail=f"Agent {agent.id} not found"
+            )
+
+        graph.version = 1
+        graph.is_template = False
+        graph.is_active = True
+        delattr(graph, "user_id")
+
+        return graph
+
+    except Exception as e:
+        logger.error(f"Error getting agent: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch agent"
+        ) from e
+
+
+async def review_store_submission(
+    store_listing_version_id: str, is_approved: bool, comments: str, reviewer_id: str
+) -> prisma.models.StoreListingSubmission:
+    """Review a store listing submission."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id},
+                include={"StoreListing": True},
+            )
+        )
+
+        if not store_listing_version or not store_listing_version.StoreListing:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing version {store_listing_version_id} not found",
+            )
+
+        status = (
+            prisma.enums.SubmissionStatus.APPROVED
+            if is_approved
+            else prisma.enums.SubmissionStatus.REJECTED
+        )
+
+        create_data = prisma.types.StoreListingSubmissionCreateInput(
+            StoreListingVersion={"connect": {"id": store_listing_version_id}},
+            Status=status,
+            reviewComments=comments,
+            Reviewer={"connect": {"id": reviewer_id}},
+            StoreListing={"connect": {"id": store_listing_version.StoreListing.id}},
+            createdAt=datetime.now(),
+            updatedAt=datetime.now(),
+        )
+
+        update_data = prisma.types.StoreListingSubmissionUpdateInput(
+            Status=status,
+            reviewComments=comments,
+            Reviewer={"connect": {"id": reviewer_id}},
+            StoreListing={"connect": {"id": store_listing_version.StoreListing.id}},
+            updatedAt=datetime.now(),
+        )
+
+        if is_approved:
+            await prisma.models.StoreListing.prisma().update(
+                where={"id": store_listing_version.StoreListing.id},
+                data={"isApproved": True},
+            )
+
+        submission = await prisma.models.StoreListingSubmission.prisma().upsert(
+            where={"storeListingVersionId": store_listing_version_id},
+            data=prisma.types.StoreListingSubmissionUpsertInput(
+                create=create_data,
+                update=update_data,
+            ),
+        )
+
+        if not submission:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing submission {store_listing_version_id} not found",
+            )
+
+        return submission
+
+    except Exception as e:
+        logger.error(f"Error reviewing store submission: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to review store submission"
         ) from e

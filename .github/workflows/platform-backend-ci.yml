@@ -2,13 +2,13 @@ name: AutoGPT Platform - Backend CI
 
 on:
   push:
-    branches: [master, dev, ci-test*]
+    branches: [master, dev, ci-test*, dev-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   pull_request:
-    branches: [master, dev, release-*]
+    branches: [master, dev, release-*, dev-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
@@ -81,7 +81,7 @@ jobs:
 
       - name: Check poetry.lock
         run: |
-          poetry lock --no-update
+          poetry lock
 
           if ! git diff --quiet poetry.lock; then
             echo "Error: poetry.lock not up to date."

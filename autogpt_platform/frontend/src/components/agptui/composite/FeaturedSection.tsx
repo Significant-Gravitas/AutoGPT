@@ -6,9 +6,11 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
+  CarouselPrevious,
+  CarouselNext,
+  CarouselIndicator,
 } from "@/components/ui/carousel";
 import { useCallback, useState } from "react";
-import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 
 const BACKGROUND_COLORS = [
@@ -63,27 +65,24 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
 
   return (
     <div className="flex w-full flex-col items-center justify-center">
-      <div className="w-full">
-        <h2 className="font-poppins mb-8 text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+      <div className="w-[99vw]">
+        <h2 className="font-poppins mx-auto mb-8 max-w-[1360px] px-4 text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
           Featured agents
         </h2>
 
-        <div>
+        <div className="w-[99vw] pb-[60px]">
           <Carousel
+            className="mx-auto pb-10"
             opts={{
-              loop: true,
-              startIndex: currentSlide,
-              duration: 500,
-              align: "start",
+              align: "center",
               containScroll: "trimSnaps",
             }}
-            className="w-full overflow-x-hidden"
           >
-            <CarouselContent className="transition-transform duration-500">
+            <CarouselContent className="ml-[calc(50vw-690px)]">
               {featuredAgents.map((agent, index) => (
                 <CarouselItem
                   key={index}
-                  className="max-w-[460px] flex-[0_0_auto] pr-8"
+                  className="max-w-[460px] flex-[0_0_auto]"
                 >
                   <FeaturedStoreCard
                     agentName={agent.agent_name}
@@ -99,36 +98,12 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
                 </CarouselItem>
               ))}
             </CarouselContent>
+            <div className="relative mx-auto w-full max-w-[1360px] pl-4">
+              <CarouselIndicator />
+              <CarouselPrevious afterClick={handlePrevSlide} />
+              <CarouselNext afterClick={handleNextSlide} />
+            </div>
           </Carousel>
-        </div>
-
-        <div className="mt-8 flex w-full items-center justify-between">
-          <div className="flex h-3 items-center gap-2">
-            {featuredAgents.map((_, index) => (
-              <div
-                key={index}
-                className={`${
-                  currentSlide === index
-                    ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
-                    : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600"
-                }`}
-              />
-            ))}
-          </div>
-          <div className="mb-[60px] flex items-center gap-3">
-            <button
-              onClick={handlePrevSlide}
-              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 bg-white dark:border-neutral-600 dark:bg-neutral-800"
-            >
-              <IconLeftArrow className="h-8 w-8 text-neutral-800 dark:text-neutral-200" />
-            </button>
-            <button
-              onClick={handleNextSlide}
-              className="mb:h-12 mb:w-12 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-900 bg-white dark:border-neutral-600 dark:bg-neutral-800"
-            >
-              <IconRightArrow className="h-8 w-8 text-neutral-800 dark:text-neutral-200" />
-            </button>
-          </div>
         </div>
       </div>
     </div>
