@@ -1,7 +1,8 @@
-from fastapi import HTTPException, Request, Depends
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
-from backend.data.api_key import validate_api_key, has_permission
 from prisma.enums import APIKeyPermission
+
+from backend.data.api_key import has_permission, validate_api_key
 
 api_key_header = APIKeyHeader(name="X-API-Key")
 
@@ -25,7 +26,7 @@ def require_permission(permission: APIKeyPermission):
         if not has_permission(api_key, permission):
             raise HTTPException(
                 status_code=403,
-                detail=f"API key missing required permission: {permission}"
+                detail=f"API key missing required permission: {permission}",
             )
         return api_key
 

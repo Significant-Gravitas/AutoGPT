@@ -1,9 +1,10 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, TypeVar, Optional
 
 from prisma.enums import AgentExecutionStatus
+from prisma.errors import PrismaError
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
@@ -322,6 +323,33 @@ async def update_execution_status(
         raise ValueError(f"Execution {node_exec_id} not found.")
 
     return ExecutionResult.from_db(res)
+
+
+async def get_execution(execution_id: str, user_id: str) -> Optional[AgentGraphExecution]:
+    """
+    Get an execution by ID. Returns None if not found.
+
+    Args:
+        execution_id: The ID of the execution to retrieve
+
+    Returns:
+        The execution if found, None otherwise
+    """
+    try:
+        execution = await AgentNodeExecution.prisma().find_unique(
+            where={
+                "id": execution_id,
+                "userId": user_id,
+            },
+            include={
+                "id": True,
+                "userId": True,
+                "executionStatus": True
+            }
+        )
+        return execution
+    except PrismaError:
+        return None
 
 
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:

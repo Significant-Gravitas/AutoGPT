@@ -785,6 +785,7 @@ class ExecutionManager(AppService):
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
+        logger.info(f"data: \n{data}")
         if not graph:
             raise ValueError(f"Graph #{graph_id} not found.")
 
@@ -802,9 +803,11 @@ class ExecutionManager(AppService):
 
             # Extract request input data, and assign it to the input pin.
             if block.block_type == BlockType.INPUT:
+                logger.info("Input block")
                 name = node.input_default.get("name")
-                if name and name in data:
-                    input_data = {"value": data[name]}
+                logger.info(f"Input name from input_default: {name}")
+                if name in data.get("graph_input", {}):
+                    input_data = {"value": data["graph_input"][name]}
 
             # Extract webhook payload, and assign it to the input pin
             webhook_payload_key = f"webhook_{node.webhook_id}_payload"

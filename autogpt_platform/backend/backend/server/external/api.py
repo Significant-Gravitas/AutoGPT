@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+
 from .routes.v1 import v1_router
 
 external_app = FastAPI(
