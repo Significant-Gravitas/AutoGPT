@@ -3,7 +3,7 @@ import json
 import shopify
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import BlockSecret, SchemaField, SecretField
 
 
 class ShopifyProductCreateBlock(Block):
@@ -14,9 +14,7 @@ class ShopifyProductCreateBlock(Block):
         shop_name: str = SchemaField(
             description="The name of Shopify shop and subdomain",
         )
-        api_key: str = SchemaField(
-            description="The private app api key of the shopify store",
-        )
+        api_key: BlockSecret = SecretField(key="api_key",value="api_key")
 
     class Output(BlockSchema):
         shop_name: str = SchemaField(description="The shop that invited staff")
@@ -47,7 +45,7 @@ class ShopifyProductCreateBlock(Block):
         
         shop_url = f"https://{input_data.shop_name}.myshopify.com"
        
-        with shopify.Session.temp(shop_url, self.api_version, input_data.api_key):
+        with shopify.Session.temp(shop_url, self.api_version, input_data.api_key.get_secret_value()):
             session = shopify.Session(
                 f"https://{input_data.shop_name}.myshopify.com", 
                 "2025-01",
