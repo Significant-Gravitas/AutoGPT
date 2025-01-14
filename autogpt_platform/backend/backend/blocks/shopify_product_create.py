@@ -14,16 +14,15 @@ class ShopifyProductCreateBlock(Block):
         shop_name: str = SchemaField(
             description="The name of Shopify shop and subdomain",
         )
+        api_key: str = SchemaField(
+            description="The private app api key of the shopify store",
+        )
 
     class Output(BlockSchema):
         shop_name: str = SchemaField(description="The shop that invited staff")
         products: list[dict[str, str]] = SchemaField(description="List of products created")
 
     def __init__(self):
-        self.api_key = os.getenv("SHOPIFY_INTEGRATION_ADMIN_API_KEY")
-        if not self.api_key:
-            raise ValueError("SHOPIFY_INTEGRATION_ADMIN_API_KEY is not set")
-
         super().__init__(
             id=ShopifyProductCreateBlock.block_id,
             description="This block create products on Shopify.",
@@ -31,7 +30,7 @@ class ShopifyProductCreateBlock(Block):
             input_schema=ShopifyProductCreateBlock.Input,
             output_schema=ShopifyProductCreateBlock.Output,
             test_input=[
-                {"shop_name": "3tn-demo"},
+                {"shop_name": "3tn-demo", "api_key": "api_key"},
             ],
             test_output=[
                 ("shop_name", "3tn-demo"),
@@ -48,7 +47,7 @@ class ShopifyProductCreateBlock(Block):
         
         shop_url = f"https://{input_data.shop_name}.myshopify.com"
        
-        with shopify.Session.temp(shop_url, self.api_version, self.api_key):
+        with shopify.Session.temp(shop_url, self.api_version, input_data.api_key):
             session = shopify.Session(
                 f"https://{input_data.shop_name}.myshopify.com", 
                 "2025-01",
