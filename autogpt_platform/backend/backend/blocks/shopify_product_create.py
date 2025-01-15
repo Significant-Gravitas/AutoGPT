@@ -1,7 +1,7 @@
 import os
 import json
 import shopify
-import traceback
+from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import BlockSecret, SchemaField, SecretField
@@ -19,7 +19,7 @@ class ShopifyProductCreateBlock(Block):
 
     class Output(BlockSchema):
         shop_name: str = SchemaField(description="The shop that invited staff")
-        products: list[dict[str, str]] = SchemaField(description="List of products created")
+        products: list[dict[str, Any]] = SchemaField(description="List of products created")
 
     def __init__(self):
         super().__init__(
@@ -54,20 +54,18 @@ class ShopifyProductCreateBlock(Block):
 
         location = self.get_location()
         product = self.create_product()
-        items = self.get_inventory_items(product["id"])
-        tracks = self.track_inventory(items)
 
-        try :
-            changes = self.update_inventory(items, location["id"])
-            print("------------------------------------------------------------")
-            print(changes)
-            print("------------------------------------------------------------")
-        except Exception as ex:
-            print(ex)
-            traceback.print_exc()
+        items = self.get_inventory_items(product["id"])
+        tracks = self.track_inventory_items(items)
+        changes = self.update_inventory_items(items, location["id"])
+
+        variants = self.get_variants(product["id"])
+        variants_prices = self.update_product_variant_price(product["id"], variants)
+        
+        product["variants"] = variants_prices
 
         yield "shop_name", input_data.shop_name
-        yield "products", []
+        yield "products", [product]
 
     def get_location(self) -> dict[str, str]:
         query = "query { locations(first: 1) { nodes { id name address { address1 city province country zip } isActive fulfillsOnlineOrders } } }"
@@ -122,7 +120,7 @@ class ShopifyProductCreateBlock(Block):
                 }
                 ]
             }
-            }
+        }
         response = shopify.GraphQL().execute(query, params)
 
         raw = json.loads(response)
@@ -178,7 +176,7 @@ class ShopifyProductCreateBlock(Block):
 
         return items
 
-    def track_inventory(self, inventory_items: list[dict[str, str]]) -> dict[str, bool]:
+    def track_inventory_items(self, inventory_items: list[dict[str, str]]) -> dict[str, bool]:
         queries = []
         params_input = []
         params = dict()
@@ -204,7 +202,7 @@ class ShopifyProductCreateBlock(Block):
 
         return tracks
     
-    def update_inventory(self, inventory_items: list[dict[str, str]], localtion_id: str) -> list[str]:
+    def update_inventory_items(self, inventory_items: list[dict[str, str]], localtion_id: str) -> list[str]:
         queries = []
         params_input = []
         params = dict()
@@ -229,5 +227,23 @@ class ShopifyProductCreateBlock(Block):
                 changes.append(item.get("id", ""))
 
         return changes
-    
-    
+
+    def update_product_variant_price(self, product_id: str, variants: list[dict[str, str]]) -> list[dict[str, str]]:
+        query = "mutation updateProductVariantsPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) { productVariantsBulkUpdate(productId: $productId, variants: $variants) { productVariants { id title price } userErrors { field message } } }"
+        params = {
+            "productId": product_id,
+            "variants": [{"id": variant["id"], "price": 19.99} for variant in variants]
+        }
+        response = shopify.GraphQL().execute(query, params)
+
+        raw = json.loads(response)
+        data = raw["data"]
+
+        errors = data.get("productVariantsBulkUpdate", {}).get("userErrors", {})
+        if errors:
+            raise ValueError("Could not update product variants price because of errors", errors)
+
+        updated = data.get("productVariantsBulkUpdate", {}).get("productVariants", {})
+
+        return [{"id": variant["id"], "title": variant["title"], "price": variant["price"]} for variant in updated if "id" in variant]
+
