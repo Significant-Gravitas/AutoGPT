@@ -24,9 +24,17 @@ class Issue(BaseModel):
     id: str
     identifier: str
     title: str
-    description: str
+    description: str | None
     priority: int
 
 
 class CreateIssueResponse(BaseModel):
     issue: Issue
+
+
+class Project(BaseModel):
+    name: str
+    description: str
+    priority: int
+    progress: int
+    content: str

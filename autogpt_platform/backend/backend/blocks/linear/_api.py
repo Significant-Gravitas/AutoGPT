@@ -4,7 +4,12 @@ import json
 from typing import Any, Dict, Optional
 
 from backend.blocks.linear._auth import LinearCredentials
-from backend.blocks.linear.models import CreateCommentResponse, CreateIssueResponse
+from backend.blocks.linear.models import (
+    CreateCommentResponse,
+    CreateIssueResponse,
+    Issue,
+    Project,
+)
 from backend.util.request import Requests
 
 
@@ -204,5 +209,59 @@ class LinearClient:
 
             added_issue = self.mutate(mutation, variables)
             return CreateIssueResponse(**added_issue["issueCreate"])
+        except LinearAPIException as e:
+            raise e
+
+    def try_search_projects(self, term: str) -> list[Project]:
+        try:
+            query = """
+                query SearchProjects($term: String!, $includeComments: Boolean!) {
+                    searchProjects(term: $term, includeComments: $includeComments) {
+                        nodes {
+                            name
+                            description
+                            priority
+                            progress
+                            content
+                        }
+                    }
+                }
+            """
+
+            variables: dict[str, Any] = {
+                "term": term,
+                "includeComments": True,
+            }
+
+            projects = self.query(query, variables)
+            return [
+                Project(**project) for project in projects["searchProjects"]["nodes"]
+            ]
+        except LinearAPIException as e:
+            raise e
+
+    def try_search_issues(self, term: str) -> list[Issue]:
+        try:
+            query = """
+                query SearchIssues($term: String!, $includeComments: Boolean!) {
+                    searchIssues(term: $term, includeComments: $includeComments) {
+                        nodes {
+                            id
+                            identifier
+                            title
+                            description
+                            priority
+                        }
+                    }
+                }
+            """
+
+            variables: dict[str, Any] = {
+                "term": term,
+                "includeComments": True,
+            }
+
+            issues = self.query(query, variables)
+            return [Issue(**issue) for issue in issues["searchIssues"]["nodes"]]
         except LinearAPIException as e:
             raise e

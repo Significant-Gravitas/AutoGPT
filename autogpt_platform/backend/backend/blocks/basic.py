@@ -1,5 +1,5 @@
 import enum
-from typing import Any, List, cast
+from typing import Any, List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
@@ -636,5 +636,3 @@ class UniversalTypeConverterBlock(Block):
             yield "value", converted_value
         except Exception as e:
             yield "error", f"Failed to convert value: {str(e)}"
-
-

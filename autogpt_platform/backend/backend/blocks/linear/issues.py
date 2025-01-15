@@ -7,7 +7,7 @@ from backend.blocks.linear._auth import (
     LinearCredentialsInput,
     LinearScope,
 )
-from backend.blocks.linear.models import CreateIssueResponse
+from backend.blocks.linear.models import CreateIssueResponse, Issue
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
@@ -93,6 +93,78 @@ class LinearCreateIssueBlock(Block):
             yield "issue_id", issue_id
             yield "issue_title", issue_title
 
+        except LinearAPIException as e:
+            yield "error", str(e)
+        except Exception as e:
+            yield "error", f"Unexpected error: {str(e)}"
+
+
+class LinearSearchIssuesBlock(Block):
+    """Block for searching issues on Linear"""
+
+    class Input(BlockSchema):
+        term: str = SchemaField(description="Term to search for issues")
+        credentials: LinearCredentialsInput = LinearCredentialsField(
+            scopes=[LinearScope.READ],
+        )
+
+    class Output(BlockSchema):
+        issues: list[Issue] = SchemaField(description="List of issues")
+
+    def __init__(self):
+        super().__init__(
+            id="b5a2a0e6-26b4-4c5b-8a42-bc79e9cb65c2",
+            description="Searches for issues on Linear",
+            input_schema=self.Input,
+            output_schema=self.Output,
+            test_input={
+                "term": "Test issue",
+                "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
+            },
+            test_credentials=TEST_CREDENTIALS_OAUTH,
+            test_output=[
+                (
+                    "issues",
+                    [
+                        Issue(
+                            id="abc123",
+                            identifier="abc123",
+                            title="Test issue",
+                            description="Test description",
+                            priority=1,
+                        )
+                    ],
+                )
+            ],
+            test_mock={
+                "search_issues": lambda *args, **kwargs: [
+                    Issue(
+                        id="abc123",
+                        identifier="abc123",
+                        title="Test issue",
+                        description="Test description",
+                        priority=1,
+                    )
+                ]
+            },
+        )
+
+    @staticmethod
+    def search_issues(
+        credentials: LinearCredentials,
+        term: str,
+    ) -> list[Issue]:
+        client = LinearClient(credentials=credentials)
+        response: list[Issue] = client.try_search_issues(term=term)
+        return response
+
+    def run(
+        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+    ) -> BlockOutput:
+        """Execute the issue search"""
+        try:
+            issues = self.search_issues(credentials=credentials, term=input_data.term)
+            yield "issues", issues
         except LinearAPIException as e:
             yield "error", str(e)
         except Exception as e:
