@@ -119,4 +119,8 @@
   .agpt-shadow-input {
     @apply shadow-sm focus-visible:shadow-md;
   }
+
+  .agpt-rounded-card {
+    @apply rounded-2xl;
+  }
 }

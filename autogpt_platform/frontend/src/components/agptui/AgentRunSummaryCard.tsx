@@ -37,7 +37,7 @@ export default function AgentRunSummaryCard({
     <Card
       className={cn(
         selected ? "border-violet-700 bg-violet-50/50" : "",
-        "rounded-xl border-zinc-300",
+        "agpt-rounded-card border-zinc-300",
       )}
       onClick={onClick}
     >
