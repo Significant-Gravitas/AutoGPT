@@ -4,7 +4,7 @@ import json
 from typing import Any, Dict, Optional
 
 from backend.blocks.linear._auth import LinearCredentials
-from backend.blocks.linear.models import CreateCommentResponse
+from backend.blocks.linear.models import CreateCommentResponse, CreateIssueResponse
 from backend.util.request import Requests
 
 
@@ -131,5 +131,67 @@ class LinearClient:
             added_comment = self.mutate(mutation, variables)
             # Select the commentCreate field from the mutation response
             return CreateCommentResponse(**added_comment["commentCreate"])
+        except LinearAPIException as e:
+            raise e
+
+    def try_get_team_by_name(self, team_name: str) -> str:
+        try:
+            query = """
+            query GetTeamId($teamName: String!) {
+              teams(filter: { name: { eqIgnoreCase: $teamName } }) {
+                nodes {
+                  id
+                  name
+                }
+              }
+            }
+            """
+
+            variables: dict[str, Any] = {
+                "teamName": team_name,
+            }
+
+            team_id = self.query(query, variables)
+            return team_id["teams"]["nodes"][0]["id"]
+        except LinearAPIException as e:
+            raise e
+
+    def try_create_issue(
+        self,
+        team_id: str,
+        title: str,
+        description: str | None = None,
+        priority: int | None = None,
+    ) -> CreateIssueResponse:
+        try:
+            mutation = """
+               mutation IssueCreate($input: IssueCreateInput!) {
+                issueCreate(input: $input) {
+                  issue {
+                    title
+                    description
+                    id
+                    identifier
+                    priority
+                  }
+                }
+            }
+            """
+
+            variables: dict[str, Any] = {
+                "input": {
+                    "teamId": team_id,
+                    "title": title,
+                }
+            }
+
+            if description:
+                variables["input"]["description"] = description
+
+            if priority:
+                variables["input"]["priority"] = priority
+
+            added_issue = self.mutate(mutation, variables)
+            return CreateIssueResponse(**added_issue["issueCreate"])
         except LinearAPIException as e:
             raise e
