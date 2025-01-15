@@ -15,6 +15,11 @@ class LinearAPIException(Exception):
 
 
 class LinearClient:
+    """Client for the Linear API
+
+    If you're looking for the schema: https://studio.apollographql.com/public/Linear-API/variant/current/schema
+    """
+
     API_URL = "https://api.linear.app/graphql"
 
     def __init__(
