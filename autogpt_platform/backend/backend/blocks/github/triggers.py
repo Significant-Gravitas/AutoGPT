@@ -1,7 +1,6 @@
 import json
 import logging
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel
 
@@ -22,71 +21,6 @@ from ._auth import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class PRHead(BaseModel):
-    label: str
-    ref: str
-    repo: dict
-    sha: str
-    user: dict
-
-
-class PullRequest(BaseModel):
-    _links: dict
-    active_lock_reason: str | None
-    additions: int
-    assignee: dict | None
-    assignees: list[dict] | None
-    author_association: (
-        Literal["COLLABORATOR"]
-        | Literal["CONTRIBUTOR"]
-        | Literal["FIRST_TIME_CONTRIBUTOR"]
-        | Literal["MEMBER"]
-        | Literal["OWNER"]
-        | Literal["MANNEQUIN"]
-    )
-    auto_merge: dict | None
-    base: dict
-    body: str | None
-    changed_files: int
-    closed_at: str | None
-    comments: int
-    comments_url: str
-    commits: int
-    commits_url: str
-    created_at: str
-    deletions: int
-    diff_url: str
-    draft: bool
-    head: PRHead
-    html_url: str
-    id: int
-    issue_url: str
-    labels: list[dict]
-    locked: bool
-    maintainer_can_modify: bool
-    merge_commit_sha: str | None
-    mergeable: bool | None
-    mergeable_state: Literal["dirty", "clean", "unstable"] | None
-    merged: bool | None
-    merged_at: str | None
-    merged_by: dict | None
-    milestone: dict | None
-    node_id: str
-    number: int
-    patch_url: str
-    requested_reviewers: list[dict]
-    requested_teams: list[dict] | None
-    review_comment_url: str
-    review_comments: int
-    review_comments_url: str
-    state: Literal["open", "closed"]
-    statuses_url: str
-    title: str
-    updated_at: str
-    url: str
-    user: dict
 
 
 # --8<-- [start:GithubTriggerExample]
@@ -167,7 +101,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             description="The PR event that triggered the webhook (e.g. 'opened')"
         )
         number: int = SchemaField(description="The number of the affected pull request")
-        pull_request: PullRequest = SchemaField(
+        pull_request: dict = SchemaField(
             description="Object representing the affected pull request"
         )
         pull_request_url: str = SchemaField(
@@ -216,8 +150,6 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
         yield from super().run(input_data, **kwargs)
         yield "event", input_data.payload["action"]
-        # yield "enterprise", input_data.payload["enterprise"]
-        # yield "installation", input_data.payload["installation"]
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]
         yield "pull_request_url", input_data.payload["pull_request"]["html_url"]
