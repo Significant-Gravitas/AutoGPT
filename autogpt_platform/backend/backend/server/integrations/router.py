@@ -320,8 +320,7 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
         executor.add_execution(
-            graph_id=node.graph_id,
-            graph_version=node.graph_version,
+            node.graph_id,
             data={f"webhook_{webhook_id}_payload": payload},
             user_id=webhook.user_id,
         )

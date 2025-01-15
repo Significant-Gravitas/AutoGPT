@@ -140,10 +140,10 @@ async def main():
     print(f"Inserting {NUM_USERS * MAX_AGENTS_PER_USER} user agents")
     for user in users:
         num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
-        for _ in range(num_agents):  # Create 1 LibraryAgent per user
+        for _ in range(num_agents):  # Create 1 UserAgent per user
             graph = random.choice(agent_graphs)
             preset = random.choice(agent_presets)
-            user_agent = await db.libraryagent.create(
+            user_agent = await db.useragent.create(
                 data={
                     "userId": user.id,
                     "agentId": graph.id,
