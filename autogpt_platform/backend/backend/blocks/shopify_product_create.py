@@ -15,6 +15,7 @@ class ShopifyProductCreateBlock(Block):
         shop_name: str = SchemaField(
             description="The name of Shopify shop and subdomain",
         )
+        products: list[dict[str, Any]] = SchemaField(description="List of products to create")
         api_key: BlockSecret = SecretField(key="api_key",value="api_key")
 
     class Output(BlockSchema):
@@ -53,19 +54,24 @@ class ShopifyProductCreateBlock(Block):
         shopify.ShopifyResource.activate_session(session)
 
         location = self.get_location()
-        product = self.create_product()
-
-        items = self.get_inventory_items(product["id"])
-        tracks = self.track_inventory_items(items)
-        changes = self.update_inventory_items(items, location["id"])
-
-        variants = self.get_variants(product["id"])
-        variants_prices = self.update_product_variant_price(product["id"], variants)
+        if not location:
+            raise ValueError("Could not find location")
         
-        product["variants"] = variants_prices
+        products = self.parse_products(input_data.products)
+        for item in products:
+            product = self.create_product(item)
+            item["id"] = product["id"]
+
+            existing_variants = self.get_variants(product["id"])
+            item["variants_created"] = self.create_variants(item, product, existing_variants)
+            self.update_product_variant_price(product["id"], existing_variants)
+
+            inventory_items = self.get_inventory_items(product["id"])
+            item["inventory_items_tracked"] = self.track_inventory_items(inventory_items)
+            item["inventory_items_changes"] = self.update_inventory_items(inventory_items, location["id"], item["quantity_maps"])
 
         yield "shop_name", input_data.shop_name
-        yield "products", [product]
+        yield "products", products
 
     def get_location(self) -> dict[str, str]:
         query = "query { locations(first: 1) { nodes { id name address { address1 city province country zip } isActive fulfillsOnlineOrders } } }"
@@ -84,45 +90,60 @@ class ShopifyProductCreateBlock(Block):
         )
         return location
 
-    def create_product(self) -> dict[str, str]:
+    def parse_products(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        products = {}
+        
+        for item in items: 
+            title = item.get("Title", "")
+            if not title: continue
+
+            product = {
+                "title": item.get("Title", ""),
+                "description": item.get("Description", ""),
+                "variants": [],
+                "options": {},
+                "quantity_maps": {}
+            } if title not in products else products[title]
+
+            variant = {"price": item.get("Price", 0), "title": "", "values": []}
+            variant_title = []
+            for key, value in item.items():
+                if key.startswith("Variant"):
+                    variant_title.append(value)
+
+                    option = key.split(":")[-1].strip()
+                    
+                    variant["values"].append({"name": value, "option": option})
+
+                    if option not in product["options"]:
+                        product["options"][option] = [value]
+                    elif value not in product["options"][option]:
+                        product["options"][option].append(value)
+
+            variant["title"] = " / ".join(variant_title)
+            product["variants"].append(variant)
+            product["quantity_maps"][variant["title"]] = int(item.get("Quantity", 0))
+            products[title] = product
+
+        for product in products.values():
+            options = product["options"]
+            product["options"] = []
+            for key, values in options.items():
+                product["options"].append({"name": key, "values": [{"name": value} for value in values]})
+            
+        return list(products.values())
+    
+    def create_product(self, item: dict[str, Any]) -> dict[str, str]:
         query = "mutation productCreate($input: ProductInput!) {  productCreate(    input: $input  ) {    product {      id      title      options {        id        name        values      }    }    userErrors {      field      message    }  }}"
+
         params = {
             "input": {
-                "title": "My Cool Socks",
-                "productOptions": [
-                {
-                    "name": "Color",
-                    "values": [
-                    {
-                        "name": "Red"
-                    },
-                    {
-                        "name": "Green"
-                    },
-                    {
-                        "name": "Blue"
-                    }
-                    ]
-                },
-                {
-                    "name": "Size",
-                    "values": [
-                    {
-                        "name": "Small"
-                    },
-                    {
-                        "name": "Medium"
-                    },
-                    {
-                        "name": "Large"
-                    }
-                    ]
-                }
-                ]
+                "title": item.get("title", ""),
+                "descriptionHtml": item.get("description", ""),
+                "productOptions": item.get("options", []),
             }
         }
         response = shopify.GraphQL().execute(query, params)
-
         raw = json.loads(response)
         data = raw["data"]
 
@@ -137,7 +158,7 @@ class ShopifyProductCreateBlock(Block):
         return dict(product)
 
     def get_variants(self, product_id: str) -> list[dict[str, str]]:
-        query = "query getProduct($id: ID!) { product(id: $id) { id title description options { id name values } variants(first: 100) { edges { cursor node { id title price sku } } } } }"
+        query = "query getProduct($id: ID!) { product(id: $id) { id title description options { id name values } variants(first: 100) { edges { cursor node { id title price } } } } }"
         params = {
             "id": product_id,
         }
@@ -155,9 +176,73 @@ class ShopifyProductCreateBlock(Block):
             variants.append(dict(edge["node"]))
 
         return variants
+    
+    def create_variants(
+        self, 
+        item: dict[str, Any], 
+        product: dict[str, Any], 
+        existing_variants: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
+        existing_variant_title = [v["title"] for v in existing_variants]
+
+        query = "mutation createProductVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) { productVariantsBulkCreate(productId: $productId, variants: $variants) { productVariants { id title price selectedOptions { name value } } userErrors { field message } } }"
+
+        params = {
+            "productId": product["id"],
+            "variants": []
+        }
+
+        for item_variant in item["variants"]:
+            if item_variant["title"] not in existing_variant_title:
+                variant = {
+                    "price": item_variant["price"],
+                    "optionValues": []
+                }
+                
+                for option in item_variant["values"]:
+                    variant["optionValues"].append({
+                        "optionName": option["option"], 
+                        "name": option["name"]
+                    })
+
+                params["variants"].append(variant)
+                    
+        response = shopify.GraphQL().execute(query, params)
+
+        raw = json.loads(response)
+        data = raw["data"]
+
+        errors = data.get("productVariantsBulkCreate", {}).get("userErrors", {})
+        if errors:
+            raise ValueError("Could not create product variants because of errors", errors, params, existing_variants)
+
+        variants = data.get("productVariantsBulkCreate", {}).get("productVariants", [])
+        if not variants:
+            raise ValueError("Could not create product variants")
+
+        return variants
+
+    def update_product_variant_price(self, product_id: str, variants: list[dict[str, str]]) -> list[dict[str, str]]:
+        query = "mutation updateProductVariantsPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) { productVariantsBulkUpdate(productId: $productId, variants: $variants) { productVariants { id title price } userErrors { field message } } }"
+        params = {
+            "productId": product_id,
+            "variants": [{"id": variant["id"], "price": 19.99} for variant in variants]
+        }
+        response = shopify.GraphQL().execute(query, params)
+
+        raw = json.loads(response)
+        data = raw["data"]
+
+        errors = data.get("productVariantsBulkUpdate", {}).get("userErrors", {})
+        if errors:
+            raise ValueError("Could not update product variants price because of errors", errors)
+
+        updated = data.get("productVariantsBulkUpdate", {}).get("productVariants", {})
+
+        return [{"id": variant["id"], "title": variant["title"], "price": variant["price"]} for variant in updated if "id" in variant]
 
     def get_inventory_items(self, product_id: str) -> list[dict[str, str]]:
-        query = "query getProductInventoryItems ($query: String) { productVariants(first: 100, query: $query) {  nodes {    inventoryItem {      id  variant { id }  }   }} }"
+        query = "query getProductInventoryItems ($query: String) { productVariants(first: 100, query: $query) {  nodes {    inventoryItem {      id  variant { id title }  }   }} }"
         params = {
             "query": f"product_id:{product_id.split('/')[-1]}",
         }
@@ -172,7 +257,7 @@ class ShopifyProductCreateBlock(Block):
         
         items = []
         for node in nodes:
-            items.append(dict(id= node["inventoryItem"]["id"], variant_id= node["inventoryItem"]["variant"]["id"]))
+            items.append(dict(id= node["inventoryItem"]["id"], variant= dict(node["inventoryItem"]["variant"])))
 
         return items
 
@@ -202,21 +287,21 @@ class ShopifyProductCreateBlock(Block):
 
         return tracks
     
-    def update_inventory_items(self, inventory_items: list[dict[str, str]], localtion_id: str) -> list[str]:
+    def update_inventory_items(self, inventory_items: list[dict[str, str]], localtion_id: str, quantity_maps: dict[str, int]) -> list[str]:
         queries = []
         params_input = []
         params = dict()
         for index, item in enumerate(inventory_items):
             param_name = "input_"+str(index)
             params_input.append("$" + param_name+ ":InventoryAdjustQuantitiesInput!")
-            params[param_name] = {"reason": "correction", "name": "available", "changes": [{"delta": 10, "inventoryItemId": item["id"], "locationId": localtion_id}]}
+            params[param_name] = {"reason": "correction", "name": "available", "changes": [{"delta": quantity_maps.get(item["variant"]["title"], 0), "inventoryItemId": item["id"], "locationId": localtion_id}]}
 
             item_query = "inventoryAdjustQuantities"+str(index)+": inventoryAdjustQuantities(input: $"+str(param_name)+") { inventoryAdjustmentGroup { id createdAt } userErrors { field message } }"
             queries.append(item_query)
 
         query = "mutation adjustInventory(" +  ",".join(params_input) + ") { " + " \n ".join(queries) + " }"
         response = shopify.GraphQL().execute(query, params)
-        
+
         raw = json.loads(response)
         data = raw["data"]
 
@@ -228,22 +313,4 @@ class ShopifyProductCreateBlock(Block):
 
         return changes
 
-    def update_product_variant_price(self, product_id: str, variants: list[dict[str, str]]) -> list[dict[str, str]]:
-        query = "mutation updateProductVariantsPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) { productVariantsBulkUpdate(productId: $productId, variants: $variants) { productVariants { id title price } userErrors { field message } } }"
-        params = {
-            "productId": product_id,
-            "variants": [{"id": variant["id"], "price": 19.99} for variant in variants]
-        }
-        response = shopify.GraphQL().execute(query, params)
-
-        raw = json.loads(response)
-        data = raw["data"]
-
-        errors = data.get("productVariantsBulkUpdate", {}).get("userErrors", {})
-        if errors:
-            raise ValueError("Could not update product variants price because of errors", errors)
-
-        updated = data.get("productVariantsBulkUpdate", {}).get("productVariants", {})
-
-        return [{"id": variant["id"], "title": variant["title"], "price": variant["price"]} for variant in updated if "id" in variant]
 
