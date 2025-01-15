@@ -12,7 +12,7 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
-class CreateCommentBlock(Block):
+class LinearCreateCommentBlock(Block):
     """Block for creating comments on Linear issues"""
 
     class Input(BlockSchema):

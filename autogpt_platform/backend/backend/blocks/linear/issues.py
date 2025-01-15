@@ -12,7 +12,7 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
-class CreateIssueBlock(Block):
+class LinearCreateIssueBlock(Block):
     """Block for creating issues on Linear"""
 
     class Input(BlockSchema):
@@ -46,6 +46,7 @@ class CreateIssueBlock(Block):
             test_input={
                 "title": "Test issue",
                 "description": "Test description",
+                "team_name": "Test team",
                 "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
             },
             test_credentials=TEST_CREDENTIALS_OAUTH,
