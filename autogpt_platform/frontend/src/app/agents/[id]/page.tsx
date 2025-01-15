@@ -179,7 +179,7 @@ export default function AgentRunsPage(): React.ReactElement {
   return (
     <div className="container flex gap-8">
       <aside className="flex w-72 flex-col gap-4">
-        <Button className="flex w-full items-center gap-2 py-6">
+        <Button size="card" className="flex w-full items-center gap-2 py-6">
           <Plus className="h-6 w-6" />
           <span>New run</span>
         </Button>
