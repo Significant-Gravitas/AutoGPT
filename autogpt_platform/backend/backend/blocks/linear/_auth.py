@@ -18,9 +18,12 @@ LINEAR_OAUTH_IS_CONFIGURED = bool(
 )
 
 LinearCredentials = OAuth2Credentials | APIKeyCredentials
+# LinearCredentialsInput = CredentialsMetaInput[
+#     Literal[ProviderName.LINEAR],
+#     Literal["oauth2", "api_key"] if LINEAR_OAUTH_IS_CONFIGURED else Literal["oauth2"],
+# ]
 LinearCredentialsInput = CredentialsMetaInput[
-    Literal[ProviderName.LINEAR],
-    Literal["oauth2", "api_key"] if LINEAR_OAUTH_IS_CONFIGURED else Literal["oauth2"],
+    Literal[ProviderName.LINEAR], Literal["oauth2"]
 ]
 
 
