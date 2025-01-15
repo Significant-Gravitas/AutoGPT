@@ -31,7 +31,7 @@ class CreateCommentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="8f7d3a2e-9b5c-4c6a-8f1d-7c8b3e4a5d6c",  # Generated UUID
+            id="8f7d3a2e-9b5c-4c6a-8f1d-7c8b3e4a5d6c",
             description="Creates a new comment on a Linear issue",
             input_schema=self.Input,
             output_schema=self.Output,
