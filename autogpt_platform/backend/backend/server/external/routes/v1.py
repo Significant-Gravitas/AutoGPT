@@ -21,15 +21,22 @@ from backend.util.settings import Settings
 def execution_manager_client() -> ExecutionManager:
     return get_service_client(ExecutionManager)
 
+
 settings = Settings()
 logger = logging.getLogger(__name__)
 
 v1_router = APIRouter()
 
-@v1_router.get(path="/blocks", tags=["blocks"], dependencies=[Depends(require_permission(APIKeyPermission.READ_BLOCK))])
+
+@v1_router.get(
+    path="/blocks",
+    tags=["blocks"],
+    dependencies=[Depends(require_permission(APIKeyPermission.READ_BLOCK))],
+)
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
     return [b.to_dict() for b in blocks]
+
 
 @v1_router.post(
     path="/blocks/{block_id}/execute",
@@ -75,9 +82,9 @@ def execute_graph(
     tags=["graphs"],
 )
 async def get_graph_execution_results(
-        graph_id: str,
-        graph_exec_id: str,
-        api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
+    graph_id: str,
+    graph_exec_id: str,
+    api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> dict:
     graph = await graph_db.get_graph(graph_id, user_id=api_key.user_id)
     if not graph:
@@ -90,9 +97,15 @@ async def get_graph_execution_results(
         "nodes": [
             {
                 "node_id": result.node_id,
-                "input": result.input_data.get("value") if "value" in result.input_data else result.input_data,
-                "output": result.output_data.get("response", result.output_data.get("result", [])),
+                "input": (
+                    result.input_data.get("value")
+                    if "value" in result.input_data
+                    else result.input_data
+                ),
+                "output": result.output_data.get(
+                    "response", result.output_data.get("result", [])
+                ),
             }
             for result in results
-        ]
+        ],
     }

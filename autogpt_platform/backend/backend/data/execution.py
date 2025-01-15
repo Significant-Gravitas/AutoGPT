@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, TypeVar, Optional
+from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
 
 from prisma.enums import AgentExecutionStatus
 from prisma.errors import PrismaError
@@ -325,7 +325,9 @@ async def update_execution_status(
     return ExecutionResult.from_db(res)
 
 
-async def get_execution(execution_id: str, user_id: str) -> Optional[AgentGraphExecution]:
+async def get_execution(
+    execution_id: str, user_id: str
+) -> Optional[AgentGraphExecution]:
     """
     Get an execution by ID. Returns None if not found.
 
@@ -341,11 +343,7 @@ async def get_execution(execution_id: str, user_id: str) -> Optional[AgentGraphE
                 "id": execution_id,
                 "userId": user_id,
             },
-            include={
-                "id": True,
-                "userId": True,
-                "executionStatus": True
-            }
+            include={"id": True, "userId": True, "executionStatus": True},
         )
         return execution
     except PrismaError:
