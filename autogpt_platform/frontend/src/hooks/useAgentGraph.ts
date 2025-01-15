@@ -874,7 +874,7 @@ export default function useAgentGraph(
       request: "save",
       state: "saving",
     });
-  }, [saveAgent]);
+  }, [saveAgent, saveRunRequest.state]);
 
   const requestSaveAndRun = useCallback(() => {
     saveAgent();
