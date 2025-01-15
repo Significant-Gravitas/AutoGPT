@@ -20,10 +20,10 @@ class LinearCreateIssueBlock(Block):
             scopes=[LinearScope.ISSUES_CREATE],
         )
         title: str = SchemaField(description="Title of the issue")
-        description: str | None = SchemaField(
-            description="Description of the issue"
+        description: str | None = SchemaField(description="Description of the issue")
+        team_name: str = SchemaField(
+            description="Name of the team to create the issue on"
         )
-        team_name: str = SchemaField(description="Name of the team to create the issue on")
         priority: int | None = SchemaField(
             description="Priority of the issue",
             default=None,
