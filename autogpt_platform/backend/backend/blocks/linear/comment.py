@@ -1,5 +1,7 @@
 from backend.blocks.linear._api import LinearAPIException, LinearClient
 from backend.blocks.linear._auth import (
+    TEST_CREDENTIALS_INPUT_OAUTH,
+    TEST_CREDENTIALS_OAUTH,
     LinearCredentials,
     LinearCredentialsField,
     LinearCredentialsInput,
@@ -37,28 +39,41 @@ class CreateCommentBlock(Block):
             test_input={
                 "issue_id": "TEST-123",
                 "comment": "Test comment",
-                "credentials": {"api_key": "test_key"},
+                "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
             },
+            test_credentials=TEST_CREDENTIALS_OAUTH,
             test_output=[("comment_id", "abc123"), ("comment_body", "Test comment")],
+            test_mock={
+                "create_comment": lambda *args, **kwargs: (
+                    "abc123",
+                    "Test comment",
+                )
+            },
         )
+
+    @staticmethod
+    def create_comment(
+        credentials: LinearCredentials, issue_id: str, comment: str
+    ) -> tuple[str, str]:
+        client = LinearClient(credentials=credentials)
+        response: CreateCommentResponse = client.try_create_comment(
+            issue_id=issue_id, comment=comment
+        )
+        return response.comment.id, response.comment.body
 
     def run(
         self, input_data: Input, *, credentials: LinearCredentials, **kwargs
     ) -> BlockOutput:
         """Execute the comment creation"""
         try:
-            client = LinearClient(credentials=credentials)
-
-            response: CreateCommentResponse = client.try_create_comment(
-                issue_id=input_data.issue_id, comment=input_data.comment
+            comment_id, comment_body = self.create_comment(
+                credentials=credentials,
+                issue_id=input_data.issue_id,
+                comment=input_data.comment,
             )
 
-            if response.success:
-                comment = response.comment
-                yield "comment_id", comment.id
-                yield "comment_body", comment.body
-            else:
-                yield "error", "Failed to create comment"
+            yield "comment_id", comment_id
+            yield "comment_body", comment_body
 
         except LinearAPIException as e:
             yield "error", str(e)
