@@ -116,12 +116,22 @@ async def update_agent_version_in_library(
             where={"id": library_agent.id},
             data=prisma.types.LibraryAgentUpdateInput(
                 Agent=prisma.types.AgentGraphUpdateOneWithoutRelationsInput(
-                    connect=prisma.types._AgentGraphCompoundPrimaryKey(
-                        graphVersionId=prisma.types._AgentGraphCompoundPrimaryKeyInner(
-                            id=agent_id,
-                            version=agent_version,
-                        )
+                    connect=prisma.types.AgentGraphWhereUniqueInput(
+                        # This is INVALID, but the type checker doesn't complain:
+                        id=agent_id,
+                        version=agent_version,
                     ),
+
+                    # This would be valid:
+                    # connect=prisma.types.AgentGraphWhereUniqueInput(
+                    #     graphVersionId={"id": agent_id, "version": agent_version},
+                    # ),
+
+                    # This DOES raise an error:
+                    # connect=prisma.types._AgentGraphCompoundPrimaryKey(
+                    #     id=agent_id,
+                    #     version=agent_version,
+                    # ),
                 ),
             ),
         )
