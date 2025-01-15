@@ -30,6 +30,10 @@ class LinearCreateIssueBlock(Block):
             minimum=0,
             maximum=4,
         )
+        project_name: str | None = SchemaField(
+            description="Name of the project to create the issue on",
+            default=None,
+        )
 
     class Output(BlockSchema):
         issue_id: str = SchemaField(description="ID of the created issue")
@@ -47,6 +51,7 @@ class LinearCreateIssueBlock(Block):
                 "title": "Test issue",
                 "description": "Test description",
                 "team_name": "Test team",
+                "project_name": "Test project",
                 "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
             },
             test_credentials=TEST_CREDENTIALS_OAUTH,
@@ -66,14 +71,23 @@ class LinearCreateIssueBlock(Block):
         title: str,
         description: str | None = None,
         priority: int | None = None,
+        project_name: str | None = None,
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
         team_id = client.try_get_team_by_name(team_name=team_name)
+        project_id: str | None = None
+        if project_name:
+            projects = client.try_search_projects(term=project_name)
+            if projects:
+                project_id = projects[0].id
+            else:
+                raise LinearAPIException("Project not found", status_code=404)
         response: CreateIssueResponse = client.try_create_issue(
             team_id=team_id,
             title=title,
             description=description,
             priority=priority,
+            project_id=project_id,
         )
         return response.issue.identifier, response.issue.title
 
@@ -88,6 +102,7 @@ class LinearCreateIssueBlock(Block):
                 title=input_data.title,
                 description=input_data.description,
                 priority=input_data.priority,
+                project_name=input_data.project_name,
             )
 
             yield "issue_id", issue_id

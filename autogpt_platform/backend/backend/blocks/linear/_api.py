@@ -178,6 +178,7 @@ class LinearClient:
         title: str,
         description: str | None = None,
         priority: int | None = None,
+        project_id: str | None = None,
     ) -> CreateIssueResponse:
         try:
             mutation = """
@@ -201,6 +202,9 @@ class LinearClient:
                 }
             }
 
+            if project_id:
+                variables["input"]["projectId"] = project_id
+
             if description:
                 variables["input"]["description"] = description
 
@@ -218,6 +222,7 @@ class LinearClient:
                 query SearchProjects($term: String!, $includeComments: Boolean!) {
                     searchProjects(term: $term, includeComments: $includeComments) {
                         nodes {
+                            id
                             name
                             description
                             priority

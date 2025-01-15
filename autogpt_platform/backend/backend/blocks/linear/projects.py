@@ -42,6 +42,7 @@ class LinearSearchProjectsBlock(Block):
                     "projects",
                     [
                         Project(
+                            id="abc123",
                             name="Test project",
                             description="Test description",
                             priority=1,
@@ -54,6 +55,7 @@ class LinearSearchProjectsBlock(Block):
             test_mock={
                 "search_projects": lambda *args, **kwargs: [
                     Project(
+                        id="abc123",
                         name="Test project",
                         description="Test description",
                         priority=1,

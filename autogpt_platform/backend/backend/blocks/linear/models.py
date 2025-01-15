@@ -33,6 +33,7 @@ class CreateIssueResponse(BaseModel):
 
 
 class Project(BaseModel):
+    id: str
     name: str
     description: str
     priority: int
