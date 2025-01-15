@@ -1,13 +1,13 @@
 import json
-import time
 from typing import Optional
 from urllib.parse import urlencode
 
+from pydantic import SecretStr
+
+from backend.blocks.linear._api import LinearAPIException
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.request import requests
-from backend.blocks.linear._api import LinearAPIException
-from pydantic import SecretStr
 
 from .base import BaseOAuthHandler
 
@@ -110,8 +110,6 @@ class LinearOAuthHandler(BaseOAuthHandler):
             )
 
         token_data = response.json()
-
-        now = int(time.time())
 
         # Note: Linear access tokens do not expire, so we set expires_at to None
         new_credentials = OAuth2Credentials(

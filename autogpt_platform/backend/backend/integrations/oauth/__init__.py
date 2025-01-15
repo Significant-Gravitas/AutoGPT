@@ -2,9 +2,9 @@ from typing import TYPE_CHECKING
 
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
+from .linear import LinearOAuthHandler
 from .notion import NotionOAuthHandler
 from .twitter import TwitterOAuthHandler
-from .linear import LinearOAuthHandler
 
 if TYPE_CHECKING:
     from ..providers import ProviderName

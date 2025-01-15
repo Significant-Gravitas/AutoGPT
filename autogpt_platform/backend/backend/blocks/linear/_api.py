@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import Any, Dict, Optional
 
 from backend.blocks.linear._auth import LinearCredentials
-
-from backend.blocks.linear.models import (
-    CreateCommentResponse,
-    CreateCommentResponseWrapper,
-)
+from backend.blocks.linear.models import CreateCommentResponse
 from backend.util.request import Requests
 
 

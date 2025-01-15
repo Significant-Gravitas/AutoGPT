@@ -1,15 +1,13 @@
-from typing import Optional
-
-from backend.blocks.linear.models import CreateCommentResponse, CreateCommentResponseWrapper
-from backend.data.block import Block, BlockCategory, BlockSchema, BlockOutput
-from backend.data.model import CredentialsField, SchemaField
+from backend.blocks.linear._api import LinearAPIException, LinearClient
 from backend.blocks.linear._auth import (
     LinearCredentials,
     LinearCredentialsField,
     LinearCredentialsInput,
     LinearScope,
 )
-from backend.blocks.linear._api import LinearClient, LinearAPIException
+from backend.blocks.linear.models import CreateCommentResponse
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class CreateCommentBlock(Block):
