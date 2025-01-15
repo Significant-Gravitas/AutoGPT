@@ -14,6 +14,7 @@ import {
   FaGoogle,
   FaMedium,
   FaKey,
+  FaHubspot,
 } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
 import {
@@ -66,6 +67,7 @@ export const providerIcons: Record<
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
+  linear: fallbackIcon,
   medium: FaMedium,
   ollama: fallbackIcon,
   openai: fallbackIcon,
@@ -79,20 +81,20 @@ export const providerIcons: Record<
   twitter: FaTwitter,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
-  hubspot: fallbackIcon,
+  hubspot: FaHubspot,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {
-      success: true;
-      code: string;
-      state: string;
-    }
+    success: true;
+    code: string;
+    state: string;
+  }
   | {
-      success: false;
-      message: string;
-    }
+    success: false;
+    message: string;
+  }
 );
 
 export const CredentialsInput: FC<{
@@ -187,8 +189,7 @@ export const CredentialsInput: FC<{
         console.error("Error in OAuth callback:", error);
         setOAuthError(
           // type of error is unkown so we need to use String(error)
-          `Error in OAuth callback: ${
-            error instanceof Error ? error.message : String(error)
+          `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)
           }`,
         );
       } finally {

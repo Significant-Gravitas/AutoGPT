@@ -4,6 +4,7 @@ from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler
 from .twitter import TwitterOAuthHandler
+from .linear import LinearOAuthHandler
 
 if TYPE_CHECKING:
     from ..providers import ProviderName
@@ -17,6 +18,7 @@ HANDLERS_BY_NAME: dict["ProviderName", type["BaseOAuthHandler"]] = {
         GoogleOAuthHandler,
         NotionOAuthHandler,
         TwitterOAuthHandler,
+        LinearOAuthHandler,
     ]
 }
 # --8<-- [end:HANDLERS_BY_NAMEExample]
