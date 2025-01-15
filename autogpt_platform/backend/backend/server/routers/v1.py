@@ -30,9 +30,12 @@ from backend.data.api_key import (
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
+    AutoTopUpConfig,
+    get_auto_top_up,
     get_block_costs,
     get_stripe_customer_id,
     get_user_credit_model,
+    set_auto_top_up,
 )
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
@@ -70,7 +73,6 @@ def execution_scheduler_client() -> ExecutionScheduler:
 settings = Settings()
 logger = logging.getLogger(__name__)
 integration_creds_manager = IntegrationCredentialsManager()
-
 
 _user_credit_model = get_user_credit_model()
 
@@ -159,6 +161,41 @@ async def request_top_up(
 async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
     await _user_credit_model.fulfill_checkout(user_id=user_id)
     return Response(status_code=200)
+
+
+@v1_router.post(
+    path="/credits/auto-top-up",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def configure_user_auto_top_up(
+    request: AutoTopUpConfig, user_id: Annotated[str, Depends(get_user_id)]
+) -> str:
+    if request.threshold < 0:
+        raise ValueError("Threshold must be greater than 0")
+    if request.amount < request.threshold:
+        raise ValueError("Amount must be greater than or equal to threshold")
+
+    current_balance = await _user_credit_model.get_credits(user_id)
+
+    if current_balance < request.threshold:
+        await _user_credit_model.top_up_credits(user_id, request.amount)
+    else:
+        await _user_credit_model.top_up_credits(user_id, 0)
+
+    await set_auto_top_up(user_id, threshold=request.threshold, amount=request.amount)
+    return "Auto top-up settings updated"
+
+
+@v1_router.get(
+    path="/credits/auto-top-up",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_user_auto_top_up(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> AutoTopUpConfig:
+    return await get_auto_top_up(user_id)
 
 
 @v1_router.post(path="/credits/stripe_webhook", tags=["credits"])

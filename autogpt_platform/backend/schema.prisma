@@ -21,6 +21,7 @@ model User {
   metadata         Json     @default("{}")
   integrations     String   @default("")
   stripeCustomerId String?
+  topUpConfig      Json?
 
   // Relations
   AgentGraphs          AgentGraph[]

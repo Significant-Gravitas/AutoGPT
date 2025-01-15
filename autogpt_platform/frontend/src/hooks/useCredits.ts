@@ -11,8 +11,16 @@ export default function useCredits(): {
   credits: number | null;
   fetchCredits: () => void;
   requestTopUp: (usd_amount: number) => Promise<void>;
+  autoTopUpConfig: { amount: number; threshold: number } | null;
+  fetchAutoTopUpConfig: () => void;
+  updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
 } {
   const [credits, setCredits] = useState<number | null>(null);
+  const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
+    amount: number;
+    threshold: number;
+  } | null>(null);
+
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const router = useRouter();
 
@@ -24,6 +32,23 @@ export default function useCredits(): {
   useEffect(() => {
     fetchCredits();
   }, [fetchCredits]);
+
+  const fetchAutoTopUpConfig = useCallback(async () => {
+    const response = await api.getAutoTopUpConfig();
+    setAutoTopUpConfig(response);
+  }, [api]);
+
+  useEffect(() => {
+    fetchAutoTopUpConfig();
+  }, [fetchAutoTopUpConfig]);
+
+  const updateAutoTopUpConfig = useCallback(
+    async (amount: number, threshold: number) => {
+      await api.setAutoTopUpConfig({ amount, threshold });
+      fetchAutoTopUpConfig();
+    },
+    [api, fetchAutoTopUpConfig],
+  );
 
   const requestTopUp = useCallback(
     async (usd_amount: number) => {
@@ -44,5 +69,8 @@ export default function useCredits(): {
     credits,
     fetchCredits,
     requestTopUp,
+    autoTopUpConfig,
+    fetchAutoTopUpConfig,
+    updateAutoTopUpConfig,
   };
 }
