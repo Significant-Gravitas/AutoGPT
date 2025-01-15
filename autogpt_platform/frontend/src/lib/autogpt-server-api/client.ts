@@ -88,6 +88,14 @@ export default class BackendAPI {
     }
   }
 
+  requestTopUp(amount: number): Promise<{ checkout_url: string }> {
+    return this._request("POST", "/credits", { amount });
+  }
+
+  fulfillCheckout(): Promise<void> {
+    return this._request("PATCH", "/credits");
+  }
+
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
   }
