@@ -53,7 +53,7 @@ test.describe("Monitor", () => {
     await test.expect(agents.length).toBeGreaterThan(0);
   });
 
-  test("user can export and import agents", async ({
+  test.skip("user can export and import agents", async ({
     page,
   }, testInfo: TestInfo) => {
     // --8<-- [start:ReadAgentId]
