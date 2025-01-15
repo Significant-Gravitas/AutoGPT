@@ -41,6 +41,8 @@ export type BlockIOSubSchema =
   | BlockIOSimpleTypeSubSchema
   | BlockIOCombinedTypeSubSchema;
 
+export type BlockIOSubType = BlockIOSimpleTypeSubSchema["type"];
+
 export type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
   | BlockIOCredentialsSubSchema
@@ -133,7 +135,7 @@ export const PROVIDER_NAMES = {
 export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
-export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
+export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
   credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];

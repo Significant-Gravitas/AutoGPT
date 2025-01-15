@@ -8,7 +8,7 @@ import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
@@ -780,7 +780,8 @@ class ExecutionManager(AppService):
         graph_id: str,
         data: BlockInput,
         user_id: str,
-        graph_version: int | None = None,
+        graph_version: Optional[int] = None,
+        preset_id: str | None = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -829,6 +830,7 @@ class ExecutionManager(AppService):
             graph_version=graph.version,
             nodes_input=nodes_input,
             user_id=user_id,
+            preset_id=preset_id,
         )
 
         starting_node_execs = []

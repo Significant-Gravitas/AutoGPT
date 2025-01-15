@@ -96,10 +96,6 @@ export default class BackendAPI {
     return this._get(`/graphs`);
   }
 
-  getExecutions(): Promise<GraphExecution[]> {
-    return this._get(`/executions`);
-  }
-
   getGraph(
     id: string,
     version?: number,
@@ -146,6 +142,14 @@ export default class BackendAPI {
     inputData: { [key: string]: any } = {},
   ): Promise<GraphExecuteResponse> {
     return this._request("POST", `/graphs/${id}/execute`, inputData);
+  }
+
+  getExecutions(): Promise<GraphExecution[]> {
+    return this._get(`/executions`);
+  }
+
+  getGraphExecutions(graphID: string): Promise<GraphExecution[]> {
+    return this._get(`/graphs/${graphID}/executions`);
   }
 
   async getGraphExecutionInfo(
@@ -535,7 +539,22 @@ export default class BackendAPI {
       let errorDetail;
       try {
         const errorData = await response.json();
-        errorDetail = errorData.detail || response.statusText;
+        if (
+          Array.isArray(errorData.detail) &&
+          errorData.detail.length > 0 &&
+          errorData.detail[0].loc
+        ) {
+          // This appears to be a Pydantic validation error
+          const errors = errorData.detail.map(
+            (err: _PydanticValidationError) => {
+              const location = err.loc.join(" -> ");
+              return `${location}: ${err.msg}`;
+            },
+          );
+          errorDetail = errors.join("\n");
+        } else {
+          errorDetail = errorData.detail || response.statusText;
+        }
       } catch (e) {
         errorDetail = response.statusText;
       }
@@ -716,6 +735,13 @@ type WebsocketMessage = {
     data: WebsocketMessageTypeMap[M];
   };
 }[keyof WebsocketMessageTypeMap];
+
+type _PydanticValidationError = {
+  type: string;
+  loc: string[];
+  msg: string;
+  input: any;
+};
 
 /* *** HELPER FUNCTIONS *** */
 

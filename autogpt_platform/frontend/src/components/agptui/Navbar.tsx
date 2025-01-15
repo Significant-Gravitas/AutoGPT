@@ -86,7 +86,6 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
           ) : (
             <Link href="/login">
               <Button
-                variant="default"
                 size="sm"
                 className="flex items-center justify-end space-x-2"
               >
@@ -133,11 +132,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
             href="/login"
             className="fixed right-4 top-4 z-50 mt-4 inline-flex h-8 items-center justify-end rounded-lg pr-4 md:hidden"
           >
-            <Button
-              variant="default"
-              size="sm"
-              className="flex items-center space-x-2"
-            >
+            <Button size="sm" className="flex items-center space-x-2">
               <IconLogIn className="h-5 w-5" />
               <span>Log In</span>
             </Button>
