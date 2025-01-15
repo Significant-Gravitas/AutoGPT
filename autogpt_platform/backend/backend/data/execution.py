@@ -327,7 +327,7 @@ async def update_execution_status(
 
 async def get_execution(
     execution_id: str, user_id: str
-) -> Optional[AgentGraphExecution]:
+) -> Optional[AgentNodeExecution]:
     """
     Get an execution by ID. Returns None if not found.
 
@@ -342,8 +342,7 @@ async def get_execution(
             where={
                 "id": execution_id,
                 "userId": user_id,
-            },
-            include={"id": True, "userId": True, "executionStatus": True},
+            }
         )
         return execution
     except PrismaError:

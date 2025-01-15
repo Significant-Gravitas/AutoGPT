@@ -10,6 +10,10 @@ api_key_header = APIKeyHeader(name="X-API-Key")
 async def require_api_key(request: Request):
     """Base middleware for API key authentication"""
     api_key = await api_key_header(request)
+
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
     api_key_obj = await validate_api_key(api_key)
 
     if not api_key_obj:
