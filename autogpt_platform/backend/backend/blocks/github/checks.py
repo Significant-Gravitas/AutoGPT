@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Literal, Optional
 from typing_extensions import TypedDict
 
@@ -12,6 +13,26 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+
+
+# queued, in_progress, completed, waiting, requested, pending
+class ChecksStatus(Enum):
+    QUEUED = "queued"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    WAITING = "waiting"
+    REQUESTED = "requested"
+    PENDING = "pending"
+
+
+class ChecksConclusion(Enum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    NEUTRAL = "neutral"
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
+    ACTION_REQUIRED = "action_required"
+    SKIPPED = "skipped"
 
 
 class GithubCreateCheckRunBlock(Block):
@@ -29,24 +50,13 @@ class GithubCreateCheckRunBlock(Block):
         head_sha: str = SchemaField(
             description="The SHA of the commit to check",
         )
-        status: str = SchemaField(
+        status: ChecksStatus = SchemaField(
             description="Current status of the check run",
-            default="queued",
-            choices=["queued", "in_progress", "completed"],
+            default=ChecksStatus.QUEUED,
         )
-        conclusion: Optional[str] = SchemaField(
+        conclusion: Optional[ChecksConclusion] = SchemaField(
             description="The final conclusion of the check (required if status is completed)",
             default=None,
-            choices=[
-                None,
-                "success",
-                "failure",
-                "neutral",
-                "cancelled",
-                "timed_out",
-                "action_required",
-                "skipped",
-            ],
         )
         details_url: Optional[str] = SchemaField(
             description="The URL for the full details of the check",
@@ -89,8 +99,8 @@ class GithubCreateCheckRunBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "name": "test-check",
                 "head_sha": "ce587453ced02b1526dfb4cb910479d431683101",
-                "status": "completed",
-                "conclusion": "success",
+                "status": ChecksStatus.COMPLETED,
+                "conclusion": ChecksConclusion.SUCCESS,
                 "output_title": "Test Results",
                 "output_summary": "All tests passed",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -121,8 +131,8 @@ class GithubCreateCheckRunBlock(Block):
         repo_url: str,
         name: str,
         head_sha: str,
-        status: str,
-        conclusion: Optional[str] = None,
+        status: ChecksStatus,
+        conclusion: Optional[ChecksConclusion] = None,
         details_url: Optional[str] = None,
         output_title: Optional[str] = None,
         output_summary: Optional[str] = None,
@@ -141,11 +151,11 @@ class GithubCreateCheckRunBlock(Block):
         data: CheckRunData = {
             "name": name,
             "head_sha": head_sha,
-            "status": status,
+            "status": status.value,
         }
 
         if conclusion:
-            data["conclusion"] = conclusion
+            data["conclusion"] = conclusion.value
 
         if details_url:
             data["details_url"] = details_url
@@ -205,23 +215,12 @@ class GithubUpdateCheckRunBlock(Block):
         check_run_id: int = SchemaField(
             description="The ID of the check run to update",
         )
-        status: str = SchemaField(
+        status: ChecksStatus = SchemaField(
             description="New status of the check run",
-            choices=["queued", "in_progress", "completed"],
         )
-        conclusion: Optional[str] = SchemaField(
+        conclusion: Optional[ChecksConclusion] = SchemaField(
             description="The final conclusion of the check (required if status is completed)",
             default=None,
-            choices=[
-                None,
-                "success",
-                "failure",
-                "neutral",
-                "cancelled",
-                "timed_out",
-                "action_required",
-                "skipped",
-            ],
         )
         output_title: Optional[str] = SchemaField(
             description="New title of the check run output",
@@ -258,8 +257,8 @@ class GithubUpdateCheckRunBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "check_run_id": 4,
-                "status": "completed",
-                "conclusion": "success",
+                "status": ChecksStatus.COMPLETED,
+                "conclusion": ChecksConclusion.SUCCESS,
                 "output_title": "Updated Results",
                 "output_summary": "All tests passed after retry",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -291,8 +290,8 @@ class GithubUpdateCheckRunBlock(Block):
         credentials: GithubCredentials,
         repo_url: str,
         check_run_id: int,
-        status: str,
-        conclusion: Optional[str] = None,
+        status: ChecksStatus,
+        conclusion: Optional[ChecksConclusion] = None,
         output_title: Optional[str] = None,
         output_summary: Optional[str] = None,
         output_text: Optional[str] = None,
@@ -304,10 +303,10 @@ class GithubUpdateCheckRunBlock(Block):
             conclusion: Optional[str]
             output: Optional[dict[str, str]]
 
-        data: UpdateCheckRunData = {"status": status}
+        data: UpdateCheckRunData = {"status": status.value}
 
         if conclusion:
-            data["conclusion"] = conclusion
+            data["conclusion"] = conclusion.value
 
         if output_title or output_summary or output_text:
             output_data = {
