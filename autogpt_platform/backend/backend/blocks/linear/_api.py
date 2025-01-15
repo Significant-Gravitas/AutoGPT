@@ -137,18 +137,24 @@ class LinearClient:
     def try_get_team_by_name(self, team_name: str) -> str:
         try:
             query = """
-            query GetTeamId($teamName: String!) {
-              teams(filter: { name: { eqIgnoreCase: $teamName } }) {
+            query GetTeamId($searchTerm: String!) {
+              teams(filter: { 
+                or: [
+                  { name: { eqIgnoreCase: $searchTerm } },
+                  { key: { eqIgnoreCase: $searchTerm } }
+                ]
+              }) {
                 nodes {
                   id
                   name
+                  key
                 }
               }
             }
             """
 
             variables: dict[str, Any] = {
-                "teamName": team_name,
+                "searchTerm": team_name,
             }
 
             team_id = self.query(query, variables)
