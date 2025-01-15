@@ -41,9 +41,9 @@ def SMTPCredentialsField() -> SMTPCredentialsInput:
     )
 
 
-class SmtpConfig(BaseModel):
+class SMTPConfig(BaseModel):
     smtp_server: str = SchemaField(
-        default="smtp.gmail.com", description="SMTP server address"
+        default="smtp.example.com", description="SMTP server address"
     )
     smtp_port: int = SchemaField(default=25, description="SMTP port number")
 
@@ -61,9 +61,9 @@ class SendEmailBlock(Block):
         body: str = SchemaField(
             description="Body of the email", placeholder="Enter the email body"
         )
-        config: SmtpConfig = SchemaField(
+        config: SMTPConfig = SchemaField(
             description="SMTP Config",
-            default=SmtpConfig(),
+            default=SMTPConfig(),
         )
         credentials: SMTPCredentialsInput = SMTPCredentialsField()
 
@@ -97,7 +97,7 @@ class SendEmailBlock(Block):
 
     @staticmethod
     def send_email(
-        config: SmtpConfig,
+        config: SMTPConfig,
         to_email: str,
         subject: str,
         body: str,

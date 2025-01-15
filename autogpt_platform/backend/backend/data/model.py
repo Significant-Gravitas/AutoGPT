@@ -200,7 +200,7 @@ class OAuth2Credentials(_BaseCredentials):
     scopes: list[str]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
 
 
@@ -213,7 +213,7 @@ class APIKeyCredentials(_BaseCredentials):
     )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
@@ -222,7 +222,7 @@ class UserPasswordCredentials(_BaseCredentials):
     username: SecretStr
     password: SecretStr
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         # Converting the string to bytes using encode()
         # Base64 encoding it with base64.b64encode()
         # Converting the resulting bytes back to a string with decode()
