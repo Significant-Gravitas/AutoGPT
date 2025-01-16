@@ -862,6 +862,7 @@ export default function useAgentGraph(
         title: "Error saving agent",
         description: errorMessage,
       });
+      setSaveRunRequest({ request: "save", state: "error" });
     }
   }, [_saveAgent, toast]);
 
