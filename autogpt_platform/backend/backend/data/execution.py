@@ -31,6 +31,7 @@ class NodeExecutionEntry(BaseModel):
     graph_id: str
     node_exec_id: str
     node_id: str
+    block_id: str
     data: BlockInput
 
 
