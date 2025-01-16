@@ -2,12 +2,13 @@ import * as React from "react";
 import Link from "next/link";
 import { Button } from "./Button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu } from "lucide-react";
+import { KeyIcon, Menu } from "lucide-react";
 import {
   IconDashboardLayout,
   IconIntegrations,
   IconProfile,
   IconSliders,
+  IconCoin,
 } from "../ui/icons";
 
 interface SidebarLinkGroup {
@@ -22,6 +23,10 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
+  const stripeAvailable = Boolean(
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+  );
+
   return (
     <>
       <Sheet>
@@ -49,6 +54,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                   Creator dashboard
                 </div>
               </Link>
+              {stripeAvailable && (
+                <Link
+                  href="/store/credits"
+                  className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+                >
+                  <IconCoin className="h-6 w-6" />
+                  <div className="p-ui-medium text-base font-medium leading-normal">
+                    Credits
+                  </div>
+                </Link>
+              )}
               <Link
                 href="/store/integrations"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
@@ -56,6 +72,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 <IconIntegrations className="h-6 w-6" />
                 <div className="p-ui-medium text-base font-medium leading-normal">
                   Integrations
+                </div>
+              </Link>
+              <Link
+                href="/store/api_keys"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              >
+                <KeyIcon className="h-6 w-6" />
+                <div className="p-ui-medium text-base font-medium leading-normal">
+                  API Keys
                 </div>
               </Link>
               <Link
@@ -93,6 +118,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 Agent dashboard
               </div>
             </Link>
+            {stripeAvailable && (
+              <Link
+                href="/store/credits"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              >
+                <IconCoin className="h-6 w-6" />
+                <div className="p-ui-medium text-base font-medium leading-normal">
+                  Credits
+                </div>
+              </Link>
+            )}
             <Link
               href="/store/integrations"
               className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
@@ -100,6 +136,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               <IconIntegrations className="h-6 w-6" />
               <div className="p-ui-medium text-base font-medium leading-normal">
                 Integrations
+              </div>
+            </Link>
+            <Link
+              href="/store/api_keys"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+            >
+              <KeyIcon className="h-6 w-6" strokeWidth={1} />
+              <div className="p-ui-medium text-base font-medium leading-normal">
+                API Keys
               </div>
             </Link>
             <Link

@@ -4,10 +4,11 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
+import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -40,6 +41,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
 )
@@ -134,7 +136,54 @@ async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
     # Credits can go negative, so ensure it's at least 0 for user to see.
-    return {"credits": max(await _user_credit_model.get_or_refill_credit(user_id), 0)}
+    return {"credits": max(await _user_credit_model.get_credits(user_id), 0)}
+
+
+@v1_router.post(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
+async def request_top_up(
+    request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
+):
+    checkout_url = await _user_credit_model.top_up_intent(user_id, request.amount)
+    return {"checkout_url": checkout_url}
+
+
+@v1_router.patch(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
+async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
+    await _user_credit_model.fulfill_checkout(user_id=user_id)
+    return Response(status_code=200)
+
+
+@v1_router.post(path="/credits/stripe_webhook", tags=["credits"])
+async def stripe_webhook(request: Request):
+    # Get the raw request body
+    payload = await request.body()
+    # Get the signature header
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.secrets.stripe_webhook_secret
+        )
+    except ValueError:
+        # Invalid payload
+        raise HTTPException(status_code=400)
+    except stripe.SignatureVerificationError:
+        # Invalid signature
+        raise HTTPException(status_code=400)
+
+    if (
+        event["type"] == "checkout.session.completed"
+        or event["type"] == "checkout.session.async_payment_succeeded"
+    ):
+        await _user_credit_model.fulfill_checkout(
+            session_id=event["data"]["object"]["id"]
+        )
+
+    return Response(status_code=200)
 
 
 ########################################################
@@ -541,7 +590,7 @@ def get_execution_schedules(
 
 @v1_router.post(
     "/api-keys",
-    response_model=list[CreateAPIKeyResponse] | dict[str, str],
+    response_model=CreateAPIKeyResponse,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -583,7 +632,7 @@ async def get_api_keys(
 
 @v1_router.get(
     "/api-keys/{key_id}",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -604,7 +653,7 @@ async def get_api_key(
 
 @v1_router.delete(
     "/api-keys/{key_id}",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -626,7 +675,7 @@ async def delete_api_key(
 
 @v1_router.post(
     "/api-keys/{key_id}/suspend",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -648,7 +697,7 @@ async def suspend_key(
 
 @v1_router.put(
     "/api-keys/{key_id}/permissions",
-    response_model=list[APIKeyWithoutHash] | dict[str, str],
+    response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )

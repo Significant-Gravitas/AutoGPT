@@ -29,6 +29,9 @@ import {
   StoreReview,
   ScheduleCreatable,
   Schedule,
+  APIKeyPermission,
+  CreateAPIKeyResponse,
+  APIKey,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -83,6 +86,14 @@ export default class BackendAPI {
     } catch (error) {
       return Promise.resolve({ credits: 0 });
     }
+  }
+
+  requestTopUp(amount: number): Promise<{ checkout_url: string }> {
+    return this._request("POST", "/credits", { amount });
+  }
+
+  fulfillCheckout(): Promise<void> {
+    return this._request("PATCH", "/credits");
   }
 
   getBlocks(): Promise<Block[]> {
@@ -221,6 +232,36 @@ export default class BackendAPI {
     );
   }
 
+  // API Key related requests
+  async createAPIKey(
+    name: string,
+    permissions: APIKeyPermission[],
+    description?: string,
+  ): Promise<CreateAPIKeyResponse> {
+    return this._request("POST", "/api-keys", {
+      name,
+      permissions,
+      description,
+    });
+  }
+
+  async listAPIKeys(): Promise<APIKey[]> {
+    return this._get("/api-keys");
+  }
+
+  async revokeAPIKey(keyId: string): Promise<APIKey> {
+    return this._request("DELETE", `/api-keys/${keyId}`);
+  }
+
+  async updateAPIKeyPermissions(
+    keyId: string,
+    permissions: APIKeyPermission[],
+  ): Promise<APIKey> {
+    return this._request("PUT", `/api-keys/${keyId}/permissions`, {
+      permissions,
+    });
+  }
+
   /**
    * @returns `true` if a ping event was received, `false` if provider doesn't support pinging but the webhook exists.
    * @throws  `Error` if the webhook does not exist.
@@ -346,6 +387,17 @@ export default class BackendAPI {
     page_size?: number;
   }): Promise<MyAgentsResponse> {
     return this._get("/store/myagents", params);
+  }
+
+  downloadStoreAgent(
+    storeListingVersionId: string,
+    version?: number,
+  ): Promise<BlobPart> {
+    const url = version
+      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
+      : `/store/download/agents/${storeListingVersionId}`;
+
+    return this._get(url);
   }
 
   /////////////////////////////////////////

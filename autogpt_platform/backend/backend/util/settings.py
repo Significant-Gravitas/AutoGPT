@@ -81,9 +81,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
-    enable_credit: str = Field(
-        default="false",
+    enable_credit: bool = Field(
+        default=False,
         description="If user credit system is enabled or not",
+    )
+    enable_beta_monthly_credit: bool = Field(
+        default=True,
+        description="If beta monthly credits accounting is enabled or not",
     )
     num_user_credits_refill: int = Field(
         default=1500,
@@ -151,6 +155,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     media_gcs_bucket_name: str = Field(
         default="",
         description="The name of the Google Cloud Storage bucket for media files",
+    )
+
+    scheduler_db_pool_size: int = Field(
+        default=3,
+        description="The pool size for the scheduler database connection pool",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -259,6 +268,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     notion_client_secret: str = Field(
         default="", description="Notion OAuth client secret"
     )
+    twitter_client_id: str = Field(default="", description="Twitter/X OAuth client ID")
+    twitter_client_secret: str = Field(
+        default="", description="Twitter/X OAuth client secret"
+    )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
@@ -295,7 +308,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     jina_api_key: str = Field(default="", description="Jina API Key")
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
-    fal_key: str = Field(default="", description="FAL API key")
+    fal_api_key: str = Field(default="", description="FAL API key")
+    exa_api_key: str = Field(default="", description="Exa API key")
+    e2b_api_key: str = Field(default="", description="E2B API key")
+    nvidia_api_key: str = Field(default="", description="Nvidia API key")
+
+    stripe_api_key: str = Field(default="", description="Stripe API Key")
+    stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     # Add more secret fields as needed
 
