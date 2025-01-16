@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { Button } from "@/components/agptui/Button";
 import { AgentRunStatus } from "@/components/agptui/AgentRunStatusChip";
@@ -177,17 +176,24 @@ export default function AgentRunsPage(): React.ReactElement {
   }
 
   return (
-    <div className="container flex gap-8">
-      <aside className="flex w-72 flex-col gap-4">
-        <Button size="card" className="flex w-full items-center gap-2 py-6">
+    <div className="container justify-stretch p-0 lg:flex">
+      {/* Sidebar w/ list of runs */}
+      {/* TODO: separate this out as a component */}
+      {/* TODO: render this below header in sm and md layouts */}
+      <aside className="agpt-div flex w-full flex-col gap-4 border-b lg:w-auto lg:border-b-0 lg:border-r">
+        <Button
+          size="card"
+          className="mb-4 hidden h-16 w-full items-center gap-2 py-6 lg:flex"
+        >
           <Plus className="h-6 w-6" />
           <span>New run</span>
         </Button>
 
+        {/* Runs / Scheduled list switcher */}
         <div className="flex gap-2">
           <Badge
             variant={activeListTab === "runs" ? "secondary" : "outline"}
-            className="cursor-pointer gap-2"
+            className="cursor-pointer gap-2 rounded-full text-base"
             onClick={() => setActiveListTab("runs")}
           >
             <span>Runs</span>
@@ -196,7 +202,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
           <Badge
             variant={activeListTab === "scheduled" ? "secondary" : "outline"}
-            className="cursor-pointer gap-2"
+            className="cursor-pointer gap-2 rounded-full text-base"
             onClick={() => setActiveListTab("scheduled")}
           >
             <span>Scheduled</span>
@@ -206,11 +212,22 @@ export default function AgentRunsPage(): React.ReactElement {
           </Badge>
         </div>
 
-        <ScrollArea className="h-[calc(100vh-200px)]">
-          <div className="flex flex-col gap-2">
+        {/* Runs / Schedules list */}
+        <ScrollArea className="lg:h-[calc(100vh-200px)]">
+          <div className="flex gap-2 lg:flex-col">
+            {/* New Run button - only in small layouts */}
+            <Button
+              size="card"
+              className="flex h-28 w-40 items-center gap-2 py-6 lg:hidden"
+            >
+              <Plus className="h-6 w-6" />
+              <span>New run</span>
+            </Button>
+
             {activeListTab === "runs"
               ? agentRuns.map((run, i) => (
                   <AgentRunSummaryCard
+                    className="h-28 w-72 lg:h-32 xl:w-80"
                     key={i}
                     agentID={run.graph_id}
                     agentRunID={run.execution_id}
@@ -224,6 +241,7 @@ export default function AgentRunsPage(): React.ReactElement {
                   .filter((schedule) => schedule.graph_id === agentID)
                   .map((schedule, i) => (
                     <AgentRunSummaryCard
+                      className="h-28 w-72 lg:h-32 xl:w-80"
                       key={i}
                       agentID={schedule.graph_id}
                       agentRunID={schedule.id}
@@ -238,25 +256,23 @@ export default function AgentRunsPage(): React.ReactElement {
       </aside>
 
       <div className="flex-1">
-        <h1 className="mb-8 text-3xl font-medium">
-          {
-            agent.name /* TODO: use dynamic/custom run title - https://github.com/Significant-Gravitas/AutoGPT/issues/9184 */
-          }
-        </h1>
+        {/* Header */}
+        <div className="agpt-div w-full border-b">
+          <h1 className="font-poppins text-3xl font-medium">
+            {
+              agent.name /* TODO: use dynamic/custom run title - https://github.com/Significant-Gravitas/AutoGPT/issues/9184 */
+            }
+          </h1>
+        </div>
 
-        <Tabs defaultValue="info">
-          <TabsList>
-            <TabsTrigger value="info">Info</TabsTrigger>
-            <TabsTrigger value="output">Output</TabsTrigger>
-            <TabsTrigger value="input">Input</TabsTrigger>
-            <TabsTrigger value="rate">Rate</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="info">
-            <Card>
+        {/* Run details view */}
+        <div className="agpt-div flex gap-6">
+          <div className="flex flex-1 flex-col gap-4">
+            <Card className="agpt-box">
               <CardHeader>
-                <CardTitle>Info</CardTitle>
+                <CardTitle className="font-poppins">Info</CardTitle>
               </CardHeader>
+
               <CardContent>
                 <div className="flex justify-stretch gap-4">
                   {infoStats.map(({ label, value }) => (
@@ -268,12 +284,10 @@ export default function AgentRunsPage(): React.ReactElement {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
 
-          <TabsContent value="input">
-            <Card>
+            <Card className="agpt-box">
               <CardHeader>
-                <CardTitle>Input</CardTitle>
+                <CardTitle className="font-poppins">Input</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 {Object.entries(agentRunInputs).map(([key, { value }]) => (
@@ -288,31 +302,34 @@ export default function AgentRunsPage(): React.ReactElement {
                 ))}
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
 
-      <aside className="w-64">
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Run actions</h3>
-            {runActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
-                {action.label}
-              </Button>
-            ))}
+            {/* TODO: render output */}
           </div>
 
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Agent actions</h3>
-            {agentActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          {/* Run / Agent Actions */}
+          <aside className="w-48 xl:w-56">
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-medium">Run actions</h3>
+                {runActions.map((action, i) => (
+                  <Button key={i} variant="outline" onClick={action.callback}>
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-medium">Agent actions</h3>
+                {agentActions.map((action, i) => (
+                  <Button key={i} variant="outline" onClick={action.callback}>
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </aside>
         </div>
-      </aside>
+      </div>
     </div>
   );
 }

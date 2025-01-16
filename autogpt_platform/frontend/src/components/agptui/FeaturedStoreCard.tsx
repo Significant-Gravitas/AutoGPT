@@ -34,7 +34,7 @@ export const FeaturedStoreCard: React.FC<FeaturedStoreCardProps> = ({
       data-testid="featured-store-card"
     >
       <div className="flex h-[188px] flex-col items-start justify-start gap-3 self-stretch">
-        <h2 className="font-poppins self-stretch text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100">
+        <h2 className="self-stretch font-poppins text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100">
           {agentName}
         </h2>
         <div className="font-lead self-stretch text-xl font-normal leading-7 text-neutral-800 dark:text-neutral-200">

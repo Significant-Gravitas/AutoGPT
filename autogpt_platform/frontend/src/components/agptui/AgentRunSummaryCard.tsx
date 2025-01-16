@@ -22,6 +22,7 @@ export type AgentRunSummaryProps = {
   timestamp: number | Date;
   selected?: boolean;
   onClick?: () => void;
+  className?: string;
 };
 
 export default function AgentRunSummaryCard({
@@ -32,16 +33,18 @@ export default function AgentRunSummaryCard({
   timestamp,
   selected = false,
   onClick,
+  className,
 }: AgentRunSummaryProps): React.ReactElement {
   return (
     <Card
       className={cn(
         selected ? "border-violet-700 bg-violet-50/50" : "",
         "agpt-rounded-card border-zinc-300",
+        className,
       )}
       onClick={onClick}
     >
-      <CardContent className="relative p-4">
+      <CardContent className="relative p-2.5 lg:p-4">
         <AgentRunStatusChip status={status} />
 
         <div className="mt-5 flex items-center justify-between">

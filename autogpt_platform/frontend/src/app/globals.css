@@ -9,9 +9,6 @@
 }
 
 @layer utilities {
-  .w-110 {
-    width: 27.5rem;
-  }
   .h-7\.5 {
     height: 1.1875rem;
   }
@@ -49,7 +46,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 250 5% 98%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
@@ -122,5 +119,21 @@
 
   .agpt-rounded-card {
     @apply rounded-2xl;
+  }
+
+  .agpt-rounded-box {
+    @apply rounded-3xl;
+  }
+
+  .agpt-card {
+    @apply agpt-rounded-card border-zinc-300 bg-white;
+  }
+
+  .agpt-box {
+    @apply agpt-card agpt-rounded-box;
+  }
+
+  .agpt-div {
+    @apply border-zinc-200 p-5;
   }
 }
