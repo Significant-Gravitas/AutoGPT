@@ -33,14 +33,14 @@ export default function Page({}: {}) {
     } catch (error) {
       console.error("Error fetching submissions:", error);
     }
-  }, [api, supabase]);
+  }, [api]);
 
   useEffect(() => {
     if (!supabase) {
       return;
     }
     fetchData();
-  }, [supabase]);
+  }, [supabase, fetchData]);
 
   const onEditSubmission = useCallback((submission: StoreSubmissionRequest) => {
     setSubmissionData(submission);
@@ -56,7 +56,7 @@ export default function Page({}: {}) {
       api.deleteStoreSubmission(submission_id);
       fetchData();
     },
-    [supabase],
+    [api, supabase, fetchData],
   );
 
   const onOpenPopout = useCallback(() => {

@@ -61,7 +61,7 @@ function SearchResults({
     };
 
     fetchData();
-  }, [searchTerm, sort]);
+  }, [api, searchTerm, sort]);
 
   const agentsCount = agents.length;
   const creatorsCount = creators.length;
