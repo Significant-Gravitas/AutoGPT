@@ -289,28 +289,13 @@ class UserCredit(UserCreditBase):
             transaction_type=CreditTransactionType.TOP_UP,
         )
 
-    @staticmethod
-    async def _get_stripe_customer_id(user_id: str) -> str:
-        user = await get_user_by_id(user_id)
-        if not user:
-            raise ValueError(f"User not found: {user_id}")
-
-        if user.stripeCustomerId:
-            return user.stripeCustomerId
-
-        customer = stripe.Customer.create(name=user.name or "", email=user.email)
-        await User.prisma().update(
-            where={"id": user_id}, data={"stripeCustomerId": customer.id}
-        )
-        return customer.id
-
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
-            customer=await self._get_stripe_customer_id(user_id),
+            customer=await get_stripe_customer_id(user_id),
             line_items=[
                 {
                     "price_data": {
@@ -451,3 +436,18 @@ def get_user_credit_model() -> UserCreditBase:
 
 def get_block_costs() -> dict[str, list[BlockCost]]:
     return {block().id: costs for block, costs in BLOCK_COSTS.items()}
+
+
+async def get_stripe_customer_id(user_id: str) -> str:
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise ValueError(f"User not found: {user_id}")
+
+    if user.stripeCustomerId:
+        return user.stripeCustomerId
+
+    customer = stripe.Customer.create(name=user.name or "", email=user.email)
+    await User.prisma().update(
+        where={"id": user_id}, data={"stripeCustomerId": customer.id}
+    )
+    return customer.id
