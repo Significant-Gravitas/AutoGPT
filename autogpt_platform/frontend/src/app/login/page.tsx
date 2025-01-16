@@ -93,59 +93,61 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthCard>
-      <AuthHeader>Login to your account</AuthHeader>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onLogin)}>
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem className="mb-6">
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input placeholder="m@example.com" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem className="mb-6">
-                <FormLabel className="flex w-full items-center justify-between">
-                  <span>Password</span>
-                  <Link
-                    href="/reset_password"
-                    className="text-sm font-normal leading-normal text-black underline"
-                  >
-                    Forgot your password?
-                  </Link>
-                </FormLabel>
-                <FormControl>
-                  <PasswordInput {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <AuthButton
-            onClick={() => onLogin(form.getValues())}
-            isLoading={isLoading}
-            type="submit"
-          >
-            Login
-          </AuthButton>
-        </form>
-        <AuthFeedback message={feedback} isError={true} />
-      </Form>
-      <AuthBottomText
-        text="Don't have an account?"
-        linkText="Sign up"
-        href="/signup"
-      />
-    </AuthCard>
+    <div className="flex justify-center">
+      <AuthCard>
+        <AuthHeader>Login to your account</AuthHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onLogin)}>
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem className="mb-6">
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input placeholder="m@example.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem className="mb-6">
+                  <FormLabel className="flex w-full items-center justify-between">
+                    <span>Password</span>
+                    <Link
+                      href="/reset_password"
+                      className="text-sm font-normal leading-normal text-black underline"
+                    >
+                      Forgot your password?
+                    </Link>
+                  </FormLabel>
+                  <FormControl>
+                    <PasswordInput {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <AuthButton
+              onClick={() => onLogin(form.getValues())}
+              isLoading={isLoading}
+              type="submit"
+            >
+              Login
+            </AuthButton>
+          </form>
+          <AuthFeedback message={feedback} isError={true} />
+        </Form>
+        <AuthBottomText
+          text="Don't have an account?"
+          linkText="Sign up"
+          href="/signup"
+        />
+      </AuthCard>
+    </div>
   );
 }
