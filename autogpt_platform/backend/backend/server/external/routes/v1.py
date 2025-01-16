@@ -64,12 +64,12 @@ def execute_graph_block(
 )
 def execute_graph(
     graph_id: str,
-    graph_input: dict[Any, Any],
+    node_input: dict[Any, Any],
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:
         graph_exec = execution_manager_client().add_execution(
-            graph_id, graph_input, user_id=api_key.user_id
+            graph_id, node_input, user_id=api_key.user_id
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
