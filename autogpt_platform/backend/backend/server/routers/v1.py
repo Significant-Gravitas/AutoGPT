@@ -29,7 +29,11 @@ from backend.data.api_key import (
     update_api_key_permissions,
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.credit import get_block_costs, get_user_credit_model
+from backend.data.credit import (
+    get_block_costs,
+    get_stripe_customer_id,
+    get_user_credit_model,
+)
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -184,6 +188,21 @@ async def stripe_webhook(request: Request):
         )
 
     return Response(status_code=200)
+
+
+@v1_router.get(path="/credits/manage", dependencies=[Depends(auth_middleware)])
+async def manage_payment_method(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> dict[str, str]:
+    session = stripe.billing_portal.Session.create(
+        customer=await get_stripe_customer_id(user_id),
+        return_url=settings.config.platform_base_url + "/store/credits",
+    )
+    if not session:
+        raise HTTPException(
+            status_code=400, detail="Failed to create billing portal session"
+        )
+    return {"url": session.url}
 
 
 ########################################################
