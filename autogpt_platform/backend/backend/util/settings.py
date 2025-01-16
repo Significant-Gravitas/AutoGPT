@@ -81,9 +81,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
-    enable_credit: str = Field(
-        default="false",
+    enable_credit: bool = Field(
+        default=False,
         description="If user credit system is enabled or not",
+    )
+    enable_beta_monthly_credit: bool = Field(
+        default=True,
+        description="If beta monthly credits accounting is enabled or not",
     )
     num_user_credits_refill: int = Field(
         default=1500,
@@ -311,6 +315,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    stripe_api_key: str = Field(default="", description="Stripe API Key")
+    stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     # Add more secret fields as needed
 

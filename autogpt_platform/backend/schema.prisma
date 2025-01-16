@@ -393,6 +393,8 @@ model CreditTransaction {
   amount Int
   type   CreditTransactionType
 
+  runningBalance Int?
+
   isActive Boolean @default(true)
   metadata Json?
 
