@@ -29,11 +29,11 @@ def create_test_graph() -> graph.Graph:
     nodes = [
         graph.Node(
             block_id=AgentInputBlock().id,
-            input_default={"name": "input_1"},
+            input_default={"input_1": ""},
         ),
         graph.Node(
             block_id=AgentInputBlock().id,
-            input_default={"name": "input_2"},
+            input_default={"input_2": ""},
         ),
         graph.Node(
             block_id=FillTextTemplateBlock().id,
