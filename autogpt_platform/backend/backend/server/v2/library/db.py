@@ -156,6 +156,21 @@ async def update_library_agent(
         ) from e
 
 
+async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
+    """
+    Deletes a library agent for the given user
+    """
+    try:
+        await prisma.models.LibraryAgent.prisma().delete_many(
+            where={"agentId": graph_id, "userId": user_id}
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error deleting library agent: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to delete library agent"
+        ) from e
+
+
 async def add_store_agent_to_library(
     store_listing_version_id: str, user_id: str
 ) -> None:
