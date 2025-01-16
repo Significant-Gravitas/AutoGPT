@@ -58,6 +58,11 @@ export default function CreditsPage() {
     );
   };
 
+  const openBillingPortal = async () => {
+    const portal = await api.getUserPaymentPortalLink();
+    router.push(portal.url);
+  };
+
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
       <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
