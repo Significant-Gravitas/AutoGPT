@@ -38,11 +38,11 @@ export default function PrivatePage() {
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
     | {
-      open: true;
-      message: string;
-      onConfirm: () => void;
-      onReject: () => void;
-    }
+        open: true;
+        message: string;
+        onConfirm: () => void;
+        onReject: () => void;
+      }
     | { open: false }
   >({ open: false });
 
@@ -113,7 +113,6 @@ export default function PrivatePage() {
       "78d19fd7-4d59-4a16-8277-3ce310acf2b7", // E2B
       "96b83908-2789-4dec-9968-18f0ece4ceb3", // Nvidia
       "ed55ac19-356e-4243-a6cb-bc599e9b716f", // Mem0
-      
     ],
     [],
   );
@@ -129,16 +128,16 @@ export default function PrivatePage() {
 
   const allCredentials = providers
     ? Object.values(providers).flatMap((provider) =>
-      [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
-        .filter((cred) => !hiddenCredentials.includes(cred.id))
-        .map((credentials) => ({
-          ...credentials,
-          provider: provider.provider,
-          providerName: provider.providerName,
-          ProviderIcon: providerIcons[provider.provider],
-          TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
-        })),
-    )
+        [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+          .filter((cred) => !hiddenCredentials.includes(cred.id))
+          .map((credentials) => ({
+            ...credentials,
+            provider: provider.provider,
+            providerName: provider.providerName,
+            ProviderIcon: providerIcons[provider.provider],
+            TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+          })),
+      )
     : [];
 
   return (
