@@ -27,7 +27,7 @@ export default function CreditsPage() {
 
   useEffect(() => {
     if (api && topupStatus === "success") {
-      toastOnFail("fulfill checkout", api.fulfillCheckout);
+      toastOnFail("fulfill checkout", () => api.fulfillCheckout());
     }
   }, [api, topupStatus, toastOnFail]);
 
