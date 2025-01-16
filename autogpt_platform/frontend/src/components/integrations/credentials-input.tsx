@@ -67,6 +67,7 @@ export const providerIcons: Record<
   jina: fallbackIcon,
   ideogram: fallbackIcon,
   medium: FaMedium,
+  mem0: fallbackIcon,
   ollama: fallbackIcon,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,

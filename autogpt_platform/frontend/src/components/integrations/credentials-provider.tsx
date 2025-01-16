@@ -27,6 +27,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   ideogram: "Ideogram",
   jina: "Jina",
   medium: "Medium",
+  mem0: "Mem0",
   notion: "Notion",
   nvidia: "Nvidia",
   ollama: "Ollama",

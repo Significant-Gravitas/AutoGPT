@@ -112,6 +112,7 @@ export const PROVIDER_NAMES = {
   IDEOGRAM: "ideogram",
   JINA: "jina",
   MEDIUM: "medium",
+  MEM0: "mem0",
   NOTION: "notion",
   NVIDIA: "nvidia",
   OLLAMA: "ollama",
