@@ -238,7 +238,8 @@ def execute_node(
                 if res.end_time and res.start_time
                 else 0
             )
-            db_client.spend_credits(user_id, node_block.id, input_data, s, t)
+            data.data = input_data
+            db_client.spend_credits(data, s, t)
 
         # Update execution stats
         if execution_stats is not None:
@@ -257,7 +258,7 @@ def _enqueue_next_nodes(
     log_metadata: LogMetadata,
 ) -> list[NodeExecutionEntry]:
     def add_enqueued_execution(
-        node_exec_id: str, node_id: str, data: BlockInput
+        node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
         exec_update = db_client.update_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
@@ -269,6 +270,7 @@ def _enqueue_next_nodes(
             graph_id=graph_id,
             node_exec_id=node_exec_id,
             node_id=node_id,
+            block_id=block_id,
             data=data,
         )
 
@@ -322,7 +324,12 @@ def _enqueue_next_nodes(
             # Input is complete, enqueue the execution.
             log_metadata.info(f"Enqueued {suffix}")
             enqueued_executions.append(
-                add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
+                add_enqueued_execution(
+                    node_exec_id=next_node_exec_id,
+                    node_id=next_node_id,
+                    block_id=next_node.block_id,
+                    data=next_node_input,
+                )
             )
 
             # Next execution stops here if the link is not static.
@@ -352,7 +359,12 @@ def _enqueue_next_nodes(
                     continue
                 log_metadata.info(f"Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
-                    add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
+                    add_enqueued_execution(
+                        node_exec_id=iexec.node_exec_id,
+                        node_id=next_node_id,
+                        block_id=next_node.block_id,
+                        data=idata,
+                    )
                 )
             return enqueued_executions
 
@@ -837,6 +849,7 @@ class ExecutionManager(AppService):
                     graph_id=node_exec.graph_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
+                    block_id=node_exec.block_id,
                     data=node_exec.input_data,
                 )
             )
