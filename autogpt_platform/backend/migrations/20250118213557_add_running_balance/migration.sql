@@ -1,2 +1,2 @@
--- AlterTable
-ALTER TABLE "CreditTransaction" ADD COLUMN     "runningBalance" INTEGER;
+---- AlterTable
+--ALTER TABLE "CreditTransaction" ADD COLUMN     "runningBalance" INTEGER;
