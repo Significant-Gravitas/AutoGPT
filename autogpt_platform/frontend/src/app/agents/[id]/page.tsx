@@ -51,12 +51,13 @@ export default function AgentRunsPage(): React.ReactElement {
   const fetchAgents = useCallback(() => {
     api.getGraph(agentID).then(setAgent);
     api.getGraphExecutions(agentID).then((agentRuns) => {
-      setAgentRuns(agentRuns.toSorted((a, b) => b.started_at - a.started_at));
+      const sortedRuns = agentRuns.toSorted((a, b) => b.started_at - a.started_at);
+      setAgentRuns(sortedRuns);
 
-      if (!selectedRunID) {
+      if (!selectedRunID && sortedRuns.length > 0) {
         // only for first load or first execution
-        setSelectedRunID(agentRuns[0].execution_id);
-        setSelectedRun(agentRuns[0]);
+        setSelectedRunID(sortedRuns[0].execution_id);
+        setSelectedRun(sortedRuns[0]);
       }
     });
     if (selectedRunID) {
