@@ -16,7 +16,7 @@ class ShopifyProductCreateBlock(Block):
             description="The name of Shopify shop and subdomain",
         )
         products: list[dict[str, Any]] = SchemaField(description="List of products to create")
-        api_key: BlockSecret = SecretField(key="api_key",value="api_key")
+        admin_api_key: BlockSecret = SchemaField(key="admin_api_key",value="admin_api_key")
 
     class Output(BlockSchema):
         shop_name: str = SchemaField(description="The shop that invited staff")
@@ -30,7 +30,7 @@ class ShopifyProductCreateBlock(Block):
             input_schema=ShopifyProductCreateBlock.Input,
             output_schema=ShopifyProductCreateBlock.Output,
             test_input=[
-                {"shop_name": "3tn-demo", "api_key": "api_key"},
+                {"shop_name": "3tn-demo", "admin_api_key": "admin_api_key"},
             ],
             test_output=[
                 ("shop_name", "3tn-demo"),
@@ -49,7 +49,7 @@ class ShopifyProductCreateBlock(Block):
         session = shopify.Session(
             shop_url, 
             self.api_version,
-            input_data.api_key.get_secret_value()
+            input_data.admin_api_key.get_secret_value()
         )
         shopify.ShopifyResource.activate_session(session)
 
