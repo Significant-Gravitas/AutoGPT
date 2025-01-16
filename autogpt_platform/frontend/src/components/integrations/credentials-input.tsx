@@ -624,7 +624,9 @@ export const UserPasswordCredentialsModal: FC<{
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add new username & password for {providerName}</DialogTitle>
+          <DialogTitle>
+            Add new username & password for {providerName}
+          </DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
