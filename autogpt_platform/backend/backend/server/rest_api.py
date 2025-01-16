@@ -17,6 +17,7 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
+import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.store.model
@@ -168,6 +169,9 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
+        await backend.server.v2.library.db.delete_library_agent_by_graph_id(
+            graph_id=graph_id, user_id=user_id
+        )
         return await backend.server.routers.v1.delete_graph(graph_id, user_id)
 
     @staticmethod
