@@ -58,7 +58,6 @@ class AddMemoryBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        user_id: str = SchemaField(description="User ID to segment memories")
         content: Union[str, list[dict[str, str]]] = SchemaField(
             description="Content to add - either a string or list of message objects"
         )
@@ -69,9 +68,7 @@ class AddMemoryBlock(Block, Mem0Base):
     class Output(BlockSchema):
         memory_id: str = SchemaField(description="ID of the created memory")
         status: str = SchemaField(description="Status of the operation")
-        error: Optional[str] = SchemaField(
-            description="Error message if operation fails"
-        )
+        error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
         super().__init__(
@@ -96,7 +93,12 @@ class AddMemoryBlock(Block, Mem0Base):
         )
 
     def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        user_id: str,
+        credentials: APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         try:
             data = {
@@ -105,7 +107,7 @@ class AddMemoryBlock(Block, Mem0Base):
                     if isinstance(input_data.content, list)
                     else [{"role": "user", "content": input_data.content}]
                 ),
-                "user_id": input_data.user_id,
+                "user_id": user_id,
                 "output_format": "v1.1",
             }
 
@@ -129,7 +131,6 @@ class SearchMemoryBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        user_id: str = SchemaField(description="User ID to segment memories")
         query: str = SchemaField(description="Search query")
         metadata: Optional[dict[str, Any]] = SchemaField(
             description="Optional metadata filters", default=None
@@ -139,9 +140,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         memories: list[dict[str, Any]] = SchemaField(
             description="List of matching memories"
         )
-        error: Optional[str] = SchemaField(
-            description="Error message if operation fails"
-        )
+        error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
         super().__init__(
@@ -167,12 +166,17 @@ class SearchMemoryBlock(Block, Mem0Base):
         )
 
     def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        user_id: str,
+        credentials: APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         try:
             data: dict[str, Any] = {
                 "query": input_data.query,
-                "user_id": input_data.user_id,
+                "user_id": user_id,
                 "output_format": "v1.1",
             }
 
@@ -194,7 +198,6 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        user_id: str = SchemaField(description="User ID to segment memories")
         page: Optional[int] = SchemaField(description="Page number", default=1)
         page_size: Optional[int] = SchemaField(
             description="Number of items per page", default=50
@@ -207,9 +210,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         memories: list[dict[str, Any]] = SchemaField(description="List of memories")
         total_pages: int = SchemaField(description="Total number of pages")
         current_page: int = SchemaField(description="Current page number")
-        error: Optional[str] = SchemaField(
-            description="Error message if operation fails"
-        )
+        error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
         super().__init__(
@@ -239,11 +240,16 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         )
 
     def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        user_id: str,
+        credentials: APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         try:
             params = {
-                "user_id": input_data.user_id,
+                "user_id": user_id,
                 "page": input_data.page,
                 "page_size": input_data.page_size,
                 "output_format": "v1.1",
