@@ -12,6 +12,7 @@ from backend.data import db
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
+from backend.data.execution import NodeExecutionEntry
 from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
 
@@ -33,9 +34,7 @@ class UserCreditBase(ABC):
     @abstractmethod
     async def spend_credits(
         self,
-        user_id: str,
-        block_id: str,
-        input_data: BlockInput,
+        entry: NodeExecutionEntry,
         data_size: float,
         run_time: float,
     ) -> int:
@@ -43,9 +42,7 @@ class UserCreditBase(ABC):
         Spend the credits for the user based on the block usage.
 
         Args:
-            user_id (str): The user ID.
-            block_id (str): The block ID.
-            input_data (BlockInput): The input data for the block.
+            entry (NodeExecutionEntry): The node execution identifiers & data.
             data_size (float): The size of the data being processed.
             run_time (float): The time taken to run the block.
 
@@ -168,7 +165,6 @@ class UserCreditBase(ABC):
         transaction_type: CreditTransactionType,
         is_active: bool = True,
         transaction_key: str | None = None,
-        block_id: str | None = None,
         metadata: Json = Json({}),
     ):
         async with db.locked_transaction(f"usr_trx_{user_id}"):
@@ -185,7 +181,6 @@ class UserCreditBase(ABC):
                 "amount": amount,
                 "runningBalance": user_balance + amount,
                 "type": transaction_type,
-                "blockId": block_id,
                 "metadata": metadata,
                 "isActive": is_active,
                 "createdAt": self.time_now(),
@@ -251,29 +246,31 @@ class UserCredit(UserCreditBase):
 
     async def spend_credits(
         self,
-        user_id: str,
-        block_id: str,
-        input_data: BlockInput,
+        entry: NodeExecutionEntry,
         data_size: float,
         run_time: float,
     ) -> int:
-        block = get_block(block_id)
+        block = get_block(entry.block_id)
         if not block:
-            raise ValueError(f"Block not found: {block_id}")
+            raise ValueError(f"Block not found: {entry.block_id}")
 
         cost, matching_filter = self._block_usage_cost(
-            block=block, input_data=input_data, data_size=data_size, run_time=run_time
+            block=block, input_data=entry.data, data_size=data_size, run_time=run_time
         )
         if cost == 0:
             return 0
 
         await self._add_transaction(
-            user_id=user_id,
+            user_id=entry.user_id,
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
-            block_id=block.id,
             metadata=Json(
                 {
+                    "graph_exec_id": entry.graph_exec_id,
+                    "graph_id": entry.graph_id,
+                    "node_id": entry.node_id,
+                    "node_exec_id": entry.node_exec_id,
+                    "block_id": entry.block_id,
                     "block": block.name,
                     "input": matching_filter,
                 }
