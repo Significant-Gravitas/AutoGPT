@@ -8,6 +8,7 @@ import {
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
   GraphExecution,
+  GraphExecutionMeta,
   Graph,
   GraphCreatable,
   GraphExecuteResponse,
@@ -144,30 +145,37 @@ export default class BackendAPI {
     return this._request("POST", `/graphs/${id}/execute`, inputData);
   }
 
-  getExecutions(): Promise<GraphExecution[]> {
+  getExecutions(): Promise<GraphExecutionMeta[]> {
     return this._get(`/executions`);
   }
 
-  getGraphExecutions(graphID: string): Promise<GraphExecution[]> {
+  getGraphExecutions(graphID: string): Promise<GraphExecutionMeta[]> {
     return this._get(`/graphs/${graphID}/executions`);
   }
 
   async getGraphExecutionInfo(
     graphID: string,
     runID: string,
-  ): Promise<NodeExecutionResult[]> {
-    return (await this._get(`/graphs/${graphID}/executions/${runID}`)).map(
+  ): Promise<GraphExecution> {
+    const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
+    result.node_executions = result.node_executions.map(
       parseNodeExecutionResultTimestamps,
     );
+    return result;
   }
 
   async stopGraphExecution(
     graphID: string,
     runID: string,
-  ): Promise<NodeExecutionResult[]> {
-    return (
-      await this._request("POST", `/graphs/${graphID}/executions/${runID}/stop`)
-    ).map(parseNodeExecutionResultTimestamps);
+  ): Promise<GraphExecution> {
+    const result = await this._request(
+      "POST",
+      `/graphs/${graphID}/executions/${runID}/stop`,
+    );
+    result.node_executions = result.node_executions.map(
+      parseNodeExecutionResultTimestamps,
+    );
+    return result;
   }
 
   oAuthLogin(

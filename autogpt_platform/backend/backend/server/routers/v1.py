@@ -393,8 +393,10 @@ def execute_graph(
 )
 async def stop_graph_run(
     graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> Sequence[execution_db.ExecutionResult]:
-    if not await graph_db.get_execution(user_id=user_id, execution_id=graph_exec_id):
+) -> graph_db.GraphExecution:
+    if not await graph_db.get_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
 
     await asyncio.to_thread(
@@ -402,7 +404,13 @@ async def stop_graph_run(
     )
 
     # Retrieve & return canceled graph execution in its final state
-    return await execution_db.get_execution_results(graph_exec_id)
+    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
+    if not result:
+        raise HTTPException(
+            500,
+            detail=f"Could not fetch graph execution #{graph_exec_id} after stopping",
+        )
+    return result
 
 
 @v1_router.get(
@@ -412,7 +420,7 @@ async def stop_graph_run(
 )
 async def get_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.GraphExecution]:
+) -> list[graph_db.GraphExecutionMeta]:
     return await graph_db.get_graphs_executions(user_id=user_id)
 
 
@@ -424,7 +432,7 @@ async def get_graphs_executions(
 async def get_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.GraphExecution]:
+) -> list[graph_db.GraphExecutionMeta]:
     return await graph_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
 
 
@@ -433,16 +441,20 @@ async def get_graph_executions(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graph_run_node_execution_results(
+async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> Sequence[execution_db.ExecutionResult]:
+) -> graph_db.GraphExecution:
     graph = await graph_db.get_graph(graph_id, user_id=user_id)
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-    return await execution_db.get_execution_results(graph_exec_id)
+    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+
+    return result
 
 
 ########################################################

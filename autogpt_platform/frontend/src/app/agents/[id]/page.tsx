@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
-  GraphExecution,
+  GraphExecutionMeta,
   Schedule,
   GraphMeta,
   BlockIOSubType,
@@ -21,14 +21,15 @@ import { AgentRunStatus } from "@/components/agptui/AgentRunStatusChip";
 import AgentRunSummaryCard from "@/components/agptui/AgentRunSummaryCard";
 import moment from "moment";
 
-const agentRunStatusMap: Record<GraphExecution["status"], AgentRunStatus> = {
-  COMPLETED: "success",
-  FAILED: "failed",
-  QUEUED: "queued",
-  RUNNING: "running",
-  TERMINATED: "stopped",
-  // TODO: implement "draft" - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
-};
+const agentRunStatusMap: Record<GraphExecutionMeta["status"], AgentRunStatus> =
+  {
+    COMPLETED: "success",
+    FAILED: "failed",
+    QUEUED: "queued",
+    RUNNING: "running",
+    TERMINATED: "stopped",
+    // TODO: implement "draft" - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
+  };
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: string } = useParams();
@@ -36,10 +37,10 @@ export default function AgentRunsPage(): React.ReactElement {
   const api = useBackendAPI();
 
   const [agent, setAgent] = useState<GraphMeta | null>(null);
-  const [agentRuns, setAgentRuns] = useState<GraphExecution[]>([]);
+  const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedRun, setSelectedRun] = useState<
-    GraphExecution | Schedule | null
+    GraphExecutionMeta | Schedule | null
   >(null);
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
     "runs",

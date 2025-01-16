@@ -1,7 +1,11 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 
-import { GraphExecution, Schedule, GraphMeta } from "@/lib/autogpt-server-api";
+import {
+  GraphExecutionMeta,
+  Schedule,
+  GraphMeta,
+} from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
 import {
@@ -16,10 +20,12 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<GraphMeta[]>([]);
-  const [executions, setExecutions] = useState<GraphExecution[]>([]);
+  const [executions, setExecutions] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
-  const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
+  const [selectedRun, setSelectedRun] = useState<GraphExecutionMeta | null>(
+    null,
+  );
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const api = useBackendAPI();
@@ -73,7 +79,7 @@ const Monitor = () => {
 
   return (
     <div
-      className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10"
+      className="grid grid-cols-1 gap-4 p-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10"
       data-testid="monitor-page"
     >
       <AgentFlowList

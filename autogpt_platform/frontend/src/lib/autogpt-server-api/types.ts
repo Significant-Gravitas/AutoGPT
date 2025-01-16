@@ -193,8 +193,8 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of backend/data/graph.py:GraphExecution */
-export type GraphExecution = {
+/* Mirror of backend/data/graph.py:GraphExecutionMeta */
+export type GraphExecutionMeta = {
   execution_id: string;
   started_at: number;
   ended_at: number;
@@ -203,6 +203,14 @@ export type GraphExecution = {
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   graph_id: string;
   graph_version: number;
+  preset_id?: string;
+};
+
+/* Mirror of backend/data/graph.py:GraphExecution */
+export type GraphExecution = GraphExecutionMeta & {
+  inputs: Record<string, any>;
+  outputs: Record<string, any>;
+  node_executions: NodeExecutionResult[];
 };
 
 export type GraphMeta = {
