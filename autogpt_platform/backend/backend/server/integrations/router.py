@@ -199,19 +199,16 @@ def create_credentials(
     provider: Annotated[
         ProviderName, Path(title="The provider to create credentials for")
     ],
-    credential: Credentials,
+    credentials: Credentials,
 ) -> Credentials:
-    new_credentials = credential.__class__(
-        provider=provider, **credential.model_dump(exclude={"provider"})
-    )
-
+    credentials.provider = provider
     try:
-        creds_manager.create(user_id, new_credentials)
+        creds_manager.create(user_id, credentials)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
         )
-    return new_credentials
+    return credentials
 
 
 class CredentialsDeletionResponse(BaseModel):

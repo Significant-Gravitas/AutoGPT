@@ -298,7 +298,7 @@ export const CredentialsInput: FC<{
           {supportsUserPassword && (
             <Button onClick={() => setUserPasswordCredentialsModalOpen(true)}>
               <ProviderIcon className="mr-2 h-4 w-4" />
-              Enter user password
+              Enter username and password
             </Button>
           )}
         </div>
@@ -624,7 +624,7 @@ export const UserPasswordCredentialsModal: FC<{
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add new user password for {providerName}</DialogTitle>
+          <DialogTitle>Add new username & password for {providerName}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -671,7 +671,7 @@ export const UserPasswordCredentialsModal: FC<{
                   <FormControl>
                     <Input
                       type="text"
-                      placeholder="Enter a name for this user password..."
+                      placeholder="Enter a name for this user login..."
                       {...field}
                     />
                   </FormControl>
@@ -680,7 +680,7 @@ export const UserPasswordCredentialsModal: FC<{
               )}
             />
             <Button type="submit" className="w-full">
-              Save & use this user password
+              Save & use this user login
             </Button>
           </form>
         </Form>
