@@ -1,5 +1,4 @@
 from typing import Optional, Any, Union, Literal
-from urllib.parse import urlencode
 from pydantic import SecretStr
 from backend.data.block import Block, BlockSchema, BlockOutput
 from backend.data.model import (
@@ -9,8 +8,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
-
+from mem0 import MemoryClient
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
@@ -28,27 +26,13 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-# Shared utilities for Mem0 blocks
 class Mem0Base:
     """Base class with shared utilities for Mem0 blocks"""
 
     @staticmethod
-    def _make_request(
-        method: str, endpoint: str, data: dict[str, Any], credentials: APIKeyCredentials
-    ) -> dict[str, Any]:
-        """Make request to Mem0 API"""
-        base_url = "https://api.mem0.ai/v1"
-        headers = {
-            "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
-            "Content-Type": "application/json",
-        }
-
-        url = f"{base_url}/{endpoint}"
-
-        response = requests.request(method=method, url=url, headers=headers, json=data)
-
-        response.raise_for_status()
-        return response.json()
+    def _get_client(credentials: APIKeyCredentials) -> MemoryClient:
+        """Get initialized Mem0 client"""
+        return MemoryClient(api_key=credentials.api_key.get_secret_value())
 
 
 class AddMemoryBlock(Block, Mem0Base):
@@ -61,13 +45,13 @@ class AddMemoryBlock(Block, Mem0Base):
         content: Union[str, list[dict[str, str]]] = SchemaField(
             description="Content to add - either a string or list of message objects"
         )
-        metadata: Optional[dict[str, Any]] = SchemaField(
+        metadata: dict[str, Any] | None = SchemaField(
             description="Optional metadata for the memory", default=None
         )
 
     class Output(BlockSchema):
-        memory_id: str = SchemaField(description="ID of the created memory")
-        status: str = SchemaField(description="Status of the operation")
+        action: str = SchemaField(description="Action of the operation")
+        memory: dict[str, Any] = SchemaField(description="Memory created")
         error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
@@ -84,12 +68,7 @@ class AddMemoryBlock(Block, Mem0Base):
             },
             test_output=[("memory_id", "test-memory-id"), ("status", "success")],
             test_credentials=TEST_CREDENTIALS,
-            test_mock={
-                "_make_request": lambda method, endpoint, data, credentials: {
-                    "status": "success",
-                    "memory_id": "test-memory-id",
-                }
-            },
+            test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
     def run(
@@ -98,30 +77,35 @@ class AddMemoryBlock(Block, Mem0Base):
         *,
         user_id: str,
         credentials: APIKeyCredentials,
-        **kwargs,
+        **kwargs
     ) -> BlockOutput:
         try:
-            data = {
-                "messages": (
-                    input_data.content
-                    if isinstance(input_data.content, list)
-                    else [{"role": "user", "content": input_data.content}]
-                ),
-                "user_id": user_id,
-                "output_format": "v1.1",
-            }
+            client = self._get_client(credentials)
 
-            if input_data.metadata:
-                data["metadata"] = input_data.metadata
+            # Convert input to messages format if needed
+            messages = (
+                input_data.content
+                if isinstance(input_data.content, list)
+                else [{"role": "user", "content": input_data.content}]
+            )
 
-            result = self._make_request("POST", "memory", data, credentials)
+            # Use the client to add memory
+            result = client.add(
+                messages,
+                user_id=user_id,
+                output_format="v1.1",
+                metadata=input_data.metadata,
+            )
 
-            yield "memory_id", result.get("memory_id")
-            yield "status", result.get("status", "success")
+            if len(result.get("results", [])) > 0:
+                for result in result.get("results", []):
+                    yield "action", result["event"]
+                    yield "memory", result["memory"]
+            else:
+                yield "error", "No memory created"
 
         except Exception as e:
-            yield "error", str(e)
-            yield "status", "error"
+            yield "error", str(object=e)
 
 
 class SearchMemoryBlock(Block, Mem0Base):
@@ -158,11 +142,7 @@ class SearchMemoryBlock(Block, Mem0Base):
                 ("memories", [{"id": "test-memory", "content": "test content"}])
             ],
             test_credentials=TEST_CREDENTIALS,
-            test_mock={
-                "_make_request": lambda method, endpoint, data, credentials: {
-                    "memories": [{"id": "test-memory", "content": "test content"}]
-                }
-            },
+            test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
     def run(
@@ -171,21 +151,20 @@ class SearchMemoryBlock(Block, Mem0Base):
         *,
         user_id: str,
         credentials: APIKeyCredentials,
-        **kwargs,
+        **kwargs
     ) -> BlockOutput:
         try:
-            data: dict[str, Any] = {
-                "query": input_data.query,
-                "user_id": user_id,
-                "output_format": "v1.1",
-            }
+            client = self._get_client(credentials)
 
-            if input_data.metadata:
-                data["metadata"] = input_data.metadata
+            # Use the client to search memories
+            result = client.search(
+                input_data.query,
+                user_id=user_id,
+                output_format="v1.1",
+                metadata=input_data.metadata,
+            )
 
-            result = self._make_request("POST", "memory/search", data, credentials)
-
-            yield "memories", result.get("memories", [])
+            yield "memories", result[0].get("memories", [])
 
         except Exception as e:
             yield "error", str(e)
@@ -230,13 +209,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
                 ("current_page", 1),
             ],
             test_credentials=TEST_CREDENTIALS,
-            test_mock={
-                "_make_request": lambda method, endpoint, data, credentials: {
-                    "memories": [{"id": "test-memory", "content": "test content"}],
-                    "total_pages": 1,
-                    "current_page": 1,
-                }
-            },
+            test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
     def run(
@@ -245,26 +218,41 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         *,
         user_id: str,
         credentials: APIKeyCredentials,
-        **kwargs,
+        **kwargs
     ) -> BlockOutput:
         try:
-            params = {
-                "user_id": user_id,
-                "page": input_data.page,
-                "page_size": input_data.page_size,
-                "output_format": "v1.1",
-            }
+            client = self._get_client(credentials)
 
-            if input_data.categories:
-                params["categories"] = input_data.categories
-
-            result = self._make_request(
-                "GET", f"memory?{urlencode(params)}", {}, credentials
+            # Use the client to get all memories
+            result = client.get_all(
+                user_id=user_id,
+                page=input_data.page,
+                page_size=input_data.page_size,
+                categories=input_data.categories,
+                output_format="v1.1",
             )
 
-            yield "memories", result.get("memories", [])
-            yield "total_pages", result.get("total_pages", 1)
-            yield "current_page", result.get("current_page", 1)
+            yield "memories", result[0].get("memories", [])
+            yield "total_pages", result[0].get("total_pages", 1)
+            yield "current_page", result[0].get("current_page", 1)
 
         except Exception as e:
             yield "error", str(e)
+
+
+# Mock client for testing
+class MockMemoryClient:
+    """Mock Mem0 client for testing"""
+
+    def add(self, *args, **kwargs):
+        return {"memory_id": "test-memory-id", "status": "success"}
+
+    def search(self, *args, **kwargs):
+        return {"memories": [{"id": "test-memory", "content": "test content"}]}
+
+    def get_all(self, *args, **kwargs):
+        return {
+            "memories": [{"id": "test-memory", "content": "test content"}],
+            "total_pages": 1,
+            "current_page": 1,
+        }
