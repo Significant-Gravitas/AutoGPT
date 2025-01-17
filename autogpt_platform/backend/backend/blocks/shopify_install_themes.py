@@ -124,6 +124,7 @@ class ShopifyInstallThemeBlock(Block):
             yield "theme_id", "gid://shopify/OnlineStoreTheme/140466454723"
             return
 
+        # TODO: should have a wayt to inject cookie dynamically
         bearer_token = self.generate_session_token(input_data.shop_name)
 
         auth_code = self.generate_activate_shop_code(input_data.shop_name)
