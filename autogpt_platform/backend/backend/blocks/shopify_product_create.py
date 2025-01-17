@@ -16,7 +16,7 @@ class ShopifyProductCreateBlock(Block):
             description="The name of Shopify shop and subdomain",
         )
         products: list[dict[str, Any]] = SchemaField(description="List of products to create")
-        admin_api_key: str = SchemaField(key="admin_api_key",value="admin_api_key")
+        admin_api_key: str = SchemaField(description="Shopify app API key for Admin API")
 
     class Output(BlockSchema):
         shop_name: str = SchemaField(description="The shop that invited staff")
