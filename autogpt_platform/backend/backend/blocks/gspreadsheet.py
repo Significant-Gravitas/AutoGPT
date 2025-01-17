@@ -2,6 +2,7 @@ import os
 from typing import Any
 import base64
 import json
+import re
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -58,9 +59,17 @@ class GSpreadsheetBlock(Block):
         service = build("sheets", "v4", credentials=credentials)
         sheet = service.spreadsheets()
 
-        result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range).execute()
+        result = sheet.values().get(spreadsheetId=GSpreadsheetBlock.parse_spreadsheet_source(spreadsheet_id), range=range).execute()
         return result.get("values", [])
     
+    @staticmethod 
+    def parse_spreadsheet_source(spreadsheet_source: str) -> str:
+        pattern = r"https://docs\.google\.com/spreadsheets/d/([a-zA-Z0-9-_]+)/"
+        match = re.search(pattern, spreadsheet_source)
+        if match:
+            return match.group(1)
+        return spreadsheet_source
+
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             data = self.read_spreadsheet(input_data.spreadsheet_id, input_data.range)
