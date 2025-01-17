@@ -586,7 +586,17 @@ async def get_execution_meta(
 async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
     execution = await AgentGraphExecution.prisma().find_first(
         where={"id": execution_id, "userId": user_id},
-        include={"AgentNodeExecutions": {"include": {"AgentNode": True}}},
+        include={
+            "AgentNodeExecutions": {
+                "include": {"AgentNode": True, "Input": True, "Output": True},
+                "order_by": [
+                    {"queuedTime": "asc"},
+                    {  # Fallback: Incomplete execs has no queuedTime.
+                        "addedTime": "asc"
+                    },
+                ],
+            },
+        },
     )
     return GraphExecution.from_db(execution) if execution else None
 

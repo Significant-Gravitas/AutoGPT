@@ -160,10 +160,10 @@ class AgentServer(backend.util.service.AppProcess):
         return execution.status
 
     @staticmethod
-    async def test_get_graph_run_node_execution_results(
+    async def test_get_graph_run_results(
         graph_id: str, graph_exec_id: str, user_id: str
     ):
-        return await backend.server.routers.v1.get_graph_run_node_execution_results(
+        return await backend.server.routers.v1.get_graph_execution(
             graph_id, graph_exec_id, user_id
         )
 
