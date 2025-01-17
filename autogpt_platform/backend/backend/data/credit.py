@@ -494,8 +494,6 @@ class UserCredit(UserCreditBase):
         transaction_time: datetime,
         transaction_count_limit: int,
     ) -> TransactionHistory:
-        print(">>>>>>> transaction_time", transaction_time)
-
         transactions = await CreditTransaction.prisma().find_many(
             where={
                 "userId": user_id,
