@@ -1,14 +1,15 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Annotated, Any, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Sequence, Dict
 
 import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing_extensions import Optional, TypedDict
+from pydantic import BaseModel
 
 import backend.data.block
 import backend.server.integrations.router
@@ -46,6 +47,7 @@ from backend.server.model import (
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
+from backend.data import redis
 
 if TYPE_CHECKING:
     from backend.data.model import Credentials
@@ -702,3 +704,19 @@ async def update_permissions(
     except APIKeyError as e:
         logger.error(f"Failed to update API key permissions: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+########################################################
+##################### Redis ############################
+########################################################
+
+class Params(BaseModel):
+    data: Dict[str, str]
+
+@v1_router.post(
+    path="/store-redis",
+)
+async def store_redis(params: Params):
+    for key, value in params.data.items():
+        redis.set(key, value)
+    return {"message": "Parameters stored successfully!"}
