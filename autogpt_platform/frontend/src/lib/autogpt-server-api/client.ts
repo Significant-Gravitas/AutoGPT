@@ -2,8 +2,11 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AnalyticsDetails,
   AnalyticsMetrics,
+  APIKey,
   APIKeyCredentials,
+  APIKeyPermission,
   Block,
+  CreateAPIKeyResponse,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
@@ -29,9 +32,7 @@ import {
   StoreReview,
   ScheduleCreatable,
   Schedule,
-  APIKeyPermission,
-  CreateAPIKeyResponse,
-  APIKey,
+  TransactionHistory,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -90,6 +91,23 @@ export default class BackendAPI {
 
   getAutoTopUpConfig(): Promise<{ amount: number; threshold: number }> {
     return this._get("/credits/auto-top-up");
+  }
+
+  getTransactionHistory(
+    lastTransction: Date | null,
+    countLimit: number,
+  ): Promise<TransactionHistory> {
+    return this._get(
+      `/credits/transactions`,
+      lastTransction
+        ? {
+            transaction_time: lastTransction,
+            transaction_count_limit: countLimit,
+          }
+        : {
+            transaction_count_limit: countLimit,
+          },
+    );
   }
 
   setAutoTopUpConfig(config: {

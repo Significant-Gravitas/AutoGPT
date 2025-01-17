@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from datetime import datetime, timezone
 
 import stripe
@@ -23,6 +24,40 @@ stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
 
 
+class UsageTransactionMetadata(BaseModel):
+    graph_exec_id: str | None = None
+    graph_id: str | None = None
+    node_id: str | None = None
+    node_exec_id: str | None = None
+    block_id: str | None = None
+    block: str | None = None
+    input: BlockInput | None = None
+
+
+class UserTransaction(BaseModel):
+    transaction_time: datetime = datetime.min
+    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
+    amount: int = 0
+    balance: int = 0
+    description: str | None = None
+    usage_graph_id: str | None = None
+    usage_execution_id: str | None = None
+    usage_node_count: int = 0
+    usage_starting_time: datetime = datetime.max
+
+
+class TransactionHistory(BaseModel):
+    transactions: list[UserTransaction]
+    next_transaction_time: datetime | None
+
+
+class AutoTopUpConfig(BaseModel):
+    amount: int
+    """Amount of credits to top up."""
+    threshold: int
+    """Threshold to trigger auto top up."""
+
+
 class UserCreditBase(ABC):
     @abstractmethod
     async def get_credits(self, user_id: str) -> int:
@@ -31,6 +66,26 @@ class UserCreditBase(ABC):
 
         Returns:
             int: The current credits for the user.
+        """
+        pass
+
+    @abstractmethod
+    async def get_transaction_history(
+        self,
+        user_id: str,
+        transaction_time: datetime,
+        transaction_count_limit: int,
+    ) -> TransactionHistory:
+        """
+        Get the credit transactions for the user.
+
+        Args:
+            user_id (str): The user ID.
+            transaction_time (datetime): The upper bound of the transaction time.
+            transaction_count_limit (int): The transaction count limit.
+
+        Returns:
+            TransactionHistory: The credit transactions for the user.
         """
         pass
 
@@ -269,15 +324,15 @@ class UserCredit(UserCreditBase):
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
             metadata=Json(
-                {
-                    "graph_exec_id": entry.graph_exec_id,
-                    "graph_id": entry.graph_id,
-                    "node_id": entry.node_id,
-                    "node_exec_id": entry.node_exec_id,
-                    "block_id": entry.block_id,
-                    "block": block.name,
-                    "input": matching_filter,
-                }
+                UsageTransactionMetadata(
+                    graph_exec_id=entry.graph_exec_id,
+                    graph_id=entry.graph_id,
+                    node_id=entry.node_id,
+                    node_exec_id=entry.node_exec_id,
+                    block_id=entry.block_id,
+                    block=block.name,
+                    input=matching_filter,
+                ).model_dump()
             ),
         )
         user_id = entry.user_id
@@ -433,6 +488,59 @@ class UserCredit(UserCreditBase):
         balance, _ = await self._get_credits(user_id)
         return balance
 
+    async def get_transaction_history(
+        self,
+        user_id: str,
+        transaction_time: datetime,
+        transaction_count_limit: int,
+    ) -> TransactionHistory:
+        print(">>>>>>> transaction_time", transaction_time)
+
+        transactions = await CreditTransaction.prisma().find_many(
+            where={
+                "userId": user_id,
+                "createdAt": {"lt": transaction_time},
+                "isActive": True,
+            },
+            order={"createdAt": "desc"},
+            take=transaction_count_limit,
+        )
+
+        grouped_transactions: dict[str, UserTransaction] = defaultdict(
+            lambda: UserTransaction()
+        )
+        tx_time = None
+        for t in transactions:
+            metadata = UsageTransactionMetadata.model_validate(t.metadata)
+            tx_time = t.createdAt.replace(tzinfo=None)
+
+            if t.type == CreditTransactionType.USAGE and metadata.graph_exec_id:
+                gt = grouped_transactions[metadata.graph_exec_id]
+                gid = metadata.graph_id[:8] if metadata.graph_id else "UNKNOWN"
+                gt.description = f"Graph #{gid} Execution"
+
+                gt.usage_node_count += 1
+                gt.usage_starting_time = min(gt.usage_starting_time, tx_time)
+                gt.usage_execution_id = metadata.graph_exec_id
+                gt.usage_graph_id = metadata.graph_id
+            else:
+                gt = grouped_transactions[t.transactionKey]
+                gt.description = f"{t.type} Transaction"
+
+            gt.amount += t.amount
+            gt.transaction_type = t.type
+
+            if tx_time > gt.transaction_time:
+                gt.transaction_time = tx_time
+                gt.balance = t.runningBalance or 0
+
+        return TransactionHistory(
+            transactions=list(grouped_transactions.values()),
+            next_transaction_time=(
+                tx_time if len(transactions) == transaction_count_limit else None
+            ),
+        )
+
 
 class BetaUserCredit(UserCredit):
     """
@@ -471,6 +579,9 @@ class BetaUserCredit(UserCredit):
 class DisabledUserCredit(UserCreditBase):
     async def get_credits(self, *args, **kwargs) -> int:
         return 0
+
+    async def get_transaction_history(self, *args, **kwargs) -> TransactionHistory:
+        return TransactionHistory(transactions=[], next_transaction_time=None)
 
     async def spend_credits(self, *args, **kwargs) -> int:
         return 0
@@ -512,13 +623,6 @@ async def get_stripe_customer_id(user_id: str) -> str:
         where={"id": user_id}, data={"stripeCustomerId": customer.id}
     )
     return customer.id
-
-
-class AutoTopUpConfig(BaseModel):
-    amount: int
-    """Amount of credits to top up."""
-    threshold: int
-    """Threshold to trigger auto top up."""
 
 
 async def set_auto_top_up(user_id: str, threshold: int, amount: int):
