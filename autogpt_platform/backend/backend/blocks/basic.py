@@ -1,9 +1,11 @@
+import enum
 from typing import Any, List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 from backend.util.mock import MockObject
 from backend.util.text import TextFormatter
+from backend.util.type import convert
 
 formatter = TextFormatter()
 
@@ -590,3 +592,47 @@ class CreateListBlock(Block):
             yield "list", input_data.values
         except Exception as e:
             yield "error", f"Failed to create list: {str(e)}"
+
+
+class TypeOptions(enum.Enum):
+    STRING = "string"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    LIST = "list"
+    DICTIONARY = "dictionary"
+
+
+class UniversalTypeConverterBlock(Block):
+    class Input(BlockSchema):
+        value: Any = SchemaField(
+            description="The value to convert to a universal type."
+        )
+        type: TypeOptions = SchemaField(description="The type to convert the value to.")
+
+    class Output(BlockSchema):
+        value: Any = SchemaField(description="The converted value.")
+
+    def __init__(self):
+        super().__init__(
+            id="95d1b990-ce13-4d88-9737-ba5c2070c97b",
+            description="This block is used to convert a value to a universal type.",
+            categories={BlockCategory.BASIC},
+            input_schema=UniversalTypeConverterBlock.Input,
+            output_schema=UniversalTypeConverterBlock.Output,
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            converted_value = convert(
+                input_data.value,
+                {
+                    TypeOptions.STRING: str,
+                    TypeOptions.NUMBER: float,
+                    TypeOptions.BOOLEAN: bool,
+                    TypeOptions.LIST: list,
+                    TypeOptions.DICTIONARY: dict,
+                }[input_data.type],
+            )
+            yield "value", converted_value
+        except Exception as e:
+            yield "error", f"Failed to convert value: {str(e)}"

@@ -14,6 +14,7 @@ import {
   FaGoogle,
   FaMedium,
   FaKey,
+  FaHubspot,
 } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
 import {
@@ -67,6 +68,7 @@ export const providerIcons: Record<
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
+  linear: fallbackIcon,
   medium: FaMedium,
   ollama: fallbackIcon,
   openai: fallbackIcon,
@@ -80,7 +82,7 @@ export const providerIcons: Record<
   twitter: FaTwitter,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
-  hubspot: fallbackIcon,
+  hubspot: FaHubspot,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
