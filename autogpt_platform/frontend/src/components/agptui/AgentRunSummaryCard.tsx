@@ -38,8 +38,8 @@ export default function AgentRunSummaryCard({
   return (
     <Card
       className={cn(
-        selected ? "border-violet-700 bg-violet-50/50" : "",
         "agpt-rounded-card border-zinc-300",
+        selected ? "border-2 border-accent bg-violet-50/50" : "",
         className,
       )}
       onClick={onClick}

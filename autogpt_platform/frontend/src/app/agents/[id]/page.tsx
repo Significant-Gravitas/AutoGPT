@@ -52,6 +52,7 @@ export default function AgentRunsPage(): React.ReactElement {
   );
 
   const openRunDraftView = useCallback(() => {
+    setSelectedRun("new");
     setSelectedRunID(null);
     setSelectedSchedule(null);
   }, []);
@@ -63,6 +64,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const selectSchedule = useCallback((schedule: Schedule) => {
     setSelectedSchedule(schedule);
+    setSelectedRun(null);
     setSelectedRunID(null);
   }, []);
 
@@ -83,17 +85,15 @@ export default function AgentRunsPage(): React.ReactElement {
     if (selectedRunID) {
       api.getGraphExecutionInfo(agentID, selectedRunID).then(setSelectedRun);
     }
-  }, [api, agentID, selectedRun, selectedRunID]);
+  }, [api, agentID]);
 
   useEffect(() => {
     fetchAgents();
   }, [fetchAgents]);
 
+  // load selectedRun based on selectedRunID
   useEffect(() => {
-    if (!selectedRunID) {
-      setSelectedRun(null);
-      return;
-    }
+    if (!selectedRunID) return;
 
     // pull partial data from "cache" while waiting for the rest to load
     setSelectedRun(
@@ -101,7 +101,7 @@ export default function AgentRunsPage(): React.ReactElement {
     );
 
     api.getGraphExecutionInfo(agentID, selectedRunID).then(setSelectedRun);
-  }, [api, selectedRunID]);
+  }, [api, selectedRunID, agentRuns, agentID]);
 
   const fetchSchedules = useCallback(async () => {
     // TODO: filter in backend - https://github.com/Significant-Gravitas/AutoGPT/issues/9183
@@ -151,7 +151,12 @@ export default function AgentRunsPage(): React.ReactElement {
       <aside className="agpt-div flex w-full flex-col gap-4 border-b lg:w-auto lg:border-b-0 lg:border-r">
         <Button
           size="card"
-          className="mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80"
+          className={
+            "mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80 " +
+            (selectedRun == "new"
+              ? "border-2 border-accent bg-violet-50/50 text-accent"
+              : "")
+          }
           onClick={() => openRunDraftView()}
         >
           <Plus className="h-6 w-6" />
@@ -187,7 +192,12 @@ export default function AgentRunsPage(): React.ReactElement {
             {/* New Run button - only in small layouts */}
             <Button
               size="card"
-              className="flex h-28 w-40 items-center gap-2 py-6 lg:hidden"
+              className={
+                "flex h-28 w-40 items-center gap-2 py-6 lg:hidden " +
+                (selectedRun == "new"
+                  ? "border-2 border-accent bg-violet-50/50 text-accent"
+                  : "")
+              }
               onClick={() => openRunDraftView()}
             >
               <Plus className="h-6 w-6" />
