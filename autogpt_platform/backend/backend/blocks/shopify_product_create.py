@@ -49,7 +49,7 @@ class ShopifyProductCreateBlock(Block):
         session = shopify.Session(
             shop_url, 
             self.api_version,
-            input_data.admin_api_key.get_secret_value()
+            input_data.admin_api_key
         )
         shopify.ShopifyResource.activate_session(session)
 
