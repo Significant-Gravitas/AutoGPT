@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 from mem0 import MemoryClient
 from pydantic import SecretStr
@@ -104,7 +104,7 @@ class AddMemoryBlock(Block, Mem0Base):
                     yield "action", result["event"]
                     yield "memory", result["memory"]
             else:
-                yield "error", "No memory created"
+                yield "action", "NO_CHANGE"
 
         except Exception as e:
             yield "error", str(object=e)
@@ -118,8 +118,13 @@ class SearchMemoryBlock(Block, Mem0Base):
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
         query: str = SchemaField(description="Search query")
-        metadata: dict[str, Any] = SchemaField(
-            description="Optional metadata filters", default={}
+        rerank: bool = SchemaField(description="Rerank the results", default=False)
+        top_k: int = SchemaField(description="Number of results to return", default=10)
+        agent_id: str | None = SchemaField(
+            description="Agent ID to filter by", default=None
+        )
+        categories_filter: list[str] | None = SchemaField(
+            description="Categories to filter by", default=None
         )
 
     class Output(BlockSchema):
@@ -137,8 +142,10 @@ class SearchMemoryBlock(Block, Mem0Base):
             test_input={
                 "user_id": "test_user",
                 "query": "vegetarian preferences",
-                "metadata": {"food": "vegetarian"},
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "agent_id": "test_agent",
+                "top_k": 10,
+                "rerank": True,
             },
             test_output=[
                 ("memories", [{"id": "test-memory", "content": "test content"}])
@@ -158,34 +165,21 @@ class SearchMemoryBlock(Block, Mem0Base):
         try:
             client = self._get_client(credentials)
 
-            # Use the client to search memories -> They typed this wrong????
-            # result: dict[str, list[dict[str, str | list | dict]]] = client.search(
-            #     input_data.query,
-            #     user_id=user_id,
-            #     output_format="v1.1",
-            #     metadata=input_data.metadata,
-            # )  # type: ignore
-
-            filters = {
-                # Does this work with only one filter?
+            filters: dict[str, list[dict[str, str | dict[str, list[str]]]]] = {
+                # This works with only one filter, so we can allow others to add on later
                 "AND": [
                     {"user_id": user_id},
-                    # We can add more filters here later, like categories?
-                    # {
-                    #   "agent_id":{
-                    #       "in":[
-                    #         "travel-assistant",
-                    #         "customer-support"
-                    #       ]
-                    #   }
-                    # }
                 ]
             }
-            result: list[dict[str, str | list | dict]] = client.search(
-                input_data.query, version="v2", filters=filters
-            )  # type: ignore
+            if input_data.categories_filter:
+                filters["AND"].append(
+                    {"categories": {"in": input_data.categories_filter}}
+                )
+            if input_data.agent_id:
+                filters["AND"].append({"agent_id": input_data.agent_id})
 
-            yield "memories", result.get("results", [])
+            result = client.search(input_data.query, version="v2", filters=filters)
+            yield "memories", result
 
         except Exception as e:
             yield "error", str(e)
@@ -198,10 +192,6 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        page: Optional[int] = SchemaField(description="Page number", default=1)
-        page_size: Optional[int] = SchemaField(
-            description="Number of items per page", default=50
-        )
         categories: Optional[list[str]] = SchemaField(
             description="Filter by categories", default=None
         )
@@ -220,14 +210,10 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             output_schema=GetAllMemoriesBlock.Output,
             test_input={
                 "user_id": "test_user",
-                "page": 1,
-                "page_size": 50,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
                 ("memories", [{"id": "test-memory", "content": "test content"}]),
-                ("total_pages", 1),
-                ("current_page", 1),
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
@@ -244,18 +230,19 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         try:
             client = self._get_client(credentials)
 
-            # Use the client to get all memories
-            result = client.get_all(
-                user_id=user_id,
-                page=input_data.page,
-                page_size=input_data.page_size,
-                categories=input_data.categories,
-                output_format="v1.1",
+            memories = client.get_all(
+                filters={
+                    "AND": [
+                        {"user_id": user_id},
+                        # {"created_at": {"gte": "2024-07-01", "lte": "2024-07-31"}},
+                    ]
+                },
+                version="v2",
             )
 
-            yield "memories", result[0].get("memories", [])
-            yield "total_pages", result[0].get("total_pages", 1)
-            yield "current_page", result[0].get("current_page", 1)
+            yield "memories", memories
+            # yield "total_pages", memories.get("total_pages", 1)
+            # yield "current_page", memories.get("current_page", 1)
 
         except Exception as e:
             yield "error", str(e)
