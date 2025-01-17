@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from mem0 import MemoryClient
 from pydantic import SecretStr
@@ -47,13 +47,13 @@ class AddMemoryBlock(Block, Mem0Base):
         content: Union[str, list[dict[str, str]]] = SchemaField(
             description="Content to add - either a string or list of message objects"
         )
-        metadata: dict[str, Any] | None = SchemaField(
-            description="Optional metadata for the memory", default=None
+        metadata: dict[str, Any] = SchemaField(
+            description="Optional metadata for the memory", default={}
         )
 
     class Output(BlockSchema):
         action: str = SchemaField(description="Action of the operation")
-        memory: dict[str, Any] = SchemaField(description="Memory created")
+        memory: str = SchemaField(description="Memory created")
         error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
@@ -118,8 +118,8 @@ class SearchMemoryBlock(Block, Mem0Base):
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
         query: str = SchemaField(description="Search query")
-        metadata: Optional[dict[str, Any]] = SchemaField(
-            description="Optional metadata filters", default=None
+        metadata: dict[str, Any] = SchemaField(
+            description="Optional metadata filters", default={}
         )
 
     class Output(BlockSchema):
@@ -158,15 +158,34 @@ class SearchMemoryBlock(Block, Mem0Base):
         try:
             client = self._get_client(credentials)
 
-            # Use the client to search memories
-            result = client.search(
-                input_data.query,
-                user_id=user_id,
-                output_format="v1.1",
-                metadata=input_data.metadata,
-            )
+            # Use the client to search memories -> They typed this wrong????
+            # result: dict[str, list[dict[str, str | list | dict]]] = client.search(
+            #     input_data.query,
+            #     user_id=user_id,
+            #     output_format="v1.1",
+            #     metadata=input_data.metadata,
+            # )  # type: ignore
 
-            yield "memories", result[0].get("memories", [])
+            filters = {
+                # Does this work with only one filter?
+                "AND": [
+                    {"user_id": user_id},
+                    # We can add more filters here later, like categories?
+                    # {
+                    #   "agent_id":{
+                    #       "in":[
+                    #         "travel-assistant",
+                    #         "customer-support"
+                    #       ]
+                    #   }
+                    # }
+                ]
+            }
+            result: list[dict[str, str | list | dict]] = client.search(
+                input_data.query, version="v2", filters=filters
+            )  # type: ignore
+
+            yield "memories", result.get("results", [])
 
         except Exception as e:
             yield "error", str(e)
