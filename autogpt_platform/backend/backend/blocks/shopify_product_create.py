@@ -63,8 +63,8 @@ class ShopifyProductCreateBlock(Block):
             item["id"] = product["id"]
 
             existing_variants = self.get_variants(product["id"])
-            item["variants_created"] = self.create_variants(item, product, existing_variants)
             self.update_product_variant_price(product["id"], existing_variants)
+            item["variants_created"] = self.create_variants(item, product, existing_variants)
 
             inventory_items = self.get_inventory_items(product["id"])
             item["inventory_items_tracked"] = self.track_inventory_items(inventory_items)
@@ -207,6 +207,10 @@ class ShopifyProductCreateBlock(Block):
 
                 params["variants"].append(variant)
                     
+        # no new variants
+        if not params["variants"]:
+            return list()
+
         response = shopify.GraphQL().execute(query, params)
 
         raw = json.loads(response)
@@ -218,7 +222,7 @@ class ShopifyProductCreateBlock(Block):
 
         variants = data.get("productVariantsBulkCreate", {}).get("productVariants", [])
         if not variants:
-            raise ValueError("Could not create product variants")
+            raise ValueError("Could not create product variants", response)
 
         return variants
 
