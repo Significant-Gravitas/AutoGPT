@@ -11,6 +11,7 @@ const buttonVariants = cva(
       variant: {
         destructive:
           "bg-red-600 text-neutral-50 border border-red-500/50 hover:bg-red-500/90 dark:bg-red-700 dark:text-neutral-50 dark:hover:bg-red-600",
+        accent: "bg-accent text-accent hover:bg-violet-500",
         outline:
           "border border-black/50 text-[#272727] hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
         secondary:
@@ -40,7 +41,13 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
-  variant?: "destructive" | "outline" | "secondary" | "ghost" | "link";
+  variant?:
+    | "destructive"
+    | "accent"
+    | "outline"
+    | "secondary"
+    | "ghost"
+    | "link";
   size?: "default" | "sm" | "lg" | "primary" | "icon" | "card";
 }
 

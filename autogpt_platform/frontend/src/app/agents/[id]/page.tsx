@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { Button } from "@/components/agptui/Button";
+import { Button, ButtonProps } from "@/components/agptui/Button";
 import { AgentRunStatus } from "@/components/agptui/AgentRunStatusChip";
 import AgentRunSummaryCard from "@/components/agptui/AgentRunSummaryCard";
 import moment from "moment";
@@ -42,19 +42,39 @@ export default function AgentRunsPage(): React.ReactElement {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedRunID, setSelectedRunID] = useState<string | null>(null);
   const [selectedRun, setSelectedRun] = useState<
-    GraphExecution | GraphExecutionMeta | Schedule | null
+    GraphExecution | GraphExecutionMeta | "new" | null
   >(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
+    null,
+  );
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
     "runs",
   );
 
+  const openRunDraftView = useCallback(() => {
+    setSelectedRunID(null);
+    setSelectedSchedule(null);
+  }, []);
+
+  const selectRun = useCallback((id: string) => {
+    setSelectedRunID(id);
+    setSelectedSchedule(null);
+  }, []);
+
+  const selectSchedule = useCallback((schedule: Schedule) => {
+    setSelectedSchedule(schedule);
+    setSelectedRunID(null);
+  }, []);
+
   const fetchAgents = useCallback(() => {
     api.getGraph(agentID).then(setAgent);
     api.getGraphExecutions(agentID).then((agentRuns) => {
-      const sortedRuns = agentRuns.toSorted((a, b) => b.started_at - a.started_at);
+      const sortedRuns = agentRuns.toSorted(
+        (a, b) => b.started_at - a.started_at,
+      );
       setAgentRuns(sortedRuns);
 
-      if (!selectedRunID && sortedRuns.length > 0) {
+      if (!selectedRunID && selectedRun != "new" && sortedRuns.length > 0) {
         // only for first load or first execution
         setSelectedRunID(sortedRuns[0].execution_id);
         setSelectedRun(sortedRuns[0]);
@@ -63,14 +83,18 @@ export default function AgentRunsPage(): React.ReactElement {
     if (selectedRunID) {
       api.getGraphExecutionInfo(agentID, selectedRunID).then(setSelectedRun);
     }
-  }, [api, agentID, selectedRunID]);
+  }, [api, agentID, selectedRun, selectedRunID]);
 
   useEffect(() => {
     fetchAgents();
   }, [fetchAgents]);
 
   useEffect(() => {
-    if (!selectedRunID) return;
+    if (!selectedRunID) {
+      setSelectedRun(null);
+      return;
+    }
+
     // pull partial data from "cache" while waiting for the rest to load
     setSelectedRun(
       agentRuns.find((r) => r.execution_id == selectedRunID) ?? null,
@@ -104,100 +128,15 @@ export default function AgentRunsPage(): React.ReactElement {
     return () => clearInterval(intervalId);
   }, [fetchAgents, agent]);
 
-  const selectedRunStatus: AgentRunStatus = useMemo(
-    () =>
-      !selectedRun
-        ? "draft"
-        : "status" in selectedRun
-          ? agentRunStatusMap[selectedRun.status]
-          : "scheduled",
-    [selectedRun],
-  );
-
-  const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
-    if (!selectedRun) return [];
-    return [
+  const agentActions: { label: string; callback: () => void }[] = useMemo(
+    () => [
       {
-        label: "Status",
-        value:
-          selectedRunStatus.charAt(0).toUpperCase() +
-          selectedRunStatus.slice(1),
+        label: "Open in builder",
+        callback: () => agent && router.push(`/build?flowID=${agent.id}`),
       },
-      ...("started_at" in selectedRun
-        ? [
-            {
-              label: "Started",
-              value: `${moment(selectedRun.started_at).fromNow()}, ${moment(selectedRun.started_at).format("HH:mm")}`,
-            },
-            {
-              label: "Duration",
-              value: `${moment.duration(selectedRun.duration, "seconds").humanize()}`,
-            },
-            // { label: "Cost", value: selectedRun.cost },  // TODO: implement cost - https://github.com/Significant-Gravitas/AutoGPT/issues/9181
-          ]
-        : [{ label: "Scheduled for", value: selectedRun.next_run_time }]),
-    ];
-  }, [selectedRun, selectedRunStatus]);
-
-  const agentRunInputs:
-    | Record<string, { type: BlockIOSubType; value: any }>
-    | undefined = useMemo(() => {
-    if (!agent || !selectedRun || !("inputs" in selectedRun)) return undefined;
-    // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
-
-    // Add type info from agent input schema
-    return Object.fromEntries(
-      Object.entries(selectedRun.inputs).map(([k, v]) => [
-        k,
-        { value: v, type: agent.input_schema.properties[k].type },
-      ]),
-    );
-  }, [agent, selectedRun]);
-
-  const runAgain = useCallback(
-    () =>
-      agentRunInputs &&
-      api.executeGraph(
-        agentID,
-        Object.fromEntries(
-          Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
-        ),
-      ),
-    [api, agentID, agentRunInputs],
+    ],
+    [agent, router],
   );
-
-  const agentRunOutputs:
-    | Record<string, { type: BlockIOSubType; value: any }>
-    | null
-    | undefined = useMemo(() => {
-    if (!agent || !selectedRun || !("outputs" in selectedRun)) return undefined;
-    if (!["running", "success", "failed"].includes(selectedRunStatus))
-      return null;
-
-    // Add type info from agent input schema
-    return Object.fromEntries(
-      Object.entries(selectedRun.outputs).map(([k, v]) => [
-        k,
-        { value: v, type: agent.output_schema.properties[k].type },
-      ]),
-    );
-  }, [agent, selectedRun, selectedRunStatus]);
-
-  const runActions: { label: string; callback: () => void }[] = useMemo(() => {
-    if (!selectedRun) return [];
-    return [{ label: "Run again", callback: () => runAgain() }];
-  }, [selectedRun, runAgain]);
-
-  const agentActions: { label: string; callback: () => void }[] =
-    useMemo(() => {
-      if (!agentID) return [];
-      return [
-        {
-          label: "Open in builder",
-          callback: () => router.push(`/build?flowID=${agentID}`),
-        },
-      ];
-    }, [agentID, router]);
 
   if (!agent) {
     /* TODO: implement loading indicators / skeleton page */
@@ -213,6 +152,7 @@ export default function AgentRunsPage(): React.ReactElement {
         <Button
           size="card"
           className="mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80"
+          onClick={() => openRunDraftView()}
         >
           <Plus className="h-6 w-6" />
           <span>New run</span>
@@ -248,6 +188,7 @@ export default function AgentRunsPage(): React.ReactElement {
             <Button
               size="card"
               className="flex h-28 w-40 items-center gap-2 py-6 lg:hidden"
+              onClick={() => openRunDraftView()}
             >
               <Plus className="h-6 w-6" />
               <span>New run</span>
@@ -263,7 +204,8 @@ export default function AgentRunsPage(): React.ReactElement {
                     status={agentRunStatusMap[run.status]}
                     title={agent.name}
                     timestamp={run.started_at}
-                    onClick={() => setSelectedRun(run)}
+                    selected={selectedRunID == run.execution_id}
+                    onClick={() => selectRun(run.execution_id)}
                   />
                 ))
               : schedules
@@ -277,7 +219,8 @@ export default function AgentRunsPage(): React.ReactElement {
                       status="scheduled"
                       title={schedule.name}
                       timestamp={schedule.next_run_time} // FIXME
-                      onClick={() => setSelectedRun(schedule)}
+                      selected={selectedSchedule?.id == schedule.id}
+                      onClick={() => selectSchedule(schedule)}
                     />
                   ))}
           </div>
@@ -294,106 +237,421 @@ export default function AgentRunsPage(): React.ReactElement {
           </h1>
         </div>
 
-        {/* Run details view */}
-        {agentRuns.length > 0 ? (
-          <div className="agpt-div flex gap-6">
-            <div className="flex flex-1 flex-col gap-4">
-              <Card className="agpt-box">
-                <CardHeader>
-                  <CardTitle className="font-poppins text-lg">Info</CardTitle>
-                </CardHeader>
-
-                <CardContent>
-                  <div className="flex justify-stretch gap-4">
-                    {infoStats.map(({ label, value }) => (
-                      <div key={label} className="flex-1">
-                        <p className="text-sm font-medium text-black">
-                          {label}
-                        </p>
-                        <p className="text-sm text-neutral-600">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {agentRunOutputs !== null && (
-                <Card className="agpt-box">
-                  <CardHeader>
-                    <CardTitle className="font-poppins text-lg">
-                      Output
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
-                    {agentRunOutputs !== undefined ? (
-                      Object.entries(agentRunOutputs).map(
-                        ([key, { value }]) => (
-                          <div key={key} className="flex flex-col gap-1.5">
-                            <label className="text-sm font-medium">{key}</label>
-                            <pre>{value}</pre>
-                            {/* TODO: pretty type-dependent rendering */}
-                          </div>
-                        ),
-                      )
-                    ) : (
-                      <p>Loading...</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card className="agpt-box">
-                <CardHeader>
-                  <CardTitle className="font-poppins text-lg">Input</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                  {agentRunInputs !== undefined ? (
-                    Object.entries(agentRunInputs).map(([key, { value }]) => (
-                      <div key={key} className="flex flex-col gap-1.5">
-                        <label className="text-sm font-medium">{key}</label>
-                        <Input
-                          defaultValue={value}
-                          className="rounded-full"
-                          disabled
-                        />
-                      </div>
-                    ))
-                  ) : (
-                    <p>Loading...</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Run / Agent Actions */}
-            <aside className="w-48 xl:w-56">
-              <div className="flex flex-col gap-8">
-                <div className="flex flex-col gap-3">
-                  <h3 className="text-sm font-medium">Run actions</h3>
-                  {runActions.map((action, i) => (
-                    <Button key={i} variant="outline" onClick={action.callback}>
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <h3 className="text-sm font-medium">Agent actions</h3>
-                  {agentActions.map((action, i) => (
-                    <Button key={i} variant="outline" onClick={action.callback}>
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </aside>
-          </div>
+        {/* Run / Schedule views */}
+        {selectedRun ? (
+          selectedRun != "new" ? (
+            <AgentRunDetailsView
+              agent={agent}
+              run={selectedRun}
+              agentActions={agentActions}
+            />
+          ) : (
+            <AgentRunDraftView
+              agent={agent}
+              onRun={(runID) => selectRun(runID)}
+              agentActions={agentActions}
+            />
+          )
+        ) : selectedSchedule ? (
+          <AgentScheduleDetailsView
+            agent={agent}
+            schedule={selectedSchedule}
+            onForcedRun={(runID) => selectRun(runID)}
+            agentActions={agentActions}
+          />
         ) : (
-          <div className="agpt-rounded-card m-5 flex h-40 items-center justify-center border-2 border-dashed text-zinc-400">
-            No runs yet
-          </div>
+          agentRuns.length == 0 && (
+            <div className="agpt-rounded-card m-5 flex h-40 items-center justify-center border-2 border-dashed text-zinc-400">
+              No runs yet
+            </div>
+          )
         )}
       </div>
+    </div>
+  );
+}
+
+function AgentRunDetailsView({
+  agent,
+  run,
+  agentActions,
+}: {
+  agent: GraphMeta;
+  run: GraphExecution | GraphExecutionMeta;
+  agentActions: { label: string; callback: () => void }[];
+}): React.ReactNode {
+  const api = useBackendAPI();
+
+  const selectedRunStatus: AgentRunStatus = useMemo(
+    () => agentRunStatusMap[run.status],
+    [run],
+  );
+
+  const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
+    if (!run) return [];
+    return [
+      {
+        label: "Status",
+        value:
+          selectedRunStatus.charAt(0).toUpperCase() +
+          selectedRunStatus.slice(1),
+      },
+      {
+        label: "Started",
+        value: `${moment(run.started_at).fromNow()}, ${moment(run.started_at).format("HH:mm")}`,
+      },
+      {
+        label: "Duration",
+        value: `${moment.duration(run.duration, "seconds").humanize()}`,
+      },
+      // { label: "Cost", value: selectedRun.cost },  // TODO: implement cost - https://github.com/Significant-Gravitas/AutoGPT/issues/9181
+    ];
+  }, [run, selectedRunStatus]);
+
+  const agentRunInputs:
+    | Record<string, { type: BlockIOSubType; value: any }>
+    | undefined = useMemo(() => {
+    if (!("inputs" in run)) return undefined;
+    // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
+
+    // Add type info from agent input schema
+    return Object.fromEntries(
+      Object.entries(run.inputs).map(([k, v]) => [
+        k,
+        { value: v, type: agent.input_schema.properties[k].type },
+      ]),
+    );
+  }, [agent, run]);
+
+  const runAgain = useCallback(
+    () =>
+      agentRunInputs &&
+      api.executeGraph(
+        agent.id,
+        Object.fromEntries(
+          Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
+        ),
+      ),
+    [api, agent, agentRunInputs],
+  );
+
+  const agentRunOutputs:
+    | Record<string, { type: BlockIOSubType; value: any }>
+    | null
+    | undefined = useMemo(() => {
+    if (!("outputs" in run)) return undefined;
+    if (!["running", "success", "failed"].includes(selectedRunStatus))
+      return null;
+
+    // Add type info from agent input schema
+    return Object.fromEntries(
+      Object.entries(run.outputs).map(([k, v]) => [
+        k,
+        { value: v, type: agent.output_schema.properties[k].type },
+      ]),
+    );
+  }, [agent, run, selectedRunStatus]);
+
+  const runActions: { label: string; callback: () => void }[] = useMemo(
+    () => [{ label: "Run again", callback: () => runAgain() }],
+    [runAgain],
+  );
+
+  return (
+    <div className="agpt-div flex gap-6">
+      <div className="flex flex-1 flex-col gap-4">
+        <Card className="agpt-box">
+          <CardHeader>
+            <CardTitle className="font-poppins text-lg">Info</CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <div className="flex justify-stretch gap-4">
+              {infoStats.map(({ label, value }) => (
+                <div key={label} className="flex-1">
+                  <p className="text-sm font-medium text-black">{label}</p>
+                  <p className="text-sm text-neutral-600">{value}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {agentRunOutputs !== null && (
+          <Card className="agpt-box">
+            <CardHeader>
+              <CardTitle className="font-poppins text-lg">Output</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {agentRunOutputs !== undefined ? (
+                Object.entries(agentRunOutputs).map(([key, { value }]) => (
+                  <div key={key} className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium">{key}</label>
+                    <pre>{value}</pre>
+                    {/* TODO: pretty type-dependent rendering */}
+                  </div>
+                ))
+              ) : (
+                <p>Loading...</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="agpt-box">
+          <CardHeader>
+            <CardTitle className="font-poppins text-lg">Input</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {agentRunInputs !== undefined ? (
+              Object.entries(agentRunInputs).map(([key, { value }]) => (
+                <div key={key} className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">{key}</label>
+                  <Input
+                    defaultValue={value}
+                    className="rounded-full"
+                    disabled
+                  />
+                </div>
+              ))
+            ) : (
+              <p>Loading...</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Run / Agent Actions */}
+      <aside className="w-48 xl:w-56">
+        <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Run actions</h3>
+            {runActions.map((action, i) => (
+              <Button key={i} variant="outline" onClick={action.callback}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Agent actions</h3>
+            {agentActions.map((action, i) => (
+              <Button key={i} variant="outline" onClick={action.callback}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function AgentScheduleDetailsView({
+  agent,
+  schedule,
+  onForcedRun,
+  agentActions,
+}: {
+  agent: GraphMeta;
+  schedule: Schedule;
+  onForcedRun: (runID: string) => void;
+  agentActions: { label: string; callback: () => void }[];
+}): React.ReactNode {
+  const api = useBackendAPI();
+
+  const selectedRunStatus: AgentRunStatus = "scheduled";
+
+  const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
+    return [
+      {
+        label: "Status",
+        value:
+          selectedRunStatus.charAt(0).toUpperCase() +
+          selectedRunStatus.slice(1),
+      },
+      { label: "Scheduled for", value: schedule.next_run_time },
+    ];
+  }, [schedule, selectedRunStatus]);
+
+  const agentRunInputs: Record<string, { type: BlockIOSubType; value: any }> =
+    useMemo(() => {
+      // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
+
+      // Add type info from agent input schema
+      return Object.fromEntries(
+        Object.entries(schedule.input_data).map(([k, v]) => [
+          k,
+          { value: v, type: agent.input_schema.properties[k].type },
+        ]),
+      );
+    }, [agent, schedule]);
+
+  const runNow = useCallback(
+    () =>
+      api
+        .executeGraph(agent.id, schedule.input_data)
+        .then((run) => onForcedRun(run.id)),
+    [api, agent, schedule, onForcedRun],
+  );
+
+  const runActions: { label: string; callback: () => void }[] = useMemo(
+    () => [{ label: "Run now", callback: () => runNow() }],
+    [runNow],
+  );
+
+  return (
+    <div className="agpt-div flex gap-6">
+      <div className="flex flex-1 flex-col gap-4">
+        <Card className="agpt-box">
+          <CardHeader>
+            <CardTitle className="font-poppins text-lg">Info</CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <div className="flex justify-stretch gap-4">
+              {infoStats.map(({ label, value }) => (
+                <div key={label} className="flex-1">
+                  <p className="text-sm font-medium text-black">{label}</p>
+                  <p className="text-sm text-neutral-600">{value}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="agpt-box">
+          <CardHeader>
+            <CardTitle className="font-poppins text-lg">Input</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {agentRunInputs !== undefined ? (
+              Object.entries(agentRunInputs).map(([key, { value }]) => (
+                <div key={key} className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">{key}</label>
+                  <Input
+                    defaultValue={value}
+                    className="rounded-full"
+                    disabled
+                  />
+                </div>
+              ))
+            ) : (
+              <p>Loading...</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Run / Agent Actions */}
+      <aside className="w-48 xl:w-56">
+        <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Run actions</h3>
+            {runActions.map((action, i) => (
+              <Button key={i} variant="outline" onClick={action.callback}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Agent actions</h3>
+            {agentActions.map((action, i) => (
+              <Button key={i} variant="outline" onClick={action.callback}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function AgentRunDraftView({
+  agent,
+  onRun,
+  agentActions,
+}: {
+  agent: GraphMeta;
+  onRun: (runID: string) => void;
+  agentActions: { label: string; callback: () => void }[];
+}): React.ReactNode {
+  const api = useBackendAPI();
+
+  const agentInputs = agent.input_schema.properties;
+  const [inputValues, setInputValues] = useState<Record<string, any>>({});
+
+  const doRun = useCallback(
+    () =>
+      api
+        .executeGraph(agent.id, inputValues)
+        .then((newRun) => onRun(newRun.id)),
+    [api, agent, inputValues, onRun],
+  );
+
+  const runActions: {
+    label: string;
+    variant?: ButtonProps["variant"];
+    callback: () => void;
+  }[] = useMemo(
+    () => [{ label: "Run", variant: "accent", callback: () => doRun() }],
+    [doRun],
+  );
+
+  return (
+    <div className="agpt-div flex gap-6">
+      <div className="flex flex-1 flex-col gap-4">
+        <Card className="agpt-box">
+          <CardHeader>
+            <CardTitle className="font-poppins text-lg">Input</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {Object.entries(agentInputs).map(([key, inputSubSchema]) => (
+              <div key={key} className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">{key}</label>
+                <Input
+                  defaultValue={
+                    "default" in inputSubSchema ? inputSubSchema.default : ""
+                  }
+                  className="rounded-full"
+                  onChange={(e) =>
+                    setInputValues((obj) => (obj[key] = e.target.value))
+                  }
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Actions */}
+      <aside className="w-48 xl:w-56">
+        <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Run actions</h3>
+            {runActions.map((action, i) => (
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Agent actions</h3>
+            {agentActions.map((action, i) => (
+              <Button key={i} variant="outline" onClick={action.callback}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }
