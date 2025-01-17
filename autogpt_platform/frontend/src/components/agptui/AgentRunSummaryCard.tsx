@@ -38,7 +38,7 @@ export default function AgentRunSummaryCard({
   return (
     <Card
       className={cn(
-        "agpt-rounded-card border-zinc-300",
+        "agpt-rounded-card cursor-pointer border-zinc-300",
         selected ? "border-2 border-accent bg-violet-50/50" : "",
         className,
       )}
