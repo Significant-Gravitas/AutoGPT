@@ -40,9 +40,12 @@ export default function AgentRunsPage(): React.ReactElement {
   const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [selectedRunID, setSelectedRunID] = useState<string | null>(null);
+  const [selectedView, selectView] = useState<{
+    type: "run" | "schedule";
+    id?: string;
+  }>({ type: "run" });
   const [selectedRun, setSelectedRun] = useState<
-    GraphExecution | GraphExecutionMeta | "new" | null
+    GraphExecution | GraphExecutionMeta | null
   >(null);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
     null,
@@ -50,22 +53,19 @@ export default function AgentRunsPage(): React.ReactElement {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
     "runs",
   );
+  const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
 
   const openRunDraftView = useCallback(() => {
-    setSelectedRun("new");
-    setSelectedRunID(null);
-    setSelectedSchedule(null);
+    selectView({ type: "run" });
   }, []);
 
   const selectRun = useCallback((id: string) => {
-    setSelectedRunID(id);
-    setSelectedSchedule(null);
+    selectView({ type: "run", id });
   }, []);
 
   const selectSchedule = useCallback((schedule: Schedule) => {
+    selectView({ type: "schedule", id: schedule.id });
     setSelectedSchedule(schedule);
-    setSelectedRun(null);
-    setSelectedRunID(null);
   }, []);
 
   const fetchAgents = useCallback(() => {
@@ -76,32 +76,33 @@ export default function AgentRunsPage(): React.ReactElement {
       );
       setAgentRuns(sortedRuns);
 
-      if (!selectedRunID && selectedRun != "new" && sortedRuns.length > 0) {
+      if (!selectedView.id && isFirstLoad && sortedRuns.length > 0) {
         // only for first load or first execution
-        setSelectedRunID(sortedRuns[0].execution_id);
+        setIsFirstLoad(false);
+        selectView({ type: "run", id: sortedRuns[0].execution_id });
         setSelectedRun(sortedRuns[0]);
       }
     });
-    if (selectedRunID) {
-      api.getGraphExecutionInfo(agentID, selectedRunID).then(setSelectedRun);
+    if (selectedView.type == "run" && selectedView.id) {
+      api.getGraphExecutionInfo(agentID, selectedView.id).then(setSelectedRun);
     }
-  }, [api, agentID]);
+  }, [api, agentID, selectedView, isFirstLoad]);
 
   useEffect(() => {
     fetchAgents();
-  }, [fetchAgents]);
+  }, []);
 
-  // load selectedRun based on selectedRunID
+  // load selectedRun based on selectedView
   useEffect(() => {
-    if (!selectedRunID) return;
+    if (selectedView.type != "run" || !selectedView.id) return;
 
     // pull partial data from "cache" while waiting for the rest to load
     setSelectedRun(
-      agentRuns.find((r) => r.execution_id == selectedRunID) ?? null,
+      agentRuns.find((r) => r.execution_id == selectedView.id) ?? null,
     );
 
-    api.getGraphExecutionInfo(agentID, selectedRunID).then(setSelectedRun);
-  }, [api, selectedRunID, agentRuns, agentID]);
+    api.getGraphExecutionInfo(agentID, selectedView.id).then(setSelectedRun);
+  }, [api, selectedView, agentRuns, agentID]);
 
   const fetchSchedules = useCallback(async () => {
     // TODO: filter in backend - https://github.com/Significant-Gravitas/AutoGPT/issues/9183
@@ -153,7 +154,7 @@ export default function AgentRunsPage(): React.ReactElement {
           size="card"
           className={
             "mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80 " +
-            (selectedRun == "new"
+            (selectedView.type == "run" && !selectedView.id
               ? "border-2 border-accent bg-violet-50/50 text-accent"
               : "")
           }
@@ -194,7 +195,7 @@ export default function AgentRunsPage(): React.ReactElement {
               size="card"
               className={
                 "flex h-28 w-40 items-center gap-2 py-6 lg:hidden " +
-                (selectedRun == "new"
+                (selectedView.type == "run" && !selectedView.id
                   ? "border-2 border-accent bg-violet-50/50 text-accent"
                   : "")
               }
@@ -214,7 +215,7 @@ export default function AgentRunsPage(): React.ReactElement {
                     status={agentRunStatusMap[run.status]}
                     title={agent.name}
                     timestamp={run.started_at}
-                    selected={selectedRunID == run.execution_id}
+                    selected={selectedView.id === run.execution_id}
                     onClick={() => selectRun(run.execution_id)}
                   />
                 ))
@@ -229,7 +230,7 @@ export default function AgentRunsPage(): React.ReactElement {
                       status="scheduled"
                       title={schedule.name}
                       timestamp={schedule.next_run_time} // FIXME
-                      selected={selectedSchedule?.id == schedule.id}
+                      selected={selectedView.id === schedule.id}
                       onClick={() => selectSchedule(schedule)}
                     />
                   ))}
@@ -248,13 +249,15 @@ export default function AgentRunsPage(): React.ReactElement {
         </div>
 
         {/* Run / Schedule views */}
-        {selectedRun ? (
-          selectedRun != "new" ? (
-            <AgentRunDetailsView
-              agent={agent}
-              run={selectedRun}
-              agentActions={agentActions}
-            />
+        {(selectedView.type == "run" ? (
+          selectedView.id ? (
+            selectedRun && (
+              <AgentRunDetailsView
+                agent={agent}
+                run={selectedRun}
+                agentActions={agentActions}
+              />
+            )
           ) : (
             <AgentRunDraftView
               agent={agent}
@@ -262,20 +265,16 @@ export default function AgentRunsPage(): React.ReactElement {
               agentActions={agentActions}
             />
           )
-        ) : selectedSchedule ? (
-          <AgentScheduleDetailsView
-            agent={agent}
-            schedule={selectedSchedule}
-            onForcedRun={(runID) => selectRun(runID)}
-            agentActions={agentActions}
-          />
-        ) : (
-          agentRuns.length == 0 && (
-            <div className="agpt-rounded-card m-5 flex h-40 items-center justify-center border-2 border-dashed text-zinc-400">
-              No runs yet
-            </div>
+        ) : selectedView.type == "schedule" ? (
+          selectedSchedule && (
+            <AgentScheduleDetailsView
+              agent={agent}
+              schedule={selectedSchedule}
+              onForcedRun={(runID) => selectRun(runID)}
+              agentActions={agentActions}
+            />
           )
-        )}
+        ) : null) || <p>Loading...</p>}
       </div>
     </div>
   );
