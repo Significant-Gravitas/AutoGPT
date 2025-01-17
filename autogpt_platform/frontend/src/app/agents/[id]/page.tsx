@@ -626,7 +626,7 @@ function AgentRunDraftView({
                   }
                   className="rounded-full"
                   onChange={(e) =>
-                    setInputValues((obj) => (obj[key] = e.target.value))
+                    setInputValues((obj) => ({ ...obj, [key]: e.target.value }))
                   }
                 />
               </div>
