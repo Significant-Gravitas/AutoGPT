@@ -47,7 +47,7 @@ from backend.server.model import (
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
-from backend.data import redis
+from backend.data.redis import get_redis_async
 
 if TYPE_CHECKING:
     from backend.data.model import Credentials
@@ -717,6 +717,7 @@ class Params(BaseModel):
     path="/store-redis",
 )
 async def store_redis(params: Params):
+    redis = await get_redis_async()
     for key, value in params.data.items():
-        redis.set(key, value)
+        await redis.set(key, value)
     return {"message": "Parameters stored successfully!"}
