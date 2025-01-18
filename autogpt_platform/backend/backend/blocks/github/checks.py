@@ -219,9 +219,8 @@ class GithubUpdateCheckRunBlock(Block):
         status: ChecksStatus = SchemaField(
             description="New status of the check run",
         )
-        conclusion: Optional[ChecksConclusion] = SchemaField(
+        conclusion: ChecksConclusion = SchemaField(
             description="The final conclusion of the check (required if status is completed)",
-            default=None,
         )
         output_title: Optional[str] = SchemaField(
             description="New title of the check run output",
