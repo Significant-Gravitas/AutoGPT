@@ -30,6 +30,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   hubspot: "Hubspot",
   ideogram: "Ideogram",
   jina: "Jina",
+  linear: "Linear",
   medium: "Medium",
   notion: "Notion",
   nvidia: "Nvidia",

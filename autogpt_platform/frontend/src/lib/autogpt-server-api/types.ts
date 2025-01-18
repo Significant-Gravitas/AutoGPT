@@ -119,6 +119,7 @@ export const PROVIDER_NAMES = {
   HUBSPOT: "hubspot",
   IDEOGRAM: "ideogram",
   JINA: "jina",
+  LINEAR: "linear",
   MEDIUM: "medium",
   NOTION: "notion",
   NVIDIA: "nvidia",

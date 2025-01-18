@@ -93,6 +93,10 @@ export default class BackendAPI {
     return this._request("POST", "/credits", { amount });
   }
 
+  getUserPaymentPortalLink(): Promise<{ url: string }> {
+    return this._get("/credits/manage");
+  }
+
   fulfillCheckout(): Promise<void> {
     return this._request("PATCH", "/credits");
   }
