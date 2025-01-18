@@ -10,7 +10,7 @@ test.describe("Profile", () => {
     // Start each test with login using worker auth
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/store");
+    await test.expect(page).toHaveURL("/marketplace");
   });
 
   test("user can view their profile information", async ({

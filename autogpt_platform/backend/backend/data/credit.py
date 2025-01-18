@@ -310,9 +310,9 @@ class UserCredit(UserCreditBase):
             ],
             mode="payment",
             success_url=settings.config.platform_base_url
-            + "/store/credits?topup=success",
+            + "/marketplace/credits?topup=success",
             cancel_url=settings.config.platform_base_url
-            + "/store/credits?topup=cancel",
+            + "/marketplace/credits?topup=cancel",
         )
 
         # Create pending transaction
