@@ -4,10 +4,11 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
+import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -28,7 +29,11 @@ from backend.data.api_key import (
     update_api_key_permissions,
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.credit import get_block_costs, get_user_credit_model
+from backend.data.credit import (
+    get_block_costs,
+    get_stripe_customer_id,
+    get_user_credit_model,
+)
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -40,6 +45,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
 )
@@ -134,7 +140,69 @@ async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
     # Credits can go negative, so ensure it's at least 0 for user to see.
-    return {"credits": max(await _user_credit_model.get_or_refill_credit(user_id), 0)}
+    return {"credits": max(await _user_credit_model.get_credits(user_id), 0)}
+
+
+@v1_router.post(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
+async def request_top_up(
+    request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
+):
+    checkout_url = await _user_credit_model.top_up_intent(user_id, request.amount)
+    return {"checkout_url": checkout_url}
+
+
+@v1_router.patch(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
+async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
+    await _user_credit_model.fulfill_checkout(user_id=user_id)
+    return Response(status_code=200)
+
+
+@v1_router.post(path="/credits/stripe_webhook", tags=["credits"])
+async def stripe_webhook(request: Request):
+    # Get the raw request body
+    payload = await request.body()
+    # Get the signature header
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.secrets.stripe_webhook_secret
+        )
+    except ValueError:
+        # Invalid payload
+        raise HTTPException(status_code=400)
+    except stripe.SignatureVerificationError:
+        # Invalid signature
+        raise HTTPException(status_code=400)
+
+    if (
+        event["type"] == "checkout.session.completed"
+        or event["type"] == "checkout.session.async_payment_succeeded"
+    ):
+        await _user_credit_model.fulfill_checkout(
+            session_id=event["data"]["object"]["id"]
+        )
+
+    return Response(status_code=200)
+
+
+@v1_router.get(path="/credits/manage", dependencies=[Depends(auth_middleware)])
+async def manage_payment_method(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> dict[str, str]:
+    session = stripe.billing_portal.Session.create(
+        customer=await get_stripe_customer_id(user_id),
+        return_url=settings.config.platform_base_url + "/store/credits",
+    )
+    if not session:
+        raise HTTPException(
+            status_code=400, detail="Failed to create billing portal session"
+        )
+    return {"url": session.url}
 
 
 ########################################################
@@ -545,7 +613,6 @@ def get_execution_schedules(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def create_api_key(
     request: CreateAPIKeyRequest, user_id: Annotated[str, Depends(get_user_id)]
 ) -> CreateAPIKeyResponse:
@@ -569,7 +636,6 @@ async def create_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def get_api_keys(
     user_id: Annotated[str, Depends(get_user_id)]
 ) -> list[APIKeyWithoutHash]:
@@ -587,7 +653,6 @@ async def get_api_keys(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def get_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> APIKeyWithoutHash:

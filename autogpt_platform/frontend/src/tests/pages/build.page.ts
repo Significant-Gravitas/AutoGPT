@@ -1,7 +1,7 @@
 import { ElementHandle, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
-interface Block {
+export interface Block {
   id: string;
   name: string;
   description: string;
@@ -378,6 +378,39 @@ export class BuildPage extends BasePage {
     };
   }
 
+  async getAgentExecutorBlockDetails(): Promise<Block> {
+    return {
+      id: "e189baac-8c20-45a1-94a7-55177ea42565",
+      name: "Agent Executor",
+      description: "Executes an existing agent inside your agent",
+    };
+  }
+
+  async getAgentOutputBlockDetails(): Promise<Block> {
+    return {
+      id: "363ae599-353e-4804-937e-b2ee3cef3da4",
+      name: "Agent Output",
+      description: "This block is used to output the result of an agent.",
+    };
+  }
+
+  async getAgentInputBlockDetails(): Promise<Block> {
+    return {
+      id: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      name: "Agent Input",
+      description: "This block is used to provide input to the graph.",
+    };
+  }
+
+  async getGithubTriggerBlockDetails(): Promise<Block> {
+    return {
+      id: "6c60ec01-8128-419e-988f-96a063ee2fea",
+      name: "Github Trigger",
+      description:
+        "This block triggers on pull request events and outputs the event type and payload.",
+    };
+  }
+
   async nextTutorialStep(): Promise<void> {
     console.log(`clicking next tutorial step`);
     await this.page.getByRole("button", { name: "Next" }).click();
@@ -446,6 +479,15 @@ export class BuildPage extends BasePage {
       },
       { newX, newY },
     );
+  }
+
+  async getBlocksToSkip(): Promise<string[]> {
+    return [
+      (await this.getAgentExecutorBlockDetails()).id,
+      (await this.getAgentInputBlockDetails()).id,
+      (await this.getAgentOutputBlockDetails()).id,
+      (await this.getGithubTriggerBlockDetails()).id,
+    ];
   }
 
   async waitForRunTutorialButton(): Promise<void> {
