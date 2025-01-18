@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import Literal, Optional
+from typing import Optional
+
 from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
