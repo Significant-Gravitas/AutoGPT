@@ -1,14 +1,17 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Annotated, Any, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Sequence, Dict
 
 import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing_extensions import Optional, TypedDict
+from pydantic import BaseModel
+import os
+from datetime import datetime, timedelta
 
 import backend.data.block
 import backend.server.integrations.router
@@ -46,6 +49,7 @@ from backend.server.model import (
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
+from backend.data.redis import get_redis_async
 
 if TYPE_CHECKING:
     from backend.data.model import Credentials
@@ -702,3 +706,42 @@ async def update_permissions(
     except APIKeyError as e:
         logger.error(f"Failed to update API key permissions: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+########################################################
+##################### Redis ############################
+########################################################
+
+class Params(BaseModel):
+    SHOPIFY_INTEGRATION_STORE_COOKIE: str
+    SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN: str
+
+@v1_router.post(
+    path="/shopify/integration/cookie",
+)
+async def store_shopify_integration_cookie(
+    params: Params,
+    secret: str = Query(...),
+):
+    secret_token = os.getenv("SHOPIFY_INTEGRATION_SECRET_TOKEN")
+    expire_duration = int(os.getenv("SHOPIFY_INTEGRATION_COOKIE_EXPIRE_DURATION", 18))
+
+    if secret != secret_token:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    expiration_time = datetime.utcnow() + timedelta(hours=expire_duration)    
+    redis = await get_redis_async()
+    await redis.set(
+        "SHOPIFY_INTEGRATION_STORE_COOKIE", 
+        params.SHOPIFY_INTEGRATION_STORE_COOKIE, 
+        ex=expire_duration * 3600
+    )
+    await redis.set(
+        "SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN", 
+        params.SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN, 
+        ex=expire_duration * 3600
+    )
+    return {
+        'SHOPIFY_INTEGRATION_STORE_COOKIE': expiration_time.isoformat() + "Z",
+        'SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN': expiration_time.isoformat() + "Z"
+    }
