@@ -399,19 +399,16 @@ class BetaUserCredit(UserCredit):
         if (snapshot_time.year, snapshot_time.month) == (cur_time.year, cur_time.month):
             return balance
 
-        top_up_amount = max(self.num_user_credits_refill - balance, 0)
-        running_balance = balance + top_up_amount
         try:
             return await self._add_transaction(
                 user_id=user_id,
-                amount=top_up_amount,
+                amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.TOP_UP,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
             )
         except UniqueViolationError:
-            pass  # Already refilled this month
-
-        return running_balance
+            # Already refilled this month
+            return (await self._get_credits(user_id))[0]
 
 
 class DisabledUserCredit(UserCreditBase):
