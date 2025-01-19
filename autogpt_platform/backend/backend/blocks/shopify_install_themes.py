@@ -7,6 +7,8 @@ import urllib
 from typing import  List, Dict
 import time
 
+# redis
+from backend.data import redis
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
@@ -100,6 +102,8 @@ class ShopifyInstallThemeBlock(Block):
         theme_id: str = SchemaField(description="The theme that was installed")
 
     def __init__(self):
+        self.redis = redis.get_redis()
+
         super().__init__(
             id=ShopifyInstallThemeBlock.block_id,
             description="This block installs theme a theme on Shopify for user.",
@@ -143,13 +147,18 @@ class ShopifyInstallThemeBlock(Block):
         url = f"https://admin.shopify.com/api/shopify/{shop_name}?operation=GenerateSessionToken&type=mutation"
 
          # Load environment variables
-        encoded_cookie = os.getenv("SHOPIFY_INTEGRATION_STORE_COOKIE")
+        # encoded_cookie = os.getenv("SHOPIFY_INTEGRATION_STORE_COOKIE")
+        encoded_cookie = self.redis.get("SHOPIFY_INTEGRATION_STORE_COOKIE")
+
         if not encoded_cookie:
             raise EnvironmentError("Environment variable SHOPIFY_INTEGRATION_STORE_COOKIE is missing.")
         
         cookie = base64.b64decode(encoded_cookie).decode("utf-8")
 
-        csrf_token = os.getenv("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+        # csrf_token = os.getenv("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+
+        csrf_token = self.redis.get("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+        
         if not csrf_token:
             raise EnvironmentError("Environment variable 'SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN' is not set.")
         
@@ -202,13 +211,18 @@ class ShopifyInstallThemeBlock(Block):
         url = f"https://admin.shopify.com/api/shopify/{shop_name}?operation=GenerateAuthCode&type=mutation"
 
          # Load environment variables
-        encoded_cookie = os.getenv("SHOPIFY_INTEGRATION_STORE_COOKIE")
+        # encoded_cookie = os.getenv("SHOPIFY_INTEGRATION_STORE_COOKIE")
+        encoded_cookie = self.redis.get("SHOPIFY_INTEGRATION_STORE_COOKIE")
+
         if not encoded_cookie:
             raise EnvironmentError("Environment variable SHOPIFY_INTEGRATION_STORE_COOKIE is missing.")
         
         cookie = base64.b64decode(encoded_cookie).decode("utf-8")
 
-        csrf_token = os.getenv("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+        #csrf_token = os.getenv("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+
+        csrf_token = self.redis.get("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+
         if not csrf_token:
             raise EnvironmentError("Environment variable 'SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN' is not set.")
         
