@@ -748,8 +748,7 @@ async def store_shopify_integration_cookie(
 
 from backend.util.request import requests
 from groq._utils._utils import quote
-from pydantic import SecretStr
-from backend.blocks.llm import AITextSummarizerBlock, OPENAI_CREDENTIALS, OPENAI_CREDENTIALS_INPUT
+from backend.blocks.llm import AIConversationBlock, OPENAI_CREDENTIALS, OPENAI_CREDENTIALS_INPUT
 
 @v1_router.post(
     path="/3tn/search",
@@ -768,16 +767,68 @@ async def search_the_web(
         "Authorization": f"Bearer {jina_api_key}",
     }
 
-    encoded_query = quote(params["query"])  
+    user_query = params.get("query", "") or params.get("user_query", "")
+    if not user_query:
+        raise HTTPException(status_code=400, detail="No query provided")
+
+    encoded_query = quote(user_query)  
     url = f"https://s.jina.ai/{encoded_query}"
     response = requests.get(url, headers=headers)
     logger.info(f"Jina response: {response.text[:100]}...")
 
-    block = AITextSummarizerBlock()
-    input = AITextSummarizerBlock.Input(
-        text=response.text,
+    user_prompt = params.get("user_prompt", "Please help me summarize this text:")
+    block = AIConversationBlock()
+    input = AIConversationBlock.Input(
+        messages=[user_prompt, response.text],
         credentials=OPENAI_CREDENTIALS_INPUT,
     )
 
     output = block.run(input_data=input, credentials=OPENAI_CREDENTIALS)
+    return output
+
+
+from backend.blocks.gmail import GmailBlock
+
+@v1_router.post(
+    path="/3tn/gmail",
+)
+async def send_gmail(
+    params: dict[str, str] = Body(...),
+):
+    email = params.get("email", "")
+    access_token = params.get("access_token", "")
+    if not email or not access_token:
+        raise HTTPException(status_code=400, detail="No email or access token provided")
+    
+    block = GmailBlock()
+    input = GmailBlock.Input(
+        email=email,
+        subject_text=params.get("subject_text", "AutoGPT Notification"),
+        body_text=params.get("body_text", "Sending by AutoGPT"),
+        access_token=access_token,
+    )
+
+    output = block.run(input_data=input)
+    return output
+
+from backend.blocks.twitter import PostTwitterTweetBlock
+
+@v1_router.post(
+    path="/3tn/twitter/post",
+)
+async def post_to_twitter(
+    params: dict[str, str] = Body(...),
+):
+    post_content = params.get("post_content", "")
+    access_token = params.get("access_token", "")
+    if not post_content or not access_token:
+        raise HTTPException(status_code=400, detail="No content or access token provided")
+    
+    block = PostTwitterTweetBlock()
+    input = PostTwitterTweetBlock.Input(
+        post_content=post_content,
+        access_token=access_token,
+    )
+
+    output = block.run(input_data=input)
     return output

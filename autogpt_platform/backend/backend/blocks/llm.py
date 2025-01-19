@@ -208,7 +208,7 @@ class AIStructuredResponseGeneratorBlock(Block):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -544,7 +544,7 @@ class AITextGeneratorBlock(Block):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -784,7 +784,7 @@ class AIConversationBlock(Block):
         # Other fields remain the same
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for the conversation.",
         )
         credentials: AICredentials = AICredentialsField()
@@ -876,7 +876,7 @@ class AIListGeneratorBlock(Block):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for generating the list.",
             advanced=True,
         )
