@@ -313,6 +313,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
 
+    linear_client_id: str = Field(default="", description="Linear client ID")
+    linear_client_secret: str = Field(default="", description="Linear client secret")
+
     stripe_api_key: str = Field(default="", description="Stripe API Key")
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 

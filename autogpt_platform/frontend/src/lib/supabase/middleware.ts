@@ -5,9 +5,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const PROTECTED_PAGES = [
   "/monitor",
   "/build",
-  "/store/profile",
-  "/store/settings",
-  "/store/dashboard",
+  "/marketplace/profile",
+  "/marketplace/settings",
+  "/marketplace/dashboard",
 ];
 const ADMIN_PAGES = ["/admin"];
 
@@ -87,7 +87,7 @@ export async function updateSession(request: NextRequest) {
       ADMIN_PAGES.some((page) => request.nextUrl.pathname.startsWith(`${page}`))
     ) {
       // no user, potentially respond by redirecting the user to the login page
-      url.pathname = `/store`;
+      url.pathname = `/marketplace`;
       return NextResponse.redirect(url);
     }
 

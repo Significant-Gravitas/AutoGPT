@@ -105,7 +105,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           by
         </div>
         <Link
-          href={`/store/creator/${encodeURIComponent(creator)}`}
+          href={`/marketplace/creator/${encodeURIComponent(creator)}`}
           className="font-geist text-base font-medium text-neutral-800 hover:underline dark:text-neutral-200 sm:text-lg lg:text-xl"
         >
           {creator}
