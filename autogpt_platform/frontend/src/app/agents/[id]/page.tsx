@@ -97,9 +97,11 @@ export default function AgentRunsPage(): React.ReactElement {
     if (selectedView.type != "run" || !selectedView.id) return;
 
     // pull partial data from "cache" while waiting for the rest to load
-    setSelectedRun(
-      agentRuns.find((r) => r.execution_id == selectedView.id) ?? null,
-    );
+    if (selectedView.id !== selectedRun?.execution_id) {
+      setSelectedRun(
+        agentRuns.find((r) => r.execution_id == selectedView.id) ?? null,
+      );
+    }
 
     api.getGraphExecutionInfo(agentID, selectedView.id).then(setSelectedRun);
   }, [api, selectedView, agentRuns, agentID]);
