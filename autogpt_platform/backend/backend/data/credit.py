@@ -129,16 +129,16 @@ class UserCreditBase(ABC):
             },
         )
         transaction_balance = (
-            transactions[0].get("_sum", {}).get("amount", 0) if transactions else 0
+            transactions[0].get("_sum", {}).get("amount", 0) + snapshot_balance
+            if transactions
+            else snapshot_balance
         )
         transaction_time = (
             transactions[0].get("_max", {}).get("createdAt", datetime_min)
             if transactions
-            else datetime_min
+            else snapshot_time
         )
-        return snapshot_balance + transaction_balance, max(
-            snapshot_time, transaction_time
-        )
+        return transaction_balance, transaction_time
 
     async def _enable_transaction(
         self, transaction_key: str, user_id: str, metadata: Json
