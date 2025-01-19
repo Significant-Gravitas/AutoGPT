@@ -7,7 +7,7 @@ import pydantic
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from typing_extensions import Optional, TypedDict
 from pydantic import BaseModel
 import os
@@ -712,7 +712,7 @@ async def update_permissions(
 ##################### Redis ############################
 ########################################################
 
-class Params(BaseModel):
+class ShopifyIntegrationParams(BaseModel):
     SHOPIFY_INTEGRATION_STORE_COOKIE: str
     SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN: str
 
@@ -720,7 +720,7 @@ class Params(BaseModel):
     path="/shopify/integration/cookie",
 )
 async def store_shopify_integration_cookie(
-    params: Params,
+    params: ShopifyIntegrationParams,
     secret: str = Query(...),
 ):
     secret_token = os.getenv("SHOPIFY_INTEGRATION_SECRET_TOKEN")
@@ -745,3 +745,39 @@ async def store_shopify_integration_cookie(
         'SHOPIFY_INTEGRATION_STORE_COOKIE': expiration_time.isoformat() + "Z",
         'SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN': expiration_time.isoformat() + "Z"
     }
+
+from backend.util.request import requests
+from groq._utils._utils import quote
+from pydantic import SecretStr
+from backend.blocks.llm import AITextSummarizerBlock, OPENAI_CREDENTIALS, OPENAI_CREDENTIALS_INPUT
+
+@v1_router.post(
+    path="/3tn/search",
+)
+async def search_the_web(
+    params: dict[str, str] = Body(...),
+):
+    jina_api_key = os.getenv("JINA_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+
+    if not jina_api_key or not openai_api_key:
+        raise HTTPException(status_code=500, detail="API keys not found")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {jina_api_key}",
+    }
+
+    encoded_query = quote(params["query"])  
+    url = f"https://s.jina.ai/{encoded_query}"
+    response = requests.get(url, headers=headers)
+    logger.info(f"Jina response: {response.text[:100]}...")
+
+    block = AITextSummarizerBlock()
+    input = AITextSummarizerBlock.Input(
+        text=response.text,
+        credentials=OPENAI_CREDENTIALS_INPUT,
+    )
+
+    output = block.run(input_data=input, credentials=OPENAI_CREDENTIALS)
+    return output

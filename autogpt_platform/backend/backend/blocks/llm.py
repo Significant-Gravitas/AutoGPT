@@ -1,3 +1,4 @@
+import os
 import ast
 import logging
 from enum import Enum, EnumMeta
@@ -42,6 +43,21 @@ TEST_CREDENTIALS_INPUT = {
     "id": TEST_CREDENTIALS.id,
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.title,
+}
+
+
+OPENAI_CREDENTIALS = APIKeyCredentials(
+    id="2eb0715e-479c-4923-8665-7dc49cac8cc9",
+    provider="openai",
+    api_key=SecretStr(os.getenv("OPENAI_API_KEY")),
+    title="Mock OpenAI API key",
+    expires_at=None,
+)
+OPENAI_CREDENTIALS_INPUT = {
+    "provider": OPENAI_CREDENTIALS.provider,
+    "id": OPENAI_CREDENTIALS.id,
+    "type": OPENAI_CREDENTIALS.type,
+    "title": OPENAI_CREDENTIALS.title,
 }
 
 
@@ -609,7 +625,7 @@ class AITextSummarizerBlock(Block):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for summarizing the text.",
         )
         focus: str = SchemaField(
