@@ -313,6 +313,7 @@ class UserCredit(UserCreditBase):
             + "/marketplace/credits?topup=success",
             cancel_url=settings.config.platform_base_url
             + "/marketplace/credits?topup=cancel",
+            return_url=settings.config.platform_base_url + "/marketplace/credits",
         )
 
         # Create pending transaction

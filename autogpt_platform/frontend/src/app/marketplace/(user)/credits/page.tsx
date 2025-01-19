@@ -73,7 +73,7 @@ export default function CreditsPage() {
             type="submit"
             variant="default"
             className="font-circular ml-auto"
-            onClick={() => requestTopUp(amount)}
+            onClick={() => requestTopUp(amount * 100)}
           >
             Top-up
           </Button>

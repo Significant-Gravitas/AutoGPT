@@ -10,7 +10,7 @@ const stripePromise = loadStripe(
 export default function useCredits(): {
   credits: number | null;
   fetchCredits: () => void;
-  requestTopUp: (usd_amount: number) => Promise<void>;
+  requestTopUp: (credit_amount: number) => Promise<void>;
 } {
   const [credits, setCredits] = useState<number | null>(null);
   const api = useMemo(() => new AutoGPTServerAPI(), []);
@@ -26,15 +26,14 @@ export default function useCredits(): {
   }, [fetchCredits]);
 
   const requestTopUp = useCallback(
-    async (usd_amount: number) => {
+    async (credit_amount: number) => {
       const stripe = await stripePromise;
 
       if (!stripe) {
         return;
       }
 
-      // Convert dollar amount to credit count
-      const response = await api.requestTopUp(usd_amount * 100);
+      const response = await api.requestTopUp(credit_amount);
       router.push(response.checkout_url);
     },
     [api, router],
