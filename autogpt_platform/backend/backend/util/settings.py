@@ -3,7 +3,7 @@ import os
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -81,9 +81,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
-    enable_credit: str = Field(
-        default="false",
+    enable_credit: bool = Field(
+        default=False,
         description="If user credit system is enabled or not",
+    )
+    enable_beta_monthly_credit: bool = Field(
+        default=True,
+        description="If beta monthly credits accounting is enabled or not",
     )
     num_user_credits_refill: int = Field(
         default=1500,
@@ -136,11 +140,41 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    platform_base_url: str = Field(
+        default="",
+        description="Must be set so the application knows where it's hosted at. "
+        "This is necessary to make sure webhooks find their way.",
+    )
+
     frontend_base_url: str = Field(
-        default="http://localhost:3000",
+        default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
+
+    media_gcs_bucket_name: str = Field(
+        default="",
+        description="The name of the Google Cloud Storage bucket for media files",
+    )
+
+    scheduler_db_pool_size: int = Field(
+        default=3,
+        description="The pool size for the scheduler database connection pool",
+    )
+
+    @field_validator("platform_base_url", "frontend_base_url")
+    @classmethod
+    def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
+        if not v:
+            return v
+        if not v.startswith(("http://", "https://")):
+            raise ValueError(
+                f"{info.field_name} must be a full URL "
+                "including a http:// or https:// schema"
+            )
+        if v.endswith("/"):
+            return v.rstrip("/")  # Remove trailing slash
+        return v
 
     app_env: AppEnvironment = Field(
         default=AppEnvironment.LOCAL,
@@ -234,6 +268,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     notion_client_secret: str = Field(
         default="", description="Notion OAuth client secret"
     )
+    twitter_client_id: str = Field(default="", description="Twitter/X OAuth client ID")
+    twitter_client_secret: str = Field(
+        default="", description="Twitter/X OAuth client secret"
+    )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
@@ -269,6 +307,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
     jina_api_key: str = Field(default="", description="Jina API Key")
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
+
+    fal_api_key: str = Field(default="", description="FAL API key")
+    exa_api_key: str = Field(default="", description="Exa API key")
+    e2b_api_key: str = Field(default="", description="E2B API key")
+    nvidia_api_key: str = Field(default="", description="Nvidia API key")
+
+    linear_client_id: str = Field(default="", description="Linear client ID")
+    linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    stripe_api_key: str = Field(default="", description="Stripe API Key")
+    stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     # Add more secret fields as needed
 

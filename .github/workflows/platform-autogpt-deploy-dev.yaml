@@ -37,13 +37,6 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
-      - name: Run Market Migrations
-        working-directory: ./autogpt_platform/market
-        run: |
-          python -m prisma migrate deploy
-        env:
-          DATABASE_URL: ${{ secrets.MARKET_DATABASE_URL }}
-
   trigger:
     needs: migrate
     runs-on: ubuntu-latest

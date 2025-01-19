@@ -102,7 +102,7 @@ async def assert_sample_graph_executions(
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!!!"]}
     assert exec.input_data == {
-        "format": "{a}, {b}{c}",
+        "format": "{{a}}, {{b}}{{c}}",
         "values": {"a": "Hello", "b": "World", "c": "!!!"},
         "values_#_a": "Hello",
         "values_#_b": "World",
@@ -125,7 +125,7 @@ async def test_agent_execution(server: SpinTestServer):
     logger.info("Starting test_agent_execution")
     test_user = await create_test_user()
     test_graph = await create_graph(server, create_test_graph(), test_user)
-    data = {"input_1": "Hello", "input_2": "World"}
+    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,

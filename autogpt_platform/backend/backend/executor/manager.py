@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
 
-from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
 if TYPE_CHECKING:
@@ -20,18 +19,24 @@ from autogpt_libs.utils.cache import thread_cached
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
-from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
+from backend.data.block import (
+    Block,
+    BlockData,
+    BlockInput,
+    BlockSchema,
+    BlockType,
+    get_block,
+)
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionResult,
     ExecutionStatus,
-    GraphExecution,
-    NodeExecution,
+    GraphExecutionEntry,
+    NodeExecutionEntry,
     merge_execution_input,
     parse_execution_output,
 )
-from backend.data.graph import Graph, Link, Node
-from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
+from backend.data.graph import GraphModel, Link, Node
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
@@ -96,13 +101,13 @@ class LogMetadata:
 
 
 T = TypeVar("T")
-ExecutionStream = Generator[NodeExecution, None, None]
+ExecutionStream = Generator[NodeExecutionEntry, None, None]
 
 
 def execute_node(
     db_client: "DatabaseManager",
     creds_manager: IntegrationCredentialsManager,
-    data: NodeExecution,
+    data: NodeExecutionEntry,
     execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
     """
@@ -170,23 +175,21 @@ def execute_node(
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
     creds_lock = None
-    if CREDENTIALS_FIELD_NAME in input_data:
-        credentials_meta = CredentialsMetaInput(**input_data[CREDENTIALS_FIELD_NAME])
+    input_model = cast(type[BlockSchema], node_block.input_schema)
+    for field_name, input_type in input_model.get_credentials_fields().items():
+        credentials_meta = input_type(**input_data[field_name])
         credentials, creds_lock = creds_manager.acquire(user_id, credentials_meta.id)
-        extra_exec_kwargs["credentials"] = credentials
+        extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
     end_status = ExecutionStatus.COMPLETED
-    credit = db_client.get_or_refill_credit(user_id)
-    if credit < 0:
-        raise ValueError(f"Insufficient credit: {credit}")
 
     try:
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
             output_size += len(json.dumps(output_data))
-            log_metadata.info("Node produced output", output_name=output_data)
+            log_metadata.info("Node produced output", **{output_name: output_data})
             db_client.upsert_execution_output(node_exec_id, output_name, output_data)
 
             for execution in _enqueue_next_nodes(
@@ -235,7 +238,8 @@ def execute_node(
                 if res.end_time and res.start_time
                 else 0
             )
-            db_client.spend_credits(user_id, credit, node_block.id, input_data, s, t)
+            data.data = input_data
+            db_client.spend_credits(data, s, t)
 
         # Update execution stats
         if execution_stats is not None:
@@ -252,25 +256,25 @@ def _enqueue_next_nodes(
     graph_exec_id: str,
     graph_id: str,
     log_metadata: LogMetadata,
-) -> list[NodeExecution]:
-
+) -> list[NodeExecutionEntry]:
     def add_enqueued_execution(
-        node_exec_id: str, node_id: str, data: BlockInput
-    ) -> NodeExecution:
+        node_exec_id: str, node_id: str, block_id: str, data: BlockInput
+    ) -> NodeExecutionEntry:
         exec_update = db_client.update_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
         )
         db_client.send_execution_update(exec_update)
-        return NodeExecution(
+        return NodeExecutionEntry(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             node_exec_id=node_exec_id,
             node_id=node_id,
+            block_id=block_id,
             data=data,
         )
 
-    def register_next_executions(node_link: Link) -> list[NodeExecution]:
+    def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         enqueued_executions = []
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
@@ -320,7 +324,12 @@ def _enqueue_next_nodes(
             # Input is complete, enqueue the execution.
             log_metadata.info(f"Enqueued {suffix}")
             enqueued_executions.append(
-                add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
+                add_enqueued_execution(
+                    node_exec_id=next_node_exec_id,
+                    node_id=next_node_id,
+                    block_id=next_node.block_id,
+                    data=next_node_input,
+                )
             )
 
             # Next execution stops here if the link is not static.
@@ -350,7 +359,12 @@ def _enqueue_next_nodes(
                     continue
                 log_metadata.info(f"Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
-                    add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
+                    add_enqueued_execution(
+                        node_exec_id=iexec.node_exec_id,
+                        node_id=next_node_id,
+                        block_id=next_node.block_id,
+                        data=idata,
+                    )
                 )
             return enqueued_executions
 
@@ -502,8 +516,8 @@ class Executor:
     @error_logged
     def on_node_execution(
         cls,
-        q: ExecutionQueue[NodeExecution],
-        node_exec: NodeExecution,
+        q: ExecutionQueue[NodeExecutionEntry],
+        node_exec: NodeExecutionEntry,
     ) -> dict[str, Any]:
         log_metadata = LogMetadata(
             user_id=node_exec.user_id,
@@ -530,8 +544,8 @@ class Executor:
     @time_measured
     def _on_node_execution(
         cls,
-        q: ExecutionQueue[NodeExecution],
-        node_exec: NodeExecution,
+        q: ExecutionQueue[NodeExecutionEntry],
+        node_exec: NodeExecutionEntry,
         log_metadata: LogMetadata,
         stats: dict[str, Any] | None = None,
     ):
@@ -581,7 +595,9 @@ class Executor:
 
     @classmethod
     @error_logged
-    def on_graph_execution(cls, graph_exec: GraphExecution, cancel: threading.Event):
+    def on_graph_execution(
+        cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
+    ):
         log_metadata = LogMetadata(
             user_id=graph_exec.user_id,
             graph_eid=graph_exec.graph_exec_id,
@@ -590,7 +606,7 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        timing_info, (exec_stats, error) = cls._on_graph_execution(
+        timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
         exec_stats["walltime"] = timing_info.wall_time
@@ -598,6 +614,7 @@ class Executor:
         exec_stats["error"] = str(error) if error else None
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
+            status=status,
             stats=exec_stats,
         )
         cls.db_client.send_execution_update(result)
@@ -606,14 +623,15 @@ class Executor:
     @time_measured
     def _on_graph_execution(
         cls,
-        graph_exec: GraphExecution,
+        graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[dict[str, Any], Exception | None]:
+    ) -> tuple[dict[str, Any], ExecutionStatus, Exception | None]:
         """
         Returns:
-            The execution statistics of the graph execution.
-            The error that occurred during the execution.
+            dict: The execution statistics of the graph execution.
+            ExecutionStatus: The final status of the graph execution.
+            Exception | None: The error that occurred during the execution, if any.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         exec_stats = {
@@ -637,13 +655,13 @@ class Executor:
         cancel_thread.start()
 
         try:
-            queue = ExecutionQueue[NodeExecution]()
+            queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
 
-            def make_exec_callback(exec_data: NodeExecution):
+            def make_exec_callback(exec_data: NodeExecutionEntry):
                 node_id = exec_data.node_id
 
                 def callback(result: object):
@@ -658,8 +676,7 @@ class Executor:
 
             while not queue.empty():
                 if cancel.is_set():
-                    error = RuntimeError("Execution is cancelled")
-                    return exec_stats, error
+                    return exec_stats, ExecutionStatus.TERMINATED, error
 
                 exec_data = queue.get()
 
@@ -689,8 +706,7 @@ class Executor:
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
-                            error = RuntimeError("Execution is cancelled")
-                            return exec_stats, error
+                            return exec_stats, ExecutionStatus.TERMINATED, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -709,17 +725,21 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return exec_stats, error
+
+        return (
+            exec_stats,
+            ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED,
+            error,
+        )
 
 
 class ExecutionManager(AppService):
-
     def __init__(self):
         super().__init__()
         self.use_redis = True
         self.use_supabase = True
         self.pool_size = settings.config.num_graph_workers
-        self.queue = ExecutionQueue[GraphExecution]()
+        self.queue = ExecutionQueue[GraphExecutionEntry]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
     @classmethod
@@ -727,13 +747,9 @@ class ExecutionManager(AppService):
         return settings.config.execution_manager_port
 
     def run_service(self):
-        from autogpt_libs.supabase_integration_credentials_store import (
-            SupabaseIntegrationCredentialsStore,
-        )
+        from backend.integrations.credentials_store import IntegrationCredentialsStore
 
-        self.credentials_store = SupabaseIntegrationCredentialsStore(
-            redis=redis.get_redis()
-        )
+        self.credentials_store = IntegrationCredentialsStore()
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
@@ -774,8 +790,8 @@ class ExecutionManager(AppService):
         data: BlockInput,
         user_id: str,
         graph_version: int | None = None,
-    ) -> GraphExecution:
-        graph: Graph | None = self.db_client.get_graph(
+    ) -> GraphExecutionEntry:
+        graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
         if not graph:
@@ -796,8 +812,20 @@ class ExecutionManager(AppService):
             # Extract request input data, and assign it to the input pin.
             if block.block_type == BlockType.INPUT:
                 name = node.input_default.get("name")
-                if name and name in data:
-                    input_data = {"value": data[name]}
+                if name in data.get("node_input", {}):
+                    input_data = {"value": data["node_input"][name]}
+
+            # Extract webhook payload, and assign it to the input pin
+            webhook_payload_key = f"webhook_{node.webhook_id}_payload"
+            if (
+                block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+                and node.webhook_id
+            ):
+                if webhook_payload_key not in data:
+                    raise ValueError(
+                        f"Node {block.name} #{node.id} webhook payload is missing"
+                    )
+                input_data = {"payload": data[webhook_payload_key]}
 
             input_data, error = validate_exec(node, input_data)
             if input_data is None:
@@ -815,12 +843,13 @@ class ExecutionManager(AppService):
         starting_node_execs = []
         for node_exec in node_execs:
             starting_node_execs.append(
-                NodeExecution(
+                NodeExecutionEntry(
                     user_id=user_id,
                     graph_exec_id=node_exec.graph_exec_id,
                     graph_id=node_exec.graph_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
+                    block_id=node_exec.block_id,
                     data=node_exec.input_data,
                 )
             )
@@ -829,7 +858,7 @@ class ExecutionManager(AppService):
             )
             self.db_client.send_execution_update(exec_update)
 
-        graph_exec = GraphExecution(
+        graph_exec = GraphExecutionEntry(
             user_id=user_id,
             graph_id=graph_id,
             graph_exec_id=graph_exec_id,
@@ -868,15 +897,12 @@ class ExecutionManager(AppService):
                 ExecutionStatus.COMPLETED,
                 ExecutionStatus.FAILED,
             ):
-                self.db_client.upsert_execution_output(
-                    node_exec.node_exec_id, "error", "TERMINATED"
-                )
                 exec_update = self.db_client.update_execution_status(
-                    node_exec.node_exec_id, ExecutionStatus.FAILED
+                    node_exec.node_exec_id, ExecutionStatus.TERMINATED
                 )
                 self.db_client.send_execution_update(exec_update)
 
-    def _validate_node_input_credentials(self, graph: Graph, user_id: str):
+    def _validate_node_input_credentials(self, graph: GraphModel, user_id: str):
         """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:
@@ -885,41 +911,39 @@ class ExecutionManager(AppService):
                 raise ValueError(f"Unknown block {node.block_id} for node #{node.id}")
 
             # Find any fields of type CredentialsMetaInput
-            model_fields = cast(type[BaseModel], block.input_schema).model_fields
-            if CREDENTIALS_FIELD_NAME not in model_fields:
+            credentials_fields = cast(
+                type[BlockSchema], block.input_schema
+            ).get_credentials_fields()
+            if not credentials_fields:
                 continue
 
-            field = model_fields[CREDENTIALS_FIELD_NAME]
-
-            # The BlockSchema class enforces that a `credentials` field is always a
-            # `CredentialsMetaInput`, so we can safely assume this here.
-            credentials_meta_type = cast(CredentialsMetaInput, field.annotation)
-            credentials_meta = credentials_meta_type.model_validate(
-                node.input_default[CREDENTIALS_FIELD_NAME]
-            )
-            # Fetch the corresponding Credentials and perform sanity checks
-            credentials = self.credentials_store.get_creds_by_id(
-                user_id, credentials_meta.id
-            )
-            if not credentials:
-                raise ValueError(
-                    f"Unknown credentials #{credentials_meta.id} "
-                    f"for node #{node.id}"
+            for field_name, credentials_meta_type in credentials_fields.items():
+                credentials_meta = credentials_meta_type.model_validate(
+                    node.input_default[field_name]
                 )
-            if (
-                credentials.provider != credentials_meta.provider
-                or credentials.type != credentials_meta.type
-            ):
-                logger.warning(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch: "
-                    f"{credentials_meta.type}<>{credentials.type};"
-                    f"{credentials_meta.provider}<>{credentials.provider}"
+                # Fetch the corresponding Credentials and perform sanity checks
+                credentials = self.credentials_store.get_creds_by_id(
+                    user_id, credentials_meta.id
                 )
-                raise ValueError(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch"
-                )
+                if not credentials:
+                    raise ValueError(
+                        f"Unknown credentials #{credentials_meta.id} "
+                        f"for node #{node.id} input '{field_name}'"
+                    )
+                if (
+                    credentials.provider != credentials_meta.provider
+                    or credentials.type != credentials_meta.type
+                ):
+                    logger.warning(
+                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                        "type/provider mismatch: "
+                        f"{credentials_meta.type}<>{credentials.type};"
+                        f"{credentials_meta.provider}<>{credentials.provider}"
+                    )
+                    raise ValueError(
+                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                        "type/provider mismatch"
+                    )
 
 
 # ------- UTILITIES ------- #
@@ -939,7 +963,8 @@ def synchronized(key: str, timeout: int = 60):
         lock.acquire()
         yield
     finally:
-        lock.release()
+        if lock.locked():
+            lock.release()
 
 
 def llprint(message: str):

@@ -1,17 +1,20 @@
 import logging
 from contextlib import contextmanager
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from autogpt_libs.supabase_integration_credentials_store import (
-    Credentials,
-    SupabaseIntegrationCredentialsStore,
-)
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
 
 from backend.data import redis
-from backend.integrations.oauth import HANDLERS_BY_NAME, BaseOAuthHandler
+from backend.data.model import Credentials
+from backend.integrations.credentials_store import IntegrationCredentialsStore
+from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from backend.integrations.oauth import BaseOAuthHandler
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -52,7 +55,7 @@ class IntegrationCredentialsManager:
     def __init__(self):
         redis_conn = redis.get_redis()
         self._locks = RedisKeyedMutex(redis_conn)
-        self.store = SupabaseIntegrationCredentialsStore(redis=redis_conn)
+        self.store = IntegrationCredentialsStore()
 
     def create(self, user_id: str, credentials: Credentials) -> None:
         return self.store.add_creds(user_id, credentials)
@@ -89,7 +92,7 @@ class IntegrationCredentialsManager:
 
                     fresh_credentials = oauth_handler.refresh_tokens(credentials)
                     self.store.update_creds(user_id, fresh_credentials)
-                    if _lock:
+                    if _lock and _lock.locked():
                         _lock.release()
 
                     credentials = fresh_credentials
@@ -129,7 +132,6 @@ class IntegrationCredentialsManager:
 
     def _acquire_lock(self, user_id: str, credentials_id: str, *args: str) -> RedisLock:
         key = (
-            self.store.db_manager,
             f"user:{user_id}",
             f"credentials:{credentials_id}",
             *args,
@@ -142,7 +144,8 @@ class IntegrationCredentialsManager:
         try:
             yield
         finally:
-            lock.release()
+            if lock.locked():
+                lock.release()
 
     def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
@@ -150,19 +153,21 @@ class IntegrationCredentialsManager:
         self.store.locks.release_all_locks()
 
 
-def _get_provider_oauth_handler(provider_name: str) -> BaseOAuthHandler:
+def _get_provider_oauth_handler(provider_name: str) -> "BaseOAuthHandler":
     if provider_name not in HANDLERS_BY_NAME:
         raise KeyError(f"Unknown provider '{provider_name}'")
 
     client_id = getattr(settings.secrets, f"{provider_name}_client_id")
     client_secret = getattr(settings.secrets, f"{provider_name}_client_secret")
     if not (client_id and client_secret):
-        raise Exception(  # TODO: ConfigError
+        raise MissingConfigError(
             f"Integration with provider '{provider_name}' is not configured",
         )
 
     handler_class = HANDLERS_BY_NAME[provider_name]
-    frontend_base_url = settings.config.frontend_base_url
+    frontend_base_url = (
+        settings.config.frontend_base_url or settings.config.platform_base_url
+    )
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,

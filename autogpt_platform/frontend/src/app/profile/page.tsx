@@ -1,11 +1,7 @@
 "use client";
-
-import { useSupabase } from "@/components/SupabaseProvider";
 import { Button } from "@/components/ui/button";
-import useUser from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext, useMemo } from "react";
-import { FaSpinner } from "react-icons/fa";
+import { useCallback, useContext, useMemo, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
@@ -21,23 +17,59 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import useSupabase from "@/hooks/useSupabase";
+import Spinner from "@/components/Spinner";
 
 export default function PrivatePage() {
-  const { user, isLoading, error } = useUser();
-  const { supabase } = useSupabase();
+  const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
 
+  const [confirmationDialogState, setConfirmationDialogState] = useState<
+    | {
+        open: true;
+        message: string;
+        onConfirm: () => void;
+        onReject: () => void;
+      }
+    | { open: false }
+  >({ open: false });
+
   const removeCredentials = useCallback(
-    async (provider: CredentialsProviderName, id: string) => {
+    async (
+      provider: CredentialsProviderName,
+      id: string,
+      force: boolean = false,
+    ) => {
       if (!providers || !providers[provider]) {
         return;
       }
 
+      let result;
       try {
-        const { revoked } = await providers[provider].deleteCredentials(id);
-        if (revoked !== false) {
+        result = await providers[provider].deleteCredentials(id, force);
+      } catch (error: any) {
+        toast({
+          title: "Something went wrong when deleting credentials: " + error,
+          variant: "destructive",
+          duration: 2000,
+        });
+        setConfirmationDialogState({ open: false });
+        return;
+      }
+      if (result.deleted) {
+        if (result.revoked) {
           toast({
             title: "Credentials deleted",
             duration: 2000,
@@ -49,11 +81,13 @@ export default function PrivatePage() {
             duration: 3000,
           });
         }
-      } catch (error: any) {
-        toast({
-          title: "Something went wrong when deleting credentials: " + error,
-          variant: "destructive",
-          duration: 2000,
+        setConfirmationDialogState({ open: false });
+      } else if (result.need_confirmation) {
+        setConfirmationDialogState({
+          open: true,
+          message: result.message,
+          onConfirm: () => removeCredentials(provider, id, true),
+          onReject: () => setConfirmationDialogState({ open: false }),
         });
       }
     },
@@ -64,6 +98,7 @@ export default function PrivatePage() {
   // This contains ids for built-in "Use Credits for X" credentials
   const hiddenCredentials = useMemo(
     () => [
+      "744fdc56-071a-4761-b5a5-0af0ce10a2b5", // Ollama
       "fdb7f412-f519-48d1-9b5f-d2f73d0e01fe", // Revid
       "760f84fc-b270-42de-91f6-08efe1b512d0", // Ideogram
       "6b9fc200-4726-4973-86c9-cd526f5ce5db", // Replicate
@@ -78,35 +113,35 @@ export default function PrivatePage() {
     [],
   );
 
-  if (isLoading || !providers) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
-      </div>
-    );
+  if (isUserLoading) {
+    return <Spinner />;
   }
 
-  if (error || !user || !supabase) {
+  if (!user || !supabase) {
     router.push("/login");
     return null;
   }
 
-  const allCredentials = Object.values(providers).flatMap((provider) =>
-    [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
-      .filter((cred) => !hiddenCredentials.includes(cred.id))
-      .map((credentials) => ({
-        ...credentials,
-        provider: provider.provider,
-        providerName: provider.providerName,
-        ProviderIcon: providerIcons[provider.provider],
-        TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
-      })),
-  );
+  const allCredentials = providers
+    ? Object.values(providers).flatMap((provider) =>
+        [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+          .filter((cred) => !hiddenCredentials.includes(cred.id))
+          .map((credentials) => ({
+            ...credentials,
+            provider: provider.provider,
+            providerName: provider.providerName,
+            ProviderIcon: providerIcons[provider.provider],
+            TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+          })),
+      )
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl md:py-8">
       <div className="flex items-center justify-between">
-        <p>Hello {user.email}</p>
+        <p>
+          Hello <span data-testid="profile-email">{user.email}</span>
+        </p>
         <Button onClick={() => supabase.auth.signOut()}>
           <LogOutIcon className="mr-1.5 size-4" />
           Log out
@@ -158,6 +193,36 @@ export default function PrivatePage() {
           ))}
         </TableBody>
       </Table>
+
+      <AlertDialog open={confirmationDialogState.open}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmationDialogState.open && confirmationDialogState.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() =>
+                confirmationDialogState.open &&
+                confirmationDialogState.onReject()
+              }
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() =>
+                confirmationDialogState.open &&
+                confirmationDialogState.onConfirm()
+              }
+            >
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

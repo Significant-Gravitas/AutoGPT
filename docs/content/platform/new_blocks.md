@@ -83,7 +83,7 @@ Follow these steps to create and test a new block:
 
      In this case, we're mocking the `get_request` method to always return a dictionary with an 'extract' key, simulating a successful API response. This allows us to test the block's logic without making actual network requests, which could be slow, unreliable, or rate-limited.
 
-5. **Implement the `run` method with error handling:**, this should contain the main logic of the block:
+5. **Implement the `run` method with error handling.** This should contain the main logic of the block:
 
    ```python
    def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -103,6 +103,45 @@ Follow these steps to create and test a new block:
    - **Error handling**: Handle various exceptions that might occur during the API request and data processing. We don't need to catch all exceptions, only the ones we expect and can handle. The uncaught exceptions will be automatically yielded as `error` in the output. Any block that raises an exception (or yields an `error` output) will be marked as failed. Prefer raising exceptions over yielding `error`, as it will stop the execution immediately.
    - **Yield**: Use `yield` to output the results. Prefer to output one result object at a time. If you are calling a function that returns a list, you can yield each item in the list separately. You can also yield the whole list as well, but do both rather than yielding the list. For example: If you were writing a block that outputs emails, you'd yield each email as a separate result object, but you could also yield the whole list as an additional single result object. Yielding output named `error` will break the execution right away and mark the block execution as failed.
 
+### Field Types
+
+#### oneOf fields
+`oneOf` allows you to specify that a field must be exactly one of several possible options. This is useful when you want your block to accept different types of inputs that are mutually exclusive.
+
+Example:
+```python
+attachment: Union[Media, DeepLink, Poll, Place, Quote] = SchemaField(
+    discriminator='discriminator',
+    description="Attach either media, deep link, poll, place or quote - only one can be used"
+)
+```
+
+The `discriminator` parameter tells AutoGPT which field to look at in the input to determine which type it is.
+
+In each model, you need to define the discriminator value:
+```python
+class Media(BaseModel):
+    discriminator: Literal['media']
+    media_ids: List[str]
+
+class DeepLink(BaseModel):
+    discriminator: Literal['deep_link']
+    direct_message_deep_link: str
+```
+
+#### OptionalOneOf fields
+`OptionalOneOf` is similar to `oneOf` but allows the field to be optional (None). This means the field can be either one of the specified types or None.
+
+Example:
+```python
+attachment: Union[Media, DeepLink, Poll, Place, Quote] | None = SchemaField(
+    discriminator='discriminator',
+    description="Optional attachment - can be media, deep link, poll, place, quote or None"
+)
+```
+
+The key difference is the `| None` which makes the entire field optional.
+
 ### Blocks with authentication
 
 Our system supports auth offloading for API keys and OAuth2 authorization flows.
@@ -113,7 +152,7 @@ Implementing the block itself is relatively simple. On top of the instructions a
 you're going to add a `credentials` parameter to the `Input` model and the `run` method:
 
 ```python
-from autogpt_libs.supabase_integration_credentials_store.types import (
+from backend.data.model import (
     APIKeyCredentials,
     OAuth2Credentials,
     Credentials,
@@ -121,6 +160,7 @@ from autogpt_libs.supabase_integration_credentials_store.types import (
 
 from backend.data.block import Block, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField
+from backend.integrations.providers import ProviderName
 
 
 # API Key auth:
@@ -128,9 +168,9 @@ class BlockWithAPIKeyAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
-        credentials: CredentialsMetaInput[Literal['github'], Literal['api_key']] = CredentialsField(
-            provider="github",
-            supported_credential_types={"api_key"},
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.GITHUB], Literal["api_key"]
+        ] = CredentialsField(
             description="The GitHub integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
         )
@@ -151,9 +191,9 @@ class BlockWithOAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
-        credentials: CredentialsMetaInput[Literal['github'], Literal['oauth2']] = CredentialsField(
-            provider="github",
-            supported_credential_types={"oauth2"},
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.GITHUB], Literal["oauth2"]
+        ] = CredentialsField(
             required_scopes={"repo"},
             description="The GitHub integration can be used with OAuth.",
         )
@@ -174,9 +214,9 @@ class BlockWithAPIKeyAndOAuth(Block):
     class Input(BlockSchema):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
-        credentials: CredentialsMetaInput[Literal['github'], Literal['api_key', 'oauth2']] = CredentialsField(
-            provider="github",
-            supported_credential_types={"api_key", "oauth2"},
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.GITHUB], Literal["api_key", "oauth2"]
+        ] = CredentialsField(
             required_scopes={"repo"},
             description="The GitHub integration can be used with OAuth, "
             "or any API key with sufficient permissions for the blocks it is used on.",
@@ -227,6 +267,26 @@ response = requests.post(
 )
 ```
 
+The `ProviderName` enum is the single source of truth for which providers exist in our system.
+Naturally, to add an authenticated block for a new provider, you'll have to add it here too.
+<details>
+<summary><code>ProviderName</code> definition</summary>
+
+```python title="backend/integrations/providers.py"
+--8<-- "autogpt_platform/backend/backend/integrations/providers.py:ProviderName"
+```
+</details>
+
+#### Multiple credentials inputs
+Multiple credentials inputs are supported, under the following conditions:
+- The name of each of the credentials input fields must end with `_credentials`.
+- The names of the credentials input fields must match the names of the corresponding
+  parameters on the `run(..)` method of the block.
+- If more than one of the credentials parameters are required, `test_credentials`
+  is a `dict[str, Credentials]`, with for each required credentials input the
+  parameter name as the key and suitable test credentials as the value.
+
+
 #### Adding an OAuth2 service integration
 
 To add support for a new OAuth2-authenticated service, you'll need to add an `OAuthHandler`.
@@ -234,7 +294,7 @@ All our existing handlers and the base class can be found [here][OAuth2 handlers
 
 Every handler must implement the following parts of the [`BaseOAuthHandler`] interface:
 
-```python title="autogpt_platform/backend/backend/integrations/oauth/base.py"
+```python title="backend/integrations/oauth/base.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler1"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler2"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/base.py:BaseOAuthHandler3"
@@ -249,13 +309,13 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 
 - Adding the handler class to `HANDLERS_BY_NAME` under [`integrations/oauth/__init__.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/__init__.py)
 
-```python title="autogpt_platform/backend/backend/integrations/oauth/__init__.py"
+```python title="backend/integrations/oauth/__init__.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/__init__.py:HANDLERS_BY_NAMEExample"
 ```
 
 - Adding `{provider}_client_id` and `{provider}_client_secret` to the application's `Secrets` under [`util/settings.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/util/settings.py)
 
-```python title="autogpt_platform/backend/backend/util/settings.py"
+```python title="backend/util/settings.py"
 --8<-- "autogpt_platform/backend/backend/util/settings.py:OAuthServerCredentialsExample"
 ```
 
@@ -286,13 +346,13 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 
 - GitHub blocks with API key + OAuth2 support: [`blocks/github`](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt_platform/backend/backend/blocks/github/)
 
-```python title="blocks/github/issues.py"
+```python title="backend/blocks/github/issues.py"
 --8<-- "autogpt_platform/backend/backend/blocks/github/issues.py:GithubCommentBlockExample"
 ```
 
 - GitHub OAuth2 handler: [`integrations/oauth/github.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/github.py)
 
-```python title="blocks/github/github.py"
+```python title="backend/integrations/oauth/github.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/github.py:GithubOAuthHandlerExample"
 ```
 
@@ -300,17 +360,147 @@ Finally you will need to add the provider to the `CredentialsType` enum in [`fro
 
 - Google OAuth2 handler: [`integrations/oauth/google.py`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/oauth/google.py)
 
-```python title="integrations/oauth/google.py"
+```python title="backend/integrations/oauth/google.py"
 --8<-- "autogpt_platform/backend/backend/integrations/oauth/google.py:GoogleOAuthHandlerExample"
 ```
 
 You can see that google has defined a `DEFAULT_SCOPES` variable, this is used to set the scopes that are requested no matter what the user asks for.
 
-```python title="blocks/google/_auth.py"
+```python title="backend/blocks/google/_auth.py"
 --8<-- "autogpt_platform/backend/backend/blocks/google/_auth.py:GoogleOAuthIsConfigured"
 ```
 
 You can also see that `GOOGLE_OAUTH_IS_CONFIGURED` is used to disable the blocks that require OAuth if the oauth is not configured. This is in the `__init__` method of each block. This is because there is no api key fallback for google blocks so we need to make sure that the oauth is configured before we allow the user to use the blocks.
+
+### Webhook-triggered Blocks
+
+Webhook-triggered blocks allow your agent to respond to external events in real-time.
+These blocks are triggered by incoming webhooks from third-party services
+rather than being executed manually.
+
+Creating and running a webhook-triggered block involves three main components:
+
+- The block itself, which specifies:
+    - Inputs for the user to select a resource and events to subscribe to
+    - A `credentials` input with the scopes needed to manage webhooks
+    - Logic to turn the webhook payload into outputs for the webhook block
+- The `WebhooksManager` for the corresponding webhook service provider, which handles:
+    - (De)registering webhooks with the provider
+    - Parsing and validating incoming webhook payloads
+- The credentials system for the corresponding service provider, which may include an `OAuthHandler`
+
+There is more going on under the hood, e.g. to store and retrieve webhooks and their
+links to nodes, but to add a webhook-triggered block you shouldn't need to make changes
+to those parts of the system.
+
+#### Creating a Webhook-triggered Block
+
+To create a webhook-triggered block, follow these additional steps on top of the basic block creation process:
+
+1. **Define `webhook_config`** in your block's `__init__` method.
+
+    <details>
+    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+
+    ```python title="backend/blocks/github/triggers.py"
+    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-webhook_config"
+    ```
+    </details>
+
+    <details>
+    <summary><code>BlockWebhookConfig</code> definition</summary>
+
+    ```python title="backend/data/block.py"
+    --8<-- "autogpt_platform/backend/backend/data/block.py:BlockWebhookConfig"
+    ```
+    </details>
+
+2. **Define event filter input** in your block's Input schema.
+    This allows the user to select which specific types of events will trigger the block in their agent.
+
+    <details>
+    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+
+    ```python title="backend/blocks/github/triggers.py"
+    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-event-filter"
+    ```
+    </details>
+
+    - The name of the input field (`events` in this case) must match `webhook_config.event_filter_input`.
+    - The event filter itself must be a Pydantic model with only boolean fields.
+
+4. **Include payload field** in your block's Input schema.
+
+    <details>
+    <summary>Example: <code>GitHubTriggerBase</code></summary>
+
+    ```python title="backend/blocks/github/triggers.py"
+    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-payload-field"
+    ```
+    </details>
+
+5. **Define `credentials` input** in your block's Input schema.
+    - Its scopes must be sufficient to manage a user's webhooks through the provider's API
+    - See [Blocks with authentication](#blocks-with-authentication) for further details
+
+6. **Process webhook payload** and output relevant parts of it in your block's `run` method.
+
+    <details>
+    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+
+    ```python
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        yield "payload", input_data.payload
+        yield "sender", input_data.payload["sender"]
+        yield "event", input_data.payload["action"]
+        yield "number", input_data.payload["number"]
+        yield "pull_request", input_data.payload["pull_request"]
+    ```
+
+    Note that the `credentials` parameter can be omitted if the credentials
+    aren't used at block runtime, like in the example.
+    </details>
+
+#### Adding a Webhooks Manager
+
+To add support for a new webhook provider, you'll need to create a WebhooksManager that implements the `BaseWebhooksManager` interface:
+
+```python title="backend/integrations/webhooks/_base.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager1"
+
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager2"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager3"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager4"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/_base.py:BaseWebhooksManager5"
+```
+
+And add a reference to your `WebhooksManager` class in `WEBHOOK_MANAGERS_BY_NAME`:
+
+```python title="backend/integrations/webhooks/__init__.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/__init__.py:WEBHOOK_MANAGERS_BY_NAME"
+```
+
+#### Example: GitHub Webhook Integration
+
+<details>
+<summary>
+GitHub Webhook triggers: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/blocks/github/triggers.py"><code>blocks/github/triggers.py</code></a>
+</summary>
+
+```python title="backend/blocks/github/triggers.py"
+--8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:GithubTriggerExample"
+```
+</details>
+
+<details>
+<summary>
+GitHub Webhooks Manager: <a href="https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/backend/integrations/webhooks/github.py"><code>integrations/webhooks/github.py</code></a>
+</summary>
+
+```python title="backend/integrations/webhooks/github.py"
+--8<-- "autogpt_platform/backend/backend/integrations/webhooks/github.py:GithubWebhooksManager"
+```
+</details>
 
 ## Key Points to Remember
 
@@ -324,7 +514,7 @@ You can also see that `GOOGLE_OAUTH_IS_CONFIGURED` is used to disable the blocks
 
 The testing of blocks is handled by `test_block.py`, which does the following:
 
-1. It calls the block with the provided `test_input`.  
+1. It calls the block with the provided `test_input`.
    If the block has a `credentials` field, `test_credentials` is passed in as well.
 2. If a `test_mock` is provided, it temporarily replaces the specified methods with the mock functions.
 3. It then asserts that the output matches the `test_output`.

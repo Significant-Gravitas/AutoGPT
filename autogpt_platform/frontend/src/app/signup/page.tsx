@@ -1,7 +1,5 @@
 "use client";
-import useUser from "@/hooks/useUser";
 import { signup } from "./actions";
-import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -15,49 +13,66 @@ import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { PasswordInput } from "@/components/PasswordInput";
-import { FaGoogle, FaGithub, FaDiscord, FaSpinner } from "react-icons/fa";
-import { useState } from "react";
-import { useSupabase } from "@/components/SupabaseProvider";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
+import useSupabase from "@/hooks/useSupabase";
+import Spinner from "@/components/Spinner";
+import {
+  AuthCard,
+  AuthHeader,
+  AuthButton,
+  AuthFeedback,
+  AuthBottomText,
+  PasswordInput,
+} from "@/components/auth";
+import { signupFormSchema } from "@/types/auth";
 
-const signupFormSchema = z.object({
-  email: z.string().email().min(2).max(64),
-  password: z.string().min(6).max(64),
-  agreeToTerms: z.boolean().refine((value) => value === true, {
-    message: "You must agree to the Terms of Use and Privacy Policy",
-  }),
-});
-
-export default function LoginPage() {
-  const { supabase, isLoading: isSupabaseLoading } = useSupabase();
-  const { user, isLoading: isUserLoading } = useUser();
+export default function SignupPage() {
+  const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [showWaitlistPrompt, setShowWaitlistPrompt] = useState(false);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
     defaultValues: {
       email: "",
       password: "",
+      confirmPassword: "",
       agreeToTerms: false,
     },
   });
 
+  const onSignup = useCallback(
+    async (data: z.infer<typeof signupFormSchema>) => {
+      setIsLoading(true);
+
+      if (!(await form.trigger())) {
+        setIsLoading(false);
+        return;
+      }
+
+      const error = await signup(data);
+      setIsLoading(false);
+      if (error) {
+        setShowWaitlistPrompt(true);
+        return;
+      }
+      setFeedback(null);
+    },
+    [form],
+  );
+
   if (user) {
-    console.log("User exists, redirecting to home");
+    console.debug("User exists, redirecting to /");
     router.push("/");
   }
 
-  if (isUserLoading || isSupabaseLoading || user) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <FaSpinner className="mr-2 h-16 w-16 animate-spin" />
-      </div>
-    );
+  if (isUserLoading || user) {
+    return <Spinner />;
   }
 
   if (!supabase) {
@@ -68,158 +83,137 @@ export default function LoginPage() {
     );
   }
 
-  async function handleSignInWithProvider(
-    provider: "google" | "github" | "discord",
-  ) {
-    const { data, error } = await supabase!.auth.signInWithOAuth({
-      provider: provider,
-      options: {
-        redirectTo:
-          process.env.AUTH_CALLBACK_URL ??
-          `http://localhost:3000/auth/callback`,
-      },
-    });
-
-    if (!error) {
-      setFeedback(null);
-      return;
-    }
-    setFeedback(error.message);
-  }
-
-  const onSignup = async (data: z.infer<typeof signupFormSchema>) => {
-    if (await form.trigger()) {
-      setIsLoading(true);
-      const error = await signup(data);
-      setIsLoading(false);
-      if (error) {
-        setFeedback(error);
-        return;
-      }
-      setFeedback(null);
-    }
-  };
-
   return (
-    <div className="flex h-[80vh] items-center justify-center">
-      <div className="w-full max-w-md space-y-6 rounded-lg p-8 shadow-md">
-        <h1 className="text-lg font-medium">Create a New Account</h1>
-        {/* <div className="mb-6 space-y-2">
-          <Button
-            className="w-full"
-            onClick={() => handleSignInWithProvider("google")}
-            variant="outline"
-            type="button"
-            disabled={isLoading}
+    <AuthCard>
+      <AuthHeader>Create a new account</AuthHeader>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSignup)}>
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem className="mb-6">
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input placeholder="m@example.com" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem className="mb-6">
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <PasswordInput {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="confirmPassword"
+            render={({ field }) => (
+              <FormItem className="mb-4">
+                <FormLabel>Confirm Password</FormLabel>
+                <FormControl>
+                  <PasswordInput {...field} />
+                </FormControl>
+                <FormDescription className="text-sm font-normal leading-tight text-slate-500">
+                  Password needs to be at least 6 characters long
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <AuthButton
+            onClick={() => onSignup(form.getValues())}
+            isLoading={isLoading}
+            type="submit"
           >
-            <FaGoogle className="mr-2 h-4 w-4" />
-            Sign in with Google
-          </Button>
-          <Button
-            className="w-full"
-            onClick={() => handleSignInWithProvider("github")}
-            variant="outline"
-            type="button"
-            disabled={isLoading}
-          >
-            <FaGithub className="mr-2 h-4 w-4" />
-            Sign in with GitHub
-          </Button>
-          <Button
-            className="w-full"
-            onClick={() => handleSignInWithProvider("discord")}
-            variant="outline"
-            type="button"
-            disabled={isLoading}
-          >
-            <FaDiscord className="mr-2 h-4 w-4" />
-            Sign in with Discord
-          </Button>
-        </div> */}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSignup)}>
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem className="mb-4">
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input placeholder="user@email.com" {...field} />
-                  </FormControl>
+            Sign up
+          </AuthButton>
+          <FormField
+            control={form.control}
+            name="agreeToTerms"
+            render={({ field }) => (
+              <FormItem className="mt-6 flex flex-row items-start -space-y-1 space-x-2">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <div className="">
+                  <FormLabel>
+                    <span className="mr-1 text-sm font-normal leading-normal text-slate-950">
+                      I agree to the
+                    </span>
+                    <Link
+                      href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                      className="text-sm font-normal leading-normal text-slate-950 underline"
+                    >
+                      Terms of Use
+                    </Link>
+                    <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+                      and
+                    </span>
+                    <Link
+                      href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
+                      className="text-sm font-normal leading-normal text-slate-950 underline"
+                    >
+                      Privacy Policy
+                    </Link>
+                  </FormLabel>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <PasswordInput placeholder="password" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    Password needs to be at least 6 characters long
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="agreeToTerms"
-              render={({ field }) => (
-                <FormItem className="mt-4 flex flex-row items-start space-x-3 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>
-                      I agree to the{" "}
-                      <Link
-                        href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
-                        className="underline"
-                      >
-                        Terms of Use
-                      </Link>{" "}
-                      and{" "}
-                      <Link
-                        href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
-                        className="underline"
-                      >
-                        Privacy Policy
-                      </Link>
-                    </FormLabel>
-                    <FormMessage />
-                  </div>
-                </FormItem>
-              )}
-            />
-            <div className="mb-6 mt-8 flex w-full space-x-4">
-              <Button
-                className="flex w-full justify-center"
-                variant="outline"
-                type="button"
-                onClick={form.handleSubmit(onSignup)}
-                disabled={isLoading}
-              >
-                Sign up
-              </Button>
-            </div>
-            <div className="w-full text-center">
-              <Link href={"/login"} className="w-fit text-xs hover:underline">
-                Already a member? Log In here
-              </Link>
-            </div>
-          </form>
-          <p className="text-sm text-red-500">{feedback}</p>
-        </Form>
-      </div>
-    </div>
+                </div>
+              </FormItem>
+            )}
+          />
+        </form>
+        <AuthFeedback message={feedback} isError={true} />
+      </Form>
+      {showWaitlistPrompt && (
+        <div>
+          <span className="mr-1 text-sm font-normal leading-normal text-red-500">
+            The provided email may not be allowed to sign up.
+          </span>
+          <br />
+          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+            - AutoGPT Platform is currently in closed beta. You can join
+          </span>
+          <Link
+            href="https://agpt.co/waitlist"
+            className="text-sm font-normal leading-normal text-slate-950 underline"
+          >
+            the waitlist here.
+          </Link>
+          <br />
+          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+            - Make sure you use the same email address you used to sign up for
+            the waitlist.
+          </span>
+          <br />
+          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+            - You can self host the platform, visit our
+          </span>
+          <Link
+            href="https://agpt.co/waitlist"
+            className="text-sm font-normal leading-normal text-slate-950 underline"
+          >
+            GitHub repository.
+          </Link>
+        </div>
+      )}
+      <AuthBottomText
+        text="Already a member?"
+        linkText="Log in"
+        href="/login"
+      />
+    </AuthCard>
   );
 }

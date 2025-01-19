@@ -38,6 +38,7 @@ def _extract_schema_from_url(database_url) -> tuple[str, str]:
 
 
 logger = logging.getLogger(__name__)
+config = Config()
 
 
 def log(msg, **kwargs):
@@ -96,7 +97,11 @@ class ExecutionScheduler(AppService):
 
     @classmethod
     def get_port(cls) -> int:
-        return Config().execution_scheduler_port
+        return config.execution_scheduler_port
+
+    @classmethod
+    def db_pool_size(cls) -> int:
+        return config.scheduler_db_pool_size
 
     @property
     @thread_cached
@@ -109,7 +114,11 @@ class ExecutionScheduler(AppService):
         self.scheduler = BlockingScheduler(
             jobstores={
                 "default": SQLAlchemyJobStore(
-                    engine=create_engine(db_url),
+                    engine=create_engine(
+                        url=db_url,
+                        pool_size=self.db_pool_size(),
+                        max_overflow=0,
+                    ),
                     metadata=MetaData(schema=db_schema),
                 )
             }

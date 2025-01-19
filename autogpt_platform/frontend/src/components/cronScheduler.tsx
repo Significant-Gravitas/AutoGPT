@@ -74,9 +74,6 @@ export function CronScheduler({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline">Schedule</Button>
-      </DialogTrigger>
       <DialogContent>
         <DialogTitle>Schedule Task</DialogTitle>
         <div className="max-w-md space-y-6 p-2">

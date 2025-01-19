@@ -1,6 +1,25 @@
 from typing import Type
 
-from autogpt_libs.supabase_integration_credentials_store.store import (
+from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
+from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
+from backend.blocks.ideogram import IdeogramModelBlock
+from backend.blocks.jina.embeddings import JinaEmbeddingBlock
+from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
+from backend.blocks.llm import (
+    MODEL_METADATA,
+    AIConversationBlock,
+    AIListGeneratorBlock,
+    AIStructuredResponseGeneratorBlock,
+    AITextGeneratorBlock,
+    AITextSummarizerBlock,
+    LlmModel,
+)
+from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
+from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
+from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
+from backend.data.block import Block
+from backend.data.cost import BlockCost, BlockCostType
+from backend.integrations.credentials_store import (
     anthropic_credentials,
     did_credentials,
     groq_credentials,
@@ -12,27 +31,6 @@ from autogpt_libs.supabase_integration_credentials_store.store import (
     revid_credentials,
     unreal_credentials,
 )
-
-from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
-from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
-from backend.blocks.ideogram import IdeogramModelBlock
-from backend.blocks.jina.embeddings import JinaEmbeddingBlock
-from backend.blocks.jina.search import SearchTheWebBlock
-from backend.blocks.llm import (
-    MODEL_METADATA,
-    AIConversationBlock,
-    AIListGeneratorBlock,
-    AIStructuredResponseGeneratorBlock,
-    AITextGeneratorBlock,
-    AITextSummarizerBlock,
-    LlmModel,
-)
-from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
-from backend.blocks.search import ExtractWebsiteContentBlock
-from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
-from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
-from backend.data.block import Block
-from backend.data.cost import BlockCost, BlockCostType
 
 # =============== Configure the cost for each LLM Model call =============== #
 
@@ -53,10 +51,11 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA3_1_405B: 1,
     LlmModel.LLAMA3_1_70B: 1,
     LlmModel.LLAMA3_1_8B: 1,
+    LlmModel.OLLAMA_LLAMA3_2: 1,
     LlmModel.OLLAMA_LLAMA3_8B: 1,
     LlmModel.OLLAMA_LLAMA3_405B: 1,
+    LlmModel.OLLAMA_DOLPHIN: 1,
     LlmModel.GEMINI_FLASH_1_5_8B: 1,
-    LlmModel.GEMINI_FLASH_1_5_EXP: 1,
     LlmModel.GROK_BETA: 5,
     LlmModel.MISTRAL_NEMO: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,
@@ -64,6 +63,14 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.EVA_QWEN_2_5_32B: 1,
     LlmModel.DEEPSEEK_CHAT: 2,
     LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: 1,
+    LlmModel.QWEN_QWQ_32B_PREVIEW: 2,
+    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
+    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
+    LlmModel.AMAZON_NOVA_LITE_V1: 1,
+    LlmModel.AMAZON_NOVA_MICRO_V1: 1,
+    LlmModel.AMAZON_NOVA_PRO_V1: 1,
+    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: 1,
+    LlmModel.GRYPHE_MYTHOMAX_L2_13B: 1,
 }
 
 for model in LlmModel:
@@ -72,18 +79,8 @@ for model in LlmModel:
 
 
 LLM_COST = (
+    # Anthropic Models
     [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "api_key": None,  # Running LLM with user own API key is free.
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-    ]
-    + [
         BlockCost(
             cost_type=BlockCostType.RUN,
             cost_filter={
@@ -99,6 +96,7 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "anthropic"
     ]
+    # OpenAI Models
     + [
         BlockCost(
             cost_type=BlockCostType.RUN,
@@ -115,6 +113,7 @@ LLM_COST = (
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "openai"
     ]
+    # Groq Models
     + [
         BlockCost(
             cost_type=BlockCostType.RUN,
@@ -126,13 +125,6 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "groq"
-    ]
-    + [
-        BlockCost(
-            # Default cost is running LlmModel.GPT4O.
-            cost_amount=MODEL_COST[LlmModel.GPT4O],
-            cost_filter={"api_key": None},
-        ),
     ]
     # Open Router Models
     + [
@@ -186,7 +178,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     ExtractWebsiteContentBlock: [
-        BlockCost(cost_amount=1, cost_filter={"raw_content": False})
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "raw_content": False,
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
+                },
+            },
+        )
     ],
     IdeogramModelBlock: [
         BlockCost(

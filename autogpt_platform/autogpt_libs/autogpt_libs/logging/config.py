@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from .filters import BelowLevelFilter
 from .formatters import AGPTFormatter, StructuredLoggingFormatter
 
@@ -22,7 +23,6 @@ DEBUG_LOG_FORMAT = (
 
 
 class LoggingConfig(BaseSettings):
-
     level: str = Field(
         default="INFO",
         description="Logging level",

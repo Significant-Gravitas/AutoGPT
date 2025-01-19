@@ -17,6 +17,9 @@ const isValidVideoUrl = (url: string): boolean => {
 };
 
 const isValidImageUrl = (url: string): boolean => {
+  if (url.startsWith("data:image/")) {
+    return true;
+  }
   const imageExtensions = /\.(jpeg|jpg|gif|png|svg|webp)$/i;
   const cleanedUrl = url.split("?")[0];
   return imageExtensions.test(cleanedUrl);
@@ -50,19 +53,21 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
   );
 };
 
-const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => (
-  <div className="w-full p-2">
-    <picture>
-      <img
-        src={imageUrl}
-        alt="Image"
-        className="h-auto max-w-full"
-        width="100%"
-        height="auto"
-      />
-    </picture>
-  </div>
-);
+const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => {
+  return (
+    <div className="w-full p-2">
+      <picture>
+        <img
+          src={imageUrl}
+          alt="Image"
+          className="h-auto max-w-full"
+          width="100%"
+          height="auto"
+        />
+      </picture>
+    </div>
+  );
+};
 
 const AudioRenderer: React.FC<{ audioUrl: string }> = ({ audioUrl }) => (
   <div className="w-full p-2">
@@ -76,15 +81,14 @@ const AudioRenderer: React.FC<{ audioUrl: string }> = ({ audioUrl }) => (
   </div>
 );
 
-const TextRenderer: React.FC<{ value: any; truncateLongData?: boolean }> = ({
-  value,
-  truncateLongData,
-}) => {
-  const maxChars = 100;
+export const TextRenderer: React.FC<{
+  value: any;
+  truncateLengthLimit?: number;
+}> = ({ value, truncateLengthLimit }) => {
   const text =
     typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
-  return truncateLongData && text.length > maxChars
-    ? text.slice(0, maxChars) + "..."
+  return truncateLengthLimit && text.length > truncateLengthLimit
+    ? text.slice(0, truncateLengthLimit) + "..."
     : text;
 };
 
@@ -93,6 +97,9 @@ export const ContentRenderer: React.FC<{
   truncateLongData?: boolean;
 }> = ({ value, truncateLongData }) => {
   if (typeof value === "string") {
+    if (value.startsWith("data:image/")) {
+      return <ImageRenderer imageUrl={value} />;
+    }
     if (isValidVideoUrl(value)) {
       return <VideoRenderer videoUrl={value} />;
     } else if (isValidImageUrl(value)) {
@@ -101,5 +108,10 @@ export const ContentRenderer: React.FC<{
       return <AudioRenderer audioUrl={value} />;
     }
   }
-  return <TextRenderer value={value} truncateLongData={truncateLongData} />;
+  return (
+    <TextRenderer
+      value={value}
+      truncateLengthLimit={truncateLongData ? 100 : undefined}
+    />
+  );
 };

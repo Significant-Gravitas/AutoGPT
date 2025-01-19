@@ -1,29 +1,41 @@
 import React from "react";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Poppins } from "next/font/google";
 import { Providers } from "@/app/providers";
-import { NavBar } from "@/components/NavBar";
 import { cn } from "@/lib/utils";
+import { Navbar } from "@/components/agptui/Navbar";
 
 import "./globals.css";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "@/components/ui/toaster";
+import { IconType } from "@/components/ui/icons";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 
-const inter = Inter({ subsets: ["latin"] });
+// Fonts
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
+});
 
 export const metadata: Metadata = {
   title: "NextGen AutoGPT",
   description: "Your one stop shop to creating AI Agents",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable} ${poppins.variable} ${inter.variable}`}
+    >
       <body className={cn("antialiased transition-colors", inter.className)}>
         <Providers
           attribute="class"
@@ -32,9 +44,65 @@ export default function RootLayout({
           // enableSystem
           disableTransitionOnChange
         >
-          <div className="flex min-h-screen flex-col">
-            <NavBar />
-            <main className="flex-1 p-4">{children}</main>
+          <div className="flex min-h-screen flex-col items-center justify-center">
+            <Navbar
+              links={[
+                {
+                  name: "Marketplace",
+                  href: "/marketplace",
+                },
+                {
+                  name: "Library",
+                  href: "/monitoring",
+                },
+                {
+                  name: "Build",
+                  href: "/build",
+                },
+              ]}
+              menuItemGroups={[
+                {
+                  items: [
+                    {
+                      icon: IconType.Edit,
+                      text: "Edit profile",
+                      href: "/marketplace/profile",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.LayoutDashboard,
+                      text: "Creator Dashboard",
+                      href: "/marketplace/dashboard",
+                    },
+                    {
+                      icon: IconType.UploadCloud,
+                      text: "Publish an agent",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.Settings,
+                      text: "Settings",
+                      href: "/marketplace/settings",
+                    },
+                  ],
+                },
+                {
+                  items: [
+                    {
+                      icon: IconType.LogOut,
+                      text: "Log out",
+                    },
+                  ],
+                },
+              ]}
+            />
+            <main className="flex-1">{children}</main>
             <TallyPopupSimple />
           </div>
           <Toaster />

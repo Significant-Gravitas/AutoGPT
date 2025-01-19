@@ -70,9 +70,8 @@ export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
   flowID?: string;
-  template?: boolean;
   className?: string;
-}> = ({ flowID, template, className }) => {
+}> = ({ flowID, className }) => {
   const {
     addNodes,
     addEdges,
@@ -99,14 +98,16 @@ const FlowEditor: React.FC<{
     requestSaveAndRun,
     requestStopRun,
     scheduleRunner,
+    isSaving,
     isRunning,
+    isStopping,
     isScheduling,
     setIsScheduling,
     nodes,
     setNodes,
     edges,
     setEdges,
-  } = useAgentGraph(flowID, template, visualizeBeads !== "no");
+  } = useAgentGraph(flowID, visualizeBeads !== "no");
 
   const router = useRouter();
   const pathname = usePathname();
@@ -661,9 +662,10 @@ const FlowEditor: React.FC<{
           deleteKeyCode={["Backspace", "Delete"]}
           minZoom={0.2}
           maxZoom={2}
+          className="dark:bg-slate-900"
         >
           <Controls />
-          <Background />
+          <Background className="dark:bg-slate-800" />
           <ControlPanel
             className="absolute z-10"
             controls={editorControls}
@@ -673,12 +675,14 @@ const FlowEditor: React.FC<{
                 blocks={availableNodes}
                 addBlock={addNode}
                 flows={availableFlows}
+                nodes={nodes}
               />
             }
             botChildren={
               <SaveControl
                 agentMeta={savedAgent}
-                onSave={(isTemplate) => requestSave(isTemplate ?? false)}
+                canSave={!isSaving && !isRunning && !isStopping}
+                onSave={() => requestSave()}
                 agentDescription={agentDescription}
                 onDescriptionChange={setAgentDescription}
                 agentName={agentName}

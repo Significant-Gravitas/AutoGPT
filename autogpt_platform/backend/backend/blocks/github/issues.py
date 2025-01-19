@@ -46,15 +46,27 @@ class GithubCommentBlock(Block):
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubCommentBlock.Input,
             output_schema=GithubCommentBlock.Output,
-            test_input={
-                "issue_url": "https://github.com/owner/repo/issues/1",
-                "comment": "This is a test comment.",
-                "credentials": TEST_CREDENTIALS_INPUT,
-            },
+            test_input=[
+                {
+                    "issue_url": "https://github.com/owner/repo/issues/1",
+                    "comment": "This is a test comment.",
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                },
+                {
+                    "issue_url": "https://github.com/owner/repo/pull/1",
+                    "comment": "This is a test comment.",
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                },
+            ],
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("id", 1337),
                 ("url", "https://github.com/owner/repo/issues/1#issuecomment-1337"),
+                ("id", 1337),
+                (
+                    "url",
+                    "https://github.com/owner/repo/issues/1#issuecomment-1337",
+                ),
             ],
             test_mock={
                 "post_comment": lambda *args, **kwargs: (
@@ -70,6 +82,8 @@ class GithubCommentBlock(Block):
     ) -> tuple[int, str]:
         api = get_api(credentials)
         data = {"body": body_text}
+        if "pull" in issue_url:
+            issue_url = issue_url.replace("pull", "issues")
         comments_url = issue_url + "/comments"
         response = api.post(comments_url, json=data)
         comment = response.json()
@@ -234,9 +248,12 @@ class GithubReadIssueBlock(Block):
             credentials,
             input_data.issue_url,
         )
-        yield "title", title
-        yield "body", body
-        yield "user", user
+        if title:
+            yield "title", title
+        if body:
+            yield "body", body
+        if user:
+            yield "user", user
 
 
 class GithubListIssuesBlock(Block):

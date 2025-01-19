@@ -56,6 +56,7 @@ class OAuthState(BaseModel):
     token: str
     provider: str
     expires_at: int
+    code_verifier: Optional[str] = None
     scopes: list[str]
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
 

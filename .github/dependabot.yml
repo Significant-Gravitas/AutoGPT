@@ -7,6 +7,9 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "dev"
+    commit-message:
+      prefix: "chore(libs/deps)"
+      prefix-development: "chore(libs/deps-dev)"
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -26,6 +29,9 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "dev"
+    commit-message:
+      prefix: "chore(backend/deps)"
+      prefix-development: "chore(backend/deps-dev)"
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -37,7 +43,6 @@ updates:
         update-types:
         - "minor"
         - "patch"
-
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"
@@ -46,6 +51,9 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     target-branch: "dev"
+    commit-message:
+      prefix: "chore(frontend/deps)"
+      prefix-development: "chore(frontend/deps-dev)"
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -57,7 +65,6 @@ updates:
         update-types:
         - "minor"
         - "patch"
-
 
   # infra (Terraform)
   - package-ecosystem: "terraform"
@@ -66,26 +73,10 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
-    groups:
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-        - "minor"
-        - "patch"
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-        - "minor"
-        - "patch"
+    commit-message:
+      prefix: "chore(infra/deps)"
+      prefix-development: "chore(infra/deps-dev)"
 
-
-  # market (Poetry project)
-  - package-ecosystem: "pip"
-    directory: "autogpt_platform/market"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
-    target-branch: "dev"
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -146,6 +137,9 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 1
     target-branch: "dev"
+    commit-message:
+      prefix: "chore(platform/deps)"
+      prefix-development: "chore(platform/deps-dev)"
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -166,6 +160,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 1
     target-branch: "dev"
+    commit-message:
+      prefix: "chore(docs/deps)"
     groups:
       production-dependencies:
         dependency-type: "production"

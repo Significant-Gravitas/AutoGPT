@@ -1,11 +1,16 @@
 from typing import Literal
 
 import googlemaps
-from autogpt_libs.supabase_integration_credentials_store.types import APIKeyCredentials
 from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+)
+from backend.integrations.providers import ProviderName
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -34,12 +39,8 @@ class Place(BaseModel):
 class GoogleMapsSearchBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
-            Literal["google_maps"], Literal["api_key"]
-        ] = CredentialsField(
-            provider="google_maps",
-            supported_credential_types={"api_key"},
-            description="Google Maps API Key",
-        )
+            Literal[ProviderName.GOOGLE_MAPS], Literal["api_key"]
+        ] = CredentialsField(description="Google Maps API Key")
         query: str = SchemaField(
             description="Search query for local businesses",
             placeholder="e.g., 'restaurants in New York'",

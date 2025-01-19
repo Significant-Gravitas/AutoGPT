@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import React from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import Image from "next/image";
-import getServerUser from "@/hooks/getServerUser";
+import getServerUser from "@/lib/supabase/getServerUser";
 import ProfileDropdown from "./ProfileDropdown";
 import { IconCircleUser, IconMenu } from "@/components/ui/icons";
 import CreditButton from "@/components/nav/CreditButton";

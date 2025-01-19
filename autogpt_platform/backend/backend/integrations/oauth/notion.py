@@ -1,8 +1,9 @@
 from base64 import b64encode
+from typing import Optional
 from urllib.parse import urlencode
 
-from autogpt_libs.supabase_integration_credentials_store import OAuth2Credentials
-
+from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
 from backend.util.request import requests
 
 from .base import BaseOAuthHandler
@@ -17,7 +18,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
     - Notion doesn't use scopes
     """
 
-    PROVIDER_NAME = "notion"
+    PROVIDER_NAME = ProviderName.NOTION
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -26,7 +27,9 @@ class NotionOAuthHandler(BaseOAuthHandler):
         self.auth_base_url = "https://api.notion.com/v1/oauth/authorize"
         self.token_url = "https://api.notion.com/v1/oauth/token"
 
-    def get_login_url(self, scopes: list[str], state: str) -> str:
+    def get_login_url(
+        self, scopes: list[str], state: str, code_challenge: Optional[str]
+    ) -> str:
         params = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
@@ -37,7 +40,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
         return f"{self.auth_base_url}?{urlencode(params)}"
 
     def exchange_code_for_tokens(
-        self, code: str, scopes: list[str]
+        self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         request_body = {
             "grant_type": "authorization_code",
