@@ -48,7 +48,7 @@ class PostTwitterTweetBlock(Block):
             "text": post_content[:255] if len(post_content) > 255 else post_content,
         }
 
-        response = requests.post(api.api_url + "/tweets", headers=headers, data=json.dumps(body))
+        response = requests.post(PostTwitterTweetBlock.api_url + "/tweets", headers=headers, data=json.dumps(body))
 
         if response.status_code != 201:
             raise ValueError("Failed to post a tweet because of an error. Error: " + response.text)
