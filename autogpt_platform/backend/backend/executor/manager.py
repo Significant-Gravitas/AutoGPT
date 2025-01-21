@@ -181,7 +181,10 @@ def execute_node(
         credentials, creds_lock = creds_manager.acquire(user_id, credentials_meta.id)
         extra_exec_kwargs[field_name] = credentials
 
+    # Inject extra execution arguments for the blocks via kwargs
     extra_exec_kwargs["user_id"] = user_id
+    extra_exec_kwargs["run_id"] = graph_exec_id
+    extra_exec_kwargs["graph_id"] = graph_id
 
     output_size = 0
     end_status = ExecutionStatus.COMPLETED

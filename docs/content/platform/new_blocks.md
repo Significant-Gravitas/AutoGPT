@@ -105,6 +105,8 @@ Follow these steps to create and test a new block:
    - **kwargs**: The `kwargs` parameter is used to pass additional arguments to the block. It is not used in the example above, but it is available to the block. You can also have args as inline signatures in the run method ala `def run(self, input_data: Input, *, user_id: str, **kwargs) -> BlockOutput:`.
        Available kwargs are:
        - `user_id`: The ID of the user running the block.
+       - `run_id`: The ID of the run that is executing the block. This changes every time the agent has a new "run"
+       - `agent_id`: The ID of the agent that is executing the block. This is the same for every version of the agent
 
 ### Field Types
 

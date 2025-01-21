@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from typing import Sequence, cast
 
 from backend.data import db
@@ -119,6 +120,11 @@ def execute_block_test(block: Block):
             for field_name in credentials_input_fields:
                 if field_name in block.test_credentials:
                     extra_exec_kwargs[field_name] = block.test_credentials[field_name]
+
+    # inject fake user_id, run_id, graph_id
+    extra_exec_kwargs["user_id"] = uuid.uuid4()
+    extra_exec_kwargs["run_id"] = uuid.uuid4()
+    extra_exec_kwargs["graph_id"] = uuid.uuid4()
 
     for input_data in block.test_input:
         log.info(f"{prefix} in: {input_data}")

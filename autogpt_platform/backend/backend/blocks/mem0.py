@@ -38,7 +38,9 @@ class Mem0Base:
 
 
 class AddMemoryBlock(Block, Mem0Base):
-    """Block for adding memories to Mem0"""
+    """Block for adding memories to Mem0
+
+    Always limited by user_id and optional graph_id, run_id, agent_id"""
 
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
@@ -49,6 +51,12 @@ class AddMemoryBlock(Block, Mem0Base):
         )
         metadata: dict[str, Any] = SchemaField(
             description="Optional metadata for the memory", default={}
+        )
+        limit_memory_to_run: bool = SchemaField(
+            description="Limit the memory to the run", default=False
+        )
+        limit_memory_to_agent: bool = SchemaField(
+            description="Limit the memory to the agent", default=False
         )
 
     class Output(BlockSchema):
@@ -63,12 +71,11 @@ class AddMemoryBlock(Block, Mem0Base):
             input_schema=AddMemoryBlock.Input,
             output_schema=AddMemoryBlock.Output,
             test_input={
-                "user_id": "test_user",
                 "content": [{"role": "user", "content": "I'm a vegetarian"}],
                 "metadata": {"food": "vegetarian"},
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
-            test_output=[("memory_id", "test-memory-id"), ("status", "success")],
+            test_output=[("action", "NO_CHANGE")],
             test_credentials=TEST_CREDENTIALS,
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
@@ -77,8 +84,10 @@ class AddMemoryBlock(Block, Mem0Base):
         self,
         input_data: Input,
         *,
-        user_id: str,
         credentials: APIKeyCredentials,
+        user_id: str,
+        graph_id: str,
+        run_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
@@ -91,12 +100,21 @@ class AddMemoryBlock(Block, Mem0Base):
                 else [{"role": "user", "content": input_data.content}]
             )
 
+            params = {
+                "user_id": user_id,
+                "output_format": "v1.1",
+                "metadata": input_data.metadata,
+            }
+
+            if input_data.limit_memory_to_run:
+                params["run_id"] = run_id
+            if input_data.limit_memory_to_agent:
+                params["agent_id"] = graph_id
+
             # Use the client to add memory
             result = client.add(
                 messages,
-                user_id=user_id,
-                output_format="v1.1",
-                metadata=input_data.metadata,
+                **params,
             )
 
             if len(result.get("results", [])) > 0:
@@ -120,17 +138,18 @@ class SearchMemoryBlock(Block, Mem0Base):
         query: str = SchemaField(description="Search query")
         rerank: bool = SchemaField(description="Rerank the results", default=False)
         top_k: int = SchemaField(description="Number of results to return", default=10)
-        agent_id: str | None = SchemaField(
-            description="Agent ID to filter by", default=None
-        )
         categories_filter: list[str] | None = SchemaField(
             description="Categories to filter by", default=None
         )
+        limit_memory_to_run: bool = SchemaField(
+            description="Limit the memory to the run", default=False
+        )
+        limit_memory_to_agent: bool = SchemaField(
+            description="Limit the memory to the agent", default=False
+        )
 
     class Output(BlockSchema):
-        memories: list[dict[str, Any]] = SchemaField(
-            description="List of matching memories"
-        )
+        memories: Any = SchemaField(description="List of matching memories")
         error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
@@ -140,10 +159,8 @@ class SearchMemoryBlock(Block, Mem0Base):
             input_schema=SearchMemoryBlock.Input,
             output_schema=SearchMemoryBlock.Output,
             test_input={
-                "user_id": "test_user",
                 "query": "vegetarian preferences",
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "agent_id": "test_agent",
                 "top_k": 10,
                 "rerank": True,
             },
@@ -158,8 +175,10 @@ class SearchMemoryBlock(Block, Mem0Base):
         self,
         input_data: Input,
         *,
-        user_id: str,
         credentials: APIKeyCredentials,
+        user_id: str,
+        graph_id: str,
+        run_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
@@ -175,10 +194,14 @@ class SearchMemoryBlock(Block, Mem0Base):
                 filters["AND"].append(
                     {"categories": {"in": input_data.categories_filter}}
                 )
-            if input_data.agent_id:
-                filters["AND"].append({"agent_id": input_data.agent_id})
+            if input_data.limit_memory_to_run:
+                filters["AND"].append({"run_id": run_id})
+            if input_data.limit_memory_to_agent:
+                filters["AND"].append({"agent_id": graph_id})
 
-            result = client.search(input_data.query, version="v2", filters=filters)
+            result: list[dict[str, Any]] = client.search(
+                input_data.query, version="v2", filters=filters
+            )
             yield "memories", result
 
         except Exception as e:
@@ -195,11 +218,15 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         categories: Optional[list[str]] = SchemaField(
             description="Filter by categories", default=None
         )
+        limit_memory_to_run: bool = SchemaField(
+            description="Limit the memory to the run", default=False
+        )
+        limit_memory_to_agent: bool = SchemaField(
+            description="Limit the memory to the agent", default=False
+        )
 
     class Output(BlockSchema):
-        memories: list[dict[str, Any]] = SchemaField(description="List of memories")
-        total_pages: int = SchemaField(description="Total number of pages")
-        current_page: int = SchemaField(description="Current page number")
+        memories: Any = SchemaField(description="List of memories")
         error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
@@ -223,26 +250,33 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         self,
         input_data: Input,
         *,
-        user_id: str,
         credentials: APIKeyCredentials,
+        user_id: str,
+        graph_id: str,
+        run_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
             client = self._get_client(credentials)
 
-            memories = client.get_all(
-                filters={
-                    "AND": [
-                        {"user_id": user_id},
-                        # {"created_at": {"gte": "2024-07-01", "lte": "2024-07-31"}},
-                    ]
-                },
+            filters: dict[str, list[dict[str, str | dict[str, list[str]]]]] = {
+                "AND": [
+                    {"user_id": user_id},
+                ]
+            }
+            if input_data.limit_memory_to_run:
+                filters["AND"].append({"run_id": run_id})
+            if input_data.limit_memory_to_agent:
+                filters["AND"].append({"agent_id": graph_id})
+            if input_data.categories:
+                filters["AND"].append({"categories": {"in": input_data.categories}})
+
+            memories: list[dict[str, Any]] = client.get_all(
+                filters=filters,
                 version="v2",
             )
 
             yield "memories", memories
-            # yield "total_pages", memories.get("total_pages", 1)
-            # yield "current_page", memories.get("current_page", 1)
 
         except Exception as e:
             yield "error", str(e)
@@ -255,12 +289,8 @@ class MockMemoryClient:
     def add(self, *args, **kwargs):
         return {"memory_id": "test-memory-id", "status": "success"}
 
-    def search(self, *args, **kwargs):
-        return {"memories": [{"id": "test-memory", "content": "test content"}]}
+    def search(self, *args, **kwargs) -> list[dict[str, str]]:
+        return [{"id": "test-memory", "content": "test content"}]
 
-    def get_all(self, *args, **kwargs):
-        return {
-            "memories": [{"id": "test-memory", "content": "test content"}],
-            "total_pages": 1,
-            "current_page": 1,
-        }
+    def get_all(self, *args, **kwargs) -> list[dict[str, str]]:
+        return [{"id": "test-memory", "content": "test content"}]
