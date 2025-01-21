@@ -372,9 +372,9 @@ class UserCredit(UserCreditBase):
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
             success_url=settings.config.platform_base_url
-            + "/store/credits?topup=success",
+            + "/marketplace/credits?topup=success",
             cancel_url=settings.config.platform_base_url
-            + "/store/credits?topup=cancel",
+            + "/marketplace/credits?topup=cancel",
         )
 
         await self._add_transaction(

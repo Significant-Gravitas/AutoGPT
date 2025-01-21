@@ -43,7 +43,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
 
   const handleCardClick = (creator: string, slug: string) => {
     router.push(
-      `/store/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+      `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
     );
   };
 
