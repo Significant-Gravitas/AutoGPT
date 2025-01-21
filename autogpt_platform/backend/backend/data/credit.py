@@ -15,47 +15,18 @@ from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
 from backend.data.execution import NodeExecutionEntry
-from backend.data.model import AutoTopUpConfig
+from backend.data.model import (
+    AutoTopUpConfig,
+    TransactionHistory,
+    UsageTransactionMetadata,
+    UserTransaction,
+)
 from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
-
-
-class UsageTransactionMetadata(BaseModel):
-    graph_exec_id: str | None = None
-    graph_id: str | None = None
-    node_id: str | None = None
-    node_exec_id: str | None = None
-    block_id: str | None = None
-    block: str | None = None
-    input: BlockInput | None = None
-
-
-class UserTransaction(BaseModel):
-    transaction_time: datetime = datetime.min
-    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
-    amount: int = 0
-    balance: int = 0
-    description: str | None = None
-    usage_graph_id: str | None = None
-    usage_execution_id: str | None = None
-    usage_node_count: int = 0
-    usage_starting_time: datetime = datetime.max
-
-
-class TransactionHistory(BaseModel):
-    transactions: list[UserTransaction]
-    next_transaction_time: datetime | None
-
-
-class AutoTopUpConfig(BaseModel):
-    amount: int
-    """Amount of credits to top up."""
-    threshold: int
-    """Threshold to trigger auto top up."""
 
 
 class UserCreditBase(ABC):
@@ -518,7 +489,7 @@ class UserCredit(UserCreditBase):
                 gt.description = f"Graph #{gid} Execution"
 
                 gt.usage_node_count += 1
-                gt.usage_starting_time = min(gt.usage_starting_time, tx_time)
+                gt.usage_start_time = min(gt.usage_start_time, tx_time)
                 gt.usage_execution_id = metadata.graph_exec_id
                 gt.usage_graph_id = metadata.graph_id
             else:

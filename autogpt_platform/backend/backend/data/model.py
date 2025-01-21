@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -16,6 +17,7 @@ from typing import (
 )
 from uuid import uuid4
 
+from prisma.enums import CreditTransactionType
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -32,6 +34,7 @@ from pydantic_core import (
     core_schema,
 )
 
+from backend.data.block import BlockInput
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
 
@@ -354,3 +357,30 @@ class AutoTopUpConfig(BaseModel):
     """Amount of credits to top up."""
     threshold: int
     """Threshold to trigger auto top up."""
+
+
+class UsageTransactionMetadata(BaseModel):
+    graph_exec_id: str | None = None
+    graph_id: str | None = None
+    node_id: str | None = None
+    node_exec_id: str | None = None
+    block_id: str | None = None
+    block: str | None = None
+    input: BlockInput | None = None
+
+
+class UserTransaction(BaseModel):
+    transaction_time: datetime = datetime.min
+    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
+    amount: int = 0
+    balance: int = 0
+    description: str | None = None
+    usage_graph_id: str | None = None
+    usage_execution_id: str | None = None
+    usage_node_count: int = 0
+    usage_start_time: datetime = datetime.max
+
+
+class TransactionHistory(BaseModel):
+    transactions: list[UserTransaction]
+    next_transaction_time: datetime | None
