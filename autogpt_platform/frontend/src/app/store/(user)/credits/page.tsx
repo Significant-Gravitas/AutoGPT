@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { Button } from "@/components/agptui/Button";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -14,16 +14,19 @@ export default function CreditsPage() {
   const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
   const { toast } = useToast();
 
-  const toastOnFail = (action: string, fn: () => Promise<any>) => {
-    fn().catch((e) => {
-      toast({
-        title: `Unable to ${action}`,
-        description: e.message,
-        variant: "destructive",
-        duration: 10000,
+  const toastOnFail = useCallback(
+    (action: string, fn: () => Promise<any>) => {
+      fn().catch((e) => {
+        toast({
+          title: `Unable to ${action}`,
+          description: e.message,
+          variant: "destructive",
+          duration: 10000,
+        });
       });
-    });
-  };
+    },
+    [toast],
+  );
 
   useEffect(() => {
     if (api && topupStatus === "success") {
@@ -58,11 +61,6 @@ export default function CreditsPage() {
     );
   };
 
-  const openBillingPortal = async () => {
-    const portal = await api.getUserPaymentPortalLink();
-    router.push(portal.url);
-  };
-
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
       <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
@@ -95,16 +93,16 @@ export default function CreditsPage() {
                 htmlFor="topUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Top-up Amount (USD)
+                Top-up Amount (Credits)
               </label>
               <input
                 type="number"
                 id="topUpAmount"
                 name="topUpAmount"
                 placeholder="Enter top-up amount"
-                min="5"
-                step="1"
-                defaultValue={5}
+                min="500"
+                step="100"
+                defaultValue={500}
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
