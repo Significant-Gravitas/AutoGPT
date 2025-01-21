@@ -90,7 +90,7 @@
   }
 
   .agpt-card {
-    @apply agpt-rounded-card border border-zinc-300 bg-white;
+    @apply agpt-rounded-card border border-zinc-300 bg-white p-[1px];
   }
 
   .agpt-box {
@@ -104,7 +104,7 @@
 
 @layer utilities {
   .agpt-card-selected {
-    @apply border-2 border-accent bg-violet-50/50;
+    @apply border-2 border-accent bg-violet-50/50 p-0;
   }
 }
 
