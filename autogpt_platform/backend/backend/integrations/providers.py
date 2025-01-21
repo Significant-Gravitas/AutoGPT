@@ -28,6 +28,7 @@ class ProviderName(str, Enum):
     PINECONE = "pinecone"
     REPLICATE = "replicate"
     REVID = "revid"
+    SCREENSHOTONE = "screenshotone"
     SLANT3D = "slant3d"
     TWITTER = "twitter"
     UNREAL_SPEECH = "unreal_speech"
