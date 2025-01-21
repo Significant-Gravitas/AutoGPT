@@ -52,6 +52,7 @@ class AddMemoryBlock(Block, Mem0Base):
         metadata: dict[str, Any] = SchemaField(
             description="Optional metadata for the memory", default={}
         )
+
         limit_memory_to_run: bool = SchemaField(
             description="Limit the memory to the run", default=False
         )
@@ -145,7 +146,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             description="Limit the memory to the run", default=False
         )
         limit_memory_to_agent: bool = SchemaField(
-            description="Limit the memory to the agent", default=False
+            description="Limit the memory to the agent", default=True
         )
 
     class Output(BlockSchema):
