@@ -8,13 +8,13 @@ from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User
 from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
-from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
 from backend.data.execution import NodeExecutionEntry
+from backend.data.model import AutoTopUpConfig
 from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
 
@@ -512,13 +512,6 @@ async def get_stripe_customer_id(user_id: str) -> str:
         where={"id": user_id}, data={"stripeCustomerId": customer.id}
     )
     return customer.id
-
-
-class AutoTopUpConfig(BaseModel):
-    amount: int
-    """Amount of credits to top up."""
-    threshold: int
-    """Threshold to trigger auto top up."""
 
 
 async def set_auto_top_up(user_id: str, threshold: int, amount: int):
