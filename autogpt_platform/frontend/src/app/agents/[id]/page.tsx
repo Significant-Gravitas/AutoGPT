@@ -157,7 +157,7 @@ export default function AgentRunsPage(): React.ReactElement {
           className={
             "mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80 " +
             (selectedView.type == "run" && !selectedView.id
-              ? "border-2 border-accent bg-violet-50/50 text-accent"
+              ? "agpt-card-selected text-accent"
               : "")
           }
           onClick={() => openRunDraftView()}
@@ -198,7 +198,7 @@ export default function AgentRunsPage(): React.ReactElement {
               className={
                 "flex h-28 w-40 items-center gap-2 py-6 lg:hidden " +
                 (selectedView.type == "run" && !selectedView.id
-                  ? "border-2 border-accent bg-violet-50/50 text-accent"
+                  ? "agpt-card-selected text-accent"
                   : "")
               }
               onClick={() => openRunDraftView()}

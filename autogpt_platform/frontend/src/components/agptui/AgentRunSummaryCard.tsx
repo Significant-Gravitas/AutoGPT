@@ -39,7 +39,7 @@ export default function AgentRunSummaryCard({
     <Card
       className={cn(
         "agpt-rounded-card cursor-pointer border-zinc-300",
-        selected ? "border-2 border-accent bg-violet-50/50" : "",
+        selected ? "agpt-card-selected" : "",
         className,
       )}
       onClick={onClick}

@@ -9,7 +9,7 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "agpt-card border bg-white text-neutral-950", // TODO: check styling of existing usages
+      "agpt-card text-neutral-950", // TODO: check styling of existing usages
       className,
     )}
     {...props}
