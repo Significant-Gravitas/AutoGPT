@@ -9,13 +9,13 @@ from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User
 from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
-from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
 from backend.data.execution import NodeExecutionEntry
+from backend.data.model import AutoTopUpConfig
 from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
 
@@ -427,9 +427,9 @@ class UserCredit(UserCreditBase):
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
             success_url=settings.config.platform_base_url
-            + "/store/credits?topup=success",
+            + "/marketplace/credits?topup=success",
             cancel_url=settings.config.platform_base_url
-            + "/store/credits?topup=cancel",
+            + "/marketplace/credits?topup=cancel",
         )
 
         await self._add_transaction(
