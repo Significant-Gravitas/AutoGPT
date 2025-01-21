@@ -665,10 +665,7 @@ async def review_submission(
         )
         return submission
     except Exception:
-        logger.exception("Exception occurred whilst reviewing store submission")
-        return fastapi.responses.JSONResponse(
+        raise fastapi.HTTPException(
             status_code=500,
-            content={
-                "detail": "An error occurred while reviewing the store submission"
-            },
+            detail="An error occurred while creating the store submission review",
         )
