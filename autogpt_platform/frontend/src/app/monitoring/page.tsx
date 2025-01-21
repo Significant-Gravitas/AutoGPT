@@ -73,7 +73,7 @@ const Monitor = () => {
 
   return (
     <div
-      className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10"
+      className="grid grid-cols-1 gap-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-10 p-4"
       data-testid="monitor-page"
     >
       <AgentFlowList
