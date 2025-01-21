@@ -1,6 +1,9 @@
 from base64 import b64encode
 from typing import Literal
-from backend.data.block import Block, BlockCategory, BlockSchema, BlockOutput
+
+from pydantic import SecretStr
+
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -9,7 +12,6 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
-from pydantic import SecretStr
 
 
 class ScreenshotOneBlock(Block):
