@@ -106,7 +106,7 @@ Follow these steps to create and test a new block:
        Available kwargs are:
        - `user_id`: The ID of the user running the block.
        - `run_id`: The ID of the run that is executing the block. This changes every time the agent has a new "run"
-       - `agent_id`: The ID of the agent that is executing the block. This is the same for every version of the agent
+       - `graph_id`: The ID of the agent that is executing the block. This is the same for every version of the agent
 
 ### Field Types
 
