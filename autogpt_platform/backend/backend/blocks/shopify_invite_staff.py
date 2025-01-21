@@ -2,6 +2,7 @@ import os
 import requests
 import base64
 import time
+from backend.data import redis
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -38,6 +39,7 @@ class ShopifyInviteStaffBlock(Block):
         if not oauth_url:
             raise EnvironmentError("Environment variable 'SHOPIFY_INTEGRATION_OAUTH_URL' is not set.")
         self.oauth_url = oauth_url
+        self.redis = redis.get_redis()
 
         super().__init__(
             id=ShopifyInviteStaffBlock.block_id,
@@ -76,13 +78,16 @@ class ShopifyInviteStaffBlock(Block):
 
     def invite_staff_member(self, shop_name: str, email: str, first_name: str, last_name: str):
         # Load environment variables
-        encoded_cookie = os.getenv("SHOPIFY_INTEGRATION_STORE_COOKIE")
+        #encoded_cookie = os.getenv("SHOPIFY_INTEGRATION_STORE_COOKIE")
+
+        encoded_cookie = self.redis.get("SHOPIFY_INTEGRATION_STORE_COOKIE")
         if not encoded_cookie:
             raise EnvironmentError("Environment variable SHOPIFY_INTEGRATION_STORE_COOKIE is missing.")
         
         cookie = base64.b64decode(encoded_cookie).decode("utf-8")
 
-        csrf_token = os.getenv("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+        #csrf_token = os.getenv("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
+        csrf_token = self.redis.get("SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN")
         if not csrf_token:
             raise EnvironmentError("Environment variable 'SHOPIFY_INTEGRATION_STORE_CSRF_TOKEN' is not set.")
         
