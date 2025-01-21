@@ -36,6 +36,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   open_router: "Open Router",
   pinecone: "Pinecone",
   slant3d: "Slant3D",
+  screenshotone: "ScreenshotOne",
   replicate: "Replicate",
   fal: "FAL",
   revid: "Rev.ID",
