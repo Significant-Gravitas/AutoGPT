@@ -270,7 +270,9 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             if input_data.limit_memory_to_agent:
                 filters["AND"].append({"agent_id": graph_id})
             if input_data.categories:
-                filters["AND"].append({"categories": {"contains": input_data.categories}})
+                filters["AND"].append(
+                    {"categories": {"contains": input_data.categories}}
+                )
 
             memories: list[dict[str, Any]] = client.get_all(
                 filters=filters,
