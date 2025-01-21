@@ -64,6 +64,8 @@ class BlockCategory(Enum):
     SAFETY = (
         "Block that provides AI safety mechanisms such as detecting harmful content"
     )
+    PRODUCTIVITY = "Block that helps with productivity"
+    ISSUE_TRACKING = "Block that helps with issue tracking"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}

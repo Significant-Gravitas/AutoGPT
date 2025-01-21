@@ -111,6 +111,7 @@ export const PROVIDER_NAMES = {
   GROQ: "groq",
   IDEOGRAM: "ideogram",
   JINA: "jina",
+  LINEAR: "linear",
   MEDIUM: "medium",
   MEM0: "mem0",
   NOTION: "notion",

@@ -17,6 +17,7 @@ class ProviderName(str, Enum):
     HUBSPOT = "hubspot"
     IDEOGRAM = "ideogram"
     JINA = "jina"
+    LINEAR = "linear"
     MEDIUM = "medium"
     MEM0 = "mem0"
     NOTION = "notion"

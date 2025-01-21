@@ -47,7 +47,7 @@ export default async function Page({
         <main className="mt-5 px-4">
           <BreadCrumbs
             items={[
-              { name: "Store", link: "/store" },
+              { name: "Store", link: "/marketplace" },
               { name: creator.name, link: "#" },
             ]}
           />
