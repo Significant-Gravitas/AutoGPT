@@ -494,16 +494,20 @@ class FindInListBlock(Block):
             output_schema=FindInListBlock.Output,
             test_input=[
                 {"list": [1, 2, 3, 4, 5], "value": 3},
-                {"list": ["a", "b", "c", "d", "e"], "value": "c"},
+                {"list": [1, 2, 3, 4, 5], "value": 6},
             ],
-            test_output=[("index", 2), ("found", True)],
+            test_output=[
+                ("index", 2),
+                ("found", True),
+                ("not_found_value", 6),
+                ("found", False),
+            ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             yield "index", input_data.list.index(input_data.value)
             yield "found", True
-            yield "not_found_value", None
         except ValueError:
             yield "found", False
             yield "not_found_value", input_data.value
@@ -697,7 +701,7 @@ class TextSplitBlock(Block):
             input_schema=TextSplitBlock.Input,
             output_schema=TextSplitBlock.Output,
             test_input={"text": "Hello, World!", "delimiter": ","},
-            test_output=[("texts", ["Hello", " World!"])],
+            test_output=[("texts", ["Hello", "World!"])],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
