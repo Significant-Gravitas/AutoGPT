@@ -136,9 +136,15 @@ class SearchMemoryBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        query: str = SchemaField(description="Search query")
-        rerank: bool = SchemaField(description="Rerank the results", default=False)
-        top_k: int = SchemaField(description="Number of results to return", default=10)
+        query: str = SchemaField(
+            description="Search query",
+            advanced=False,
+        )
+        trigger: bool = SchemaField(
+            description="An unused field that is used to (re-)trigger the block when you have no other inputs",
+            default=False,
+            advanced=False,
+        )
         categories_filter: list[str] | None = SchemaField(
             description="Categories to filter by", default=None
         )
