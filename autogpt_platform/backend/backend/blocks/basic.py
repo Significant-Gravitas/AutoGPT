@@ -499,8 +499,8 @@ class FindInListBlock(Block):
             test_output=[
                 ("index", 2),
                 ("found", True),
-                ("not_found_value", 6),
                 ("found", False),
+                ("not_found_value", 6),
             ],
         )
 
@@ -700,8 +700,14 @@ class TextSplitBlock(Block):
             categories={BlockCategory.TEXT},
             input_schema=TextSplitBlock.Input,
             output_schema=TextSplitBlock.Output,
-            test_input={"text": "Hello, World!", "delimiter": ","},
-            test_output=[("texts", ["Hello", "World!"])],
+            test_input=[
+                {"text": "Hello, World!", "delimiter": ","},
+                {"text": "Hello, World!", "delimiter": ",", "strip": False},
+            ],
+            test_output=[
+                ("texts", ["Hello", "World!"]),
+                ("texts", ["Hello", " World!"]),
+            ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
