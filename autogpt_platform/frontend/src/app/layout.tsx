@@ -49,7 +49,7 @@ export default async function RootLayout({
               links={[
                 {
                   name: "Marketplace",
-                  href: "/store",
+                  href: "/marketplace",
                 },
                 {
                   name: "Library",
@@ -66,7 +66,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.Edit,
                       text: "Edit profile",
-                      href: "/store/profile",
+                      href: "/marketplace/profile",
                     },
                   ],
                 },
@@ -75,7 +75,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.LayoutDashboard,
                       text: "Creator Dashboard",
-                      href: "/store/dashboard",
+                      href: "/marketplace/dashboard",
                     },
                     {
                       icon: IconType.UploadCloud,
@@ -88,7 +88,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.Settings,
                       text: "Settings",
-                      href: "/store/settings",
+                      href: "/marketplace/settings",
                     },
                   ],
                 },
