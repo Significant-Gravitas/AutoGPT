@@ -642,7 +642,9 @@ class TextSplitBlock(Block):
     class Input(BlockSchema):
         text: str = SchemaField(description="The text to split.")
         delimiter: str = SchemaField(description="The delimiter to split the text by.")
-        strip: bool = SchemaField(description="Whether to strip the text.", default=True)
+        strip: bool = SchemaField(
+            description="Whether to strip the text.", default=True
+        )
 
     class Output(BlockSchema):
         texts: list[str] = SchemaField(
