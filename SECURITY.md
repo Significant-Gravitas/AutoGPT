@@ -12,7 +12,7 @@ Instead, please report them via:
 
 ### Reporting Process
 1. **Submit Report**: Use one of the above channels to submit your report
-2. **Response Time**: Our team will acknowledge receipt of your report within 14 business days.
+2. **Response Time**: Our team will acknowledge receipt of your report within 14 business days
 3. **Collaboration**: We will collaborate with you to understand and validate the issue
 4. **Resolution**: We will work on a fix and coordinate the release process
 
