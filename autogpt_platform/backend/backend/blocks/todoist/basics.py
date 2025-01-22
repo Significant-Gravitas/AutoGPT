@@ -1,4 +1,6 @@
-#  These are some basic blocks for todoist
+# This block is just for testing purposes of authentication
+# I will remove this block in incoming PR for new blocks
+
 from backend.blocks.jina._auth import TEST_CREDENTIALS
 from backend.blocks.todoist._auth import TEST_CREDENTIALS_INPUT, TodoistCredentials, TodoistCredentialsField, TodoistCredentialsInput
 from todoist_api_python.api import TodoistAPI
@@ -58,7 +60,7 @@ class TodoistGetProjectsBlock(Block):
             for project in projects:
                 project_ids.append(project.id)
                 project_names.append(project.name)
-                project_data.append(project.__dict__)
+                project_data.append(project.__dict__) # We do not have any nested object, hence It works fine
 
             return project_ids, project_names, project_data, None
 
