@@ -216,6 +216,11 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
+        trigger: bool = SchemaField(
+            description="An unused field that is used to trigger the block when you have no other inputs",
+            default=False,
+            advanced=False,
+        )
         categories: Optional[list[str]] = SchemaField(
             description="Filter by categories", default=None
         )
