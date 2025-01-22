@@ -481,7 +481,9 @@ class FindInListBlock(Block):
         found: bool = SchemaField(
             description="Whether the value was found in the list."
         )
-        error: str = SchemaField(description="Error message if the operation failed.")
+        not_found_value: Any = SchemaField(
+            description="The value that was not found in the list."
+        )
 
     def __init__(self):
         super().__init__(
@@ -501,9 +503,10 @@ class FindInListBlock(Block):
         try:
             yield "index", input_data.list.index(input_data.value)
             yield "found", True
+            yield "not_found_value", None
         except ValueError:
-            yield "error", "Value not found in list"
             yield "found", False
+            yield "not_found_value", input_data.value
 
 
 class NoteBlock(Block):
