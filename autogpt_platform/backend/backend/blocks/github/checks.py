@@ -40,7 +40,7 @@ class GithubCreateCheckRunBlock(Block):
     """Block for creating a new check run on a GitHub repository."""
 
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GithubCredentialsField("checks")
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo:status")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -106,6 +106,8 @@ class GithubCreateCheckRunBlock(Block):
                 "output_summary": "All tests passed",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
+            # requires a github app not available to oauth in our current system
+            # disabled=True,
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
@@ -208,7 +210,7 @@ class GithubUpdateCheckRunBlock(Block):
     """Block for updating an existing check run on a GitHub repository."""
 
     class Input(BlockSchema):
-        credentials: GithubCredentialsInput = GithubCredentialsField("checks")
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo:status")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
@@ -254,6 +256,8 @@ class GithubUpdateCheckRunBlock(Block):
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubUpdateCheckRunBlock.Input,
             output_schema=GithubUpdateCheckRunBlock.Output,
+            # requires a github app not available to oauth in our current system
+            # disabled=True,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "check_run_id": 4,
