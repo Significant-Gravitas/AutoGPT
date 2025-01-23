@@ -11,9 +11,10 @@ const getYouTubeVideoId = (url: string) => {
 };
 
 const isValidVideoUrl = (url: string): boolean => {
+  const validUrl = /^(https?:\/\/)(www\.)?/i;
   const videoExtensions = /\.(mp4|webm|ogg)$/i;
   const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
-  return videoExtensions.test(url) || youtubeRegex.test(url);
+  return url.startsWith("data:video") || validUrl.test(url) && videoExtensions.test(url) || youtubeRegex.test(url);
 };
 
 const isValidImageUrl = (url: string): boolean => {
