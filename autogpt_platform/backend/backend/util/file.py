@@ -16,7 +16,8 @@ def get_path(exec_id: str, path: str) -> str:
     """
     Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder.
     """
-    return os.path.join(TEMP_DIR, "exec_file", exec_id, path)
+    rel_path = os.path.join(TEMP_DIR, "exec_file", exec_id, path)
+    return os.path.realpath(rel_path)
 
 
 def store_temp_file(exec_id: str, file: str, return_content: bool = False) -> str:
@@ -64,8 +65,8 @@ def store_temp_file(exec_id: str, file: str, return_content: bool = False) -> st
         return f"data:{mime_type};base64,{b64}"
 
     def _strip_base_prefix(absolute_path: str) -> str:
-        # Make a relative path from temp_base to absolute_path
-        return os.path.relpath(absolute_path, start=temp_base)
+        # Stripe temp_base prefix and normalize path
+        return absolute_path.removeprefix(temp_base).removeprefix(os.sep)
 
     def _ensure_inside_base(path_candidate: str) -> str:
         """
