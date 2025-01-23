@@ -14,7 +14,7 @@ class TodoistOAuthHandler(BaseOAuthHandler):
         "data:read",
         "data:read_write",
         "data:delete",
-        "project:delete"
+        "project:delete",
     ]
 
     AUTHORIZE_URL = "https://todoist.com/oauth/authorize"
@@ -31,7 +31,7 @@ class TodoistOAuthHandler(BaseOAuthHandler):
         params = {
             "client_id": self.client_id,
             "scope": ",".join(self.DEFAULT_SCOPES),
-            "state": state
+            "state": state,
         }
 
         return f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
@@ -45,7 +45,7 @@ class TodoistOAuthHandler(BaseOAuthHandler):
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "code": code,
-            "redirect_uri": self.redirect_uri
+            "redirect_uri": self.redirect_uri,
         }
 
         response = requests.post(self.TOKEN_URL, data=data)

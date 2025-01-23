@@ -21,7 +21,7 @@ HANDLERS_BY_NAME: dict["ProviderName", type["BaseOAuthHandler"]] = {
         NotionOAuthHandler,
         TwitterOAuthHandler,
         LinearOAuthHandler,
-        TodoistOAuthHandler
+        TodoistOAuthHandler,
     ]
 }
 # --8<-- [end:HANDLERS_BY_NAMEExample]
