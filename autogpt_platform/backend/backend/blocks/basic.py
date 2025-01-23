@@ -29,6 +29,7 @@ class FileStoreBlock(Block):
             categories={BlockCategory.BASIC, BlockCategory.MULTIMEDIA},
             input_schema=FileStoreBlock.Input,
             output_schema=FileStoreBlock.Output,
+            static_output=True,
         )
 
     def run(
