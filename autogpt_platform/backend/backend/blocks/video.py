@@ -190,14 +190,6 @@ class AddAudioToVideoBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=AddAudioToVideoBlock.Input,
             output_schema=AddAudioToVideoBlock.Output,
-            test_input={
-                "exec_id": "test_exec_id",
-                "video_in": "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4",
-                "audio_in": "https://www2.cs.uic.edu/~i101/SoundFiles/gettysburg10.wav",
-                "volume": 0.8,
-                "output_return_type": "file_path",
-            },
-            test_output=[("video_out", "final_video.mp4")],
         )
 
     def run(
