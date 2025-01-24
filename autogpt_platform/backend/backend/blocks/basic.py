@@ -40,7 +40,7 @@ class FileStoreBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         file_path = store_temp_file(
-            exec_id=graph_exec_id,
+            graph_exec_id=graph_exec_id,
             file=input_data.file_in,
             return_content=False,
         )

@@ -8,7 +8,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.file import get_path, store_temp_file
+from backend.util.file import get_exec_file_path, store_temp_file
 
 
 class MediaDurationBlock(Block):
@@ -48,11 +48,11 @@ class MediaDurationBlock(Block):
     ) -> BlockOutput:
         # 1) Store the input media locally
         local_media_path = store_temp_file(
-            exec_id=graph_exec_id,
+            graph_exec_id=graph_exec_id,
             file=input_data.media_in,
             return_content=False,
         )
-        media_abspath = get_path(graph_exec_id, local_media_path)
+        media_abspath = get_exec_file_path(graph_exec_id, local_media_path)
 
         # 2) Load the clip
         if input_data.is_video:
@@ -115,11 +115,11 @@ class LoopVideoBlock(Block):
     ) -> BlockOutput:
         # 1) Store the input video locally
         local_video_path = store_temp_file(
-            exec_id=graph_exec_id,
+            graph_exec_id=graph_exec_id,
             file=input_data.video_in,
             return_content=False,
         )
-        input_abspath = get_path(graph_exec_id, local_video_path)
+        input_abspath = get_exec_file_path(graph_exec_id, local_video_path)
 
         # 2) Load the clip
         clip = VideoFileClip(input_abspath)
@@ -138,14 +138,14 @@ class LoopVideoBlock(Block):
 
         # 4) Save the looped output
         output_filename = f"{node_exec_id}_looped_{os.path.basename(local_video_path)}"
-        output_abspath = get_path(graph_exec_id, output_filename)
+        output_abspath = get_exec_file_path(graph_exec_id, output_filename)
 
         looped_clip = looped_clip.with_audio(clip.audio)
         looped_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
         # Return as data URI
         video_out = store_temp_file(
-            exec_id=graph_exec_id,
+            graph_exec_id=graph_exec_id,
             file=output_filename,
             return_content=input_data.output_return_type == "data_uri",
         )
@@ -202,12 +202,12 @@ class AddAudioToVideoBlock(Block):
     ) -> BlockOutput:
         # 1) Store the inputs locally
         local_video_path = store_temp_file(
-            exec_id=graph_exec_id,
+            graph_exec_id=graph_exec_id,
             file=input_data.video_in,
             return_content=False,
         )
         local_audio_path = store_temp_file(
-            exec_id=graph_exec_id,
+            graph_exec_id=graph_exec_id,
             file=input_data.audio_in,
             return_content=False,
         )
@@ -235,7 +235,7 @@ class AddAudioToVideoBlock(Block):
 
         # 5) Return either path or data URI
         video_out = store_temp_file(
-            exec_id=graph_exec_id,
+            graph_exec_id=graph_exec_id,
             file=output_filename,
             return_content=input_data.output_return_type == "data_uri",
         )

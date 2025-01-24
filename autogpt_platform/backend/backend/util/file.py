@@ -1,26 +1,35 @@
 import base64
 import mimetypes
-import os
 import re
+import shutil
 import tempfile
 import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 
 # This "requests" presumably has additional checks against internal networks for SSRF.
 from backend.util.request import requests
 
-TEMP_DIR = tempfile.gettempdir()
+TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
 
-def get_path(exec_id: str, path: str) -> str:
+def get_exec_file_path(graph_exec_id: str, path: str) -> str:
     """
     Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder.
     """
-    rel_path = os.path.join(TEMP_DIR, "exec_file", exec_id, path)
-    return os.path.realpath(rel_path)
+    return str(TEMP_DIR / "exec_file" / graph_exec_id / path)
 
 
-def store_temp_file(exec_id: str, file: str, return_content: bool = False) -> str:
+def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
+    """
+    Utility to remove the {temp}/exec_file/{exec_id} folder and its contents.
+    """
+    exec_path = Path(get_exec_file_path(graph_exec_id, file))
+    if exec_path.exists() and exec_path.is_dir():
+        shutil.rmtree(exec_path)
+
+
+def store_temp_file(graph_exec_id: str, file: str, return_content: bool = False) -> str:
     """
     Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
     placing or verifying it under:
@@ -39,103 +48,82 @@ def store_temp_file(exec_id: str, file: str, return_content: bool = False) -> st
              (no copying, as it's presumably already there).
              We realpath-check so no symlink or '..' can escape the folder.
 
-    :param exec_id:        Unique identifier for the execution context.
+    :param graph_exec_id:  The unique ID of the graph execution.
     :param file:           Data URI, URL, or local (relative) path.
     :param return_content: If True, return a data URI of the file content.
                            If False, return the *relative* path inside the exec_id folder.
     :return:               The requested result: data URI or relative path.
     """
+    # Build base path
+    base_path = Path(get_exec_file_path(graph_exec_id, ""))
+    base_path.mkdir(parents=True, exist_ok=True)
 
-    # 1) Build the absolute base path for this exec_id
-    temp_base = get_path(exec_id, "")
-    os.makedirs(temp_base, exist_ok=True)
-
-    # 2) Helper functions
+    # Helper functions
     def _extension_from_mime(mime: str) -> str:
         ext = mimetypes.guess_extension(mime, strict=False)
         return ext if ext else ".bin"
 
-    def _file_to_data_uri(path: str) -> str:
+    def _file_to_data_uri(path: Path) -> str:
         mime_type, _ = mimetypes.guess_type(path)
-        if not mime_type:
-            mime_type = "application/octet-stream"
-        with open(path, "rb") as f:
-            raw = f.read()
-        b64 = base64.b64encode(raw).decode("utf-8")
+        mime_type = mime_type or "application/octet-stream"
+        b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
         return f"data:{mime_type};base64,{b64}"
 
-    def _strip_base_prefix(absolute_path: str) -> str:
-        # Stripe temp_base prefix and normalize path
-        return absolute_path.removeprefix(temp_base).removeprefix(os.sep)
+    def _ensure_inside_base(path_candidate: Path, base: Path) -> Path:
+        """
+        Resolve symlinks via resolve() and ensure the result is still under base.
+        """
+        real_candidate = path_candidate.resolve()
+        real_base = base.resolve()
 
-    def _ensure_inside_base(path_candidate: str) -> str:
-        """
-        Resolve symlinks via realpath and ensure the result is still under temp_base.
-        If valid, returns the real, absolute path.
-        Otherwise, raises ValueError.
-        """
-        real_candidate = os.path.realpath(path_candidate)
-        real_base = os.path.realpath(temp_base)
-        # Must be either exactly the folder or inside it
-        if (
-            not real_candidate.startswith(real_base + os.sep)
-            and real_candidate != real_base
-        ):
+        if not real_candidate.is_relative_to(real_base):
             raise ValueError(
                 "Local file path is outside the temp_base directory. Access denied."
             )
         return real_candidate
 
-    # 3) Distinguish between data URI, URL, or local path
+    def _strip_base_prefix(absolute_path: Path, base: Path) -> str:
+        """
+        Strip base prefix and normalize path.
+        """
+        return str(absolute_path.relative_to(base))
+
+    # Process file
     if file.startswith("data:"):
-        # === Data URI ===
+        # Data URI
         match = re.match(r"^data:([^;]+);base64,(.*)$", file, re.DOTALL)
         if not match:
             raise ValueError(
                 "Invalid data URI format. Expected data:<mime>;base64,<data>"
             )
-
         mime_type = match.group(1).strip().lower()
         b64_content = match.group(2).strip()
 
-        # Generate random filename with guessed extension
+        # Generate filename and decode
         extension = _extension_from_mime(mime_type)
-        local_filename = str(uuid.uuid4()) + extension
-        # Our intended path
-        intended_path = os.path.join(temp_base, local_filename)
-        absolute_path = _ensure_inside_base(intended_path)
+        filename = f"{uuid.uuid4()}{extension}"
+        target_path = _ensure_inside_base(base_path / filename, base_path)
+        target_path.write_bytes(base64.b64decode(b64_content))
 
-        # Decode and write
-        raw_bytes = base64.b64decode(b64_content)
-        with open(absolute_path, "wb") as f:
-            f.write(raw_bytes)
-
-    elif file.startswith("http://") or file.startswith("https://"):
-        # === URL ===
+    elif file.startswith(("http://", "https://")):
+        # URL
         parsed_url = urlparse(file)
-        basename = os.path.basename(parsed_url.path) or str(uuid.uuid4())
+        filename = Path(parsed_url.path).name or f"{uuid.uuid4()}"
+        target_path = _ensure_inside_base(base_path / filename, base_path)
 
-        intended_path = os.path.join(temp_base, basename)
-        absolute_path = _ensure_inside_base(intended_path)
-
-        # Download
+        # Download and save
         resp = requests.get(file)
         resp.raise_for_status()
-        with open(absolute_path, "wb") as f:
-            f.write(resp.content)
+        target_path.write_bytes(resp.content)
 
     else:
-        # === Local path (relative to temp_base) ===
-        # interpret 'file' as a sub-path, then realpath-check it
-        intended_path = os.path.join(temp_base, file)
-        absolute_path = _ensure_inside_base(intended_path)
+        # Local path
+        target_path = _ensure_inside_base(base_path / file, base_path)
+        if not target_path.is_file():
+            raise ValueError(f"Local file does not exist: {target_path}")
 
-        # Check file actually exists
-        if not os.path.isfile(absolute_path):
-            raise ValueError(f"Local file does not exist: {absolute_path}")
-
-    # 4) Return result
+    # Return result
     if return_content:
-        return _file_to_data_uri(absolute_path)
+        return _file_to_data_uri(target_path)
     else:
-        return _strip_base_prefix(absolute_path)
+        return _strip_base_prefix(target_path, base_path)
