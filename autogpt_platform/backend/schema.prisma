@@ -50,6 +50,7 @@ model User {
 
   AgentPresets  AgentPreset[]
   LibraryAgents LibraryAgent[]
+  Files         File[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -458,6 +459,9 @@ model AgentNodeExecutionInputOutput {
   data Json?
   time DateTime @default(now())
 
+  fileID String?
+  File   File?   @relation("AgentNodeExecutionIOFile", fields: [fileID], references: [id])
+
   // Prisma requires explicit back-references.
   referencedByInputExecId  String?
   ReferencedByInputExec    AgentNodeExecution? @relation("AgentNodeExecutionInput", fields: [referencedByInputExecId], references: [id], onDelete: Cascade)
@@ -517,6 +521,22 @@ model PendingHumanReview {
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])
   @@index([graphExecId, status])
+}
+
+model File {
+  id     String @id @default(uuid())
+  userID String
+
+  OwnedByUser User @relation(fields: [userID], references: [id])
+
+  name        String
+  size        Int // file size in bytes
+  contentType String
+  createdAt   DateTime @default(now())
+
+  UsedInAgentNodeExecutionIO AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionIOFile")
+
+  @@index([id, userID])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
