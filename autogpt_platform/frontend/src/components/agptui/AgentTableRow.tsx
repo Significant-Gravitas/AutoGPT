@@ -21,6 +21,8 @@ export interface AgentTableRowProps {
   rating: number;
   dateSubmitted: string;
   id: number;
+  selectedAgents: Set<string>;
+  setSelectedAgents: React.Dispatch<React.SetStateAction<Set<string>>>;
   onEditSubmission: (submission: StoreSubmissionRequest) => void;
   onDeleteSubmission: (submission_id: string) => void;
 }
@@ -37,6 +39,8 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   runs,
   rating,
   id,
+  selectedAgents,
+  setSelectedAgents,
   onEditSubmission,
   onDeleteSubmission,
 }) => {
@@ -53,7 +57,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
       description,
       image_urls: imageSrc,
       categories: [],
-    } as StoreSubmissionRequest);
+    } satisfies StoreSubmissionRequest);
   }, [
     agent_id,
     agent_version,
@@ -68,6 +72,15 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
     onDeleteSubmission(agent_id);
   }, [agent_id, onDeleteSubmission]);
 
+  const handleCheckboxChange = React.useCallback(() => {
+    if (selectedAgents.has(agent_id)) {
+      selectedAgents.delete(agent_id);
+    } else {
+      selectedAgents.add(agent_id);
+    }
+    setSelectedAgents(new Set(selectedAgents));
+  }, [agent_id, selectedAgents, setSelectedAgents]);
+
   return (
     <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
       <div className="flex items-center">
@@ -77,6 +90,8 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
             id={checkboxId}
             aria-label={`Select ${agentName}`}
             className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
+            checked={selectedAgents.has(agent_id)}
+            onChange={handleCheckboxChange}
           />
           {/* Single label instead of multiple */}
           <label htmlFor={checkboxId} className="sr-only">
