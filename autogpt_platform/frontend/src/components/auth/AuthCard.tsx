@@ -8,7 +8,12 @@ interface Props {
 
 export default function AuthCard({ children, className }: Props) {
   return (
-    <div className={cn("flex h-[80vh] w-[32rem] items-center justify-center", className)}>
+    <div
+      className={cn(
+        "flex h-[80vh] w-[32rem] items-center justify-center",
+        className,
+      )}
+    >
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-md">
         {children}
       </div>
