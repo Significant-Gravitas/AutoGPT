@@ -1,10 +1,10 @@
 from enum import Enum
 from typing import Optional
 
+from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from pydantic import BaseModel
 
 from ._api import get_api
 from ._auth import (
