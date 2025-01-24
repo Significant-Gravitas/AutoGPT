@@ -57,7 +57,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
       description,
       image_urls: imageSrc,
       categories: [],
-    } as StoreSubmissionRequest);
+    } satisfies StoreSubmissionRequest);
   }, [
     agent_id,
     agent_version,

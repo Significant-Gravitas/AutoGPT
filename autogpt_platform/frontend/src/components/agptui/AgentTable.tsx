@@ -6,7 +6,7 @@ import { AgentTableCard } from "./AgentTableCard";
 import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
 
 export interface AgentTableProps {
-  agents: AgentTableRowProps[];
+  agents: Omit<AgentTableRowProps, "setSelectedAgents" | "selectedAgents" | "onEditSubmission" | "onDeleteSubmission">[];
   onEditSubmission: (submission: StoreSubmissionRequest) => void;
   onDeleteSubmission: (submission_id: string) => void;
 }
@@ -25,7 +25,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
   const handleSelectAll = React.useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.checked) {
-        setSelectedAgents(new Set(agents.map((agent) => agent.id.toString())));
+        setSelectedAgents(new Set(agents.map((agent) => agent.agent_id)));
       } else {
         setSelectedAgents(new Set());
       }
@@ -89,11 +89,12 @@ export const AgentTable: React.FC<AgentTableProps> = ({
               <AgentTableRow
                 {...agent}
                 selectedAgents={selectedAgents}
+                setSelectedAgents={setSelectedAgents}
                 onEditSubmission={onEditSubmission}
                 onDeleteSubmission={onDeleteSubmission}
               />
               <div className="block md:hidden">
-                <AgentTableCard {...agent} />
+                <AgentTableCard {...agent} onEditSubmission={onEditSubmission} />
               </div>
             </div>
           ))}
