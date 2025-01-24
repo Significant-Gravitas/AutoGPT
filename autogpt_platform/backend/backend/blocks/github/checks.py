@@ -1,10 +1,10 @@
 from enum import Enum
 from typing import Optional
 
-from typing_extensions import TypedDict
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from pydantic import BaseModel
 
 from ._api import get_api
 from ._auth import (
@@ -59,25 +59,25 @@ class GithubCreateCheckRunBlock(Block):
             description="The final conclusion of the check (required if status is completed)",
             default=None,
         )
-        details_url: Optional[str] = SchemaField(
+        details_url: str = SchemaField(
             description="The URL for the full details of the check",
-            default=None,
+            default="",
         )
-        output_title: Optional[str] = SchemaField(
+        output_title: str = SchemaField(
             description="Title of the check run output",
-            default=None,
+            default="",
         )
-        output_summary: Optional[str] = SchemaField(
+        output_summary: str = SchemaField(
             description="Summary of the check run output",
-            default=None,
+            default="",
         )
-        output_text: Optional[str] = SchemaField(
+        output_text: str = SchemaField(
             description="Detailed text of the check run output",
-            default=None,
+            default="",
         )
 
     class Output(BlockSchema):
-        class CheckRunResult(TypedDict):
+        class CheckRunResult(BaseModel):
             id: int
             html_url: str
             status: str
@@ -91,7 +91,7 @@ class GithubCreateCheckRunBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="2f45e89a-3b7d-4f22-b89e-6c4f5c7e1234",  # Generated UUID
+            id="2f45e89a-3b7d-4f22-b89e-6c4f5c7e1234",
             description="Creates a new check run for a specific commit in a GitHub repository",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubCreateCheckRunBlock.Input,
@@ -107,7 +107,7 @@ class GithubCreateCheckRunBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             # requires a github app not available to oauth in our current system
-            # disabled=True,
+            disabled=True,
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
@@ -143,25 +143,25 @@ class GithubCreateCheckRunBlock(Block):
     ) -> dict:
         api = get_api(credentials)
 
-        class CheckRunData(TypedDict, total=False):
+        class CheckRunData(BaseModel):
             name: str
             head_sha: str
             status: str
-            conclusion: Optional[str]
-            details_url: Optional[str]
-            output: Optional[dict[str, str]]
+            conclusion: Optional[str] = None
+            details_url: Optional[str] = None
+            output: Optional[dict[str, str]] = None
 
-        data: CheckRunData = {
-            "name": name,
-            "head_sha": head_sha,
-            "status": status.value,
-        }
+        data = CheckRunData(
+            name=name,
+            head_sha=head_sha,
+            status=status.value,
+        )
 
         if conclusion:
-            data["conclusion"] = conclusion.value
+            data.conclusion = conclusion.value
 
         if details_url:
-            data["details_url"] = details_url
+            data.details_url = details_url
 
         if output_title or output_summary or output_text:
             output_data = {
@@ -169,7 +169,7 @@ class GithubCreateCheckRunBlock(Block):
                 "summary": output_summary or "",
                 "text": output_text or "",
             }
-            data["output"] = output_data
+            data.output = output_data
 
         check_runs_url = f"{repo_url}/check-runs"
         response = api.post(check_runs_url)
@@ -238,7 +238,7 @@ class GithubUpdateCheckRunBlock(Block):
         )
 
     class Output(BlockSchema):
-        class CheckRunResult(TypedDict):
+        class CheckRunResult(BaseModel):
             id: int
             html_url: str
             status: str
@@ -257,7 +257,7 @@ class GithubUpdateCheckRunBlock(Block):
             input_schema=GithubUpdateCheckRunBlock.Input,
             output_schema=GithubUpdateCheckRunBlock.Output,
             # requires a github app not available to oauth in our current system
-            # disabled=True,
+            disabled=True,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "check_run_id": 4,
@@ -302,15 +302,17 @@ class GithubUpdateCheckRunBlock(Block):
     ) -> dict:
         api = get_api(credentials)
 
-        class UpdateCheckRunData(TypedDict, total=False):
+        class UpdateCheckRunData(BaseModel):
             status: str
-            conclusion: Optional[str]
-            output: Optional[dict[str, str]]
+            conclusion: Optional[str] = None
+            output: Optional[dict[str, str]] = None
 
-        data: UpdateCheckRunData = {"status": status.value}
+        data = UpdateCheckRunData(
+            status=status.value,
+        )
 
         if conclusion:
-            data["conclusion"] = conclusion.value
+            data.conclusion = conclusion.value
 
         if output_title or output_summary or output_text:
             output_data = {
@@ -318,7 +320,7 @@ class GithubUpdateCheckRunBlock(Block):
                 "summary": output_summary or "",
                 "text": output_text or "",
             }
-            data["output"] = output_data
+            data.output = output_data
 
         check_run_url = f"{repo_url}/check-runs/{check_run_id}"
         response = api.patch(check_run_url)

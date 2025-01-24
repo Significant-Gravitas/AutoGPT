@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from typing_extensions import TypedDict
+from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -55,7 +55,7 @@ class GithubCreateStatusBlock(Block):
         )
 
     class Output(BlockSchema):
-        class StatusResult(TypedDict):
+        class StatusResult(BaseModel):
             id: int
             url: str
             state: str
@@ -126,22 +126,22 @@ class GithubCreateStatusBlock(Block):
     ) -> dict:
         api = get_api(credentials)
 
-        class StatusData(TypedDict, total=False):
+        class StatusData(BaseModel):
             state: str
-            target_url: Optional[str]
-            description: Optional[str]
+            target_url: Optional[str] = None
+            description: Optional[str] = None
             context: str
 
-        data: StatusData = {
-            "state": state.value,
-            "context": context,
-        }
+        data = StatusData(
+            state=state.value,
+            context=context,
+        )
 
         if target_url:
-            data["target_url"] = target_url
+            data.target_url = target_url
 
         if description:
-            data["description"] = description
+            data.description = description
 
         status_url = f"{repo_url}/statuses/{sha}"
         response = api.post(status_url, json=data)
