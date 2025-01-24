@@ -15,7 +15,7 @@ import {
 import useSupabase from "@/hooks/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-export default function Page({ }: {}) {
+export default function Page({}: {}) {
   const { supabase } = useSupabase();
   const api = useBackendAPI();
   const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();
@@ -109,7 +109,7 @@ export default function Page({ }: {}) {
         {submissions && (
           <AgentTable
             agents={
-              (submissions?.submissions.map((submission, index) => ({
+              submissions?.submissions.map((submission, index) => ({
                 id: index,
                 agent_id: submission.agent_id,
                 agent_version: submission.agent_version,
@@ -124,7 +124,7 @@ export default function Page({ }: {}) {
                 status: submission.status.toLowerCase() as StatusType,
                 runs: submission.runs,
                 rating: submission.rating,
-              }))) || []
+              })) || []
             }
             onEditSubmission={onEditSubmission}
             onDeleteSubmission={onDeleteSubmission}
