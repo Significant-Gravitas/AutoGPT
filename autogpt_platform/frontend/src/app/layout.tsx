@@ -44,7 +44,7 @@ export default async function RootLayout({
           // enableSystem
           disableTransitionOnChange
         >
-          <div className="flex min-h-screen flex-col items-center justify-center">
+          <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
             <Navbar
               links={[
                 {
@@ -102,7 +102,7 @@ export default async function RootLayout({
                 },
               ]}
             />
-            <main className="flex-1">{children}</main>
+            <main className="w-full flex-grow">{children}</main>
             <TallyPopupSimple />
           </div>
           <Toaster />
