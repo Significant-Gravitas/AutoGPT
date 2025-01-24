@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel
 
@@ -13,12 +13,12 @@ from backend.util.request import requests
 
 
 class ContentRetrievalSettings(BaseModel):
-    text: Optional[dict] = SchemaField(
+    text: dict = SchemaField(
         description="Text content settings",
         default={"maxCharacters": 1000, "includeHtmlTags": False},
         advanced=True,
     )
-    highlights: Optional[dict] = SchemaField(
+    highlights: dict = SchemaField(
         description="Highlight settings",
         default={
             "numSentences": 3,
@@ -27,7 +27,7 @@ class ContentRetrievalSettings(BaseModel):
         },
         advanced=True,
     )
-    summary: Optional[dict] = SchemaField(
+    summary: dict = SchemaField(
         description="Summary settings",
         default={"query": ""},
         advanced=True,

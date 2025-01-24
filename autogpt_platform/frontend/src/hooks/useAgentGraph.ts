@@ -558,8 +558,9 @@ export default function useAgentGraph(
                   return;
                 }
                 if (
-                  nodeResult.status != "COMPLETED" &&
-                  nodeResult.status != "FAILED"
+                  !["COMPLETED", "TERMINATED", "FAILED"].includes(
+                    nodeResult.status,
+                  )
                 ) {
                   pendingNodeExecutions.add(nodeResult.node_exec_id);
                 } else {
@@ -861,6 +862,7 @@ export default function useAgentGraph(
         title: "Error saving agent",
         description: errorMessage,
       });
+      setSaveRunRequest({ request: "save", state: "error" });
     }
   }, [_saveAgent, toast]);
 
@@ -873,7 +875,7 @@ export default function useAgentGraph(
       request: "save",
       state: "saving",
     });
-  }, [saveAgent]);
+  }, [saveAgent, saveRunRequest.state]);
 
   const requestSaveAndRun = useCallback(() => {
     saveAgent();

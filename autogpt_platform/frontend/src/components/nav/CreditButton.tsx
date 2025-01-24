@@ -1,37 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { IconRefresh } from "@/components/ui/icons";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import useCredits from "@/hooks/useCredits";
 
 export default function CreditButton() {
-  const [credit, setCredit] = useState<number | null>(null);
-  const api = useBackendAPI();
-
-  const fetchCredit = useCallback(async () => {
-    try {
-      const response = await api.getUserCredit();
-      setCredit(response.credits);
-    } catch (error) {
-      console.error("Error fetching credit:", error);
-      setCredit(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCredit();
-  }, [fetchCredit]);
+  const { credits, fetchCredits } = useCredits();
 
   return (
-    credit !== null && (
+    credits !== null && (
       <Button
-        onClick={fetchCredit}
+        onClick={fetchCredits}
         variant="outline"
         className="flex items-center space-x-2 rounded-xl bg-gray-200"
       >
         <span className="mr-2 flex items-center text-foreground">
-          {credit} <span className="ml-2 text-muted-foreground"> credits</span>
+          {credits} <span className="ml-2 text-muted-foreground"> credits</span>
         </span>
         <IconRefresh />
       </Button>

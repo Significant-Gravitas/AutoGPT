@@ -298,7 +298,6 @@ async def main():
                 data={
                     "transactionKey": str(faker.uuid4()),
                     "userId": user.id,
-                    "blockId": block.id,
                     "amount": random.randint(1, 100),
                     "type": (
                         prisma.enums.CreditTransactionType.TOP_UP

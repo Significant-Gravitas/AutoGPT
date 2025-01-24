@@ -245,6 +245,7 @@ export function CustomNode({
             ].includes(nodeType) &&
             // No input connection handles for credentials
             propKey !== "credentials" &&
+            !propKey.endsWith("_credentials") &&
             // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
             !(nodeType == BlockUIType.OUTPUT && propKey == "name");
           const isConnected = isInputHandleConnected(propKey);
@@ -252,7 +253,13 @@ export function CustomNode({
             !isHidden &&
             (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
               <div key={propKey} data-id={`input-handle-${propKey}`}>
-                {isConnectable ? (
+                {isConnectable &&
+                !(
+                  "oneOf" in propSchema &&
+                  propSchema.oneOf &&
+                  "discriminator" in propSchema &&
+                  propSchema.discriminator
+                ) ? (
                   <NodeHandle
                     keyName={propKey}
                     isConnected={isConnected}
@@ -261,7 +268,8 @@ export function CustomNode({
                     side="left"
                   />
                 ) : (
-                  propKey != "credentials" && (
+                  propKey !== "credentials" &&
+                  !propKey.endsWith("_credentials") && (
                     <div className="flex gap-1">
                       <span className="text-m green mb-0 text-gray-900 dark:text-gray-100">
                         {propSchema.title || beautifyString(propKey)}
@@ -726,13 +734,10 @@ export function CustomNode({
       </div>
 
       {/* Body */}
-      <div className="ml-5 mt-6 rounded-b-xl">
+      <div className="mx-5 my-6 rounded-b-xl">
         {/* Input Handles */}
         {data.uiType !== BlockUIType.NOTE ? (
-          <div
-            className="flex w-fit items-start justify-between"
-            data-id="input-handles"
-          >
+          <div data-id="input-handles">
             <div>
               {data.uiType === BlockUIType.WEBHOOK_MANUAL &&
                 (data.webhook ? (
@@ -781,7 +786,6 @@ export function CustomNode({
               <Switch
                 onCheckedChange={toggleAdvancedSettings}
                 checked={isAdvancedOpen}
-                className="mr-5"
               />
             </div>
           </>
@@ -790,7 +794,7 @@ export function CustomNode({
         {data.uiType !== BlockUIType.NOTE && (
           <>
             <LineSeparator />
-            <div className="flex items-start justify-end rounded-b-xl pb-2 pr-2 pt-6">
+            <div className="flex items-start justify-end rounded-b-xl pt-6">
               <div className="flex-none">
                 {data.outputSchema &&
                   generateOutputHandles(data.outputSchema, data.uiType)}
@@ -850,8 +854,10 @@ export function CustomNode({
                           data.status === "COMPLETED",
                         "border-yellow-600 bg-yellow-600 text-white":
                           data.status === "RUNNING",
-                        "border-red-600 bg-red-600 text-white":
-                          data.status === "FAILED",
+                        "border-red-600 bg-red-600 text-white": [
+                          "FAILED",
+                          "TERMINATED",
+                        ].includes(data.status || ""),
                         "border-blue-600 bg-blue-600 text-white":
                           data.status === "QUEUED",
                         "border-gray-600 bg-gray-600 font-black":
