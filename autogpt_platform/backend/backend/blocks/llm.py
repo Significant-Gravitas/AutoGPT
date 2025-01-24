@@ -289,7 +289,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 "prompt": "User prompt",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=("response", {"key1": "key1Value", "key2": "key2Value"}),
+            test_output=[
+                ("response", {"key1": "key1Value", "key2": "key2Value"}),
+                ("prompt", str),
+            ],
             test_mock={
                 "llm_call": lambda *args, **kwargs: (
                     json.dumps(
@@ -636,7 +639,10 @@ class AITextGeneratorBlock(AIBlockBase):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=("response", "Response text"),
+            test_output=[
+                ("response", "Response text"),
+                ("prompt", str),
+            ],
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
 
@@ -726,7 +732,10 @@ class AITextSummarizerBlock(AIBlockBase):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=("summary", "Final summary of a long text"),
+            test_output=[
+                ("summary", "Final summary of a long text"),
+                ("prompt", str),
+            ],
             test_mock={
                 "llm_call": lambda input_data, credentials: (
                     {"final_summary": "Final summary of a long text"}
@@ -882,10 +891,13 @@ class AIConversationBlock(AIBlockBase):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=(
-                "response",
-                "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
-            ),
+            test_output=[
+                (
+                    "response",
+                    "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
+                ),
+                ("prompt", str),
+            ],
             test_mock={
                 "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
             },
@@ -995,6 +1007,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "generated_list",
                     ["Zylora Prime", "Kharon-9", "Vortexia", "Oceara", "Draknos"],
                 ),
+                ("prompt", str),
                 ("list_item", "Zylora Prime"),
                 ("list_item", "Kharon-9"),
                 ("list_item", "Vortexia"),
