@@ -12,6 +12,7 @@ from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.model import CreateGraph
+from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
 
 
@@ -274,19 +275,19 @@ async def test_access_store_listing_graph(server: SpinTestServer):
 
     assert slv_id is not None
 
-    admin = autogpt_libs.auth.models.User(
-        user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1b",
-        role="admin",
-        email="admin@example.com",
-        phone_number="1234567890",
-    )
+    admin_user = await create_test_user(alt_user=True)
     await server.agent_server.test_review_store_listing(
         backend.server.v2.store.model.ReviewSubmissionRequest(
             store_listing_version_id=slv_id,
             isApproved=True,
             comments="Test comments",
         ),
-        admin,
+        autogpt_libs.auth.models.User(
+            user_id=admin_user.id,
+            role="admin",
+            email=admin_user.email,
+            phone_number="1234567890",
+        ),
     )
 
     # Now we check the graph can be accessed by a user that does not own the graph
