@@ -59,14 +59,14 @@ async def get_file(file_id: str, user_id: str) -> File:
     return File.from_db(file)
 
 
-async def get_file_content(file_id: str, user_id: str) -> storage.Blob:
+async def get_file_content(file_id: str, user_id: str) -> tuple[File, storage.Blob]:
     file = await get_file(file_id=file_id, user_id=user_id)
 
     blob = _user_file_bucket().get_blob(file.id)
     if not (blob and blob.exists()):
         logger.error(f"File #{file_id} of user #{user_id} not found in bucket")
         raise NotFoundError(f"File #{file_id} not found in storage")
-    return blob
+    return file, blob
 
 
 async def create_file(
