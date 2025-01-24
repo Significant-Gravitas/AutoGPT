@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from typing import Sequence
 
 import fastapi
 import prisma.models
@@ -14,6 +15,9 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+
+# ---------------- MODEL ---------------- #
 
 
 class File(BaseDbModel):
@@ -36,13 +40,14 @@ class File(BaseDbModel):
         )
 
 
-def _user_file_bucket() -> storage.Bucket:
-    if not settings.secrets.user_file_gcs_bucket_name:
-        raise MissingConfigError("Missing storage bucket configuration")
+# ---------------- CRUD functions ---------------- #
 
-    # TODO: use S3 API instead to allow use of other cloud storage providers
-    storage_client = storage.Client()
-    return storage_client.bucket(settings.secrets.user_file_gcs_bucket_name)
+
+async def list_files(user_id: str) -> Sequence[File]:
+    return [
+        File.from_db(f)
+        for f in await prisma.models.File.prisma().find_many(where={"userID": user_id})
+    ]
 
 
 async def get_file(file_id: str, user_id: str) -> File:
@@ -109,3 +114,15 @@ async def create_file_from_upload(
         uploaded_file, content_type=content_type
     )
     return File.from_db(file)
+
+
+# ---------------- UTILITIES ---------------- #
+
+
+def _user_file_bucket() -> storage.Bucket:
+    if not settings.secrets.user_file_gcs_bucket_name:
+        raise MissingConfigError("Missing storage bucket configuration")
+
+    # TODO: use S3 API instead to allow use of other cloud storage providers
+    storage_client = storage.Client()
+    return storage_client.bucket(settings.secrets.user_file_gcs_bucket_name)
