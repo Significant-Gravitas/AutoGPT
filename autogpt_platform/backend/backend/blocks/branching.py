@@ -167,12 +167,6 @@ class IfInputMatchesBlock(Block):
                     "yes_value": "Yes",
                     "no_value": "No",
                 },
-                # {
-                #     "input": b"hello",
-                #     "value": "hello",
-                #     "yes_value": "Yes",
-                #     "no_value": "No",
-                # },
             ],
             test_output=[
                 ("result", True),
