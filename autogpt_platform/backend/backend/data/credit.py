@@ -294,10 +294,10 @@ class UserCredit(UserCreditBase):
             raise ValueError(
                 f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
             )
-        
+
         if not (user := await get_user_by_id(user_id)):
             raise ValueError(f"User not found: {user_id}")
-        
+
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
