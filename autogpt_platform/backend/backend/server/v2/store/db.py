@@ -872,22 +872,16 @@ async def review_store_submission(
             else prisma.enums.SubmissionStatus.REJECTED
         )
 
-        create_data: prisma.types.StoreListingSubmissionCreateInput = {
-            "StoreListingVersion": {"connect": {"id": store_listing_version_id}},
-            "Status": submission_status,
-            "reviewComments": comments,
-            "Reviewer": {"connect": {"id": reviewer_id}},
-            "StoreListing": {"connect": {"id": store_listing_version.StoreListing.id}},
-            "createdAt": datetime.now(),
-            "updatedAt": datetime.now(),
-        }
-
         update_data: prisma.types.StoreListingSubmissionUpdateInput = {
             "Status": submission_status,
             "reviewComments": comments,
             "Reviewer": {"connect": {"id": reviewer_id}},
             "StoreListing": {"connect": {"id": store_listing_version.StoreListing.id}},
-            "updatedAt": datetime.now(),
+        }
+
+        create_data: prisma.types.StoreListingSubmissionCreateInput = {
+            **update_data,
+            "StoreListingVersion": {"connect": {"id": store_listing_version_id}},
         }
 
         submission = await prisma.models.StoreListingSubmission.prisma().upsert(
