@@ -657,6 +657,10 @@ class Executor:
         try:
             queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
+                exec_update = cls.db_client.update_execution_status(
+                    node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.data
+                )
+                cls.db_client.send_execution_update(exec_update)
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
@@ -853,10 +857,6 @@ class ExecutionManager(AppService):
                     data=node_exec.input_data,
                 )
             )
-            exec_update = self.db_client.update_execution_status(
-                node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.input_data
-            )
-            self.db_client.send_execution_update(exec_update)
 
         graph_exec = GraphExecutionEntry(
             user_id=user_id,
