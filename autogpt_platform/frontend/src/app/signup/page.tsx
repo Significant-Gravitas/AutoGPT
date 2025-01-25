@@ -99,7 +99,7 @@ export default function SignupPage() {
                     placeholder="m@example.com"
                     {...field}
                     type="email"
-                    autoComplete="email" 
+                    autoComplete="email"
                   />
                 </FormControl>
                 <FormMessage />
@@ -113,10 +113,7 @@ export default function SignupPage() {
               <FormItem className="mb-6">
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <PasswordInput
-                    {...field}
-                    autoComplete="new-password"
-                  />
+                  <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -129,10 +126,7 @@ export default function SignupPage() {
               <FormItem className="mb-4">
                 <FormLabel>Confirm Password</FormLabel>
                 <FormControl>
-                  <PasswordInput
-                      {...field}
-                      autoComplete="new-password"
-                  />
+                  <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormDescription className="text-sm font-normal leading-tight text-slate-500">
                   Password needs to be at least 6 characters long
