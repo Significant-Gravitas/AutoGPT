@@ -34,29 +34,31 @@ def test_disconnect(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     connection_manager.active_connections.add(mock_websocket)
-    connection_manager.subscriptions["test_graph"] = {mock_websocket}
+    connection_manager.subscriptions[hash(("test_graph", 1))] = {mock_websocket}
 
     connection_manager.disconnect(mock_websocket)
 
     assert mock_websocket not in connection_manager.active_connections
-    assert mock_websocket not in connection_manager.subscriptions["test_graph"]
+    assert (
+        mock_websocket not in connection_manager.subscriptions[hash(("test_graph", 1))]
+    )
 
 
 @pytest.mark.asyncio
 async def test_subscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager.subscribe("test_graph", mock_websocket)
-    assert mock_websocket in connection_manager.subscriptions["test_graph"]
+    await connection_manager.subscribe("test_graph", 1, mock_websocket)
+    assert mock_websocket in connection_manager.subscriptions[hash(("test_graph", 1))]
 
 
 @pytest.mark.asyncio
 async def test_unsubscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.subscriptions["test_graph"] = {mock_websocket}
+    connection_manager.subscriptions[hash(("test_graph", 1))] = {mock_websocket}
 
-    await connection_manager.unsubscribe("test_graph", mock_websocket)
+    await connection_manager.unsubscribe("test_graph", 1, mock_websocket)
 
     assert "test_graph" not in connection_manager.subscriptions
 
@@ -65,7 +67,7 @@ async def test_unsubscribe(
 async def test_send_execution_result(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.subscriptions["test_graph"] = {mock_websocket}
+    connection_manager.subscriptions[hash(("test_graph", 1))] = {mock_websocket}
     result: ExecutionResult = ExecutionResult(
         graph_id="test_graph",
         graph_version=1,

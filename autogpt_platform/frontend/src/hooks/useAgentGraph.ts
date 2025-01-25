@@ -26,6 +26,8 @@ const ajv = new Ajv({ strict: false, allErrors: true });
 
 export default function useAgentGraph(
   flowID?: string,
+  flowVersion?: number,
+  flowExecutionID?: string,
   passDataToBeads?: boolean,
 ) {
   const { toast } = useToast();
@@ -38,6 +40,7 @@ export default function useAgentGraph(
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
+  const [agentVersion, setAgentVersion] = useState<number>(0);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
@@ -110,7 +113,7 @@ export default function useAgentGraph(
       .catch();
   }, [api]);
 
-  //TODO to utils? repeated in Flow
+  //TODO kcze to utils? repeated in Flow
   const formatEdgeID = useCallback((conn: Link | Connection): string => {
     if ("sink_id" in conn) {
       return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
@@ -140,6 +143,7 @@ export default function useAgentGraph(
       setSavedAgent(graph);
       setAgentName(graph.name);
       setAgentDescription(graph.description);
+      setAgentVersion(graph.version);
 
       setNodes(() => {
         const newNodes = graph.nodes.map((node) => {
@@ -329,14 +333,15 @@ export default function useAgentGraph(
     [passDataToBeads, updateEdgeBeads],
   );
 
+  // Load graph
   useEffect(() => {
     if (!flowID || availableNodes.length == 0) return;
 
-    api.getGraph(flowID).then((graph) => {
+    api.getGraph(flowID, flowVersion).then((graph) => {
       console.debug("Loading graph");
       loadGraph(graph);
     });
-  }, [flowID, availableNodes, api, loadGraph]);
+  }, [flowID, flowVersion, availableNodes, api, loadGraph]);
 
   // Update nodes with execution data
   useEffect(() => {
@@ -537,15 +542,15 @@ export default function useAgentGraph(
           });
           return;
         }
-        api.subscribeToExecution(savedAgent.id);
+        api.subscribeToExecution(savedAgent.id, savedAgent.version);
         setSaveRunRequest({ request: "run", state: "running" });
         api
-          .executeGraph(savedAgent.id)
+          .executeGraph(savedAgent.id, savedAgent.version)
           .then((graphExecution) => {
             setSaveRunRequest({
               request: "run",
               state: "running",
-              activeExecutionID: graphExecution.id,
+              activeExecutionID: graphExecution.graph_exec_id,
             });
 
             // Track execution until completed
@@ -554,7 +559,7 @@ export default function useAgentGraph(
               "execution_event",
               (nodeResult) => {
                 // We are racing the server here, since we need the ID to filter events
-                if (nodeResult.graph_exec_id != graphExecution.id) {
+                if (nodeResult.graph_exec_id != graphExecution.graph_exec_id) {
                   return;
                 }
                 if (

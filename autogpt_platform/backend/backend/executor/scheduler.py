@@ -63,7 +63,7 @@ def execute_graph(**kwargs):
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
         get_execution_client().add_execution(
-            args.graph_id, args.input_data, args.user_id
+            args.graph_id, args.graph_version, args.input_data, args.user_id
         )
     except Exception as e:
         logger.exception(f"Error executing graph {args.graph_id}: {e}")

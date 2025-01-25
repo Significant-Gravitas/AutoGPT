@@ -791,9 +791,9 @@ class ExecutionManager(AppService):
     def add_execution(
         self,
         graph_id: str,
+        graph_version: int,
         data: BlockInput,
         user_id: str,
-        graph_version: int | None = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -861,6 +861,7 @@ class ExecutionManager(AppService):
         graph_exec = GraphExecutionEntry(
             user_id=user_id,
             graph_id=graph_id,
+            graph_version=graph_version,
             graph_exec_id=graph_exec_id,
             start_node_execs=starting_node_execs,
         )
