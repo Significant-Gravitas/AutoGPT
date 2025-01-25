@@ -84,7 +84,7 @@ export default function SignupPage() {
   }
 
   return (
-    <AuthCard>
+    <AuthCard className="mx-auto">
       <AuthHeader>Create a new account</AuthHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSignup)}>

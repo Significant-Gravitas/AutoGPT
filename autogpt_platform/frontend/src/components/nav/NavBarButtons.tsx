@@ -24,7 +24,7 @@ export function NavBarButtons({ className }: { className?: string }) {
       icon: <BsBoxes />,
     },
     {
-      href: "/store",
+      href: "/marketplace",
       text: "Marketplace",
       icon: <IconMarketplace />,
     },

@@ -110,6 +110,11 @@ def callback(
 
         logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
 
+        # Linear returns scopes as a single string with spaces, so we need to split them
+        # TODO: make a bypass of this part of the OAuth handler
+        if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
+            credentials.scopes = credentials.scopes[0].split(" ")
+
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
             # For now, we'll just log the warning and continue

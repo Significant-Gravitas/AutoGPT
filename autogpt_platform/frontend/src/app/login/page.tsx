@@ -93,7 +93,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthCard>
+    <AuthCard className="mx-auto">
       <AuthHeader>Login to your account</AuthHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onLogin)}>

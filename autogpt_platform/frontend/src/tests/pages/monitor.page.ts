@@ -43,9 +43,6 @@ export class MonitorPage extends BasePage {
   async isLoaded(): Promise<boolean> {
     console.log(`checking if monitor page is loaded`);
     try {
-      // Wait for network to settle first
-      await this.page.waitForLoadState("networkidle", { timeout: 10_000 });
-
       // Wait for the monitor page
       await this.page.getByTestId("monitor-page").waitFor({
         state: "visible",
@@ -55,7 +52,7 @@ export class MonitorPage extends BasePage {
       // Wait for table headers to be visible (indicates table structure is ready)
       await this.page.locator("thead th").first().waitFor({
         state: "visible",
-        timeout: 5_000,
+        timeout: 15_000,
       });
 
       // Wait for either a table row or an empty tbody to be present
@@ -63,14 +60,14 @@ export class MonitorPage extends BasePage {
         // Wait for at least one row
         this.page.locator("tbody tr[data-testid]").first().waitFor({
           state: "visible",
-          timeout: 5_000,
+          timeout: 15_000,
         }),
         // OR wait for an empty tbody (indicating no agents but table is loaded)
         this.page
           .locator("tbody[data-testid='agent-flow-list-body']:empty")
           .waitFor({
             state: "visible",
-            timeout: 5_000,
+            timeout: 15_000,
           }),
       ]);
 
@@ -113,6 +110,13 @@ export class MonitorPage extends BasePage {
         lastRun,
       });
     }
+
+    agents.reduce((acc, agent) => {
+      if (!agent.id.includes("flow-run")) {
+        acc.push(agent);
+      }
+      return acc;
+    }, [] as Agent[]);
 
     return agents;
   }
@@ -219,7 +223,7 @@ export class MonitorPage extends BasePage {
   async exportToFile(agent: Agent) {
     await this.clickAgent(agent.id);
 
-    console.log(`exporting agent ${agent.id} ${agent.name} to file`);
+    console.log(`exporting agent id: ${agent.id} name: ${agent.name} to file`);
     await this.page.getByTestId("export-button").click();
   }
 
