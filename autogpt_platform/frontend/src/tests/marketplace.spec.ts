@@ -34,7 +34,11 @@ test.describe("Marketplace", () => {
     testInfo.attach("agent-testAttachName", { body: testAttachName });
   });
 
-  test.afterAll(async ({}) => {
+  test.afterAll(async ({}, testInfo: TestInfo) => {
+    if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
+      throw new Error("No agent testAttachName attached to the test");
+    }
+    const testAttachName = testInfo.attachments[0].body.toString();
     await marketplacePage.deleteAgent(`test-agent-${testAttachName}`);
   });
 
@@ -49,7 +53,14 @@ test.describe("Marketplace", () => {
     await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
   });
 
-  test("user can view a specific agent", async ({ page }) => {
+  test("user can view a specific agent", async ({
+    page,
+  }, testInfo: TestInfo) => {
+    if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
+      throw new Error("No agent testAttachName attached to the test");
+    }
+    const testAttachName = testInfo.attachments[0].body.toString();
+
     await marketplacePage.navbar.clickMarketplaceLink();
     await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
     await marketplacePage.selectAgent(`test-agent-${testAttachName}`);
@@ -59,12 +70,22 @@ test.describe("Marketplace", () => {
   test("user can submit an agent to the marketplace", async ({
     page,
   }, testInfo: TestInfo) => {
+    if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
+      throw new Error("No agent testAttachName attached to the test");
+    }
+    const testAttachName = testInfo.attachments[0].body.toString();
+
     await marketplacePage.navbar.clickMarketplaceLink();
     await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
     await marketplacePage.submitAgent(`test-agent-${testAttachName}`);
   });
 
   test("admin can approve an agent", async ({ page }, testInfo: TestInfo) => {
+    if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
+      throw new Error("No agent testAttachName attached to the test");
+    }
+    const testAttachName = testInfo.attachments[0].body.toString();
+
     // Submit the agent to the marketplace
     await marketplacePage.navbar.clickMarketplaceLink();
     await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
@@ -86,6 +107,11 @@ test.describe("Marketplace", () => {
   });
 
   test("admin can reject an agent", async ({ page }, testInfo: TestInfo) => {
+    if (testInfo.attachments.length === 0 || !testInfo.attachments[0].body) {
+      throw new Error("No agent testAttachName attached to the test");
+    }
+    const testAttachName = testInfo.attachments[0].body.toString();
+
     // Submit the agent to the marketplace
     await marketplacePage.navbar.clickMarketplaceLink();
     await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
