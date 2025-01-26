@@ -24,46 +24,46 @@ export class MarketplacePage extends BasePage {
 
   // async listAgents(): Promise<Agent[]> {
   //   console.log(`listing agents in marketplace`);
-    // Wait for table rows to be available
-    // const rows = await this.page.locator("tbody tr[data-testid]").all();
+  // Wait for table rows to be available
+  // const rows = await this.page.locator("tbody tr[data-testid]").all();
 
-    // const agents: Agent[] = [];
+  // const agents: Agent[] = [];
 
-    // for (const row of rows) {
-    //   // Get the id from data-testid attribute
-    //   const id = (await row.getAttribute("data-testid")) || "";
+  // for (const row of rows) {
+  //   // Get the id from data-testid attribute
+  //   const id = (await row.getAttribute("data-testid")) || "";
 
-    //   // Get columns - there are 3 cells per row (name, run count, last run)
-    //   const cells = await row.locator("td").all();
+  //   // Get columns - there are 3 cells per row (name, run count, last run)
+  //   const cells = await row.locator("td").all();
 
-    //   // Extract name from first cell
-    //   const name = (await row.getAttribute("data-name")) || "";
+  //   // Extract name from first cell
+  //   const name = (await row.getAttribute("data-name")) || "";
 
-    //   // Extract run count from second cell
-    //   const runCountText = (await cells[1].textContent()) || "0";
-    //   const runCount = parseInt(runCountText, 10);
+  //   // Extract run count from second cell
+  //   const runCountText = (await cells[1].textContent()) || "0";
+  //   const runCount = parseInt(runCountText, 10);
 
-    //   // Extract last run from third cell's title attribute (contains full timestamp)
-    //   // If no title, the cell will be empty indicating no last run
-    //   const lastRunCell = cells[2];
-    //   const lastRun = (await lastRunCell.getAttribute("title")) || "";
+  //   // Extract last run from third cell's title attribute (contains full timestamp)
+  //   // If no title, the cell will be empty indicating no last run
+  //   const lastRunCell = cells[2];
+  //   const lastRun = (await lastRunCell.getAttribute("title")) || "";
 
-    //   agents.push({
-    //     id,
-    //     name,
-    //     runCount,
-    //     lastRun,
-    //   });
-    // }
+  //   agents.push({
+  //     id,
+  //     name,
+  //     runCount,
+  //     lastRun,
+  //   });
+  // }
 
-    // agents.reduce((acc, agent) => {
-    //   if (!agent.id.includes("flow-run")) {
-    //     acc.push(agent);
-    //   }
-    //   return acc;
-    // }, [] as Agent[]);
+  // agents.reduce((acc, agent) => {
+  //   if (!agent.id.includes("flow-run")) {
+  //     acc.push(agent);
+  //   }
+  //   return acc;
+  // }, [] as Agent[]);
 
-    // return agents;
+  // return agents;
   // }
 
   async clickAgent(id: string) {

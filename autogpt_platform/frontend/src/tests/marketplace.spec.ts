@@ -79,7 +79,9 @@ test.describe("Marketplace", () => {
     await marketplacePage.navbar.clickMarketplaceLink();
     await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
     // Search for the agent
-    const results = await marketplacePage.searchAgent(`test-agent-${testAttachName}`);
+    const results = await marketplacePage.searchAgent(
+      `test-agent-${testAttachName}`,
+    );
     test.expect(results.length).toBe(1);
   });
 
@@ -97,7 +99,9 @@ test.describe("Marketplace", () => {
     // Check that the agent is not in the marketplace
     await marketplacePage.navbar.clickMarketplaceLink();
     await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
-    const results = await marketplacePage.searchAgent(`test-agent-${testAttachName}`);
+    const results = await marketplacePage.searchAgent(
+      `test-agent-${testAttachName}`,
+    );
     test.expect(results.length).toBe(0);
   });
 
