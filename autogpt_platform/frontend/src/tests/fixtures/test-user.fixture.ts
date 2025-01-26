@@ -68,7 +68,10 @@ function generateUserData(): TestUser {
 }
 
 // Export just the fixture function
-export const createTestUserFixture = async ({}, use) => {
+export const createTestUserFixture = async (
+  {}: {},
+  use: (user: TestUser) => Promise<void>,
+) => {
   let user: TestUser | null = null;
 
   try {
