@@ -154,7 +154,6 @@ function SearchResults({
                   <AgentsSection
                     agents={agents}
                     sectionTitle="Agents"
-                    className="font-[Large-Poppins] text-[18px] font-semibold leading-[28px]"
                   />
                 </div>
               )}
