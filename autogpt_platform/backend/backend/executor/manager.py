@@ -657,6 +657,10 @@ class Executor:
         try:
             queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
+                exec_update = cls.db_client.update_execution_status(
+                    node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.data
+                )
+                cls.db_client.send_execution_update(exec_update)
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
@@ -812,8 +816,8 @@ class ExecutionManager(AppService):
             # Extract request input data, and assign it to the input pin.
             if block.block_type == BlockType.INPUT:
                 name = node.input_default.get("name")
-                if name and name in data:
-                    input_data = {"value": data[name]}
+                if name in data.get("node_input", {}):
+                    input_data = {"value": data["node_input"][name]}
 
             # Extract webhook payload, and assign it to the input pin
             webhook_payload_key = f"webhook_{node.webhook_id}_payload"
@@ -853,10 +857,6 @@ class ExecutionManager(AppService):
                     data=node_exec.input_data,
                 )
             )
-            exec_update = self.db_client.update_execution_status(
-                node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.input_data
-            )
-            self.db_client.send_execution_update(exec_update)
 
         graph_exec = GraphExecutionEntry(
             user_id=user_id,

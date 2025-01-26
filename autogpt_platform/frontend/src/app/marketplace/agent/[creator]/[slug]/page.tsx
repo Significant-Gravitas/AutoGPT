@@ -45,10 +45,10 @@ export default async function Page({
   });
 
   const breadcrumbs = [
-    { name: "Store", link: "/store" },
+    { name: "Store", link: "/marketplace" },
     {
       name: agent.creator,
-      link: `/store/creator/${encodeURIComponent(agent.creator)}`,
+      link: `/marketplace/creator/${encodeURIComponent(agent.creator)}`,
     },
     { name: agent.agent_name, link: "#" },
   ];
