@@ -135,6 +135,7 @@ export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
+  type: "object";
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
   credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
