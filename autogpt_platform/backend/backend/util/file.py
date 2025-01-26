@@ -48,7 +48,7 @@ def store_media_file(
     placing or verifying it under:
         {tempdir}/exec_file/{exec_id}/...
 
-    If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
+If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
     Otherwise, returns the file media path relative to the exec_id folder.
 
     For each MediaFile type:
