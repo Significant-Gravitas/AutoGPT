@@ -4,9 +4,9 @@ from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple, TypedDict
+from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
 
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from backend.integrations.providers import ProviderName
 
@@ -1175,13 +1175,15 @@ class AIListGeneratorBlock(AIBlockBase):
         logger.debug("AIListGeneratorBlock.run completed")
 
 
+class Image(BaseModel):
+    content_type: str  # MIME type of the image
+    data: str  # Base64 encoded image data
+
+
 class ClaudeWithImageBlock(Block):
     """Block for calling Claude API with support for images"""
 
     class Input(BlockSchema):
-        class Image(TypedDict):
-            content_type: str  # MIME type of the image
-            data: str  # Base64 encoded image data
 
         prompt: str = SchemaField(
             description="The prompt to send to the language model.",
@@ -1359,19 +1361,19 @@ class ClaudeWithImageBlock(Block):
 
         # Handle prompt values including images
         content = []
-        values = input_data.prompt_values
+        values: dict[str, str | Image] = input_data.prompt_values
 
         # Add any images from prompt_values
         for key, value in values.items():
-            if isinstance(value, dict) and "content_type" in value and "data" in value:
-                # This is an image
+            # This is an image
+            if isinstance(value, Image):
                 content.append(
                     {
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": value["content_type"],
-                            "data": value["data"],
+                            "media_type": value.content_type,
+                            "data": value.data,
                         },
                     }
                 )
