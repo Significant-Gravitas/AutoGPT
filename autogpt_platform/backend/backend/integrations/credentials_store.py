@@ -130,13 +130,6 @@ nvidia_credentials = APIKeyCredentials(
     title="Use Credits for Nvidia",
     expires_at=None,
 )
-screenshotone_credentials = APIKeyCredentials(
-    id="3b1bdd16-8818-4bc2-8cbb-b23f9a3439ed",
-    provider="screenshotone",
-    api_key=SecretStr(settings.secrets.screenshotone_api_key),
-    title="Use Credits for ScreenshotOne",
-    expires_at=None,
-)
 
 
 DEFAULT_CREDENTIALS = [
@@ -155,7 +148,6 @@ DEFAULT_CREDENTIALS = [
     exa_credentials,
     e2b_credentials,
     nvidia_credentials,
-    screenshotone_credentials,
 ]
 
 
@@ -219,8 +211,6 @@ class IntegrationCredentialsStore:
             all_credentials.append(e2b_credentials)
         if settings.secrets.nvidia_api_key:
             all_credentials.append(nvidia_credentials)
-        if settings.secrets.screenshotone_api_key:
-            all_credentials.append(screenshotone_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
