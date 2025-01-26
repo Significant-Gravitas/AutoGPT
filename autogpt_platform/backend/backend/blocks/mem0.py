@@ -88,7 +88,7 @@ class AddMemoryBlock(Block, Mem0Base):
         credentials: APIKeyCredentials,
         user_id: str,
         graph_id: str,
-        run_id: str,
+        graph_exec_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
@@ -108,7 +108,7 @@ class AddMemoryBlock(Block, Mem0Base):
             }
 
             if input_data.limit_memory_to_run:
-                params["run_id"] = run_id
+                params["run_id"] = graph_exec_id
             if input_data.limit_memory_to_agent:
                 params["agent_id"] = graph_id
 

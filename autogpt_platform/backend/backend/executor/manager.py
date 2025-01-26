@@ -169,7 +169,15 @@ def execute_node(
     log_metadata.info("Executed node with input", input=input_data_str)
     update_execution(ExecutionStatus.RUNNING)
 
-    extra_exec_kwargs = {}
+    # Inject extra execution arguments for the blocks via kwargs
+    extra_exec_kwargs: dict = {
+        "graph_id": graph_id,
+        "node_id": node_id,
+        "graph_exec_id": graph_exec_id,
+        "node_exec_id": node_exec_id,
+        "user_id": user_id,
+    }
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -180,11 +188,6 @@ def execute_node(
         credentials_meta = input_type(**input_data[field_name])
         credentials, creds_lock = creds_manager.acquire(user_id, credentials_meta.id)
         extra_exec_kwargs[field_name] = credentials
-
-    # Inject extra execution arguments for the blocks via kwargs
-    extra_exec_kwargs["user_id"] = user_id
-    extra_exec_kwargs["run_id"] = graph_exec_id
-    extra_exec_kwargs["graph_id"] = graph_id
 
     output_size = 0
     end_status = ExecutionStatus.COMPLETED
