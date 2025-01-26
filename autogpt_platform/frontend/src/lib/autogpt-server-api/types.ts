@@ -153,13 +153,16 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
   (
     | {
+        type: "allOf";
         allOf: [BlockIOSimpleTypeSubSchema];
       }
     | {
+        type: "anyOf";
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
       }
     | {
+        type: "oneOf";
         oneOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
       }
