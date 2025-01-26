@@ -45,4 +45,3 @@ export const WithoutCallbacks: Story = {
     storeListingVersionId: "1",
   },
 };
-

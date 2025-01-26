@@ -346,8 +346,9 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             <Button
               variant="default"
               size="sm"
-              className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
-                }`}
+              className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
+                images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
+              }`}
               onClick={handleGenerateImage}
               disabled={isGenerating || images.length >= 5}
             >

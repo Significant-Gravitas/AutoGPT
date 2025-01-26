@@ -10,7 +10,9 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <LDProvider clientSideID={process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID ?? ""}>
+    <LDProvider
+      clientSideID={process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID ?? ""}
+    >
       {children}
     </LDProvider>
   );

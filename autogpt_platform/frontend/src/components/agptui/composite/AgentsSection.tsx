@@ -47,7 +47,12 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   };
 
   return (
-    <div className={cn("flex flex-col items-center justify-center py-4 lg:py-8", className)}>
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center py-4 lg:py-8",
+        className,
+      )}
+    >
       <div className="w-full max-w-[1360px]">
         <div className="font-poppins decoration-skip-ink-none mb-8 text-left text-[18px] font-[600] leading-7 text-[#282828] underline-offset-[from-font] dark:text-neutral-200">
           {sectionTitle}

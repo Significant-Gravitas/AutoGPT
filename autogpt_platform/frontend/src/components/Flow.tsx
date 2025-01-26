@@ -203,7 +203,7 @@ const FlowEditor: React.FC<{
 
     const distanceMoved = Math.sqrt(
       Math.pow(newPosition.x - oldPosition.x, 2) +
-      Math.pow(newPosition.y - oldPosition.y, 2),
+        Math.pow(newPosition.y - oldPosition.y, 2),
     );
 
     if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) {
@@ -391,7 +391,7 @@ const FlowEditor: React.FC<{
         // Reset node connections for all edges
         console.warn(
           "useReactFlow().setRootEdges was used to overwrite all edges. " +
-          "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
+            "Use addEdges, deleteElements, or reconnectEdge for incremental changes.",
           replaceEdges,
         );
         setNodes((nds) =>
@@ -474,17 +474,17 @@ const FlowEditor: React.FC<{
       const viewportCoordinates =
         nodeDimensions && Object.keys(nodeDimensions).length > 0
           ? // we will get all the dimension of nodes, then store
-          findNewlyAddedBlockCoordinates(
-            nodeDimensions,
-            nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
-            60,
-            1.0,
-          )
+            findNewlyAddedBlockCoordinates(
+              nodeDimensions,
+              nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
+              60,
+              1.0,
+            )
           : // we will get all the dimension of nodes, then store
-          {
-            x: window.innerWidth / 2 - x,
-            y: window.innerHeight / 2 - y,
-          };
+            {
+              x: window.innerWidth / 2 - x,
+              y: window.innerHeight / 2 - y,
+            };
 
       const newNode: CustomNode = {
         id: nodeId.toString(),

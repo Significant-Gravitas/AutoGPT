@@ -63,18 +63,15 @@ export const Filled: Story = {
     profile: {
       name: "Olivia Grace",
       username: "@ograce1421",
-      description: "Our agents are designed to bring happiness and positive vibes to your daily routine. Each template helps you create and live more efficiently.",
+      description:
+        "Our agents are designed to bring happiness and positive vibes to your daily routine. Each template helps you create and live more efficiently.",
       avatar_url: "https://via.placeholder.com/130x130",
       links: [
         "www.websitelink.com",
         "twitter.com/oliviagrace",
         "github.com/ograce",
       ],
-      top_categories: [
-        "Entertainment",
-        "Blog",
-        "Content creation",
-      ],
+      top_categories: ["Entertainment", "Blog", "Content creation"],
       agent_rating: 4.5,
       agent_runs: 100,
     },

@@ -151,10 +151,7 @@ function SearchResults({
             <div className="min-h-[500px] max-w-[1440px]">
               {showAgents && agentsCount > 0 && (
                 <div className="mt-[36px]">
-                  <AgentsSection
-                    agents={agents}
-                    sectionTitle="Agents"
-                  />
+                  <AgentsSection agents={agents} sectionTitle="Agents" />
                 </div>
               )}
 

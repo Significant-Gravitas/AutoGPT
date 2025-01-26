@@ -21,7 +21,13 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    links: ["https://example.com", "https://linkedin.com/in/johndoe", "https://github.com/johndoe", "https://twitter.com/johndoe", "https://medium.com/@johndoe"],
+    links: [
+      "https://example.com",
+      "https://linkedin.com/in/johndoe",
+      "https://github.com/johndoe",
+      "https://twitter.com/johndoe",
+      "https://medium.com/@johndoe",
+    ],
   },
 };
 
@@ -33,7 +39,11 @@ export const WebsiteOnly: Story = {
 
 export const SocialLinks: Story = {
   args: {
-    links: ["https://linkedin.com/in/janedoe", "https://github.com/janedoe", "https://twitter.com/janedoe"],
+    links: [
+      "https://linkedin.com/in/janedoe",
+      "https://github.com/janedoe",
+      "https://twitter.com/janedoe",
+    ],
   },
 };
 

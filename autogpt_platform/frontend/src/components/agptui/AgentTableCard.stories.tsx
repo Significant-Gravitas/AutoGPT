@@ -16,8 +16,9 @@ export const Default: Story = {
   args: {
     agentName: "Super Coder",
     description: "An AI agent that writes clean, efficient code",
-    imageSrc:
-      ["https://ddz4ak4pa3d19.cloudfront.net/cache/53/b2/53b2bc7d7900f0e1e60bf64ebf38032d.jpg"],
+    imageSrc: [
+      "https://ddz4ak4pa3d19.cloudfront.net/cache/53/b2/53b2bc7d7900f0e1e60bf64ebf38032d.jpg",
+    ],
     dateSubmitted: "2023-05-15",
     status: "ACTIVE" as StatusType,
     runs: 1500,
