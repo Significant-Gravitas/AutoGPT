@@ -37,6 +37,9 @@ class Mem0Base:
         return MemoryClient(api_key=credentials.api_key.get_secret_value())
 
 
+Filter = dict[str, list[dict[str, str | dict[str, list[str]]]]]
+
+
 class AddMemoryBlock(Block, Mem0Base):
     """Block for adding memories to Mem0
 
@@ -193,7 +196,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         try:
             client = self._get_client(credentials)
 
-            filters: dict[str, list[dict[str, str | dict[str, list[str]]]]] = {
+            filters: Filter = {
                 # This works with only one filter, so we can allow others to add on later
                 "AND": [
                     {"user_id": user_id},
@@ -273,7 +276,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         try:
             client = self._get_client(credentials)
 
-            filters: dict[str, list[dict[str, str | dict[str, list[str]]]]] = {
+            filters: Filter = {
                 "AND": [
                     {"user_id": user_id},
                 ]
