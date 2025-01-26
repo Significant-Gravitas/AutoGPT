@@ -8,13 +8,13 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.file import get_exec_file_path, store_temp_file
+from backend.util.file import MediaFile, get_exec_file_path, store_media_file
 
 
 class MediaDurationBlock(Block):
 
     class Input(BlockSchema):
-        media_in: str = SchemaField(
+        media_in: MediaFile = SchemaField(
             description="Media input (URL, data URI, or local path)."
         )
         is_video: bool = SchemaField(
@@ -47,7 +47,7 @@ class MediaDurationBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the input media locally
-        local_media_path = store_temp_file(
+        local_media_path = store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.media_in,
             return_content=False,
@@ -69,7 +69,7 @@ class LoopVideoBlock(Block):
     """
 
     class Input(BlockSchema):
-        video_in: str = SchemaField(
+        video_in: MediaFile = SchemaField(
             description="The input video (can be a URL, data URI, or local path)."
         )
         # Provide EITHER a `duration` or `n_loops` or both. We'll demonstrate `duration`.
@@ -114,7 +114,7 @@ class LoopVideoBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the input video locally
-        local_video_path = store_temp_file(
+        local_video_path = store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.video_in,
             return_content=False,
@@ -137,14 +137,16 @@ class LoopVideoBlock(Block):
         assert isinstance(looped_clip, VideoFileClip)
 
         # 4) Save the looped output
-        output_filename = f"{node_exec_id}_looped_{os.path.basename(local_video_path)}"
+        output_filename = MediaFile(
+            f"{node_exec_id}_looped_{os.path.basename(local_video_path)}"
+        )
         output_abspath = get_exec_file_path(graph_exec_id, output_filename)
 
         looped_clip = looped_clip.with_audio(clip.audio)
         looped_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
         # Return as data URI
-        video_out = store_temp_file(
+        video_out = store_media_file(
             graph_exec_id=graph_exec_id,
             file=output_filename,
             return_content=input_data.output_return_type == "data_uri",
@@ -160,10 +162,10 @@ class AddAudioToVideoBlock(Block):
     """
 
     class Input(BlockSchema):
-        video_in: str = SchemaField(
+        video_in: MediaFile = SchemaField(
             description="Video input (URL, data URI, or local path)."
         )
-        audio_in: str = SchemaField(
+        audio_in: MediaFile = SchemaField(
             description="Audio input (URL, data URI, or local path)."
         )
         volume: float = SchemaField(
@@ -176,7 +178,7 @@ class AddAudioToVideoBlock(Block):
         )
 
     class Output(BlockSchema):
-        video_out: str = SchemaField(
+        video_out: MediaFile = SchemaField(
             description="Final video (with attached audio), as a path or data URI."
         )
         error: str = SchemaField(
@@ -201,12 +203,12 @@ class AddAudioToVideoBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         # 1) Store the inputs locally
-        local_video_path = store_temp_file(
+        local_video_path = store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.video_in,
             return_content=False,
         )
-        local_audio_path = store_temp_file(
+        local_audio_path = store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.audio_in,
             return_content=False,
@@ -227,14 +229,14 @@ class AddAudioToVideoBlock(Block):
         final_clip = video_clip.with_audio(audio_clip)
 
         # 4) Write to output file
-        output_filename = (
+        output_filename = MediaFile(
             f"{node_exec_id}_audio_attached_{os.path.basename(local_video_path)}"
         )
         output_abspath = os.path.join(abs_temp_dir, output_filename)
         final_clip.write_videofile(output_abspath, codec="libx264", audio_codec="aac")
 
         # 5) Return either path or data URI
-        video_out = store_temp_file(
+        video_out = store_media_file(
             graph_exec_id=graph_exec_id,
             file=output_filename,
             return_content=input_data.output_return_type == "data_uri",

@@ -29,30 +29,44 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
-def store_temp_file(graph_exec_id: str, file: str, return_content: bool = False) -> str:
+"""
+MediaFile is a string that represents a file. It can be one of the following:
+    - Data URI: base64 encoded media file. See https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data/
+    - URL: Media file hosted on the internet, it starts with http:// or https://.
+    - Local path (anything else): A temporary file path living within graph execution time.
+    
+Note: Replace this type alias into a proper class, when more information is needed.
+"""
+MediaFile = str
+
+
+def store_media_file(
+    graph_exec_id: str, file: MediaFile, return_content: bool = False
+) -> MediaFile:
     """
     Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
     placing or verifying it under:
         {tempdir}/exec_file/{exec_id}/...
 
     If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
-    Otherwise, return the *relative path* (prefix stripped) inside that folder.
+    Otherwise, returns the file media path relative to the exec_id folder.
 
-    For each 'file' type:
-      - Data URI (starting with "data:"):
-          -> decode and store in a new random file in that folder
-      - URL (http:// or https://):
-          -> download and store in that folder
-      - Local path (anything else):
-          -> interpret as relative to that folder; verify it exists
-             (no copying, as it's presumably already there).
-             We realpath-check so no symlink or '..' can escape the folder.
+    For each MediaFile type:
+    - Data URI:
+      -> decode and store in a new random file in that folder
+    - URL:
+      -> download and store in that folder
+    - Local path:
+      -> interpret as relative to that folder; verify it exists
+         (no copying, as it's presumably already there).
+         We realpath-check so no symlink or '..' can escape the folder.
+
 
     :param graph_exec_id:  The unique ID of the graph execution.
     :param file:           Data URI, URL, or local (relative) path.
     :param return_content: If True, return a data URI of the file content.
                            If False, return the *relative* path inside the exec_id folder.
-    :return:               The requested result: data URI or relative path.
+    :return:               The requested result: data URI or relative path of the media.
     """
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
@@ -124,6 +138,6 @@ def store_temp_file(graph_exec_id: str, file: str, return_content: bool = False)
 
     # Return result
     if return_content:
-        return _file_to_data_uri(target_path)
+        return MediaFile(_file_to_data_uri(target_path))
     else:
-        return _strip_base_prefix(target_path, base_path)
+        return MediaFile(_strip_base_prefix(target_path, base_path))

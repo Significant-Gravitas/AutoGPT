@@ -3,7 +3,7 @@ from typing import Any, List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
-from backend.util.file import store_temp_file
+from backend.util.file import MediaFile, store_media_file
 from backend.util.mock import MockObject
 from backend.util.text import TextFormatter
 from backend.util.type import convert
@@ -13,12 +13,12 @@ formatter = TextFormatter()
 
 class FileStoreBlock(Block):
     class Input(BlockSchema):
-        file_in: str = SchemaField(
+        file_in: MediaFile = SchemaField(
             description="The file to store in the temporary directory, it can be a URL, data URI, or local path."
         )
 
     class Output(BlockSchema):
-        file_out: str = SchemaField(
+        file_out: MediaFile = SchemaField(
             description="The relative path to the stored file in the temporary directory."
         )
 
@@ -39,7 +39,7 @@ class FileStoreBlock(Block):
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
-        file_path = store_temp_file(
+        file_path = store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.file_in,
             return_content=False,
