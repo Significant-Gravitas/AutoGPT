@@ -43,7 +43,7 @@ async def execute_graph(
     logger.info("Waiting for execution to complete...")
     result = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
     logger.info(f"Execution completed with {len(result)} results")
-    assert result and len(result) == num_execs
+    assert len(result) == num_execs
     return graph_exec_id
 
 
@@ -341,7 +341,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     )
     alt_test_user = admin_user
 
-    data = {"input_1": "Hello", "input_2": "World"}
+    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,
