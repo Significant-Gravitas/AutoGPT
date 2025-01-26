@@ -43,7 +43,7 @@ Filter = dict[str, list[dict[str, str | dict[str, list[str]]]]]
 class AddMemoryBlock(Block, Mem0Base):
     """Block for adding memories to Mem0
 
-    Always limited by user_id and optional graph_id, run_id, agent_id"""
+    Always limited by user_id and optional graph_id and graph_exec_id"""
 
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
@@ -190,7 +190,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         credentials: APIKeyCredentials,
         user_id: str,
         graph_id: str,
-        run_id: str,
+        graph_exec_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
@@ -207,7 +207,7 @@ class SearchMemoryBlock(Block, Mem0Base):
                     {"categories": {"contains": input_data.categories_filter}}
                 )
             if input_data.limit_memory_to_run:
-                filters["AND"].append({"run_id": run_id})
+                filters["AND"].append({"run_id": graph_exec_id})
             if input_data.limit_memory_to_agent:
                 filters["AND"].append({"agent_id": graph_id})
 
@@ -270,7 +270,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         credentials: APIKeyCredentials,
         user_id: str,
         graph_id: str,
-        run_id: str,
+        graph_exec_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
@@ -282,7 +282,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
                 ]
             }
             if input_data.limit_memory_to_run:
-                filters["AND"].append({"run_id": run_id})
+                filters["AND"].append({"run_id": graph_exec_id})
             if input_data.limit_memory_to_agent:
                 filters["AND"].append({"agent_id": graph_id})
             if input_data.categories:
