@@ -105,7 +105,13 @@ def execute_block_test(block: Block):
             log.info(f"{prefix} mock {mock_name} not found in block")
 
     # Populate credentials argument(s)
-    extra_exec_kwargs = {}
+    extra_exec_kwargs: dict = {
+        "graph_id": uuid.uuid4(),
+        "node_id": uuid.uuid4(),
+        "graph_exec_id": uuid.uuid4(),
+        "node_exec_id": uuid.uuid4(),
+        "user_id": uuid.uuid4(),
+    }
     input_model = cast(type[BlockSchema], block.input_schema)
     credentials_input_fields = input_model.get_credentials_fields()
     if len(credentials_input_fields) == 1 and isinstance(
@@ -120,11 +126,6 @@ def execute_block_test(block: Block):
             for field_name in credentials_input_fields:
                 if field_name in block.test_credentials:
                     extra_exec_kwargs[field_name] = block.test_credentials[field_name]
-
-    # inject fake user_id, run_id, graph_id
-    extra_exec_kwargs["user_id"] = uuid.uuid4()
-    extra_exec_kwargs["run_id"] = uuid.uuid4()
-    extra_exec_kwargs["graph_id"] = uuid.uuid4()
 
     for input_data in block.test_input:
         log.info(f"{prefix} in: {input_data}")
