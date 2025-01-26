@@ -90,10 +90,10 @@ export function useCopyPaste(getNextNodeId: () => string) {
                 if (oldToNewIdMap[node.id]) {
                   const nodeConnections = pastedEdges
                     .filter(
-                      (edge) =>
+                      (edge: Edge) =>
                         edge.source === node.id || edge.target === node.id,
                     )
-                    .map((edge) => ({
+                    .map((edge: Edge) => ({
                       edge_id: edge.id,
                       source: edge.source,
                       target: edge.target,
