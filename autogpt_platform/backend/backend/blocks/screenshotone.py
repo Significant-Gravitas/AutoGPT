@@ -11,10 +11,11 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import store_temp_file
 from backend.util.request import Requests
 
 
-class ScreenshotOneBlock(Block):
+class ScreenshotWebPageBlock(Block):
     """Block for taking screenshots using ScreenshotOne API"""
 
     class Input(BlockSchema):
@@ -49,8 +50,7 @@ class ScreenshotOneBlock(Block):
         )
 
     class Output(BlockSchema):
-        image_data: bytes = SchemaField(description="The screenshot image data")
-        content_type: str = SchemaField(description="The MIME type of the image")
+        image: str = SchemaField(description="The screenshot image data")
         error: str = SchemaField(description="Error message if the screenshot failed")
 
     def __init__(self):
@@ -58,8 +58,8 @@ class ScreenshotOneBlock(Block):
             id="3a7c4b8d-6e2f-4a5d-b9c1-f8d23c5a9b0e",  # Generated UUID
             description="Takes a screenshot of a specified website using ScreenshotOne API",
             categories={BlockCategory.DATA},
-            input_schema=ScreenshotOneBlock.Input,
-            output_schema=ScreenshotOneBlock.Output,
+            input_schema=ScreenshotWebPageBlock.Input,
+            output_schema=ScreenshotWebPageBlock.Output,
             test_input={
                 "url": "https://example.com",
                 "viewport_width": 1920,
@@ -99,6 +99,7 @@ class ScreenshotOneBlock(Block):
     @staticmethod
     def take_screenshot(
         credentials: APIKeyCredentials,
+        graph_exec_id: str,
         url: str,
         viewport_width: int,
         viewport_height: int,
@@ -131,8 +132,10 @@ class ScreenshotOneBlock(Block):
         response = api.get("https://api.screenshotone.com/take", params=params)
 
         return {
-            "image_data": b64encode(response.content).decode("utf-8"),
-            "content_type": f"image/{format}",
+            "image": store_temp_file(
+                graph_exec_id,
+                f"data:{format};base64,{b64encode(response.content).decode('utf-8')}",
+            )
         }
 
     def run(
@@ -140,11 +143,13 @@ class ScreenshotOneBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
+        graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
         try:
             screenshot_data = self.take_screenshot(
                 credentials=credentials,
+                graph_exec_id=graph_exec_id,
                 url=input_data.url,
                 viewport_width=input_data.viewport_width,
                 viewport_height=input_data.viewport_height,
@@ -155,7 +160,6 @@ class ScreenshotOneBlock(Block):
                 block_chats=input_data.block_chats,
                 cache=input_data.cache,
             )
-            yield "image_data", screenshot_data["image_data"]
-            yield "content_type", screenshot_data["content_type"]
+            yield "image", screenshot_data["image"]
         except Exception as e:
             yield "error", str(e)
