@@ -85,13 +85,14 @@ class ScreenshotWebPageBlock(Block):
                 expires_at=None,
             ),
             test_output=[
-                ("image_data", b"test-image-data"),
-                ("content_type", "image/png"),
+                (
+                    "image",
+                    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAB5JREFUOE9jZPjP8J+BAsA4agDDaBgwjIYBw7AIAwCV5B/xAsMbygAAAABJRU5ErkJggg==",
+                ),
             ],
             test_mock={
                 "take_screenshot": lambda *args, **kwargs: {
-                    "image_data": b"test-image-data",
-                    "content_type": "image/png",
+                    "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAB5JREFUOE9jZPjP8J+BAsA4agDDaBgwjIYBw7AIAwCV5B/xAsMbygAAAABJRU5ErkJggg==",
                 }
             },
         )

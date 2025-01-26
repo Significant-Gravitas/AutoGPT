@@ -1,6 +1,7 @@
 import logging
 import time
 from typing import Sequence, cast
+import uuid
 
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
@@ -104,7 +105,12 @@ def execute_block_test(block: Block):
             log.info(f"{prefix} mock {mock_name} not found in block")
 
     # Populate credentials argument(s)
-    extra_exec_kwargs = {}
+    extra_exec_kwargs: dict = {
+        "graph_id": str(uuid.uuid4()),
+        "node_id": str(uuid.uuid4()),
+        "graph_exec_id": str(uuid.uuid4()),
+        "node_exec_id": str(uuid.uuid4()),
+    }
     input_model = cast(type[BlockSchema], block.input_schema)
     credentials_input_fields = input_model.get_credentials_fields()
     if len(credentials_input_fields) == 1 and isinstance(
