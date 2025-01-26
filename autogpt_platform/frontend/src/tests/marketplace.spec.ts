@@ -3,8 +3,6 @@ import { test } from "./fixtures";
 import { BuildPage } from "./pages/build.page";
 import { MonitorPage } from "./pages/monitor.page";
 import { v4 as uuidv4 } from "uuid";
-import * as fs from "fs/promises";
-import path from "path";
 import { MarketplacePage } from "./pages/marketplace.page";
 
 test.describe("Marketplace", () => {
@@ -44,16 +42,18 @@ test.describe("Marketplace", () => {
     await test.expect(marketplacePage.isLoaded()).resolves.toBeTruthy();
   });
 
-  test("user can view store page", async ({ page }, testInfo: TestInfo) => {
-    await marketplacePage.navbar.clickStoreLink();
-    await test.expect(page).toHaveURL(new RegExp("/.*store"));
+  test("user can view marketplace page", async ({
+    page,
+  }, testInfo: TestInfo) => {
+    await marketplacePage.navbar.clickMarketplaceLink();
+    await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
   });
 
   test("user can view a specific agent", async ({ page }) => {
-    await marketplacePage.navbar.clickStoreLink();
-    await test.expect(page).toHaveURL(new RegExp("/.*store"));
+    await marketplacePage.navbar.clickMarketplaceLink();
+    await test.expect(page).toHaveURL(new RegExp("/.*marketplace"));
     await marketplacePage.selectAgent(`test-agent-${testAttachName}`);
-    await test.expect(page).toHaveURL(new RegExp("/.*store/agent"));
+    await test.expect(page).toHaveURL(new RegExp("/.*marketplace/agent"));
   });
 
   test("user can submit an agent to the marketplace", async ({
