@@ -1,6 +1,7 @@
 from base64 import b64encode
 from typing import Literal
 
+from backend.util.file import MediaFile, store_media_file
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -11,7 +12,6 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import store_temp_file
 from backend.util.request import Requests
 
 
@@ -50,7 +50,7 @@ class ScreenshotWebPageBlock(Block):
         )
 
     class Output(BlockSchema):
-        image: str = SchemaField(description="The screenshot image data")
+        image: MediaFile = SchemaField(description="The screenshot image data")
         error: str = SchemaField(description="Error message if the screenshot failed")
 
     def __init__(self):
@@ -133,7 +133,7 @@ class ScreenshotWebPageBlock(Block):
         response = api.get("https://api.screenshotone.com/take", params=params)
 
         return {
-            "image": store_temp_file(
+            "image": store_media_file(
                 graph_exec_id,
                 f"data:{format};base64,{b64encode(response.content).decode('utf-8')}",
             )
