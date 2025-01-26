@@ -109,7 +109,7 @@ export const FlowRunInfo: React.FC<
             </Button>
             <Link
               className={buttonVariants({ variant: "default" })}
-              href={`/build?flowID=${flow.id}&flowVersion=${execution.graph_version}`} //todo kcze executionID
+              href={`/build?flowID=${flow.id}&flowVersion=${execution.graph_version}&flowExecutionID=${execution.execution_id}`} //todo kcze executionID
             >
               <Pencil2Icon className="mr-2" /> Open in Builder
             </Link>

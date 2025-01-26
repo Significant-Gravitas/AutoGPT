@@ -21,6 +21,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -95,10 +96,15 @@ export default function useAgentGraph(
         console.error("Failed to connect WebSocket:", error);
       });
 
+    if (flowID && flowVersion) {
+      api.subscribeToExecution(flowID, flowVersion);
+      console.debug("Subscribed to execution");
+    }
+
     return () => {
       api.disconnectWebSocket();
     };
-  }, [api]);
+  }, [api, flowID, flowVersion]);
 
   // Load available blocks & flows
   useEffect(() => {
@@ -145,11 +151,12 @@ export default function useAgentGraph(
       setAgentDescription(graph.description);
       setAgentVersion(graph.version);
 
-      setNodes(() => {
+      setNodes((prevNodes) => {
         const newNodes = graph.nodes.map((node) => {
           const block = availableNodes.find(
             (block) => block.id === node.block_id,
           )!;
+          const prevNode = prevNodes.find((n) => n.id === node.id);
           const flow =
             block.uiType == BlockUIType.AGENT
               ? availableFlows.find(
@@ -164,6 +171,8 @@ export default function useAgentGraph(
               y: node?.metadata?.position?.y || 0,
             },
             data: {
+              isOutputOpen: false,
+              ...prevNode?.data,
               block_id: block.id,
               blockType: flow?.name || block.name,
               blockCosts: block.costs,
@@ -184,38 +193,42 @@ export default function useAgentGraph(
                   target: link.sink_id,
                   targetHandle: link.sink_name,
                 })),
-              isOutputOpen: false,
+              backend_id: node.id,
             },
           };
           return newNode;
         });
-        setEdges((_) =>
-          graph.links.map((link) => ({
-            id: formatEdgeID(link),
-            type: "custom",
-            data: {
-              edgeColor: getTypeColor(
-                getOutputType(newNodes, link.source_id, link.source_name!),
-              ),
-              sourcePos: newNodes.find((node) => node.id === link.source_id)
-                ?.position,
-              isStatic: link.is_static,
-              beadUp: 0,
-              beadDown: 0,
-              beadData: [],
-            },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              strokeWidth: 2,
-              color: getTypeColor(
-                getOutputType(newNodes, link.source_id, link.source_name!),
-              ),
-            },
-            source: link.source_id,
-            target: link.sink_id,
-            sourceHandle: link.source_name || undefined,
-            targetHandle: link.sink_name || undefined,
-          })),
+        setEdges((prevEdges) =>
+          graph.links.map((link) => {
+            const prevEdge = prevEdges.find((e) => e.id === link.id);
+            return {
+              id: formatEdgeID(link),
+              type: "custom",
+              data: {
+                // ...prevEdge?.data,
+                edgeColor: getTypeColor(
+                  getOutputType(newNodes, link.source_id, link.source_name!),
+                ),
+                sourcePos: newNodes.find((node) => node.id === link.source_id)
+                  ?.position,
+                isStatic: link.is_static,
+                beadUp: 0,
+                beadDown: 0,
+                beadData: [],
+              },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                strokeWidth: 2,
+                color: getTypeColor(
+                  getOutputType(newNodes, link.source_id, link.source_name!),
+                ),
+              },
+              source: link.source_id,
+              target: link.sink_id,
+              sourceHandle: link.source_name || undefined,
+              targetHandle: link.sink_name || undefined,
+            };
+          }),
         );
         return newNodes;
       });
@@ -553,33 +566,12 @@ export default function useAgentGraph(
               activeExecutionID: graphExecution.graph_exec_id,
             });
 
-            // Track execution until completed
-            const pendingNodeExecutions: Set<string> = new Set();
-            const cancelExecListener = api.onWebSocketMessage(
-              "execution_event",
-              (nodeResult) => {
-                // We are racing the server here, since we need the ID to filter events
-                if (nodeResult.graph_exec_id != graphExecution.graph_exec_id) {
-                  return;
-                }
-                if (
-                  !["COMPLETED", "TERMINATED", "FAILED"].includes(
-                    nodeResult.status,
-                  )
-                ) {
-                  pendingNodeExecutions.add(nodeResult.node_exec_id);
-                } else {
-                  pendingNodeExecutions.delete(nodeResult.node_exec_id);
-                }
-                if (pendingNodeExecutions.size == 0) {
-                  // Assuming the first event is always a QUEUED node, and
-                  // following nodes are QUEUED before all preceding nodes are COMPLETED,
-                  // an empty set means the graph has finished running.
-                  cancelExecListener();
-                  setSaveRunRequest({ request: "none", state: "none" });
-                }
-              },
-            );
+            // Update URL params
+            const path = new URLSearchParams(searchParams);
+            path.set("flowID", savedAgent.id);
+            path.set("flowVersion", savedAgent.version.toString());
+            path.set("flowExecutionID", graphExecution.graph_exec_id);
+            router.push(`${pathname}?${path.toString()}`);
           })
           .catch((error) => {
             const errorMessage =
@@ -619,6 +611,45 @@ export default function useAgentGraph(
     nodesSyncedWithSavedAgent,
     validateNodes,
   ]);
+
+  useEffect(() => {
+    if (!flowID || !flowExecutionID) {
+      return;
+    }
+
+    const fetchExecutions = async () => {
+      const results = await api.getGraphExecutionInfo(flowID, flowExecutionID);
+      setUpdateQueue((prev) => [...prev, ...results]);
+
+      // Track execution until completed
+      const pendingNodeExecutions: Set<string> = new Set();
+      const cancelExecListener = api.onWebSocketMessage(
+        "execution_event",
+        (nodeResult) => {
+          // We are racing the server here, since we need the ID to filter events
+          if (nodeResult.graph_exec_id != flowExecutionID) {
+            return;
+          }
+          if (
+            !["COMPLETED", "TERMINATED", "FAILED"].includes(nodeResult.status)
+          ) {
+            pendingNodeExecutions.add(nodeResult.node_exec_id);
+          } else {
+            pendingNodeExecutions.delete(nodeResult.node_exec_id);
+          }
+          if (pendingNodeExecutions.size == 0) {
+            // Assuming the first event is always a QUEUED node, and
+            // following nodes are QUEUED before all preceding nodes are COMPLETED,
+            // an empty set means the graph has finished running.
+            cancelExecListener();
+            setSaveRunRequest({ request: "none", state: "none" });
+          }
+        },
+      );
+    };
+
+    fetchExecutions();
+  }, [flowID, flowExecutionID]);
 
   // Check if node ids are synced with saved agent
   useEffect(() => {
@@ -797,6 +828,7 @@ export default function useAgentGraph(
     if (!savedAgent) {
       const path = new URLSearchParams(searchParams);
       path.set("flowID", newSavedAgent.id);
+      path.set("flowVersion", newSavedAgent.version.toString());
       router.push(`${pathname}?${path.toString()}`);
       return;
     }
