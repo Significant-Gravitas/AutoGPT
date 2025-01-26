@@ -37,6 +37,10 @@ jobs:
         run: |
           yarn lint
 
+      - name: Run tsc check
+        run: |
+          yarn type-check
+
   test:
     runs-on: ubuntu-latest
     strategy:
