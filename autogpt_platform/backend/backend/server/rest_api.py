@@ -1,6 +1,6 @@
 import contextlib
 import logging
-import typing
+from typing import Any, Optional
 
 import autogpt_libs.auth.models
 import fastapi
@@ -123,9 +123,9 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_execute_graph(
         graph_id: str,
-        graph_version: int,
-        node_input: dict[typing.Any, typing.Any],
+        node_input: dict[str, Any],
         user_id: str,
+        graph_version: Optional[int] = None,
     ):
         return backend.server.routers.v1.execute_graph(
             user_id=user_id,
