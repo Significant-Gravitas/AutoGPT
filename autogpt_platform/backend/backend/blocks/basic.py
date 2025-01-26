@@ -3,11 +3,48 @@ from typing import Any, List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
+from backend.util.file import MediaFile, store_media_file
 from backend.util.mock import MockObject
 from backend.util.text import TextFormatter
 from backend.util.type import convert
 
 formatter = TextFormatter()
+
+
+class FileStoreBlock(Block):
+    class Input(BlockSchema):
+        file_in: MediaFile = SchemaField(
+            description="The file to store in the temporary directory, it can be a URL, data URI, or local path."
+        )
+
+    class Output(BlockSchema):
+        file_out: MediaFile = SchemaField(
+            description="The relative path to the stored file in the temporary directory."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="cbb50872-625b-42f0-8203-a2ae78242d8a",
+            description="Stores the input file in the temporary directory.",
+            categories={BlockCategory.BASIC, BlockCategory.MULTIMEDIA},
+            input_schema=FileStoreBlock.Input,
+            output_schema=FileStoreBlock.Output,
+            static_output=True,
+        )
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        graph_exec_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        file_path = store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=input_data.file_in,
+            return_content=False,
+        )
+        yield "file_out", file_path
 
 
 class StoreValueBlock(Block):

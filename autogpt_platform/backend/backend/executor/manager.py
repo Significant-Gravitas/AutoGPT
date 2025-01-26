@@ -40,6 +40,7 @@ from backend.data.graph import GraphModel, Link, Node
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
+from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
 from backend.util.service import (
@@ -169,7 +170,12 @@ def execute_node(
     log_metadata.info("Executed node with input", input=input_data_str)
     update_execution(ExecutionStatus.RUNNING)
 
-    extra_exec_kwargs = {}
+    extra_exec_kwargs: dict = {
+        "graph_id": graph_id,
+        "node_id": node_id,
+        "graph_exec_id": graph_exec_id,
+        "node_exec_id": node_exec_id,
+    }
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -729,6 +735,7 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
+            clean_exec_files(graph_exec.graph_exec_id)
 
         return (
             exec_stats,
