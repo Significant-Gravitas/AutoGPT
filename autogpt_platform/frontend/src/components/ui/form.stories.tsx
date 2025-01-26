@@ -1,6 +1,14 @@
 import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
-import { FieldValues, InternalFieldName, RegisterOptions, useForm, UseFormHandleSubmit, UseFormRegister, UseFormWatch } from "react-hook-form";
+import {
+  FieldValues,
+  InternalFieldName,
+  RegisterOptions,
+  useForm,
+  UseFormHandleSubmit,
+  UseFormRegister,
+  UseFormWatch,
+} from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -75,13 +83,13 @@ export const Default: Story = {
   args: {
     children: <FormExample />,
     // watch(callback: (data, { name, type }) => void, defaultValues?: {[key:string]: unknown}): { unsubscribe: () => void }
-    watch: ((name?: any, defaultValue?: any) => {
-      if (typeof name === 'function') {
-        return { unsubscribe: () => { } };
+    watch: (name?: any, defaultValue?: any) => {
+      if (typeof name === "function") {
+        return { unsubscribe: () => {} };
       }
       return defaultValue || {};
-    }),
-    getValues: () => ([]),
+    },
+    getValues: () => [],
     getFieldState: (name, formState) => ({
       invalid: false,
       isDirty: false,
@@ -89,11 +97,11 @@ export const Default: Story = {
       isValidating: false,
       error: undefined,
     }),
-    setError: () => { },
-    setValue: () => { },
+    setError: () => {},
+    setValue: () => {},
     trigger: async () => true,
-    reset: () => { },
-    clearErrors: () => { },
+    reset: () => {},
+    clearErrors: () => {},
     formState: {
       errors: {},
       isDirty: false,
@@ -110,46 +118,46 @@ export const Default: Story = {
       submitCount: 0,
       validatingFields: {},
     },
-    resetField: () => { },
+    resetField: () => {},
     handleSubmit: (() => {
       return async (e?: React.BaseSyntheticEvent) => {
         e?.preventDefault();
         return Promise.resolve();
       };
     }) as unknown as UseFormHandleSubmit<any>,
-    unregister: () => { },
+    unregister: () => {},
     control: {
       _subjects: {
         state: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
         },
         array: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
         },
         values: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
-        }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
+        },
       },
-      _reset: () => { },
-      _resetDefaultValues: () => { },
+      _reset: () => {},
+      _resetDefaultValues: () => {},
       _getFieldArray: () => [],
-      _setErrors: () => { },
-      _updateDisabledField: () => { },
+      _setErrors: () => {},
+      _updateDisabledField: () => {},
       _executeSchema: () => Promise.resolve({ errors: {} }),
       handleSubmit: (onSubmit?: any) => (e?: React.BaseSyntheticEvent) => {
         e?.preventDefault();
         return Promise.resolve();
       },
-      unregister: () => { },
+      unregister: () => {},
       getFieldState: () => ({
         invalid: false,
         isDirty: false,
@@ -157,12 +165,18 @@ export const Default: Story = {
         isValidating: false,
         error: undefined,
       }),
-      setError: () => { },
-      _disableForm: () => { },
-      _removeUnmounted: () => { },
-      _names: { mount: new Set(), array: new Set(), watch: new Set(), unMount: new Set(), disabled: new Set() },
+      setError: () => {},
+      _disableForm: () => {},
+      _removeUnmounted: () => {},
+      _names: {
+        mount: new Set(),
+        array: new Set(),
+        watch: new Set(),
+        unMount: new Set(),
+        disabled: new Set(),
+      },
       _state: { mount: false, watch: false, action: false },
-      _options: { mode: 'onSubmit', defaultValues: {} },
+      _options: { mode: "onSubmit", defaultValues: {} },
       _formState: {
         isDirty: false,
         isSubmitted: false,
@@ -172,7 +186,11 @@ export const Default: Story = {
         isSubmitting: false,
         isValidating: false,
         isValid: true,
-        disabled: false, dirtyFields: {}, touchedFields: {}, errors: {}, validatingFields: {}
+        disabled: false,
+        dirtyFields: {},
+        touchedFields: {},
+        errors: {},
+        validatingFields: {},
       },
       _fields: {},
 
@@ -188,24 +206,24 @@ export const Default: Story = {
         validatingFields: false,
       },
       _getDirty: () => false,
-      _updateValid: () => { },
-      _updateFieldArray: () => { },
+      _updateValid: () => {},
+      _updateFieldArray: () => {},
       _getWatch: () => ({}),
-      _updateFormState: () => { },
+      _updateFormState: () => {},
       register: ((name: string, options?: RegisterOptions<any>) => ({
         name,
         onChange: (e: any) => Promise.resolve(),
         onBlur: (e: any) => Promise.resolve(),
-        ref: () => { },
-      })) as unknown as UseFormRegister<any>
+        ref: () => {},
+      })) as unknown as UseFormRegister<any>,
     },
     register: ((name: string) => ({
       name,
       onChange: (e: any) => Promise.resolve(),
       onBlur: (e: any) => Promise.resolve(),
-      ref: () => { }
+      ref: () => {},
     })) as UseFormRegister<FieldValues>,
-    setFocus: () => { },
+    setFocus: () => {},
   },
   render: () => <FormExample />,
 };
@@ -214,13 +232,13 @@ export const WithError: Story = {
   args: {
     children: <FormExample />,
     // watch(callback: (data, { name, type }) => void, defaultValues?: {[key:string]: unknown}): { unsubscribe: () => void }
-    watch: ((name?: any, defaultValue?: any) => {
-      if (typeof name === 'function') {
-        return { unsubscribe: () => { } };
+    watch: (name?: any, defaultValue?: any) => {
+      if (typeof name === "function") {
+        return { unsubscribe: () => {} };
       }
       return defaultValue || {};
-    }),
-    getValues: () => ([]),
+    },
+    getValues: () => [],
     getFieldState: (name, formState) => ({
       invalid: false,
       isDirty: false,
@@ -228,11 +246,11 @@ export const WithError: Story = {
       isValidating: false,
       error: undefined,
     }),
-    setError: () => { },
-    setValue: () => { },
+    setError: () => {},
+    setValue: () => {},
     trigger: async () => true,
-    reset: () => { },
-    clearErrors: () => { },
+    reset: () => {},
+    clearErrors: () => {},
     formState: {
       errors: {},
       isDirty: false,
@@ -249,46 +267,46 @@ export const WithError: Story = {
       submitCount: 0,
       validatingFields: {},
     },
-    resetField: () => { },
+    resetField: () => {},
     handleSubmit: (() => {
       return async (e?: React.BaseSyntheticEvent) => {
         e?.preventDefault();
         return Promise.resolve();
       };
     }) as unknown as UseFormHandleSubmit<any>,
-    unregister: () => { },
+    unregister: () => {},
     control: {
       _subjects: {
         state: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
         },
         array: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
         },
         values: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
-        }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
+        },
       },
-      _reset: () => { },
-      _resetDefaultValues: () => { },
+      _reset: () => {},
+      _resetDefaultValues: () => {},
       _getFieldArray: () => [],
-      _setErrors: () => { },
-      _updateDisabledField: () => { },
+      _setErrors: () => {},
+      _updateDisabledField: () => {},
       _executeSchema: () => Promise.resolve({ errors: {} }),
       handleSubmit: (onSubmit?: any) => (e?: React.BaseSyntheticEvent) => {
         e?.preventDefault();
         return Promise.resolve();
       },
-      unregister: () => { },
+      unregister: () => {},
       getFieldState: () => ({
         invalid: false,
         isDirty: false,
@@ -296,12 +314,18 @@ export const WithError: Story = {
         isValidating: false,
         error: undefined,
       }),
-      setError: () => { },
-      _disableForm: () => { },
-      _removeUnmounted: () => { },
-      _names: { mount: new Set(), array: new Set(), watch: new Set(), unMount: new Set(), disabled: new Set() },
+      setError: () => {},
+      _disableForm: () => {},
+      _removeUnmounted: () => {},
+      _names: {
+        mount: new Set(),
+        array: new Set(),
+        watch: new Set(),
+        unMount: new Set(),
+        disabled: new Set(),
+      },
       _state: { mount: false, watch: false, action: false },
-      _options: { mode: 'onSubmit', defaultValues: {} },
+      _options: { mode: "onSubmit", defaultValues: {} },
       _formState: {
         isDirty: false,
         isSubmitted: false,
@@ -311,7 +335,11 @@ export const WithError: Story = {
         isSubmitting: false,
         isValidating: false,
         isValid: true,
-        disabled: false, dirtyFields: {}, touchedFields: {}, errors: {}, validatingFields: {}
+        disabled: false,
+        dirtyFields: {},
+        touchedFields: {},
+        errors: {},
+        validatingFields: {},
       },
       _fields: {},
 
@@ -327,24 +355,24 @@ export const WithError: Story = {
         validatingFields: false,
       },
       _getDirty: () => false,
-      _updateValid: () => { },
-      _updateFieldArray: () => { },
+      _updateValid: () => {},
+      _updateFieldArray: () => {},
       _getWatch: () => ({}),
-      _updateFormState: () => { },
+      _updateFormState: () => {},
       register: ((name: string, options?: RegisterOptions<any>) => ({
         name,
         onChange: (e: any) => Promise.resolve(),
         onBlur: (e: any) => Promise.resolve(),
-        ref: () => { },
-      })) as unknown as UseFormRegister<any>
+        ref: () => {},
+      })) as unknown as UseFormRegister<any>,
     },
     register: ((name: string) => ({
       name,
       onChange: (e: any) => Promise.resolve(),
       onBlur: (e: any) => Promise.resolve(),
-      ref: () => { }
+      ref: () => {},
     })) as UseFormRegister<FieldValues>,
-    setFocus: () => { },
+    setFocus: () => {},
   },
   render: () => {
     const FormWithError = () => {
@@ -399,13 +427,13 @@ export const WithDefaultValue: Story = {
   args: {
     children: <FormExample />,
     // watch(callback: (data, { name, type }) => void, defaultValues?: {[key:string]: unknown}): { unsubscribe: () => void }
-    watch: ((name?: any, defaultValue?: any) => {
-      if (typeof name === 'function') {
-        return { unsubscribe: () => { } };
+    watch: (name?: any, defaultValue?: any) => {
+      if (typeof name === "function") {
+        return { unsubscribe: () => {} };
       }
       return defaultValue || {};
-    }),
-    getValues: () => ([]),
+    },
+    getValues: () => [],
     getFieldState: (name, formState) => ({
       invalid: false,
       isDirty: false,
@@ -413,11 +441,11 @@ export const WithDefaultValue: Story = {
       isValidating: false,
       error: undefined,
     }),
-    setError: () => { },
-    setValue: () => { },
+    setError: () => {},
+    setValue: () => {},
     trigger: async () => true,
-    reset: () => { },
-    clearErrors: () => { },
+    reset: () => {},
+    clearErrors: () => {},
     formState: {
       errors: {},
       isDirty: false,
@@ -434,46 +462,46 @@ export const WithDefaultValue: Story = {
       submitCount: 0,
       validatingFields: {},
     },
-    resetField: () => { },
+    resetField: () => {},
     handleSubmit: (() => {
       return async (e?: React.BaseSyntheticEvent) => {
         e?.preventDefault();
         return Promise.resolve();
       };
     }) as unknown as UseFormHandleSubmit<any>,
-    unregister: () => { },
+    unregister: () => {},
     control: {
       _subjects: {
         state: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
         },
         array: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
         },
         values: {
           observers: [],
-          subscribe: () => ({ unsubscribe: () => { } }),
-          unsubscribe: () => { },
-          next: () => { }
-        }
+          subscribe: () => ({ unsubscribe: () => {} }),
+          unsubscribe: () => {},
+          next: () => {},
+        },
       },
-      _reset: () => { },
-      _resetDefaultValues: () => { },
+      _reset: () => {},
+      _resetDefaultValues: () => {},
       _getFieldArray: () => [],
-      _setErrors: () => { },
-      _updateDisabledField: () => { },
+      _setErrors: () => {},
+      _updateDisabledField: () => {},
       _executeSchema: () => Promise.resolve({ errors: {} }),
       handleSubmit: (onSubmit?: any) => (e?: React.BaseSyntheticEvent) => {
         e?.preventDefault();
         return Promise.resolve();
       },
-      unregister: () => { },
+      unregister: () => {},
       getFieldState: () => ({
         invalid: false,
         isDirty: false,
@@ -481,12 +509,18 @@ export const WithDefaultValue: Story = {
         isValidating: false,
         error: undefined,
       }),
-      setError: () => { },
-      _disableForm: () => { },
-      _removeUnmounted: () => { },
-      _names: { mount: new Set(), array: new Set(), watch: new Set(), unMount: new Set(), disabled: new Set() },
+      setError: () => {},
+      _disableForm: () => {},
+      _removeUnmounted: () => {},
+      _names: {
+        mount: new Set(),
+        array: new Set(),
+        watch: new Set(),
+        unMount: new Set(),
+        disabled: new Set(),
+      },
       _state: { mount: false, watch: false, action: false },
-      _options: { mode: 'onSubmit', defaultValues: {} },
+      _options: { mode: "onSubmit", defaultValues: {} },
       _formState: {
         isDirty: false,
         isSubmitted: false,
@@ -496,7 +530,11 @@ export const WithDefaultValue: Story = {
         isSubmitting: false,
         isValidating: false,
         isValid: true,
-        disabled: false, dirtyFields: {}, touchedFields: {}, errors: {}, validatingFields: {}
+        disabled: false,
+        dirtyFields: {},
+        touchedFields: {},
+        errors: {},
+        validatingFields: {},
       },
       _fields: {},
 
@@ -512,24 +550,24 @@ export const WithDefaultValue: Story = {
         validatingFields: false,
       },
       _getDirty: () => false,
-      _updateValid: () => { },
-      _updateFieldArray: () => { },
+      _updateValid: () => {},
+      _updateFieldArray: () => {},
       _getWatch: () => ({}),
-      _updateFormState: () => { },
+      _updateFormState: () => {},
       register: ((name: string, options?: RegisterOptions<any>) => ({
         name,
         onChange: (e: any) => Promise.resolve(),
         onBlur: (e: any) => Promise.resolve(),
-        ref: () => { },
-      })) as unknown as UseFormRegister<any>
+        ref: () => {},
+      })) as unknown as UseFormRegister<any>,
     },
     register: ((name: string) => ({
       name,
       onChange: (e: any) => Promise.resolve(),
       onBlur: (e: any) => Promise.resolve(),
-      ref: () => { }
+      ref: () => {},
     })) as UseFormRegister<FieldValues>,
-    setFocus: () => { },
+    setFocus: () => {},
   },
   render: () => {
     const FormWithDefaultValue = () => {
