@@ -5,7 +5,7 @@ import autogpt_libs.auth.models
 import fastapi.exceptions
 import pytest
 
-import backend.server.v2.store.model
+import backend.server.v2.store.model as store
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock, StoreValueBlock
 from backend.data.block import BlockSchema
 from backend.data.graph import Graph, Link, Node
@@ -237,7 +237,7 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         create_graph, DEFAULT_USER_ID
     )
 
-    store_submission_request = backend.server.v2.store.model.StoreSubmissionRequest(
+    store_submission_request = store.StoreSubmissionRequest(
         agent_id=created_graph.id,
         agent_version=created_graph.version,
         slug="test-slug",
@@ -277,7 +277,7 @@ async def test_access_store_listing_graph(server: SpinTestServer):
 
     admin_user = await create_test_user(alt_user=True)
     await server.agent_server.test_review_store_listing(
-        backend.server.v2.store.model.ReviewSubmissionRequest(
+        store.ReviewSubmissionRequest(
             store_listing_version_id=slv_id,
             isApproved=True,
             comments="Test comments",
