@@ -4,18 +4,12 @@ from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    List,
-    Literal,
-    NamedTuple,
-)
+from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
 
-from backend.util.file import MediaFile, store_media_file
 from pydantic import SecretStr
 
 from backend.integrations.providers import ProviderName
+from backend.util.file import MediaFile, store_media_file
 
 if TYPE_CHECKING:
     from enum import _EnumMemberT
@@ -217,10 +211,16 @@ MODEL_METADATA = {
         ModelProvider.OPENAI, ModelCreator.OPENAI, 16385
     ),
     LlmModel.CLAUDE_3_5_SONNET: ModelMetadata(
-        ModelProvider.ANTHROPIC, ModelCreator.ANTHROPIC, 200000
+        ModelProvider.ANTHROPIC,
+        ModelCreator.ANTHROPIC,
+        200000,
+        ModelCapabilities(supports_images=True),
     ),
     LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
-        ModelProvider.ANTHROPIC, ModelCreator.ANTHROPIC, 200000
+        ModelProvider.ANTHROPIC,
+        ModelCreator.ANTHROPIC,
+        200000,
+        ModelCapabilities(supports_images=True),
     ),
     LlmModel.LLAMA3_8B: ModelMetadata(ModelProvider.GROQ, ModelCreator.META, 8192),
     LlmModel.LLAMA3_70B: ModelMetadata(ModelProvider.GROQ, ModelCreator.META, 8192),

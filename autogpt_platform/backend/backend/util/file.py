@@ -44,29 +44,29 @@ def store_media_file(
     graph_exec_id: str, file: MediaFile, return_content: bool = False
 ) -> MediaFile:
     """
-    Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
-    placing or verifying it under:
-        {tempdir}/exec_file/{exec_id}/...
+        Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
+        placing or verifying it under:
+            {tempdir}/exec_file/{exec_id}/...
 
-If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
-    Otherwise, returns the file media path relative to the exec_id folder.
+    If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
+        Otherwise, returns the file media path relative to the exec_id folder.
 
-    For each MediaFile type:
-    - Data URI:
-      -> decode and store in a new random file in that folder
-    - URL:
-      -> download and store in that folder
-    - Local path:
-      -> interpret as relative to that folder; verify it exists
-         (no copying, as it's presumably already there).
-         We realpath-check so no symlink or '..' can escape the folder.
+        For each MediaFile type:
+        - Data URI:
+          -> decode and store in a new random file in that folder
+        - URL:
+          -> download and store in that folder
+        - Local path:
+          -> interpret as relative to that folder; verify it exists
+             (no copying, as it's presumably already there).
+             We realpath-check so no symlink or '..' can escape the folder.
 
 
-    :param graph_exec_id:  The unique ID of the graph execution.
-    :param file:           Data URI, URL, or local (relative) path.
-    :param return_content: If True, return a data URI of the file content.
-                           If False, return the *relative* path inside the exec_id folder.
-    :return:               The requested result: data URI or relative path of the media.
+        :param graph_exec_id:  The unique ID of the graph execution.
+        :param file:           Data URI, URL, or local (relative) path.
+        :param return_content: If True, return a data URI of the file content.
+                               If False, return the *relative* path inside the exec_id folder.
+        :return:               The requested result: data URI or relative path of the media.
     """
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
