@@ -145,8 +145,10 @@ class SearchMemoryBlock(Block, Mem0Base):
             default=False,
             advanced=False,
         )
-        categories_filter: list[str] | None = SchemaField(
-            description="Categories to filter by", default=None
+        categories_filter: list[str] = SchemaField(
+            description="Categories to filter by",
+            default=[],
+            advanced=True,
         )
         limit_memory_to_run: bool = SchemaField(
             description="Limit the memory to the run", default=False
