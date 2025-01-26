@@ -31,6 +31,8 @@ const sampleAgents: AgentTableRowProps[] = [
     date_submitted: "2023-05-15",
     onEditSubmission: () => console.log("Edit Super Coder"),
     onDeleteSubmission: () => console.log("Delete Super Coder"),
+    selectedAgents: new Set(),
+    setSelectedAgents: () => { },
   },
   {
     id: 44,
@@ -49,6 +51,8 @@ const sampleAgents: AgentTableRowProps[] = [
     date_submitted: "2023-05-10",
     onEditSubmission: () => console.log("Edit Data Analyzer"),
     onDeleteSubmission: () => console.log("Delete Data Analyzer"),
+    selectedAgents: new Set(),
+    setSelectedAgents: () => { },
   },
   {
     id: 45,
@@ -67,6 +71,8 @@ const sampleAgents: AgentTableRowProps[] = [
     date_submitted: "2023-05-05",
     onEditSubmission: () => console.log("Edit UI Designer"),
     onDeleteSubmission: () => console.log("Delete UI Designer"),
+    selectedAgents: new Set(),
+    setSelectedAgents: () => { },
   },
 ];
 
