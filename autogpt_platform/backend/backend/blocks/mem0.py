@@ -47,7 +47,7 @@ class AddMemoryBlock(Block, Mem0Base):
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
         content: Union[str, list[dict[str, str]]] = SchemaField(
-            description="Content to add - either a string or list of message objects"
+            description="Content to add - either a string or list of message objects as output from an AI block"
         )
         metadata: dict[str, Any] = SchemaField(
             description="Optional metadata for the memory", default={}
