@@ -6,6 +6,18 @@ import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
 
+export interface PublishAgentInfoInitialData {
+  agent_id: string;
+  title: string;
+  subheader: string;
+  slug: string;
+  thumbnailSrc: string;
+  youtubeLink: string;
+  category: string;
+  description: string;
+  additionalImages?: string[];
+}
+
 interface PublishAgentInfoProps {
   onBack: () => void;
   onSubmit: (
@@ -18,17 +30,7 @@ interface PublishAgentInfoProps {
     categories: string[],
   ) => void;
   onClose: () => void;
-  initialData?: {
-    agent_id: string;
-    title: string;
-    subheader: string;
-    slug: string;
-    thumbnailSrc: string;
-    youtubeLink: string;
-    category: string;
-    description: string;
-    additionalImages?: string[];
-  };
+  initialData?: PublishAgentInfoInitialData;
 }
 
 export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
@@ -344,9 +346,8 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             <Button
               variant="default"
               size="sm"
-              className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
-                images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
-              }`}
+              className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
+                }`}
               onClick={handleGenerateImage}
               disabled={isGenerating || images.length >= 5}
             >
