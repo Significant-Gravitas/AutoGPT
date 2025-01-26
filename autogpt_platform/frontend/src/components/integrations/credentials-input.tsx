@@ -75,7 +75,6 @@ export const providerIcons: Record<
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
   slant3d: fallbackIcon,
-  screenshotone: fallbackIcon,
   replicate: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
