@@ -43,7 +43,7 @@ Filter = dict[str, list[dict[str, str | dict[str, list[str]]]]]
 class AddMemoryBlock(Block, Mem0Base):
     """Block for adding memories to Mem0
 
-    Always limited by user_id and optional graph_id, run_id, agent_id"""
+    Always limited by user_id and optional graph_id, graph_exec_id, agent_id"""
 
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
@@ -61,6 +61,9 @@ class AddMemoryBlock(Block, Mem0Base):
         )
         limit_memory_to_agent: bool = SchemaField(
             description="Limit the memory to the agent", default=False
+        )
+        agent_id: str = SchemaField(
+            description="User Provided Agent ID to limit the memory to", default=""
         )
 
     class Output(BlockSchema):
@@ -114,6 +117,8 @@ class AddMemoryBlock(Block, Mem0Base):
                 params["run_id"] = graph_exec_id
             if input_data.limit_memory_to_agent:
                 params["agent_id"] = graph_id
+            if input_data.agent_id:
+                params["agent_id"] = input_data.agent_id
 
             # Use the client to add memory
             result = client.add(
@@ -159,6 +164,9 @@ class SearchMemoryBlock(Block, Mem0Base):
         limit_memory_to_agent: bool = SchemaField(
             description="Limit the memory to the agent", default=True
         )
+        agent_id: str = SchemaField(
+            description="User Provided Agent ID to limit the memory to", default=""
+        )
 
     class Output(BlockSchema):
         memories: Any = SchemaField(description="List of matching memories")
@@ -190,7 +198,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         credentials: APIKeyCredentials,
         user_id: str,
         graph_id: str,
-        run_id: str,
+        graph_exec_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
@@ -207,9 +215,11 @@ class SearchMemoryBlock(Block, Mem0Base):
                     {"categories": {"contains": input_data.categories_filter}}
                 )
             if input_data.limit_memory_to_run:
-                filters["AND"].append({"run_id": run_id})
+                filters["AND"].append({"run_id": graph_exec_id})
             if input_data.limit_memory_to_agent:
                 filters["AND"].append({"agent_id": graph_id})
+            if input_data.agent_id:
+                filters["AND"].append({"agent_id": input_data.agent_id})
 
             result: list[dict[str, Any]] = client.search(
                 input_data.query, version="v2", filters=filters
@@ -241,6 +251,9 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         limit_memory_to_agent: bool = SchemaField(
             description="Limit the memory to the agent", default=False
         )
+        agent_id: str = SchemaField(
+            description="User Provided Agent ID to limit the memory to", default=""
+        )
 
     class Output(BlockSchema):
         memories: Any = SchemaField(description="List of memories")
@@ -270,7 +283,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
         credentials: APIKeyCredentials,
         user_id: str,
         graph_id: str,
-        run_id: str,
+        graph_exec_id: str,
         **kwargs
     ) -> BlockOutput:
         try:
@@ -282,13 +295,15 @@ class GetAllMemoriesBlock(Block, Mem0Base):
                 ]
             }
             if input_data.limit_memory_to_run:
-                filters["AND"].append({"run_id": run_id})
+                filters["AND"].append({"run_id": graph_exec_id})
             if input_data.limit_memory_to_agent:
                 filters["AND"].append({"agent_id": graph_id})
             if input_data.categories:
                 filters["AND"].append(
                     {"categories": {"contains": input_data.categories}}
                 )
+            if input_data.agent_id:
+                filters["AND"].append({"agent_id": input_data.agent_id})
 
             memories: list[dict[str, Any]] = client.get_all(
                 filters=filters,
