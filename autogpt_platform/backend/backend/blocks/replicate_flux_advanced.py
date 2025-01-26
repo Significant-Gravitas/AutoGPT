@@ -131,7 +131,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         super().__init__(
             id="90f8c45e-e983-4644-aa0b-b4ebe2f531bc",
             description="This block runs Flux models on Replicate with advanced settings.",
-            categories={BlockCategory.AI},
+            categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=ReplicateFluxAdvancedModelBlock.Input,
             output_schema=ReplicateFluxAdvancedModelBlock.Output,
             test_input={
