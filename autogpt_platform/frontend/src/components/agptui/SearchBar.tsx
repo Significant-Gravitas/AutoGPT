@@ -36,7 +36,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (searchQuery.trim()) {
       // Encode the search term and navigate to the desired path
       const encodedTerm = encodeURIComponent(searchQuery);
-      router.push(`/store/search?searchTerm=${encodedTerm}`);
+      router.push(`/marketplace/search?searchTerm=${encodedTerm}`);
     }
   };
 

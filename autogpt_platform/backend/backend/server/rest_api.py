@@ -20,6 +20,7 @@ import backend.server.v2.library.routes
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
+from backend.server.external.api import external_app
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -93,6 +94,8 @@ app.include_router(
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+
+app.mount("/external-api", external_app)
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])

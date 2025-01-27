@@ -53,7 +53,7 @@ class UnrealTextToSpeechBlock(Block):
         super().__init__(
             id="4ff1ff6d-cc40-4caa-ae69-011daa20c378",
             description="Converts text to speech using the Unreal Speech API",
-            categories={BlockCategory.AI, BlockCategory.TEXT},
+            categories={BlockCategory.AI, BlockCategory.TEXT, BlockCategory.MULTIMEDIA},
             input_schema=UnrealTextToSpeechBlock.Input,
             output_schema=UnrealTextToSpeechBlock.Output,
             test_input={
