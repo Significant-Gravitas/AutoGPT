@@ -78,7 +78,7 @@ class CreateTalkingAvatarVideoBlock(Block):
         super().__init__(
             id="98c6f503-8c47-4b1c-a96d-351fc7c87dab",
             description="This block integrates with D-ID to create video clips and retrieve their URLs.",
-            categories={BlockCategory.AI},
+            categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=CreateTalkingAvatarVideoBlock.Input,
             output_schema=CreateTalkingAvatarVideoBlock.Output,
             test_input={

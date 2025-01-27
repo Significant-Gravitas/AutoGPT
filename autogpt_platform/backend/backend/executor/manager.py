@@ -40,6 +40,7 @@ from backend.data.graph import GraphModel, Link, Node
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
+from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
 from backend.util.service import (
@@ -737,6 +738,7 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
+            clean_exec_files(graph_exec.graph_exec_id)
 
         return (
             exec_stats,

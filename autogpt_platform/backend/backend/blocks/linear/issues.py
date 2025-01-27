@@ -1,5 +1,6 @@
 from backend.blocks.linear._api import LinearAPIException, LinearClient
 from backend.blocks.linear._auth import (
+    LINEAR_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS_INPUT_OAUTH,
     TEST_CREDENTIALS_OAUTH,
     LinearCredentials,
@@ -44,6 +45,7 @@ class LinearCreateIssueBlock(Block):
         super().__init__(
             id="f9c68f55-dcca-40a8-8771-abf9601680aa",
             description="Creates a new issue on Linear",
+            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
             input_schema=self.Input,
             output_schema=self.Output,
             categories={BlockCategory.PRODUCTIVITY, BlockCategory.ISSUE_TRACKING},
@@ -132,6 +134,7 @@ class LinearSearchIssuesBlock(Block):
             description="Searches for issues on Linear",
             input_schema=self.Input,
             output_schema=self.Output,
+            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
             test_input={
                 "term": "Test issue",
                 "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
