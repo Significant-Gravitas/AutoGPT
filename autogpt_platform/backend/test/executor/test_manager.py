@@ -332,7 +332,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     await server.agent_server.test_review_store_listing(
         backend.server.v2.store.model.ReviewSubmissionRequest(
             store_listing_version_id=slv_id,
-            isApproved=True,
+            is_approved=True,
             comments="Test comments",
         ),
         autogpt_libs.auth.models.User(
