@@ -809,7 +809,7 @@ async def get_agent(
     try:
         store_listing_version = (
             await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}, include={"Agent": True}
+                where={"id": store_listing_version_id}
             )
         )
 
@@ -819,13 +819,17 @@ async def get_agent(
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        agent = store_listing_version.Agent
-
-        graph = await backend.data.graph.get_graph(agent.id, agent.version)
+        graph_id = store_listing_version.agentId
+        graph_version = store_listing_version.agentVersion
+        graph = await backend.data.graph.get_graph(graph_id, graph_version)
 
         if not graph:
             raise fastapi.HTTPException(
-                status_code=404, detail=f"Agent {agent.id} not found"
+                status_code=404,
+                detail=(
+                    f"Agent #{graph_id} not found "
+                    f"for store listing version #{store_listing_version_id}"
+                ),
             )
 
         graph.version = 1
