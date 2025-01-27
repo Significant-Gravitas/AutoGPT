@@ -156,7 +156,6 @@ class UserCreditBase(ABC):
 
         async with db.locked_transaction(f"usr_trx_{user_id}"):
             user_balance, _ = await self._get_credits(user_id)
-
             await CreditTransaction.prisma().update(
                 where={
                     "creditTransactionIdentifier": {
