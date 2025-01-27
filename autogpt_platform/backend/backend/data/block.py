@@ -66,6 +66,7 @@ class BlockCategory(Enum):
     )
     PRODUCTIVITY = "Block that helps with productivity"
     ISSUE_TRACKING = "Block that helps with issue tracking"
+    MULTIMEDIA = "Block that interacts with multimedia content"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
