@@ -151,7 +151,7 @@ class IdeogramModelBlock(Block):
         super().__init__(
             id="6ab085e2-20b3-4055-bc3e-08036e01eca6",
             description="This block runs Ideogram models with both simple and advanced settings.",
-            categories={BlockCategory.AI},
+            categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=IdeogramModelBlock.Input,
             output_schema=IdeogramModelBlock.Output,
             test_input={
