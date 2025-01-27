@@ -220,7 +220,6 @@ def execute_node(
 
     except Exception as e:
         error_msg = str(e)
-        log_metadata.exception(f"Node execution failed with error {error_msg}")
         db_client.upsert_execution_output(node_exec_id, "error", error_msg)
         update_execution(ExecutionStatus.FAILED)
 
@@ -560,9 +559,15 @@ class Executor:
                 q.add(execution)
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
         except Exception as e:
-            log_metadata.exception(
-                f"Failed node execution {node_exec.node_exec_id}: {e}"
-            )
+            # Avoid user error being marked as an actual error.
+            if isinstance(e, ValueError):
+                log_metadata.info(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
+            else:
+                log_metadata.exception(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
 
     @classmethod
     def on_graph_executor_start(cls):
