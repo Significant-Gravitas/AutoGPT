@@ -63,7 +63,7 @@ def expose(func: C) -> C:
         except Exception as e:
             msg = f"Error in {func.__name__}: {e.__str__()}"
             if isinstance(e, ValueError):
-                logger.info(msg)
+                logger.warning(msg)
             else:
                 logger.exception(msg)
             raise
