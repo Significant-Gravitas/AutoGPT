@@ -53,10 +53,19 @@ class TodoistOAuthHandler(BaseOAuthHandler):
 
         tokens = response.json()
 
+        response = requests.post(
+            "https://api.todoist.com/sync/v9/sync",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+            data={"sync_token": "*", "resource_types": '["user"]'}
+        )
+        response.raise_for_status()
+        user_info = response.json()
+        user_email = user_info["user"].get("email")
+
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
             title=None,
-            username=None,
+            username=user_email,
             access_token=tokens["access_token"],
             refresh_token=None,
             access_token_expires_at=None,
