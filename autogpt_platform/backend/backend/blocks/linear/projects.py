@@ -1,5 +1,6 @@
 from backend.blocks.linear._api import LinearAPIException, LinearClient
 from backend.blocks.linear._auth import (
+    LINEAR_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS_INPUT_OAUTH,
     TEST_CREDENTIALS_OAUTH,
     LinearCredentials,
@@ -36,6 +37,7 @@ class LinearSearchProjectsBlock(Block):
                 "term": "Test project",
                 "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
             },
+            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
             test_credentials=TEST_CREDENTIALS_OAUTH,
             test_output=[
                 (
