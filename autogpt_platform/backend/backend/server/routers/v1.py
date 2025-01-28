@@ -475,10 +475,11 @@ def execute_graph(
     graph_id: str,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
+    graph_version: Optional[int] = None,
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
         graph_exec = execution_manager_client().add_execution(
-            graph_id, node_input, user_id=user_id
+            graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
