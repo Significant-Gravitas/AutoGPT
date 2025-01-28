@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction
 
 from backend.blocks.llm import AITextGeneratorBlock
@@ -18,10 +19,18 @@ async def disable_test_user_transactions():
     await CreditTransaction.prisma().delete_many(where={"userId": DEFAULT_USER_ID})
 
 
+async def top_up(amount: int):
+    await user_credit._add_transaction(
+        DEFAULT_USER_ID,
+        amount,
+        CreditTransactionType.TOP_UP,
+    )
+
+
 @pytest.mark.asyncio(scope="session")
 async def test_block_credit_usage(server: SpinTestServer):
     await disable_test_user_transactions()
-    await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
+    await top_up(100)
     current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
     spending_amount_1 = await user_credit.spend_credits(
@@ -70,7 +79,7 @@ async def test_block_credit_top_up(server: SpinTestServer):
     await disable_test_user_transactions()
     current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
-    await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
+    await top_up(100)
 
     new_credit = await user_credit.get_credits(DEFAULT_USER_ID)
     assert new_credit == current_credit + 100
@@ -89,7 +98,7 @@ async def test_block_credit_reset(server: SpinTestServer):
     # Month 1 result should only affect month 1
     user_credit.time_now = lambda: datetime.now(timezone.utc).replace(month=month1)
     month1credit = await user_credit.get_credits(DEFAULT_USER_ID)
-    await user_credit.top_up_credits(DEFAULT_USER_ID, 100)
+    await top_up(100)
     assert await user_credit.get_credits(DEFAULT_USER_ID) == month1credit + 100
 
     # Month 2 balance is unaffected

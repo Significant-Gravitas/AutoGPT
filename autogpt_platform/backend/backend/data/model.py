@@ -363,3 +363,10 @@ def CredentialsField(
 
 class ContributorDetails(BaseModel):
     name: str = Field(title="Name", description="The name of the contributor.")
+
+
+class AutoTopUpConfig(BaseModel):
+    amount: int
+    """Amount of credits to top up."""
+    threshold: int
+    """Threshold to trigger auto top up."""
