@@ -11,9 +11,17 @@ const getYouTubeVideoId = (url: string) => {
 };
 
 const isValidVideoUrl = (url: string): boolean => {
+  if (url.startsWith("data:video")) {
+    return true;
+  }
+  const validUrl = /^(https?:\/\/)(www\.)?/i;
   const videoExtensions = /\.(mp4|webm|ogg)$/i;
   const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
-  return videoExtensions.test(url) || youtubeRegex.test(url);
+  const cleanedUrl = url.split("?")[0];
+  return (
+    (validUrl.test(cleanedUrl) && videoExtensions.test(cleanedUrl)) ||
+    youtubeRegex.test(cleanedUrl)
+  );
 };
 
 const isValidImageUrl = (url: string): boolean => {
@@ -26,9 +34,13 @@ const isValidImageUrl = (url: string): boolean => {
 };
 
 const isValidAudioUrl = (url: string): boolean => {
+  if (url.startsWith("data:audio")) {
+    return true;
+  }
+  const validUrl = /^(https?:\/\/)(www\.)?/i;
   const audioExtensions = /\.(mp3|wav)$/i;
   const cleanedUrl = url.split("?")[0];
-  return audioExtensions.test(cleanedUrl);
+  return validUrl.test(cleanedUrl) && audioExtensions.test(cleanedUrl);
 };
 
 const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {

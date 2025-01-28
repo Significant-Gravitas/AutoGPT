@@ -8,7 +8,7 @@ import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
@@ -40,6 +40,7 @@ from backend.data.graph import GraphModel, Link, Node
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
+from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
 from backend.util.service import (
@@ -169,7 +170,12 @@ def execute_node(
     log_metadata.info("Executed node with input", input=input_data_str)
     update_execution(ExecutionStatus.RUNNING)
 
-    extra_exec_kwargs = {}
+    extra_exec_kwargs: dict = {
+        "graph_id": graph_id,
+        "node_id": node_id,
+        "graph_exec_id": graph_exec_id,
+        "node_exec_id": node_exec_id,
+    }
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -182,8 +188,6 @@ def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
-    end_status = ExecutionStatus.COMPLETED
-
     try:
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
@@ -203,11 +207,21 @@ def execute_node(
             ):
                 yield execution
 
+            # Update execution status and spend credits
+            res = update_execution(ExecutionStatus.COMPLETED)
+            s = input_size + output_size
+            t = (
+                (res.end_time - res.start_time).total_seconds()
+                if res.end_time and res.start_time
+                else 0
+            )
+            data.data = input_data
+            db_client.spend_credits(data, s, t)
+
     except Exception as e:
-        end_status = ExecutionStatus.FAILED
         error_msg = str(e)
-        log_metadata.exception(f"Node execution failed with error {error_msg}")
         db_client.upsert_execution_output(node_exec_id, "error", error_msg)
+        update_execution(ExecutionStatus.FAILED)
 
         for execution in _enqueue_next_nodes(
             db_client=db_client,
@@ -228,18 +242,6 @@ def execute_node(
                 creds_lock.release()
             except Exception as e:
                 log_metadata.error(f"Failed to release credentials lock: {e}")
-
-        # Update execution status and spend credits
-        res = update_execution(end_status)
-        if end_status == ExecutionStatus.COMPLETED:
-            s = input_size + output_size
-            t = (
-                (res.end_time - res.start_time).total_seconds()
-                if res.end_time and res.start_time
-                else 0
-            )
-            data.data = input_data
-            db_client.spend_credits(data, s, t)
 
         # Update execution stats
         if execution_stats is not None:
@@ -557,9 +559,15 @@ class Executor:
                 q.add(execution)
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
         except Exception as e:
-            log_metadata.exception(
-                f"Failed node execution {node_exec.node_exec_id}: {e}"
-            )
+            # Avoid user error being marked as an actual error.
+            if isinstance(e, ValueError):
+                log_metadata.info(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
+            else:
+                log_metadata.exception(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
 
     @classmethod
     def on_graph_executor_start(cls):
@@ -729,6 +737,7 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
+            clean_exec_files(graph_exec.graph_exec_id)
 
         return (
             exec_stats,
@@ -791,9 +800,9 @@ class ExecutionManager(AppService):
     def add_execution(
         self,
         graph_id: str,
-        graph_version: int,
         data: BlockInput,
         user_id: str,
+        graph_version: Optional[int] = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -861,7 +870,7 @@ class ExecutionManager(AppService):
         graph_exec = GraphExecutionEntry(
             user_id=user_id,
             graph_id=graph_id,
-            graph_version=graph_version,
+            graph_version=graph_version or 0,
             graph_exec_id=graph_exec_id,
             start_node_execs=starting_node_execs,
         )
