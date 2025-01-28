@@ -10,7 +10,7 @@ const meta: Meta<typeof PublishAgentSelect> = {
 export default meta;
 type Story = StoryObj<typeof PublishAgentSelect>;
 
-const mockAgents = [
+const mockAgents: Agent[] = [
   {
     name: "SEO Optimizer",
     lastEdited: "2 days ago",
@@ -74,7 +74,7 @@ const mockAgents = [
     id: "1",
     version: 1,
   },
-] satisfies Agent[];
+];
 
 const defaultArgs = {
   onSelect: (agentName: string) => console.log(`Selected: ${agentName}`),
