@@ -1,22 +1,48 @@
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Iterator, Literal
 
 import praw
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import BlockSecret, SchemaField, SecretField
+from backend.data.model import (
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    UserPasswordCredentials,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.mock import MockObject
+from backend.util.settings import Settings
+
+RedditCredentials = UserPasswordCredentials
+RedditCredentialsInput = CredentialsMetaInput[
+    Literal[ProviderName.REDDIT],
+    Literal["user_password"],
+]
 
 
-class RedditCredentials(BaseModel):
-    client_id: BlockSecret = SecretField(key="reddit_client_id")
-    client_secret: BlockSecret = SecretField(key="reddit_client_secret")
-    username: BlockSecret = SecretField(key="reddit_username")
-    password: BlockSecret = SecretField(key="reddit_password")
-    user_agent: str = "AutoGPT:1.0 (by /u/autogpt)"
+def RedditCredentialsField() -> RedditCredentialsInput:
+    """Creates a Reddit credentials input on a block."""
+    return CredentialsField(
+        description="The Reddit integration requires a username and password.",
+    )
 
-    model_config = ConfigDict(title="Reddit Credentials")
+
+TEST_CREDENTIALS = UserPasswordCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="reddit",
+    username=SecretStr("mock-reddit-username"),
+    password=SecretStr("mock-reddit-password"),
+    title="Mock Reddit credentials",
+)
+
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
+}
 
 
 class RedditPost(BaseModel):
@@ -31,13 +57,16 @@ class RedditComment(BaseModel):
     comment: str
 
 
+settings = Settings()
+
+
 def get_praw(creds: RedditCredentials) -> praw.Reddit:
     client = praw.Reddit(
-        client_id=creds.client_id.get_secret_value(),
-        client_secret=creds.client_secret.get_secret_value(),
+        client_id=settings.secrets.reddit_client_id,
+        client_secret=settings.secrets.reddit_client_secret,
         username=creds.username.get_secret_value(),
         password=creds.password.get_secret_value(),
-        user_agent=creds.user_agent,
+        user_agent=settings.config.reddit_user_agent,
     )
     me = client.user.me()
     if not me:
@@ -48,11 +77,11 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
 
 class GetRedditPostsBlock(Block):
     class Input(BlockSchema):
-        subreddit: str = SchemaField(description="Subreddit name")
-        creds: RedditCredentials = SchemaField(
-            description="Reddit credentials",
-            default=RedditCredentials(),
+        subreddit: str = SchemaField(
+            description="Subreddit name, excluding the /r/ prefix",
+            default="writingprompts",
         )
+        credentials: RedditCredentialsInput = RedditCredentialsField()
         last_minutes: int | None = SchemaField(
             description="Post time to stop minutes ago while fetching posts",
             default=None,
@@ -70,20 +99,18 @@ class GetRedditPostsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            disabled=True,
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             description="This block fetches Reddit posts from a defined subreddit name.",
             categories={BlockCategory.SOCIAL},
+            disabled=(
+                not settings.secrets.reddit_client_id
+                or not settings.secrets.reddit_client_secret
+            ),
             input_schema=GetRedditPostsBlock.Input,
             output_schema=GetRedditPostsBlock.Output,
+            test_credentials=TEST_CREDENTIALS,
             test_input={
-                "creds": {
-                    "client_id": "client_id",
-                    "client_secret": "client_secret",
-                    "username": "username",
-                    "password": "password",
-                    "user_agent": "user_agent",
-                },
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "subreddit": "subreddit",
                 "last_post": "id3",
                 "post_limit": 2,
@@ -103,7 +130,7 @@ class GetRedditPostsBlock(Block):
                 ),
             ],
             test_mock={
-                "get_posts": lambda _: [
+                "get_posts": lambda input_data, credentials: [
                     MockObject(id="id1", title="title1", selftext="body1"),
                     MockObject(id="id2", title="title2", selftext="body2"),
                     MockObject(id="id3", title="title2", selftext="body2"),
@@ -112,14 +139,18 @@ class GetRedditPostsBlock(Block):
         )
 
     @staticmethod
-    def get_posts(input_data: Input) -> Iterator[praw.reddit.Submission]:
-        client = get_praw(input_data.creds)
+    def get_posts(
+        input_data: Input, *, credentials: RedditCredentials
+    ) -> Iterator[praw.reddit.Submission]:
+        client = get_praw(credentials)
         subreddit = client.subreddit(input_data.subreddit)
         return subreddit.new(limit=input_data.post_limit or 10)
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(
+        self, input_data: Input, *, credentials: RedditCredentials, **kwargs
+    ) -> BlockOutput:
         current_time = datetime.now(tz=timezone.utc)
-        for post in self.get_posts(input_data):
+        for post in self.get_posts(input_data=input_data, credentials=credentials):
             if input_data.last_minutes:
                 post_datetime = datetime.fromtimestamp(
                     post.created_utc, tz=timezone.utc
@@ -141,9 +172,7 @@ class GetRedditPostsBlock(Block):
 
 class PostRedditCommentBlock(Block):
     class Input(BlockSchema):
-        creds: RedditCredentials = SchemaField(
-            description="Reddit credentials", default=RedditCredentials()
-        )
+        credentials: RedditCredentialsInput = RedditCredentialsField()
         data: RedditComment = SchemaField(description="Reddit comment")
 
     class Output(BlockSchema):
@@ -156,7 +185,15 @@ class PostRedditCommentBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=PostRedditCommentBlock.Input,
             output_schema=PostRedditCommentBlock.Output,
-            test_input={"data": {"post_id": "id", "comment": "comment"}},
+            disabled=(
+                not settings.secrets.reddit_client_id
+                or not settings.secrets.reddit_client_secret
+            ),
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "data": {"post_id": "id", "comment": "comment"},
+            },
             test_output=[("comment_id", "dummy_comment_id")],
             test_mock={"reply_post": lambda creds, comment: "dummy_comment_id"},
         )
@@ -170,5 +207,7 @@ class PostRedditCommentBlock(Block):
             raise ValueError("Failed to post comment.")
         return new_comment.id
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "comment_id", self.reply_post(input_data.creds, input_data.data)
+    def run(
+        self, input_data: Input, *, credentials: RedditCredentials, **kwargs
+    ) -> BlockOutput:
+        yield "comment_id", self.reply_post(credentials, input_data.data)

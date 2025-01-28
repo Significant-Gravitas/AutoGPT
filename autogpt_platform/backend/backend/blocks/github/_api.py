@@ -30,7 +30,7 @@ def _convert_to_api_url(url: str) -> str:
 
 def _get_headers(credentials: GithubCredentials) -> dict[str, str]:
     return {
-        "Authorization": credentials.bearer(),
+        "Authorization": credentials.auth_header(),
         "Accept": "application/vnd.github.v3+json",
     }
 
