@@ -86,15 +86,25 @@ class AddMemoryBlock(Block, Mem0Base):
             description="Add new memories to Mem0 with user segmentation",
             input_schema=AddMemoryBlock.Input,
             output_schema=AddMemoryBlock.Output,
-            test_input={
-                "content": {
-                    "discriminator": "conversation",
-                    "messages": [{"role": "user", "content": "I'm a vegetarian"}],
+            test_input=[
+                {
+                    "content": {
+                        "discriminator": "conversation",
+                        "messages": [{"role": "user", "content": "I'm a vegetarian"}],
+                    },
+                    "metadata": {"food": "vegetarian"},
+                    "credentials": TEST_CREDENTIALS_INPUT,
                 },
-                "metadata": {"food": "vegetarian"},
-                "credentials": TEST_CREDENTIALS_INPUT,
-            },
-            test_output=[("action", "NO_CHANGE")],
+                {
+                    "content": {
+                        "discriminator": "content",
+                        "content": "I am a vegetarian",
+                    },
+                    "metadata": {"food": "vegetarian"},
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                },
+            ],
+            test_output=[("action", "NO_CHANGE"), ("action", "NO_CHANGE")],
             test_credentials=TEST_CREDENTIALS,
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
