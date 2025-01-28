@@ -89,6 +89,17 @@ export default class BackendAPI {
     }
   }
 
+  getAutoTopUpConfig(): Promise<{ amount: number; threshold: number }> {
+    return this._get("/credits/auto-top-up");
+  }
+
+  setAutoTopUpConfig(config: {
+    amount: number;
+    threshold: number;
+  }): Promise<{ amount: number; threshold: number }> {
+    return this._request("POST", "/credits/auto-top-up", config);
+  }
+
   requestTopUp(amount: number): Promise<{ checkout_url: string }> {
     return this._request("POST", "/credits", { amount });
   }
