@@ -77,7 +77,7 @@ export default function useCredits(): {
   const fetchTransactionHistory = useCallback(async () => {
     const response = await api.getTransactionHistory(
       transactionHistory.next_transaction_time,
-      100,
+      20,
     );
     setTransactionHistory({
       transactions: [

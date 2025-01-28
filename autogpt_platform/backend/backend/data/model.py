@@ -35,7 +35,6 @@ from pydantic_core import (
     core_schema,
 )
 
-from backend.data.block import BlockInput
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
 
@@ -373,16 +372,6 @@ class AutoTopUpConfig(BaseModel):
     """Amount of credits to top up."""
     threshold: int
     """Threshold to trigger auto top up."""
-
-
-class UsageTransactionMetadata(BaseModel):
-    graph_exec_id: str | None = None
-    graph_id: str | None = None
-    node_id: str | None = None
-    node_exec_id: str | None = None
-    block_id: str | None = None
-    block: str | None = None
-    input: BlockInput | None = None
 
 
 class UserTransaction(BaseModel):
