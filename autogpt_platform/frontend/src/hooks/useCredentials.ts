@@ -17,12 +17,14 @@ export type CredentialsData =
       schema: BlockIOCredentialsSubSchema;
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
+      supportsUserPassword: boolean;
       isLoading: true;
     }
   | (CredentialsProviderData & {
       schema: BlockIOCredentialsSubSchema;
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
+      supportsUserPassword: boolean;
       isLoading: false;
     });
 
@@ -72,6 +74,8 @@ export default function useCredentials(
   const supportsApiKey =
     credentialsSchema.credentials_types.includes("api_key");
   const supportsOAuth2 = credentialsSchema.credentials_types.includes("oauth2");
+  const supportsUserPassword =
+    credentialsSchema.credentials_types.includes("user_password");
 
   // No provider means maybe it's still loading
   if (!provider) {
@@ -93,13 +97,17 @@ export default function useCredentials(
       )
     : provider.savedOAuthCredentials;
 
+  const savedUserPasswordCredentials = provider.savedUserPasswordCredentials;
+
   return {
     ...provider,
     provider: providerName,
     schema: credentialsSchema,
     supportsApiKey,
     supportsOAuth2,
+    supportsUserPassword,
     savedOAuthCredentials,
+    savedUserPasswordCredentials,
     isLoading: false,
   };
 }
