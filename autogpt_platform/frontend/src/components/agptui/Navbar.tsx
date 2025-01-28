@@ -67,7 +67,6 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
               key={link.name}
               name={link.name}
               href={link.href}
-              className="font-poppins text-[20px] leading-[28px]"
             />
           ))}
         </div>
