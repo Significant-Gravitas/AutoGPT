@@ -257,13 +257,13 @@ response = requests.post(
 )
 ```
 
-or use the shortcut `credentials.bearer()`:
+or use the shortcut `credentials.auth_header()`:
 
 ```python
 # credentials: APIKeyCredentials | OAuth2Credentials
 response = requests.post(
     url,
-    headers={"Authorization": credentials.bearer()},
+    headers={"Authorization": credentials.auth_header()},
 )
 ```
 

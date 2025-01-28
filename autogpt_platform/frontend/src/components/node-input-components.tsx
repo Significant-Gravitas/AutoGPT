@@ -389,6 +389,7 @@ export const NodeGenericInputField: FC<{
           nodeId={nodeId}
           propKey={propKey}
           propSchema={propSchema.anyOf[0]}
+          defaultValue={propSchema.default}
           currentValue={currentValue}
           errors={errors}
           connections={connections}
@@ -555,6 +556,7 @@ export const NodeGenericInputField: FC<{
         propKey={propKey}
         propSchema={propSchema}
         currentValue={currentValue}
+        defaultValue={propSchema.default}
         errors={errors}
         connections={connections}
         handleInputChange={handleInputChange}
@@ -685,6 +687,7 @@ const NodeOneOfDiscriminatorField: FC<{
   propKey: string;
   propSchema: any;
   currentValue?: any;
+  defaultValue?: any;
   errors: { [key: string]: string | undefined };
   connections: ConnectionData;
   handleInputChange: (key: string, value: any) => void;
@@ -696,6 +699,7 @@ const NodeOneOfDiscriminatorField: FC<{
   propKey,
   propSchema,
   currentValue,
+  defaultValue,
   errors,
   connections,
   handleInputChange,
@@ -703,7 +707,6 @@ const NodeOneOfDiscriminatorField: FC<{
   className,
 }) => {
   const discriminator = propSchema.discriminator;
-
   const discriminatorProperty = discriminator.propertyName;
 
   const variantOptions = useMemo(() => {
@@ -722,13 +725,30 @@ const NodeOneOfDiscriminatorField: FC<{
       .filter((v: any) => v.value != null);
   }, [discriminatorProperty, propSchema.oneOf]);
 
-  const currentVariant = variantOptions.find(
-    (opt: any) => currentValue?.[discriminatorProperty] === opt.value,
-  );
+  const initialVariant = defaultValue
+    ? variantOptions.find(
+        (opt: any) => defaultValue[discriminatorProperty] === opt.value,
+      )
+    : currentValue
+      ? variantOptions.find(
+          (opt: any) => currentValue[discriminatorProperty] === opt.value,
+        )
+      : null;
 
   const [chosenType, setChosenType] = useState<string>(
-    currentVariant?.value || "",
+    initialVariant?.value || "",
   );
+
+  useEffect(() => {
+    if (initialVariant && !currentValue) {
+      handleInputChange(
+        propKey,
+        defaultValue || {
+          [discriminatorProperty]: initialVariant.value,
+        },
+      );
+    }
+  }, []);
 
   const handleVariantChange = (newType: string) => {
     setChosenType(newType);
@@ -806,7 +826,9 @@ const NodeOneOfDiscriminatorField: FC<{
                       propKey={childKey}
                       propSchema={childSchema as BlockIOSubSchema}
                       currentValue={
-                        currentValue ? currentValue[someKey] : undefined
+                        currentValue
+                          ? currentValue[someKey]
+                          : defaultValue?.[someKey]
                       }
                       errors={errors}
                       connections={connections}
