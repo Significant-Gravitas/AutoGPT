@@ -1,7 +1,7 @@
 from typing import Any, Literal, Optional, Union
 
 from mem0 import MemoryClient
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -40,6 +40,16 @@ class Mem0Base:
 Filter = dict[str, list[dict[str, str | dict[str, list[str]]]]]
 
 
+class Conversation(BaseModel):
+    discriminator: Literal["conversation"]
+    messages: list[dict[str, str]]
+
+
+class Content(BaseModel):
+    discriminator: Literal["content"]
+    content: str
+
+
 class AddMemoryBlock(Block, Mem0Base):
     """Block for adding memories to Mem0
 
@@ -49,8 +59,10 @@ class AddMemoryBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        content: Union[str, list[dict[str, str]]] = SchemaField(
-            description="Content to add - either a string or list of message objects as output from an AI block"
+        content: Union[Content, Conversation] = SchemaField(
+            discriminator="discriminator",
+            description="Content to add - either a string or list of message objects as output from an AI block",
+            default=Content(discriminator="content", content="I'm a vegetarian"),
         )
         metadata: dict[str, Any] = SchemaField(
             description="Optional metadata for the memory", default={}
@@ -75,7 +87,10 @@ class AddMemoryBlock(Block, Mem0Base):
             input_schema=AddMemoryBlock.Input,
             output_schema=AddMemoryBlock.Output,
             test_input={
-                "content": [{"role": "user", "content": "I'm a vegetarian"}],
+                "content": {
+                    "discriminator": "conversation",
+                    "messages": [{"role": "user", "content": "I'm a vegetarian"}],
+                },
                 "metadata": {"food": "vegetarian"},
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
@@ -97,12 +112,10 @@ class AddMemoryBlock(Block, Mem0Base):
         try:
             client = self._get_client(credentials)
 
-            # Convert input to messages format if needed
-            messages = (
-                input_data.content
-                if isinstance(input_data.content, list)
-                else [{"role": "user", "content": input_data.content}]
-            )
+            if isinstance(input_data.content, Conversation):
+                messages = input_data.content.messages
+            else:
+                messages = [{"role": "user", "content": input_data.content}]
 
             params = {
                 "user_id": user_id,
