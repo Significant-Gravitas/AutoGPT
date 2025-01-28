@@ -8,12 +8,19 @@ from backend.data.user import get_or_create_user
 from backend.util.test import SpinTestServer, wait_execution
 
 
-async def create_test_user() -> User:
-    test_user_data = {
-        "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
-        "email": "testuser#example.com",
-        "name": "Test User",
-    }
+async def create_test_user(alt_user: bool = False) -> User:
+    if alt_user:
+        test_user_data = {
+            "sub": "3e53486c-cf57-477e-ba2a-cb02dc828e1b",
+            "email": "testuser2@example.com",
+            "name": "Test User 2",
+        }
+    else:
+        test_user_data = {
+            "sub": "ef3b97d7-1161-4eb4-92b2-10c24fb154c1",
+            "email": "testuser@example.com",
+            "name": "Test User",
+        }
     user = await get_or_create_user(test_user_data)
     return user
 
