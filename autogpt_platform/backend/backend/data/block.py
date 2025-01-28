@@ -398,6 +398,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         }
 
     def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        # Merge the input data with the extra execution arguments, preferring the args for security
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"

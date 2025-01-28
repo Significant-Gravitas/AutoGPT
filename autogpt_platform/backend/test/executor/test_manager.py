@@ -44,7 +44,7 @@ async def execute_graph(
 
     # Execution queue should be empty
     logger.info("Waiting for execution to complete...")
-    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
+    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id, 30)
     logger.info(f"Execution completed with {len(result)} results")
     assert len(result) == num_execs
     return graph_exec_id
