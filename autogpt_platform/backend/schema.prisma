@@ -235,7 +235,7 @@ model AgentGraphExecution {
 
   AgentNodeExecutions AgentNodeExecution[]
 
-  // Link to User model
+  // Link to User model -- Executed by this user
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -442,6 +442,8 @@ view Creator {
   agent_rating Float
   agent_runs   Int
   is_featured  Boolean
+
+  // Index or unique are not applied to views
 }
 
 view StoreAgent {
@@ -464,11 +466,7 @@ view StoreAgent {
   rating           Float
   versions         String[]
 
-  @@unique([creator_username, slug])
-  @@index([creator_username])
-  @@index([featured])
-  @@index([categories])
-  @@index([storeListingVersionId])
+  // Index or unique are not applied to views
 }
 
 view StoreSubmission {
@@ -486,7 +484,7 @@ view StoreSubmission {
   agent_id       String
   agent_version  Int
 
-  @@index([user_id])
+  // Index or unique are not applied to views
 }
 
 model StoreListing {
@@ -509,9 +507,13 @@ model StoreListing {
   StoreListingVersions   StoreListingVersion[]
   StoreListingSubmission StoreListingSubmission[]
 
-  @@index([isApproved])
-  @@index([agentId])
+  // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
+  @@unique([agentId])
+  @@index([agentId, owningUserId])
   @@index([owningUserId])
+  // Used in the view query
+  @@index([isDeleted, isApproved])
+  @@index([isDeleted])
 }
 
 model StoreListingVersion {
@@ -552,7 +554,7 @@ model StoreListingVersion {
   StoreListingReview StoreListingReview[]
 
   @@unique([agentId, agentVersion])
-  @@index([agentId, agentVersion, isApproved])
+  @@index([agentId, agentVersion, isDeleted])
 }
 
 model StoreListingReview {
@@ -596,6 +598,7 @@ model StoreListingSubmission {
   Status         SubmissionStatus @default(PENDING)
   reviewComments String?
 
+  @@unique([storeListingVersionId])
   @@index([storeListingId])
 }
 
