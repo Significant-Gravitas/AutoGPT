@@ -110,24 +110,35 @@ class UserCreditBase(ABC):
             },
             order={"createdAt": "desc"},
         )
-        if snapshot:
-            return snapshot.runningBalance or 0, snapshot.createdAt
+        datetime_min = datetime.min.replace(tzinfo=timezone.utc)
+        snapshot_balance = snapshot.runningBalance or 0 if snapshot else 0
+        snapshot_time = snapshot.createdAt if snapshot else datetime_min
 
-        # No snapshot: Manually calculate balance using current month's transactions.
-        low_time = top_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Get transactions after the snapshot, this should not exist, but just in case.
         transactions = await CreditTransaction.prisma().group_by(
             by=["userId"],
             sum={"amount": True},
+            max={"createdAt": True},
             where={
                 "userId": user_id,
-                "createdAt": {"gte": low_time, "lte": top_time},
+                "createdAt": {
+                    "gt": snapshot_time,
+                    "lte": top_time,
+                },
                 "isActive": True,
             },
         )
         transaction_balance = (
-            transactions[0].get("_sum", {}).get("amount", 0) if transactions else 0
+            transactions[0].get("_sum", {}).get("amount", 0) + snapshot_balance
+            if transactions
+            else snapshot_balance
         )
-        return transaction_balance, datetime.min
+        transaction_time = (
+            transactions[0].get("_max", {}).get("createdAt", datetime_min)
+            if transactions
+            else snapshot_time
+        )
+        return transaction_balance, transaction_time
 
     async def _enable_transaction(
         self, transaction_key: str, user_id: str, metadata: Json
@@ -389,22 +400,15 @@ class BetaUserCredit(UserCredit):
             return balance
 
         try:
-            await CreditTransaction.prisma().create(
-                data={
-                    "transactionKey": f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
-                    "userId": user_id,
-                    "amount": self.num_user_credits_refill,
-                    "runningBalance": self.num_user_credits_refill,
-                    "type": CreditTransactionType.TOP_UP,
-                    "metadata": Json({}),
-                    "isActive": True,
-                    "createdAt": self.time_now(),
-                }
+            return await self._add_transaction(
+                user_id=user_id,
+                amount=max(self.num_user_credits_refill - balance, 0),
+                transaction_type=CreditTransactionType.TOP_UP,
+                transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
             )
         except UniqueViolationError:
-            pass  # Already refilled this month
-
-        return self.num_user_credits_refill
+            # Already refilled this month
+            return (await self._get_credits(user_id))[0]
 
 
 class DisabledUserCredit(UserCreditBase):

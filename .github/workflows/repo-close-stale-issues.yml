@@ -25,7 +25,7 @@ jobs:
           close-issue-message: >
             This issue was closed automatically because it has been stale for 10 days
             with no activity.
-          days-before-stale: 50
+          days-before-stale: 100
           days-before-close: 10
           # Do not touch meta issues:
           exempt-issue-labels: meta,fridge,project management
