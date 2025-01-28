@@ -61,6 +61,7 @@ jobs:
         with:
           # ⚠️ Make sure to configure a `CHROMATIC_PROJECT_TOKEN` repository secret
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: autogpt_platform/frontend
 
   test:
     runs-on: ubuntu-latest
