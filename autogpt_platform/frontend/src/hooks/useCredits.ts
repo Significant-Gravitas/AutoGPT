@@ -10,9 +10,17 @@ const stripePromise = loadStripe(
 export default function useCredits(): {
   credits: number | null;
   fetchCredits: () => void;
-  requestTopUp: (usd_amount: number) => Promise<void>;
+  requestTopUp: (amount: number) => Promise<void>;
+  autoTopUpConfig: { amount: number; threshold: number } | null;
+  fetchAutoTopUpConfig: () => void;
+  updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
 } {
   const [credits, setCredits] = useState<number | null>(null);
+  const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
+    amount: number;
+    threshold: number;
+  } | null>(null);
+
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const router = useRouter();
 
@@ -25,8 +33,25 @@ export default function useCredits(): {
     fetchCredits();
   }, [fetchCredits]);
 
+  const fetchAutoTopUpConfig = useCallback(async () => {
+    const response = await api.getAutoTopUpConfig();
+    setAutoTopUpConfig(response);
+  }, [api]);
+
+  useEffect(() => {
+    fetchAutoTopUpConfig();
+  }, [fetchAutoTopUpConfig]);
+
+  const updateAutoTopUpConfig = useCallback(
+    async (amount: number, threshold: number) => {
+      await api.setAutoTopUpConfig({ amount, threshold });
+      fetchAutoTopUpConfig();
+    },
+    [api, fetchAutoTopUpConfig],
+  );
+
   const requestTopUp = useCallback(
-    async (usd_amount: number) => {
+    async (amount: number) => {
       const stripe = await stripePromise;
 
       if (!stripe) {
@@ -34,7 +59,7 @@ export default function useCredits(): {
       }
 
       // Convert dollar amount to credit count
-      const response = await api.requestTopUp(usd_amount * 100);
+      const response = await api.requestTopUp(amount);
       router.push(response.checkout_url);
     },
     [api, router],
@@ -44,5 +69,8 @@ export default function useCredits(): {
     credits,
     fetchCredits,
     requestTopUp,
+    autoTopUpConfig,
+    fetchAutoTopUpConfig,
+    updateAutoTopUpConfig,
   };
 }
