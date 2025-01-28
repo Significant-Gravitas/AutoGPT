@@ -40,7 +40,7 @@ class LinearClient:
                 "Content-Type": "application/json",
             }
             if credentials:
-                headers["Authorization"] = credentials.bearer()
+                headers["Authorization"] = credentials.auth_header()
 
             self._requests = Requests(
                 extra_headers=headers,
