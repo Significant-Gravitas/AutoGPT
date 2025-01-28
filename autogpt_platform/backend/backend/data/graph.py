@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Optional, Type
 
 import prisma
-from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
+from prisma.models import (
+    AgentGraph,
+    AgentGraphExecution,
+    AgentNode,
+    AgentNodeLink,
+    StoreListingVersion,
+)
 from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
@@ -543,21 +549,35 @@ async def get_graph(
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
     }
+
     if version is not None:
         where_clause["version"] = version
     elif not template:
         where_clause["isActive"] = True
-
-    # TODO: Fix hack workaround to get adding store agents to work
-    if user_id is not None and not template:
-        where_clause["userId"] = user_id
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-    return GraphModel.from_db(graph, for_export) if graph else None
+
+    # For access, the graph must be owned by the user or listed in the store
+    if graph is None or (
+        graph.userId != user_id
+        and not (
+            await StoreListingVersion.prisma().find_first(
+                where={
+                    "agentId": graph_id,
+                    "agentVersion": version or graph.version,
+                    "isDeleted": False,
+                    "StoreListing": {"is": {"isApproved": True}},
+                }
+            )
+        )
+    ):
+        return None
+
+    return GraphModel.from_db(graph, for_export)
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:

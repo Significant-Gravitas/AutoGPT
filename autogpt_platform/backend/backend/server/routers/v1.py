@@ -29,7 +29,14 @@ from backend.data.api_key import (
     update_api_key_permissions,
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.credit import get_block_costs, get_user_credit_model
+from backend.data.credit import (
+    AutoTopUpConfig,
+    get_auto_top_up,
+    get_block_costs,
+    get_stripe_customer_id,
+    get_user_credit_model,
+    set_auto_top_up,
+)
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -66,7 +73,6 @@ def execution_scheduler_client() -> ExecutionScheduler:
 settings = Settings()
 logger = logging.getLogger(__name__)
 integration_creds_manager = IntegrationCredentialsManager()
-
 
 _user_credit_model = get_user_credit_model()
 
@@ -157,6 +163,41 @@ async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
     return Response(status_code=200)
 
 
+@v1_router.post(
+    path="/credits/auto-top-up",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def configure_user_auto_top_up(
+    request: AutoTopUpConfig, user_id: Annotated[str, Depends(get_user_id)]
+) -> str:
+    if request.threshold < 0:
+        raise ValueError("Threshold must be greater than 0")
+    if request.amount < request.threshold:
+        raise ValueError("Amount must be greater than or equal to threshold")
+
+    current_balance = await _user_credit_model.get_credits(user_id)
+
+    if current_balance < request.threshold:
+        await _user_credit_model.top_up_credits(user_id, request.amount)
+    else:
+        await _user_credit_model.top_up_credits(user_id, 0)
+
+    await set_auto_top_up(user_id, threshold=request.threshold, amount=request.amount)
+    return "Auto top-up settings updated"
+
+
+@v1_router.get(
+    path="/credits/auto-top-up",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_user_auto_top_up(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> AutoTopUpConfig:
+    return await get_auto_top_up(user_id)
+
+
 @v1_router.post(path="/credits/stripe_webhook", tags=["credits"])
 async def stripe_webhook(request: Request):
     # Get the raw request body
@@ -184,6 +225,21 @@ async def stripe_webhook(request: Request):
         )
 
     return Response(status_code=200)
+
+
+@v1_router.get(path="/credits/manage", dependencies=[Depends(auth_middleware)])
+async def manage_payment_method(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> dict[str, str]:
+    session = stripe.billing_portal.Session.create(
+        customer=await get_stripe_customer_id(user_id),
+        return_url=settings.config.platform_base_url + "/marketplace/credits",
+    )
+    if not session:
+        raise HTTPException(
+            status_code=400, detail="Failed to create billing portal session"
+        )
+    return {"url": session.url}
 
 
 ########################################################
@@ -419,10 +475,11 @@ def execute_graph(
     graph_id: str,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
+    graph_version: Optional[int] = None,
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
         graph_exec = execution_manager_client().add_execution(
-            graph_id, node_input, user_id=user_id
+            graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
@@ -594,7 +651,6 @@ def get_execution_schedules(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def create_api_key(
     request: CreateAPIKeyRequest, user_id: Annotated[str, Depends(get_user_id)]
 ) -> CreateAPIKeyResponse:
@@ -618,7 +674,6 @@ async def create_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def get_api_keys(
     user_id: Annotated[str, Depends(get_user_id)]
 ) -> list[APIKeyWithoutHash]:
@@ -636,7 +691,6 @@ async def get_api_keys(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def get_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> APIKeyWithoutHash:

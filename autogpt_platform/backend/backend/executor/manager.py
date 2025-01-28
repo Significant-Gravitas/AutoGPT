@@ -8,7 +8,7 @@ import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
@@ -40,6 +40,7 @@ from backend.data.graph import GraphModel, Link, Node
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
+from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
 from backend.util.service import (
@@ -169,7 +170,12 @@ def execute_node(
     log_metadata.info("Executed node with input", input=input_data_str)
     update_execution(ExecutionStatus.RUNNING)
 
-    extra_exec_kwargs = {}
+    extra_exec_kwargs: dict = {
+        "graph_id": graph_id,
+        "node_id": node_id,
+        "graph_exec_id": graph_exec_id,
+        "node_exec_id": node_exec_id,
+    }
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -238,7 +244,8 @@ def execute_node(
                 if res.end_time and res.start_time
                 else 0
             )
-            db_client.spend_credits(user_id, node_block.id, input_data, s, t)
+            data.data = input_data
+            db_client.spend_credits(data, s, t)
 
         # Update execution stats
         if execution_stats is not None:
@@ -257,7 +264,7 @@ def _enqueue_next_nodes(
     log_metadata: LogMetadata,
 ) -> list[NodeExecutionEntry]:
     def add_enqueued_execution(
-        node_exec_id: str, node_id: str, data: BlockInput
+        node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
         exec_update = db_client.update_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
@@ -269,6 +276,7 @@ def _enqueue_next_nodes(
             graph_id=graph_id,
             node_exec_id=node_exec_id,
             node_id=node_id,
+            block_id=block_id,
             data=data,
         )
 
@@ -322,7 +330,12 @@ def _enqueue_next_nodes(
             # Input is complete, enqueue the execution.
             log_metadata.info(f"Enqueued {suffix}")
             enqueued_executions.append(
-                add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
+                add_enqueued_execution(
+                    node_exec_id=next_node_exec_id,
+                    node_id=next_node_id,
+                    block_id=next_node.block_id,
+                    data=next_node_input,
+                )
             )
 
             # Next execution stops here if the link is not static.
@@ -352,7 +365,12 @@ def _enqueue_next_nodes(
                     continue
                 log_metadata.info(f"Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
-                    add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
+                    add_enqueued_execution(
+                        node_exec_id=iexec.node_exec_id,
+                        node_id=next_node_id,
+                        block_id=next_node.block_id,
+                        data=idata,
+                    )
                 )
             return enqueued_executions
 
@@ -645,6 +663,10 @@ class Executor:
         try:
             queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
+                exec_update = cls.db_client.update_execution_status(
+                    node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.data
+                )
+                cls.db_client.send_execution_update(exec_update)
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
@@ -713,6 +735,7 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
+            clean_exec_files(graph_exec.graph_exec_id)
 
         return (
             exec_stats,
@@ -777,7 +800,7 @@ class ExecutionManager(AppService):
         graph_id: str,
         data: BlockInput,
         user_id: str,
-        graph_version: int | None = None,
+        graph_version: Optional[int] = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -800,8 +823,8 @@ class ExecutionManager(AppService):
             # Extract request input data, and assign it to the input pin.
             if block.block_type == BlockType.INPUT:
                 name = node.input_default.get("name")
-                if name and name in data:
-                    input_data = {"value": data[name]}
+                if name in data.get("node_input", {}):
+                    input_data = {"value": data["node_input"][name]}
 
             # Extract webhook payload, and assign it to the input pin
             webhook_payload_key = f"webhook_{node.webhook_id}_payload"
@@ -837,13 +860,10 @@ class ExecutionManager(AppService):
                     graph_id=node_exec.graph_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
+                    block_id=node_exec.block_id,
                     data=node_exec.input_data,
                 )
             )
-            exec_update = self.db_client.update_execution_status(
-                node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.input_data
-            )
-            self.db_client.send_execution_update(exec_update)
 
         graph_exec = GraphExecutionEntry(
             user_id=user_id,

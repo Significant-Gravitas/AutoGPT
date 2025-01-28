@@ -28,7 +28,7 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
             : ""
         } flex items-center justify-start gap-3`}
       >
-        {href === "/store" && (
+        {href === "/marketplace" && (
           <IconShoppingCart
             className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
           />

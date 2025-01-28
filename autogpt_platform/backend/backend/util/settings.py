@@ -157,6 +157,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    reddit_user_agent: str = Field(
+        default="AutoGPT:1.0 (by /u/autogpt)",
+        description="The user agent for the Reddit API",
+    )
+
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
@@ -280,8 +285,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
-    reddit_username: str = Field(default="", description="Reddit username")
-    reddit_password: str = Field(default="", description="Reddit password")
 
     openweathermap_api_key: str = Field(
         default="", description="OpenWeatherMap API key"
@@ -312,6 +315,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
+
+    linear_client_id: str = Field(default="", description="Linear client ID")
+    linear_client_secret: str = Field(default="", description="Linear client secret")
 
     stripe_api_key: str = Field(default="", description="Stripe API Key")
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
