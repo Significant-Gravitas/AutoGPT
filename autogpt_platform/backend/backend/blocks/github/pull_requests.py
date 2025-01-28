@@ -200,6 +200,7 @@ class GithubReadPullRequestBlock(Block):
         include_pr_changes: bool = SchemaField(
             description="Whether to include the changes made in the pull request",
             default=False,
+            advanced=False,
         )
 
     class Output(BlockSchema):
