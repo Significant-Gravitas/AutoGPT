@@ -97,7 +97,12 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   default?: boolean;
 };
 
-export type CredentialsType = "api_key" | "oauth2";
+export type CredentialsType = "api_key" | "oauth2" | "user_password";
+
+export type Credentials =
+  | APIKeyCredentials
+  | OAuth2Credentials
+  | UserPasswordCredentials;
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
@@ -105,10 +110,13 @@ export const PROVIDER_NAMES = {
   D_ID: "d_id",
   DISCORD: "discord",
   E2B: "e2b",
+  EXA: "exa",
+  FAL: "fal",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
   GROQ: "groq",
+  HUBSPOT: "hubspot",
   IDEOGRAM: "ideogram",
   JINA: "jina",
   LINEAR: "linear",
@@ -121,13 +129,12 @@ export const PROVIDER_NAMES = {
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
   SLANT3D: "slant3d",
+  SMTP: "smtp",
+  TWITTER: "twitter",
   REPLICATE: "replicate",
-  FAL: "fal",
+  REDDIT: "reddit",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
-  EXA: "exa",
-  HUBSPOT: "hubspot",
-  TWITTER: "twitter",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
@@ -323,8 +330,15 @@ export type APIKeyCredentials = BaseCredentials & {
   expires_at?: number;
 };
 
+export type UserPasswordCredentials = BaseCredentials & {
+  type: "user_password";
+  title: string;
+  username: string;
+  password: string;
+};
+
 /* Mirror of backend/data/integrations.py:Webhook */
-type Webhook = {
+export type Webhook = {
   id: string;
   url: string;
   provider: CredentialsProviderName;

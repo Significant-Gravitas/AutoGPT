@@ -15,7 +15,6 @@ import {
   GraphUpdateable,
   NodeExecutionResult,
   MyAgentsResponse,
-  OAuth2Credentials,
   ProfileDetails,
   User,
   StoreAgentsResponse,
@@ -29,6 +28,8 @@ import {
   StoreReview,
   ScheduleCreatable,
   Schedule,
+  UserPasswordCredentials,
+  Credentials,
   APIKeyPermission,
   CreateAPIKeyResponse,
   APIKey,
@@ -203,7 +204,17 @@ export default class BackendAPI {
     return this._request(
       "POST",
       `/integrations/${credentials.provider}/credentials`,
-      credentials,
+      { ...credentials, type: "api_key" },
+    );
+  }
+
+  createUserPasswordCredentials(
+    credentials: Omit<UserPasswordCredentials, "id" | "type">,
+  ): Promise<UserPasswordCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      { ...credentials, type: "user_password" },
     );
   }
 
@@ -215,10 +226,7 @@ export default class BackendAPI {
     );
   }
 
-  getCredentials(
-    provider: string,
-    id: string,
-  ): Promise<APIKeyCredentials | OAuth2Credentials> {
+  getCredentials(provider: string, id: string): Promise<Credentials> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
