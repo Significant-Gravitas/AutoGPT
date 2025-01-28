@@ -10,9 +10,9 @@ from ._api import get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
-    GithubCredentialsAPIOnly,
-    GithubCredentialsAPIOnlyField,
-    GithubCredentialsAPIOnlyInput,
+    GithubFineGrainedAPICredentials,
+    GithubFineGrainedAPICredentialsField,
+    GithubFineGrainedAPICredentialsInput,
 )
 
 
@@ -27,8 +27,8 @@ class GithubCreateStatusBlock(Block):
     """Block for creating a commit status on a GitHub repository."""
 
     class Input(BlockSchema):
-        credentials: GithubCredentialsAPIOnlyInput = GithubCredentialsAPIOnlyField(
-            "repo:status"
+        credentials: GithubFineGrainedAPICredentialsInput = (
+            GithubFineGrainedAPICredentialsField("repo:status")
         )
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -116,7 +116,7 @@ class GithubCreateStatusBlock(Block):
 
     @staticmethod
     def create_status(
-        credentials: GithubCredentialsAPIOnly,
+        credentials: GithubFineGrainedAPICredentials,
         repo_url: str,
         sha: str,
         state: StatusState,
@@ -162,7 +162,7 @@ class GithubCreateStatusBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: GithubCredentialsAPIOnly,
+        credentials: GithubFineGrainedAPICredentials,
         **kwargs,
     ) -> BlockOutput:
         try:

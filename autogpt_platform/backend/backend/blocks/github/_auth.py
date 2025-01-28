@@ -22,8 +22,8 @@ GithubCredentialsInput = CredentialsMetaInput[
     Literal["api_key", "oauth2"] if GITHUB_OAUTH_IS_CONFIGURED else Literal["api_key"],
 ]
 
-GithubCredentialsAPIOnly = APIKeyCredentials
-GithubCredentialsAPIOnlyInput = CredentialsMetaInput[
+GithubFineGrainedAPICredentials = APIKeyCredentials
+GithubFineGrainedAPICredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.GITHUB], Literal["api_key"]
 ]
 
@@ -42,7 +42,9 @@ def GithubCredentialsField(scope: str) -> GithubCredentialsInput:
     )
 
 
-def GithubCredentialsAPIOnlyField(scope: str) -> GithubCredentialsAPIOnlyInput:
+def GithubFineGrainedAPICredentialsField(
+    scope: str,
+) -> GithubFineGrainedAPICredentialsInput:
     return CredentialsField(
         required_scopes={scope},
         description="The GitHub integration can be used with OAuth, "
@@ -64,7 +66,7 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.type,
 }
 
-TEST_CREDENTIALS_API_ONLY = APIKeyCredentials(
+TEST_FINE_GRAINED_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="github",
     api_key=SecretStr("mock-github-api-key"),
@@ -72,9 +74,9 @@ TEST_CREDENTIALS_API_ONLY = APIKeyCredentials(
     expires_at=None,
 )
 
-TEST_CREDENTIALS_API_ONLY_INPUT = {
-    "provider": TEST_CREDENTIALS_API_ONLY.provider,
-    "id": TEST_CREDENTIALS_API_ONLY.id,
-    "type": TEST_CREDENTIALS_API_ONLY.type,
-    "title": TEST_CREDENTIALS_API_ONLY.type,
+TEST_FINE_GRAINED_CREDENTIALS_INPUT = {
+    "provider": TEST_FINE_GRAINED_CREDENTIALS.provider,
+    "id": TEST_FINE_GRAINED_CREDENTIALS.id,
+    "type": TEST_FINE_GRAINED_CREDENTIALS.type,
+    "title": TEST_FINE_GRAINED_CREDENTIALS.type,
 }
