@@ -1,7 +1,7 @@
 import logging
 import time
-from typing import Sequence, cast
 import uuid
+from typing import Sequence, cast
 
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
