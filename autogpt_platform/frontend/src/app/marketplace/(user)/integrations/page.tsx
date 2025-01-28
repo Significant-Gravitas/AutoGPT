@@ -109,6 +109,11 @@ export default function PrivatePage() {
       "7f26de70-ba0d-494e-ba76-238e65e7b45f", // Jina
       "66f20754-1b81-48e4-91d0-f4f0dd82145f", // Unreal Speech
       "b5a0e27d-0c98-4df3-a4b9-10193e1f3c40", // Open Router
+      "6c0f5bd0-9008-4638-9d79-4b40b631803e", // FAL
+      "96153e04-9c6c-4486-895f-5bb683b1ecec", // Exa
+      "78d19fd7-4d59-4a16-8277-3ce310acf2b7", // E2B
+      "96b83908-2789-4dec-9968-18f0ece4ceb3", // Nvidia
+      "ed55ac19-356e-4243-a6cb-bc599e9b716f", // Mem0
     ],
     [],
   );
