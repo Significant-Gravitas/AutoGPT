@@ -70,6 +70,7 @@ export const providerIcons: Record<
   ideogram: fallbackIcon,
   linear: fallbackIcon,
   medium: FaMedium,
+  mem0: fallbackIcon,
   ollama: fallbackIcon,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,
