@@ -188,8 +188,6 @@ def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
-    end_status = ExecutionStatus.COMPLETED
-
     try:
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
@@ -209,11 +207,21 @@ def execute_node(
             ):
                 yield execution
 
+            # Update execution status and spend credits
+            res = update_execution(ExecutionStatus.COMPLETED)
+            s = input_size + output_size
+            t = (
+                (res.end_time - res.start_time).total_seconds()
+                if res.end_time and res.start_time
+                else 0
+            )
+            data.data = input_data
+            db_client.spend_credits(data, s, t)
+
     except Exception as e:
-        end_status = ExecutionStatus.FAILED
         error_msg = str(e)
-        log_metadata.exception(f"Node execution failed with error {error_msg}")
         db_client.upsert_execution_output(node_exec_id, "error", error_msg)
+        update_execution(ExecutionStatus.FAILED)
 
         for execution in _enqueue_next_nodes(
             db_client=db_client,
@@ -234,18 +242,6 @@ def execute_node(
                 creds_lock.release()
             except Exception as e:
                 log_metadata.error(f"Failed to release credentials lock: {e}")
-
-        # Update execution status and spend credits
-        res = update_execution(end_status)
-        if end_status == ExecutionStatus.COMPLETED:
-            s = input_size + output_size
-            t = (
-                (res.end_time - res.start_time).total_seconds()
-                if res.end_time and res.start_time
-                else 0
-            )
-            data.data = input_data
-            db_client.spend_credits(data, s, t)
 
         # Update execution stats
         if execution_stats is not None:
@@ -563,9 +559,15 @@ class Executor:
                 q.add(execution)
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
         except Exception as e:
-            log_metadata.exception(
-                f"Failed node execution {node_exec.node_exec_id}: {e}"
-            )
+            # Avoid user error being marked as an actual error.
+            if isinstance(e, ValueError):
+                log_metadata.info(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
+            else:
+                log_metadata.exception(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
 
     @classmethod
     def on_graph_executor_start(cls):
