@@ -10,7 +10,14 @@ export function useCopyPaste(getNextNodeId: () => string) {
       if (event.ctrlKey || event.metaKey) {
         if (event.key === "c" || event.key === "C") {
           const selectedNodes = getNodes().filter((node) => node.selected);
-          const selectedEdges = getEdges().filter((edge) => edge.selected);
+          const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
+          
+          // Only copy edges where both source and target nodes are selected
+          const selectedEdges = getEdges().filter((edge) => 
+            edge.selected && 
+            selectedNodeIds.has(edge.source) && 
+            selectedNodeIds.has(edge.target)
+          );
 
           const copiedData = {
             nodes: selectedNodes.map((node) => ({
