@@ -86,7 +86,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
             input_schema: flow.input_schema,
             output_schema: flow.output_schema,
           },
-        }) as Block,
+        }) satisfies Block,
     );
 
     return blockList

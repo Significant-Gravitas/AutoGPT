@@ -1,11 +1,50 @@
+import enum
 from typing import Any, List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
+from backend.util.file import MediaFile, store_media_file
 from backend.util.mock import MockObject
 from backend.util.text import TextFormatter
+from backend.util.type import convert
 
 formatter = TextFormatter()
+
+
+class FileStoreBlock(Block):
+    class Input(BlockSchema):
+        file_in: MediaFile = SchemaField(
+            description="The file to store in the temporary directory, it can be a URL, data URI, or local path."
+        )
+
+    class Output(BlockSchema):
+        file_out: MediaFile = SchemaField(
+            description="The relative path to the stored file in the temporary directory."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="cbb50872-625b-42f0-8203-a2ae78242d8a",
+            description="Stores the input file in the temporary directory.",
+            categories={BlockCategory.BASIC, BlockCategory.MULTIMEDIA},
+            input_schema=FileStoreBlock.Input,
+            output_schema=FileStoreBlock.Output,
+            static_output=True,
+        )
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        graph_exec_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        file_path = store_media_file(
+            graph_exec_id=graph_exec_id,
+            file=input_data.file_in,
+            return_content=False,
+        )
+        yield "file_out", file_path
 
 
 class StoreValueBlock(Block):
@@ -469,6 +508,48 @@ class AddToListBlock(Block):
         yield "updated_list", updated_list
 
 
+class FindInListBlock(Block):
+    class Input(BlockSchema):
+        list: List[Any] = SchemaField(description="The list to search in.")
+        value: Any = SchemaField(description="The value to search for.")
+
+    class Output(BlockSchema):
+        index: int = SchemaField(description="The index of the value in the list.")
+        found: bool = SchemaField(
+            description="Whether the value was found in the list."
+        )
+        not_found_value: Any = SchemaField(
+            description="The value that was not found in the list."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="5e2c6d0a-1e37-489f-b1d0-8e1812b23333",
+            description="Finds the index of the value in the list.",
+            categories={BlockCategory.BASIC},
+            input_schema=FindInListBlock.Input,
+            output_schema=FindInListBlock.Output,
+            test_input=[
+                {"list": [1, 2, 3, 4, 5], "value": 3},
+                {"list": [1, 2, 3, 4, 5], "value": 6},
+            ],
+            test_output=[
+                ("index", 2),
+                ("found", True),
+                ("found", False),
+                ("not_found_value", 6),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            yield "index", input_data.list.index(input_data.value)
+            yield "found", True
+        except ValueError:
+            yield "found", False
+            yield "not_found_value", input_data.value
+
+
 class NoteBlock(Block):
     class Input(BlockSchema):
         text: str = SchemaField(description="The text to display in the sticky note.")
@@ -590,3 +671,47 @@ class CreateListBlock(Block):
             yield "list", input_data.values
         except Exception as e:
             yield "error", f"Failed to create list: {str(e)}"
+
+
+class TypeOptions(enum.Enum):
+    STRING = "string"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    LIST = "list"
+    DICTIONARY = "dictionary"
+
+
+class UniversalTypeConverterBlock(Block):
+    class Input(BlockSchema):
+        value: Any = SchemaField(
+            description="The value to convert to a universal type."
+        )
+        type: TypeOptions = SchemaField(description="The type to convert the value to.")
+
+    class Output(BlockSchema):
+        value: Any = SchemaField(description="The converted value.")
+
+    def __init__(self):
+        super().__init__(
+            id="95d1b990-ce13-4d88-9737-ba5c2070c97b",
+            description="This block is used to convert a value to a universal type.",
+            categories={BlockCategory.BASIC},
+            input_schema=UniversalTypeConverterBlock.Input,
+            output_schema=UniversalTypeConverterBlock.Output,
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            converted_value = convert(
+                input_data.value,
+                {
+                    TypeOptions.STRING: str,
+                    TypeOptions.NUMBER: float,
+                    TypeOptions.BOOLEAN: bool,
+                    TypeOptions.LIST: list,
+                    TypeOptions.DICTIONARY: dict,
+                }[input_data.type],
+            )
+            yield "value", converted_value
+        except Exception as e:
+            yield "error", f"Failed to convert value: {str(e)}"

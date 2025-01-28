@@ -21,6 +21,7 @@ model User {
   metadata         Json     @default("{}")
   integrations     String   @default("")
   stripeCustomerId String?
+  topUpConfig      Json?
 
   // Relations
   AgentGraphs          AgentGraph[]
@@ -32,12 +33,12 @@ model User {
   AgentPreset AgentPreset[]
   UserAgent   UserAgent[]
 
-  Profile                     Profile[]
-  StoreListing                StoreListing[]
-  StoreListingReview          StoreListingReview[]
-  StoreListingSubmission      StoreListingSubmission[]
-  APIKeys                     APIKey[]
-  IntegrationWebhooks         IntegrationWebhook[]
+  Profile                Profile[]
+  StoreListing           StoreListing[]
+  StoreListingReview     StoreListingReview[]
+  StoreListingSubmission StoreListingSubmission[]
+  APIKeys                APIKey[]
+  IntegrationWebhooks    IntegrationWebhook[]
 
   @@index([id])
   @@index([email])
@@ -64,23 +65,23 @@ model AgentGraph {
   AgentNodes          AgentNode[]
   AgentGraphExecution AgentGraphExecution[]
 
-  AgentPreset                 AgentPreset[]
-  UserAgent                   UserAgent[]
-  StoreListing                StoreListing[]
-  StoreListingVersion         StoreListingVersion?
+  AgentPreset         AgentPreset[]
+  UserAgent           UserAgent[]
+  StoreListing        StoreListing[]
+  StoreListingVersion StoreListingVersion?
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive])
 }
 
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 ////////////////   USER SPECIFIC DATA   ////////////////////
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 
 // An AgentPrest is an Agent + User Configuration of that agent.
-// For example, if someone has created a weather agent and they want to set it up to 
+// For example, if someone has created a weather agent and they want to set it up to
 // Inform them of extreme weather warnings in Texas, the agent with the configuration to set it to
 // monitor texas, along with the cron setup or webhook tiggers, is an AgentPreset
 model AgentPreset {
@@ -102,9 +103,9 @@ model AgentPreset {
   agentVersion Int
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
 
-  InputPresets           AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
-  UserAgents             UserAgent[]
-  AgentExecution         AgentGraphExecution[]
+  InputPresets   AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
+  UserAgents     UserAgent[]
+  AgentExecution AgentGraphExecution[]
 
   @@index([userId])
 }
@@ -134,11 +135,11 @@ model UserAgent {
   @@index([userId])
 }
 
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 ////////   AGENT DEFINITION AND EXECUTION TABLES    ////////
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 
 // This model describes a single node in the Agent Graph/Flow (Multi Agent System).
 model AgentNode {
@@ -207,7 +208,6 @@ model AgentBlock {
 
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
-  CreditTransaction     CreditTransaction[]
 }
 
 // This model describes the status of an AgentGraphExecution or AgentNodeExecution.
@@ -235,7 +235,7 @@ model AgentGraphExecution {
 
   AgentNodeExecutions AgentNodeExecution[]
 
-  // Link to User model
+  // Link to User model -- Executed by this user
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -345,11 +345,11 @@ model AnalyticsDetails {
   @@index([type])
 }
 
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 //////////////   METRICS TRACKING TABLES    ////////////////
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 model AnalyticsMetrics {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -375,11 +375,11 @@ enum CreditTransactionType {
   USAGE
 }
 
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 ////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -387,11 +387,10 @@ model CreditTransaction {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  blockId String?
-  block   AgentBlock? @relation(fields: [blockId], references: [id])
-
   amount Int
   type   CreditTransactionType
+
+  runningBalance Int?
 
   isActive Boolean @default(true)
   metadata Json?
@@ -400,11 +399,11 @@ model CreditTransaction {
   @@index([userId, createdAt])
 }
 
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 //////////////   Store TABLES    ///////////////////////////
-//////////////////////////////////////////////////////////// 
-//////////////////////////////////////////////////////////// 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 
 model Profile {
   id        String   @id @default(uuid())
@@ -412,7 +411,7 @@ model Profile {
   updatedAt DateTime @default(now()) @updatedAt
 
   // Only 1 of user or group can be set.
-  // The user this profile belongs to, if any. 
+  // The user this profile belongs to, if any.
   userId String?
   User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -443,6 +442,8 @@ view Creator {
   agent_rating Float
   agent_runs   Int
   is_featured  Boolean
+
+  // Index or unique are not applied to views
 }
 
 view StoreAgent {
@@ -465,11 +466,7 @@ view StoreAgent {
   rating           Float
   versions         String[]
 
-  @@unique([creator_username, slug])
-  @@index([creator_username])
-  @@index([featured])
-  @@index([categories])
-  @@index([storeListingVersionId])
+  // Index or unique are not applied to views
 }
 
 view StoreSubmission {
@@ -487,7 +484,7 @@ view StoreSubmission {
   agent_id       String
   agent_version  Int
 
-  @@index([user_id])
+  // Index or unique are not applied to views
 }
 
 model StoreListing {
@@ -510,9 +507,13 @@ model StoreListing {
   StoreListingVersions   StoreListingVersion[]
   StoreListingSubmission StoreListingSubmission[]
 
-  @@index([isApproved])
-  @@index([agentId])
+  // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
+  @@unique([agentId])
+  @@index([agentId, owningUserId])
   @@index([owningUserId])
+  // Used in the view query
+  @@index([isDeleted, isApproved])
+  @@index([isDeleted])
 }
 
 model StoreListingVersion {
@@ -526,7 +527,7 @@ model StoreListingVersion {
   agentVersion Int
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  // The detials for this version of the agent, this allows the author to update the details of the agent,
+  // The details for this version of the agent, this allows the author to update the details of the agent,
   // But still allow using old versions of the agent with there original details.
   // TODO: Create a database view that shows only the latest version of each store listing.
   slug        String
@@ -553,7 +554,7 @@ model StoreListingVersion {
   StoreListingReview StoreListingReview[]
 
   @@unique([agentId, agentVersion])
-  @@index([agentId, agentVersion, isApproved])
+  @@index([agentId, agentVersion, isDeleted])
 }
 
 model StoreListingReview {
@@ -571,7 +572,6 @@ model StoreListingReview {
   comments String?
 
   @@unique([storeListingVersionId, reviewByUserId])
-  @@index([storeListingVersionId])
 }
 
 enum SubmissionStatus {
@@ -598,8 +598,8 @@ model StoreListingSubmission {
   Status         SubmissionStatus @default(PENDING)
   reviewComments String?
 
+  @@unique([storeListingVersionId])
   @@index([storeListingId])
-  @@index([Status])
 }
 
 enum APIKeyPermission {
