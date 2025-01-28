@@ -41,6 +41,27 @@ jobs:
         run: |
           yarn type-check
 
+  design:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Run Chromatic
+        uses: chromaui/action@latest
+        with:
+          # ⚠️ Make sure to configure a `CHROMATIC_PROJECT_TOKEN` repository secret
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -62,8 +83,8 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          large-packages: false  # slow
-          docker-images: false  # limited benefit
+          large-packages: false # slow
+          docker-images: false # limited benefit
 
       - name: Copy default supabase .env
         run: |
