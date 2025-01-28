@@ -919,6 +919,7 @@ class AIConversationBlock(Block):
                 conversation_history=input_data.messages,
                 max_tokens=input_data.max_tokens,
                 expected_format={},
+                ollama_host=input_data.ollama_host,
             ),
             credentials=credentials,
         )
