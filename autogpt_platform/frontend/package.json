@@ -68,6 +68,7 @@
     "next": "^14.2.21",
     "next-themes": "^0.4.4",
     "react": "^18",
+    "react-chat-widget": "^3.1.4",
     "react-day-picker": "^9.5.0",
     "react-dom": "^18",
     "react-hook-form": "^7.54.2",
