@@ -26,10 +26,12 @@ class ProviderName(str, Enum):
     OPENWEATHERMAP = "openweathermap"
     OPEN_ROUTER = "open_router"
     PINECONE = "pinecone"
+    REDDIT = "reddit"
     REPLICATE = "replicate"
     REVID = "revid"
     SCREENSHOTONE = "screenshotone"
     SLANT3D = "slant3d"
+    SMTP = "smtp"
     TWITTER = "twitter"
     UNREAL_SPEECH = "unreal_speech"
     # --8<-- [end:ProviderName]
