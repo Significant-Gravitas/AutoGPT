@@ -794,7 +794,7 @@ async def get_my_agents(
 
 async def get_agent(
     store_listing_version_id: str, version_id: Optional[int]
-) -> GraphModel:
+) -> Optional[GraphModel]:
     """Get agent using the version ID and store listing version ID."""
     try:
         store_listing_version = (
@@ -804,10 +804,8 @@ async def get_agent(
         )
 
         if not store_listing_version or not store_listing_version.Agent:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f"Store listing version {store_listing_version_id} not found",
-            )
+            logger.error(f"Store listing version {store_listing_version_id} not found");
+            return None
 
         agent = store_listing_version.Agent
 
@@ -816,14 +814,12 @@ async def get_agent(
         )
 
         if not graph:
-            raise fastapi.HTTPException(
-                status_code=404, detail=f"Agent {agent.id} not found"
-            )
+            logger.error(f"Agent {agent.id} not found");
+            return None
 
         graph.version = 1
         graph.is_template = False
         graph.is_active = True
-        delattr(graph, "user_id")
 
         return graph
 
