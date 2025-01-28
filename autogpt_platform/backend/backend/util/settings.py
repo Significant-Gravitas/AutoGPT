@@ -315,6 +315,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
+    mem0_api_key: str = Field(default="", description="Mem0 API key")
 
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")

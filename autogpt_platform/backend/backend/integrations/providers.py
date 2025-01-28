@@ -19,6 +19,7 @@ class ProviderName(str, Enum):
     JINA = "jina"
     LINEAR = "linear"
     MEDIUM = "medium"
+    MEM0 = "mem0"
     NOTION = "notion"
     NVIDIA = "nvidia"
     OLLAMA = "ollama"

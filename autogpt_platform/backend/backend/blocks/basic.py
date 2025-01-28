@@ -508,6 +508,48 @@ class AddToListBlock(Block):
         yield "updated_list", updated_list
 
 
+class FindInListBlock(Block):
+    class Input(BlockSchema):
+        list: List[Any] = SchemaField(description="The list to search in.")
+        value: Any = SchemaField(description="The value to search for.")
+
+    class Output(BlockSchema):
+        index: int = SchemaField(description="The index of the value in the list.")
+        found: bool = SchemaField(
+            description="Whether the value was found in the list."
+        )
+        not_found_value: Any = SchemaField(
+            description="The value that was not found in the list."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="5e2c6d0a-1e37-489f-b1d0-8e1812b23333",
+            description="Finds the index of the value in the list.",
+            categories={BlockCategory.BASIC},
+            input_schema=FindInListBlock.Input,
+            output_schema=FindInListBlock.Output,
+            test_input=[
+                {"list": [1, 2, 3, 4, 5], "value": 3},
+                {"list": [1, 2, 3, 4, 5], "value": 6},
+            ],
+            test_output=[
+                ("index", 2),
+                ("found", True),
+                ("found", False),
+                ("not_found_value", 6),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            yield "index", input_data.list.index(input_data.value)
+            yield "found", True
+        except ValueError:
+            yield "found", False
+            yield "not_found_value", input_data.value
+
+
 class NoteBlock(Block):
     class Input(BlockSchema):
         text: str = SchemaField(description="The text to display in the sticky note.")
