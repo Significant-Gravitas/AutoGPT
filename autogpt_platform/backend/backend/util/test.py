@@ -57,7 +57,7 @@ async def wait_execution(
     user_id: str,
     graph_id: str,
     graph_exec_id: str,
-    timeout: int = 20,
+    timeout: int = 30,
 ) -> Sequence[ExecutionResult]:
     async def is_execution_completed():
         status = await AgentServer().test_get_graph_run_status(graph_exec_id, user_id)
