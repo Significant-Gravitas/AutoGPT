@@ -18,7 +18,6 @@ import {
   GraphUpdateable,
   NodeExecutionResult,
   MyAgentsResponse,
-  OAuth2Credentials,
   ProfileDetails,
   User,
   StoreAgentsResponse,
@@ -32,6 +31,11 @@ import {
   StoreReview,
   ScheduleCreatable,
   Schedule,
+  UserPasswordCredentials,
+  Credentials,
+  APIKeyPermission,
+  CreateAPIKeyResponse,
+  APIKey,
   TransactionHistory,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
@@ -93,6 +97,13 @@ export default class BackendAPI {
     return this._get("/credits/auto-top-up");
   }
 
+  setAutoTopUpConfig(config: {
+    amount: number;
+    threshold: number;
+  }): Promise<{ amount: number; threshold: number }> {
+    return this._request("POST", "/credits/auto-top-up", config);
+  }
+
   getTransactionHistory(
     lastTransction: Date | null,
     countLimit: number,
@@ -108,13 +119,6 @@ export default class BackendAPI {
             transaction_count_limit: countLimit,
           },
     );
-  }
-
-  setAutoTopUpConfig(config: {
-    amount: number;
-    threshold: number;
-  }): Promise<{ amount: number; threshold: number }> {
-    return this._request("POST", "/credits/auto-top-up", config);
   }
 
   requestTopUp(amount: number): Promise<{ checkout_url: string }> {
@@ -232,7 +236,17 @@ export default class BackendAPI {
     return this._request(
       "POST",
       `/integrations/${credentials.provider}/credentials`,
-      credentials,
+      { ...credentials, type: "api_key" },
+    );
+  }
+
+  createUserPasswordCredentials(
+    credentials: Omit<UserPasswordCredentials, "id" | "type">,
+  ): Promise<UserPasswordCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      { ...credentials, type: "user_password" },
     );
   }
 
@@ -244,10 +258,7 @@ export default class BackendAPI {
     );
   }
 
-  getCredentials(
-    provider: string,
-    id: string,
-  ): Promise<APIKeyCredentials | OAuth2Credentials> {
+  getCredentials(provider: string, id: string): Promise<Credentials> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
@@ -576,7 +587,22 @@ export default class BackendAPI {
       let errorDetail;
       try {
         const errorData = await response.json();
-        errorDetail = errorData.detail || response.statusText;
+        if (
+          Array.isArray(errorData.detail) &&
+          errorData.detail.length > 0 &&
+          errorData.detail[0].loc
+        ) {
+          // This appears to be a Pydantic validation error
+          const errors = errorData.detail.map(
+            (err: _PydanticValidationError) => {
+              const location = err.loc.join(" -> ");
+              return `${location}: ${err.msg}`;
+            },
+          );
+          errorDetail = errors.join("\n");
+        } else {
+          errorDetail = errorData.detail || response.statusText;
+        }
       } catch (e) {
         errorDetail = response.statusText;
       }
@@ -757,6 +783,13 @@ type WebsocketMessage = {
     data: WebsocketMessageTypeMap[M];
   };
 }[keyof WebsocketMessageTypeMap];
+
+type _PydanticValidationError = {
+  type: string;
+  loc: string[];
+  msg: string;
+  input: any;
+};
 
 /* *** HELPER FUNCTIONS *** */
 
