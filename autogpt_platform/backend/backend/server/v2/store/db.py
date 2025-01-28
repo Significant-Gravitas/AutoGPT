@@ -3,7 +3,6 @@ import random
 from datetime import datetime
 from typing import Optional
 
-import fastapi
 import prisma.enums
 import prisma.errors
 import prisma.models
@@ -804,7 +803,7 @@ async def get_agent(
         )
 
         if not store_listing_version or not store_listing_version.Agent:
-            logger.error(f"Store listing version {store_listing_version_id} not found");
+            logger.error(f"Store listing version {store_listing_version_id} not found")
             return None
 
         agent = store_listing_version.Agent
@@ -814,7 +813,7 @@ async def get_agent(
         )
 
         if not graph:
-            logger.error(f"Agent {agent.id} not found");
+            logger.error(f"Agent {agent.id} not found")
             return None
 
         graph.version = 1
