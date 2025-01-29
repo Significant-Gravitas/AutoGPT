@@ -12,18 +12,21 @@ import { usePathname } from "next/navigation";
 interface NavbarLinkProps {
   name: string;
   href: string;
-  className?: string;
 }
 
-export const NavbarLink = ({ name, href, className }: NavbarLinkProps) => {
+export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
   const pathname = usePathname();
   const parts = pathname.split("/");
   const activeLink = "/" + (parts.length > 2 ? parts[2] : parts[1]);
 
   return (
-    <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
+    <Link
+      href={href}
+      data-testid={`navbar-link-${name.toLowerCase()}`}
+      className="font-poppins text-[20px] leading-[28px]"
+    >
       <div
-        className={`h-[48px] px-5 py-4 ${className} ${
+        className={`h-[48px] px-5 py-4 ${
           activeLink === href
             ? "rounded-2xl bg-neutral-800 dark:bg-neutral-200"
             : ""
