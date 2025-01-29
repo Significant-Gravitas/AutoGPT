@@ -22,11 +22,10 @@ const preview: Preview = {
   decorators: [
     (Story) => {
       return (
-        <Providers>
+        <Providers useMockBackend={true}>
           <Story />
         </Providers>
       );
-
     },
   ],
 };
