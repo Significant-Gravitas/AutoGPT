@@ -1,6 +1,6 @@
 version = 1
 
-test_patterns = ["test_*.py", "tests/**", "test/**", "*.spec.ts", "*_test.py"]
+test_patterns = ["**/*.spec.ts","**/*_test.py","**/*_tests.py","**/test_*.py"]
 
 exclude_patterns = ["classic/**"]
 
