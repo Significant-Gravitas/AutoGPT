@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { AgentsSection } from "./AgentsSection";
+import { Agent, AgentsSection } from "./AgentsSection";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
@@ -16,7 +16,7 @@ const meta = {
   argTypes: {
     sectionTitle: { control: "text" },
     agents: { control: "object" },
-    onCardClick: { action: "clicked" },
+    // onCardClick: { action: "clicked" },
   },
 } satisfies Meta<typeof AgentsSection>;
 
@@ -25,41 +25,50 @@ type Story = StoryObj<typeof meta>;
 
 const mockTopAgents = [
   {
-    agentName: "SEO Optimizer Pro",
-    agentImage:
+    agent_name: "SEO Optimizer Pro",
+    agent_image:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     description:
       "Boost your website's search engine rankings with our advanced AI-powered SEO optimization tool.",
     runs: 50000,
     rating: 4.7,
-    avatarSrc: "https://example.com/avatar1.jpg",
+    creator_avatar: "https://example.com/avatar1.jpg",
+    slug: "seo-optimizer-pro",
+    creator: "John Doe",
+    sub_heading: "SEO Expert",
   },
   {
-    agentName: "Content Writer AI",
-    agentImage:
+    agent_name: "Content Writer AI",
+    agent_image:
       "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     description:
       "Generate high-quality, engaging content for your blog, social media, or marketing campaigns.",
     runs: 75000,
     rating: 4.5,
-    avatarSrc: "https://example.com/avatar2.jpg",
+    creator_avatar: "https://example.com/avatar2.jpg",
+    slug: "content-writer-ai",
+    creator: "Jane Doe",
+    sub_heading: "Content Writer",
   },
   {
-    agentName: "Data Analyzer Lite",
-    agentImage:
+    agent_name: "Data Analyzer Lite",
+    agent_image:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
     description: "A basic tool for analyzing small to medium-sized datasets.",
     runs: 10000,
     rating: 3.8,
-    avatarSrc: "https://example.com/avatar3.jpg",
+    creator_avatar: "https://example.com/avatar3.jpg",
+    slug: "data-analyzer-lite",
+    creator: "John Doe",
+    sub_heading: "Data Analyst",
   },
-];
+] satisfies Agent[];
 
 export const Default: Story = {
   args: {
     sectionTitle: "Top Agents",
     agents: mockTopAgents,
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
 
@@ -67,7 +76,7 @@ export const SingleAgent: Story = {
   args: {
     sectionTitle: "Top Agents",
     agents: [mockTopAgents[0]],
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
 
@@ -75,7 +84,7 @@ export const NoAgents: Story = {
   args: {
     sectionTitle: "Top Agents",
     agents: [],
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
 
@@ -83,7 +92,7 @@ export const WithInteraction: Story = {
   args: {
     sectionTitle: "Top Agents",
     agents: mockTopAgents,
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -107,6 +116,9 @@ export const MultiRowAgents: Story = {
         runs: 60000,
         rating: 4.6,
         creator_avatar: "https://example.com/avatar4.jpg",
+        slug: "image-recognition-ai",
+        creator: "John Doe",
+        sub_heading: "Image Recognition",
       },
       {
         agent_name: "Natural Language Processor",
@@ -117,6 +129,9 @@ export const MultiRowAgents: Story = {
         runs: 80000,
         rating: 4.8,
         creator_avatar: "https://example.com/avatar5.jpg",
+        slug: "natural-language-processor",
+        creator: "John Doe",
+        sub_heading: "Natural Language Processing",
       },
       {
         agent_name: "Sentiment Analyzer",
@@ -127,6 +142,9 @@ export const MultiRowAgents: Story = {
         runs: 45000,
         rating: 4.3,
         creator_avatar: "https://example.com/avatar6.jpg",
+        slug: "sentiment-analyzer",
+        creator: "John Doe",
+        sub_heading: "Sentiment Analysis",
       },
       {
         agent_name: "Chatbot Builder",
@@ -137,6 +155,9 @@ export const MultiRowAgents: Story = {
         runs: 55000,
         rating: 4.4,
         creator_avatar: "https://example.com/avatar7.jpg",
+        slug: "chatbot-builder",
+        creator: "John Doe",
+        sub_heading: "Chatbot Developer",
       },
       {
         agent_name: "Predictive Analytics Tool",
@@ -147,6 +168,9 @@ export const MultiRowAgents: Story = {
         runs: 40000,
         rating: 4.2,
         creator_avatar: "https://example.com/avatar8.jpg",
+        slug: "predictive-analytics-tool",
+        creator: "John Doe",
+        sub_heading: "Predictive Analytics",
       },
       {
         agent_name: "Text-to-Speech Converter",
@@ -157,9 +181,12 @@ export const MultiRowAgents: Story = {
         runs: 35000,
         rating: 4.1,
         creator_avatar: "https://example.com/avatar9.jpg",
+        slug: "text-to-speech-converter",
+        creator: "John Doe",
+        sub_heading: "Text-to-Speech",
       },
     ],
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
 
