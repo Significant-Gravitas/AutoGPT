@@ -9,6 +9,7 @@ import RunnerOutputUI from "./runner-ui/RunnerOutputUI";
 import { Node } from "@xyflow/react";
 import { filterBlocksByType } from "@/lib/utils";
 import { BlockIORootSchema, BlockUIType } from "@/lib/autogpt-server-api/types";
+import { CustomNode } from "./CustomNode";
 
 interface HardcodedValues {
   name: any;
@@ -27,7 +28,7 @@ export interface InputItem {
 
 interface RunnerUIWrapperProps {
   nodes: Node[];
-  setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+  setNodes: React.Dispatch<React.SetStateAction<CustomNode[]>>;
   setIsScheduling: React.Dispatch<React.SetStateAction<boolean>>;
   isRunning: boolean;
   isScheduling: boolean;

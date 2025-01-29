@@ -65,18 +65,21 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   properties: { [key: string]: BlockIOSubSchema };
   default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
   required?: (keyof BlockIOObjectSubSchema["properties"])[];
+  secret?: boolean;
 };
 
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   additionalProperties: { type: "string" | "number" | "integer" };
   default?: { [key: string]: string | number };
+  secret?: boolean;
 };
 
 export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   type: "array";
   items?: BlockIOSimpleTypeSubSchema;
   default?: Array<string>;
+  secret?: boolean;
 };
 
 export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
@@ -90,11 +93,13 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
   type: "integer" | "number";
   default?: number;
+  secret?: boolean;
 };
 
 export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   type: "boolean";
   default?: boolean;
+  secret?: boolean;
 };
 
 export type CredentialsType = "api_key" | "oauth2" | "user_password";
@@ -143,16 +148,19 @@ export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
 export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
+  type: "object";
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
   credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: { [key: string]: CredentialsProviderName };
+  secret?: boolean;
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
+  secret?: boolean;
 };
 
 // At the time of writing, combined schemas only occur on the first nested level in a
@@ -160,15 +168,21 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
   (
     | {
+        type: "allOf";
         allOf: [BlockIOSimpleTypeSubSchema];
+        secret?: boolean;
       }
     | {
+        type: "anyOf";
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
+        secret?: boolean;
       }
     | {
+        type: "oneOf";
         oneOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
+        secret?: boolean;
       }
   );
 
