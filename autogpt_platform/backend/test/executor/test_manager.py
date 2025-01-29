@@ -35,16 +35,19 @@ async def execute_graph(
 
     # --- Test adding new executions --- #
     response = await agent_server.test_execute_graph(
-        test_graph.id, test_graph.version, input_data, test_user.id
+        user_id=test_user.id,
+        graph_id=test_graph.id,
+        graph_version=test_graph.version,
+        node_input=input_data,
     )
     graph_exec_id = response["id"]
     logger.info(f"Created execution with ID: {graph_exec_id}")
 
     # Execution queue should be empty
     logger.info("Waiting for execution to complete...")
-    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
+    result = await wait_execution(test_user.id, test_graph.id, graph_exec_id, 30)
     logger.info(f"Execution completed with {len(result)} results")
-    assert result and len(result) == num_execs
+    assert len(result) == num_execs
     return graph_exec_id
 
 
@@ -129,7 +132,7 @@ async def test_agent_execution(server: SpinTestServer):
     logger.info("Starting test_agent_execution")
     test_user = await create_test_user()
     test_graph = await create_graph(server, create_test_graph(), test_user)
-    data = {"input_1": "Hello", "input_2": "World"}
+    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,
@@ -513,24 +516,23 @@ async def test_store_listing_graph(server: SpinTestServer):
 
     assert slv_id is not None
 
-    admin = autogpt_libs.auth.models.User(
-        user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1b",
-        role="admin",
-        email="admin@example.com",
-        phone_number="1234567890",
-    )
+    admin_user = await create_test_user(alt_user=True)
     await server.agent_server.test_review_store_listing(
         backend.server.v2.store.model.ReviewSubmissionRequest(
             store_listing_version_id=slv_id,
-            isApproved=True,
+            is_approved=True,
             comments="Test comments",
         ),
-        admin,
+        autogpt_libs.auth.models.User(
+            user_id=admin_user.id,
+            role="admin",
+            email=admin_user.email,
+            phone_number="1234567890",
+        ),
     )
+    alt_test_user = admin_user
 
-    alt_test_user = await create_test_user(alt_user=True)
-
-    data = {"input_1": "Hello", "input_2": "World"}
+    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,

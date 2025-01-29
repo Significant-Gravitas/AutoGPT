@@ -1,6 +1,6 @@
 import contextlib
 import logging
-import typing
+from typing import Any, Optional
 
 import autogpt_libs.auth.models
 import fastapi
@@ -23,6 +23,7 @@ import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
+from backend.server.external.api import external_app
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -97,6 +98,8 @@ app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 
+app.mount("/external-api", external_app)
+
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
@@ -121,12 +124,15 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_execute_graph(
         graph_id: str,
-        graph_version: int,
-        node_input: dict[typing.Any, typing.Any],
+        node_input: dict[str, Any],
         user_id: str,
+        graph_version: Optional[int] = None,
     ):
         return backend.server.routers.v1.execute_graph(
-            graph_id, graph_version, node_input, user_id
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            node_input=node_input,
         )
 
     @staticmethod

@@ -93,7 +93,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthCard>
+    <AuthCard className="mx-auto">
       <AuthHeader>Login to your account</AuthHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onLogin)}>
@@ -104,7 +104,12 @@ export default function LoginPage() {
               <FormItem className="mb-6">
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="m@example.com" {...field} />
+                  <Input
+                    placeholder="m@example.com"
+                    {...field}
+                    type="email" // Explicitly specify email type
+                    autoComplete="username" // Added for password managers
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -125,7 +130,10 @@ export default function LoginPage() {
                   </Link>
                 </FormLabel>
                 <FormControl>
-                  <PasswordInput {...field} />
+                  <PasswordInput
+                    {...field}
+                    autoComplete="current-password" // Added for password managers
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -156,5 +156,5 @@ class StoreReviewCreate(pydantic.BaseModel):
 
 class ReviewSubmissionRequest(pydantic.BaseModel):
     store_listing_version_id: str
-    isApproved: bool
+    is_approved: bool
     comments: str

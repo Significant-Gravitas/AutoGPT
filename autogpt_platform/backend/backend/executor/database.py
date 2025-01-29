@@ -4,6 +4,7 @@ from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, ca
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
     ExecutionResult,
+    NodeExecutionEntry,
     RedisExecutionEventBus,
     create_graph_execution,
     get_execution_results,
@@ -78,12 +79,8 @@ class DatabaseManager(AppService):
 
     # Credits
     user_credit_model = get_user_credit_model()
-    get_or_refill_credit = cast(
-        Callable[[Any, str], int],
-        exposed_run_and_wait(user_credit_model.get_or_refill_credit),
-    )
     spend_credits = cast(
-        Callable[[Any, str, int, str, dict[str, str], float, float], int],
+        Callable[[Any, NodeExecutionEntry, float, float], int],
         exposed_run_and_wait(user_credit_model.spend_credits),
     )
 

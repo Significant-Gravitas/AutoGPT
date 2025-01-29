@@ -142,49 +142,52 @@ export default function useAgentGraph(
       setAgentDescription(graph.description);
 
       setNodes(() => {
-        const newNodes = graph.nodes.map((node) => {
-          const block = availableNodes.find(
-            (block) => block.id === node.block_id,
-          )!;
-          const flow =
-            block.uiType == BlockUIType.AGENT
-              ? availableFlows.find(
-                  (flow) => flow.id === node.input_default.graph_id,
-                )
-              : null;
-          const newNode: CustomNode = {
-            id: node.id,
-            type: "custom",
-            position: {
-              x: node?.metadata?.position?.x || 0,
-              y: node?.metadata?.position?.y || 0,
-            },
-            data: {
-              block_id: block.id,
-              blockType: flow?.name || block.name,
-              blockCosts: block.costs,
-              categories: block.categories,
-              description: block.description,
-              title: `${block.name} ${node.id}`,
-              inputSchema: block.inputSchema,
-              outputSchema: block.outputSchema,
-              hardcodedValues: node.input_default,
-              webhook: node.webhook,
-              uiType: block.uiType,
-              connections: graph.links
-                .filter((l) => [l.source_id, l.sink_id].includes(node.id))
-                .map((link) => ({
-                  edge_id: formatEdgeID(link),
-                  source: link.source_id,
-                  sourceHandle: link.source_name,
-                  target: link.sink_id,
-                  targetHandle: link.sink_name,
-                })),
-              isOutputOpen: false,
-            },
-          };
-          return newNode;
-        });
+        const newNodes = graph.nodes
+          .map((node) => {
+            const block = availableNodes.find(
+              (block) => block.id === node.block_id,
+            )!;
+            if (!block) return null;
+            const flow =
+              block.uiType == BlockUIType.AGENT
+                ? availableFlows.find(
+                    (flow) => flow.id === node.input_default.graph_id,
+                  )
+                : null;
+            const newNode: CustomNode = {
+              id: node.id,
+              type: "custom",
+              position: {
+                x: node?.metadata?.position?.x || 0,
+                y: node?.metadata?.position?.y || 0,
+              },
+              data: {
+                block_id: block.id,
+                blockType: flow?.name || block.name,
+                blockCosts: block.costs,
+                categories: block.categories,
+                description: block.description,
+                title: `${block.name} ${node.id}`,
+                inputSchema: block.inputSchema,
+                outputSchema: block.outputSchema,
+                hardcodedValues: node.input_default,
+                webhook: node.webhook,
+                uiType: block.uiType,
+                connections: graph.links
+                  .filter((l) => [l.source_id, l.sink_id].includes(node.id))
+                  .map((link) => ({
+                    edge_id: formatEdgeID(link),
+                    source: link.source_id,
+                    sourceHandle: link.source_name,
+                    target: link.sink_id,
+                    targetHandle: link.sink_name,
+                  })),
+                isOutputOpen: false,
+              },
+            };
+            return newNode;
+          })
+          .filter((node) => node !== null);
         setEdges((_) =>
           graph.links.map((link) => ({
             id: formatEdgeID(link),
@@ -862,6 +865,7 @@ export default function useAgentGraph(
         title: "Error saving agent",
         description: errorMessage,
       });
+      setSaveRunRequest({ request: "save", state: "error" });
     }
   }, [_saveAgent, toast]);
 
@@ -874,7 +878,7 @@ export default function useAgentGraph(
       request: "save",
       state: "saving",
     });
-  }, [saveAgent]);
+  }, [saveAgent, saveRunRequest.state]);
 
   const requestSaveAndRun = useCallback(() => {
     saveAgent();

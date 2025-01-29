@@ -659,16 +659,13 @@ async def review_submission(
     try:
         submission = await backend.server.v2.store.db.review_store_submission(
             store_listing_version_id=request.store_listing_version_id,
-            is_approved=request.isApproved,
+            is_approved=request.is_approved,
             comments=request.comments,
             reviewer_id=user.user_id,
         )
         return submission
     except Exception:
-        logger.exception("Exception occurred whilst reviewing store submission")
-        return fastapi.responses.JSONResponse(
+        raise fastapi.HTTPException(
             status_code=500,
-            content={
-                "detail": "An error occurred while reviewing the store submission"
-            },
+            detail="An error occurred while creating the store submission review",
         )

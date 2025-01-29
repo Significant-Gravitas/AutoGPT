@@ -509,7 +509,7 @@ async def create_store_submission(
             include={"StoreListingVersions": True},
         )
 
-        slv_id = (
+        store_listing_version_id = (
             listing.StoreListingVersions[0].id
             if listing.StoreListingVersions is not None
             and len(listing.StoreListingVersions) > 0
@@ -530,7 +530,7 @@ async def create_store_submission(
             status=prisma.enums.SubmissionStatus.PENDING,
             runs=0,
             rating=0.0,
-            store_listing_version_id=slv_id,
+            store_listing_version_id=store_listing_version_id,
         )
 
     except (
@@ -809,7 +809,7 @@ async def get_agent(
     try:
         store_listing_version = (
             await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}, include={"Agent": True}
+                where={"id": store_listing_version_id}
             )
         )
 
@@ -819,13 +819,17 @@ async def get_agent(
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        agent = store_listing_version.Agent
-
-        graph = await backend.data.graph.get_graph(agent.id, agent.version)
+        graph_id = store_listing_version.agentId
+        graph_version = store_listing_version.agentVersion
+        graph = await backend.data.graph.get_graph(graph_id, graph_version)
 
         if not graph:
             raise fastapi.HTTPException(
-                status_code=404, detail=f"Agent {agent.id} not found"
+                status_code=404,
+                detail=(
+                    f"Agent #{graph_id} not found "
+                    f"for store listing version #{store_listing_version_id}"
+                ),
             )
 
         graph.version = 1
@@ -860,46 +864,40 @@ async def review_store_submission(
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        status = (
-            prisma.enums.SubmissionStatus.APPROVED
-            if is_approved
-            else prisma.enums.SubmissionStatus.REJECTED
-        )
-
-        create_data = prisma.types.StoreListingSubmissionCreateInput(
-            StoreListingVersion={"connect": {"id": store_listing_version_id}},
-            Status=status,
-            reviewComments=comments,
-            Reviewer={"connect": {"id": reviewer_id}},
-            StoreListing={"connect": {"id": store_listing_version.StoreListing.id}},
-            createdAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-
-        update_data = prisma.types.StoreListingSubmissionUpdateInput(
-            Status=status,
-            reviewComments=comments,
-            Reviewer={"connect": {"id": reviewer_id}},
-            StoreListing={"connect": {"id": store_listing_version.StoreListing.id}},
-            updatedAt=datetime.now(),
-        )
-
         if is_approved:
             await prisma.models.StoreListing.prisma().update(
                 where={"id": store_listing_version.StoreListing.id},
                 data={"isApproved": True},
             )
 
+        submission_status = (
+            prisma.enums.SubmissionStatus.APPROVED
+            if is_approved
+            else prisma.enums.SubmissionStatus.REJECTED
+        )
+
+        update_data: prisma.types.StoreListingSubmissionUpdateInput = {
+            "Status": submission_status,
+            "reviewComments": comments,
+            "Reviewer": {"connect": {"id": reviewer_id}},
+            "StoreListing": {"connect": {"id": store_listing_version.StoreListing.id}},
+        }
+
+        create_data: prisma.types.StoreListingSubmissionCreateInput = {
+            **update_data,
+            "StoreListingVersion": {"connect": {"id": store_listing_version_id}},
+        }
+
         submission = await prisma.models.StoreListingSubmission.prisma().upsert(
             where={"storeListingVersionId": store_listing_version_id},
-            data=prisma.types.StoreListingSubmissionUpsertInput(
-                create=create_data,
-                update=update_data,
-            ),
+            data={
+                "create": create_data,
+                "update": update_data,
+            },
         )
 
         if not submission:
-            raise fastapi.HTTPException(
+            raise fastapi.HTTPException(  # FIXME: don't return HTTP exceptions here
                 status_code=404,
                 detail=f"Store listing submission {store_listing_version_id} not found",
             )
@@ -907,7 +905,7 @@ async def review_store_submission(
         return submission
 
     except Exception as e:
-        logger.error(f"Error reviewing store submission: {str(e)}")
+        logger.error(f"Could not create store submission review: {str(e)}")
         raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to review store submission"
+            "Failed to create store submission review"
         ) from e

@@ -1,6 +1,9 @@
 from urllib.parse import urlparse
 
-from backend.blocks.github._auth import GithubCredentials
+from backend.blocks.github._auth import (
+    GithubCredentials,
+    GithubFineGrainedAPICredentials,
+)
 from backend.util.request import Requests
 
 
@@ -30,12 +33,15 @@ def _convert_to_api_url(url: str) -> str:
 
 def _get_headers(credentials: GithubCredentials) -> dict[str, str]:
     return {
-        "Authorization": credentials.bearer(),
+        "Authorization": credentials.auth_header(),
         "Accept": "application/vnd.github.v3+json",
     }
 
 
-def get_api(credentials: GithubCredentials, convert_urls: bool = True) -> Requests:
+def get_api(
+    credentials: GithubCredentials | GithubFineGrainedAPICredentials,
+    convert_urls: bool = True,
+) -> Requests:
     return Requests(
         trusted_origins=["https://api.github.com", "https://github.com"],
         extra_url_validator=_convert_to_api_url if convert_urls else None,

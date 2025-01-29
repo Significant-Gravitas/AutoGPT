@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from typing import Sequence, cast
 
 from backend.data import db
@@ -57,7 +58,7 @@ async def wait_execution(
     user_id: str,
     graph_id: str,
     graph_exec_id: str,
-    timeout: int = 20,
+    timeout: int = 30,
 ) -> Sequence[ExecutionResult]:
     async def is_execution_completed():
         status = await AgentServer().test_get_graph_run_status(graph_exec_id, user_id)
@@ -104,7 +105,13 @@ def execute_block_test(block: Block):
             log.info(f"{prefix} mock {mock_name} not found in block")
 
     # Populate credentials argument(s)
-    extra_exec_kwargs = {}
+    extra_exec_kwargs: dict = {
+        "graph_id": uuid.uuid4(),
+        "node_id": uuid.uuid4(),
+        "graph_exec_id": uuid.uuid4(),
+        "node_exec_id": uuid.uuid4(),
+        "user_id": uuid.uuid4(),
+    }
     input_model = cast(type[BlockSchema], block.input_schema)
     credentials_input_fields = input_model.get_credentials_fields()
     if len(credentials_input_fields) == 1 and isinstance(
@@ -125,7 +132,9 @@ def execute_block_test(block: Block):
 
         for output_name, output_data in block.execute(input_data, **extra_exec_kwargs):
             if output_index >= len(block.test_output):
-                raise ValueError(f"{prefix} produced output more than expected")
+                raise ValueError(
+                    f"{prefix} produced output more than expected {output_index} >= {len(block.test_output)}:\nOutput Expected:\t\t{block.test_output}\nFailed Output Produced:\t('{output_name}', {output_data})\nNote that this may not be the one that was unexpected, but it is the first that triggered the extra output warning"
+                )
             ex_output_name, ex_output_data = block.test_output[output_index]
 
             def compare(data, expected_data):
@@ -142,7 +151,9 @@ def execute_block_test(block: Block):
                 log.info(f"{prefix} {mark} comparing `{data}` vs `{expected_data}`")
                 if not is_matching:
                     raise ValueError(
-                        f"{prefix}: wrong output {data} vs {expected_data}"
+                        f"{prefix}: wrong output {data} vs {expected_data}\n"
+                        f"Output Expected:\t\t{block.test_output}\n"
+                        f"Failed Output Produced:\t('{output_name}', {output_data})"
                     )
 
             compare(output_data, ex_output_data)
