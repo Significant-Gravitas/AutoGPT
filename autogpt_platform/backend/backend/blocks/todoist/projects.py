@@ -113,12 +113,8 @@ class TodoistCreateProjectBlock(Block):
         view_style: Optional[str] = SchemaField(description="Display style (list or board)", default=None, advanced=True)
 
     class Output(BlockSchema):
-        project_id: str = SchemaField(description="ID of created project")
-        project_name: str = SchemaField(description="Name of created project")
-        project_url: str = SchemaField(description="URL of created project")
-        complete_data: dict = SchemaField(description="Complete project data including all fields")
+        success: bool = SchemaField(description="Whether the creation was successful")
         error: str = SchemaField(description="Error message if the request failed")
-
 
     def __init__(self):
         super().__init__(
@@ -133,23 +129,10 @@ class TodoistCreateProjectBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("project_id", "2203306141"),
-                ("project_name", "Test Project"),
-                ("project_url", "https://todoist.com/showProject?id=2203306141"),
-                ("complete_data", {
-                    "id": "2203306141",
-                    "name": "Test Project",
-                    "url": "https://todoist.com/showProject?id=2203306141"
-                })
+                ("success", True)
             ],
             test_mock={
-                "create_project": lambda *args, **kwargs: (
-                    "2203306141",
-                    "Test Project",
-                    "https://todoist.com/showProject?id=2203306141",
-                    {"id": "2203306141", "name": "Test Project", "url": "https://todoist.com/showProject?id=2203306141"},
-                    None
-                )
+                "create_project": lambda *args, **kwargs: (True)
             },
         )
 
@@ -167,8 +150,8 @@ class TodoistCreateProjectBlock(Block):
             if view_style is not None:
                 params["view_style"] = view_style
 
-            project = api.add_project(**params)
-            return project.id, project.name, project.url, project.__dict__, None
+            api.add_project(**params)
+            return True
 
         except Exception as e:
             raise e
@@ -181,7 +164,7 @@ class TodoistCreateProjectBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            project_id, project_name, project_url, data, error = self.create_project(
+            success = self.create_project(
                 credentials=credentials,
                 name=input_data.name,
                 parent_id=input_data.parent_id,
@@ -190,14 +173,7 @@ class TodoistCreateProjectBlock(Block):
                 view_style=input_data.view_style
             )
 
-            if project_id:
-                yield "project_id", project_id
-            if project_name:
-                yield "project_name", project_name
-            if project_url:
-                yield "project_url", project_url
-            if data:
-                yield "complete_data", data
+            yield "success", success
 
         except Exception as e:
             yield "error", str(e)
@@ -243,8 +219,7 @@ class TodoistGetProjectBlock(Block):
                     "2203306141",
                     "Shopping List",
                     "https://todoist.com/showProject?id=2203306141",
-                    {"id": "2203306141", "name": "Shopping List", "url": "https://todoist.com/showProject?id=2203306141"},
-                    None
+                    {"id": "2203306141", "name": "Shopping List", "url": "https://todoist.com/showProject?id=2203306141"}
                 )
             },
         )
@@ -255,7 +230,7 @@ class TodoistGetProjectBlock(Block):
             api = TodoistAPI(credentials.access_token.get_secret_value())
             project = api.get_project(project_id=project_id)
 
-            return project.id, project.name, project.url, project.__dict__, None
+            return project.id, project.name, project.url, project.__dict__
 
         except Exception as e:
             raise e
@@ -268,7 +243,7 @@ class TodoistGetProjectBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            project_id, project_name, project_url, data, error = self.get_project(
+            project_id, project_name, project_url, data = self.get_project(
                 credentials=credentials,
                 project_id=input_data.project_id
             )
@@ -317,7 +292,7 @@ class TodoistUpdateProjectBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "update_project": lambda *args, **kwargs: (True, None)
+                "update_project": lambda *args, **kwargs: (True)
             },
         )
 
@@ -338,7 +313,7 @@ class TodoistUpdateProjectBlock(Block):
                 params["view_style"] = view_style
 
             success = api.update_project(project_id=project_id, **params)
-            return success, None
+            return success
 
         except Exception as e:
             raise e
@@ -351,7 +326,7 @@ class TodoistUpdateProjectBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success, error = self.update_project(
+            success = self.update_project(
                 credentials=credentials,
                 project_id=input_data.project_id,
                 name=input_data.name,
@@ -360,8 +335,8 @@ class TodoistUpdateProjectBlock(Block):
                 view_style=input_data.view_style
             )
 
-            if success:
-                yield "success", success
+
+            yield "success", success
 
         except Exception as e:
             yield "error", str(e)
@@ -394,7 +369,7 @@ class TodoistDeleteProjectBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "delete_project": lambda *args, **kwargs: (True, None)
+                "delete_project": lambda *args, **kwargs: (True)
             },
         )
 
@@ -403,7 +378,7 @@ class TodoistDeleteProjectBlock(Block):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
             success = api.delete_project(project_id=project_id)
-            return success, None
+            return success
 
         except Exception as e:
             raise e
@@ -416,13 +391,13 @@ class TodoistDeleteProjectBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success, error = self.delete_project(
+            success = self.delete_project(
                 credentials=credentials,
                 project_id=input_data.project_id
             )
 
-            if success:
-                yield "success", success
+
+            yield "success", success
 
         except Exception as e:
             yield "error", str(e)
@@ -478,8 +453,7 @@ class TodoistListCollaboratorsBlock(Block):
                     [
                         {"id": "2671362", "name": "Alice", "email": "alice@example.com"},
                         {"id": "2671366", "name": "Bob", "email": "bob@example.com"}
-                    ],
-                    None
+                    ]
                 )
             },
         )
@@ -501,7 +475,7 @@ class TodoistListCollaboratorsBlock(Block):
                 emails.append(collaborator.email)
                 complete_data.append(collaborator.__dict__)
 
-            return ids, names, emails, complete_data, None
+            return ids, names, emails, complete_data
 
         except Exception as e:
             raise e
@@ -514,7 +488,7 @@ class TodoistListCollaboratorsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            ids, names, emails, data, error = self.get_collaborators(
+            ids, names, emails, data = self.get_collaborators(
                 credentials=credentials,
                 project_id=input_data.project_id
             )

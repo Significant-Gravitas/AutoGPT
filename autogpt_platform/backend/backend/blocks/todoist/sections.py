@@ -22,6 +22,7 @@ class TodoistListSectionsBlock(Block):
         names_list: list[str] = SchemaField(description="List of section names")
         ids_list: list[str] = SchemaField(description="List of section IDs")
         complete_data: list[dict] = SchemaField(description="Complete section data including all fields")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -50,7 +51,6 @@ class TodoistListSectionsBlock(Block):
                     ["Groceries"],
                     ["7025"],
                     [{"id": "7025", "project_id": "2203306141", "order": 1, "name": "Groceries"}],
-                    None,
                 )
             },
         )
@@ -70,7 +70,7 @@ class TodoistListSectionsBlock(Block):
                 ids.append(section.id)
                 complete_data.append(section.__dict__)
 
-            return names, ids, complete_data, None
+            return names, ids, complete_data
 
         except Exception as e:
             raise e
@@ -83,7 +83,7 @@ class TodoistListSectionsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            names, ids, data, error = self.get_section_lists(credentials, input_data.project_id)
+            names, ids, data = self.get_section_lists(credentials, input_data.project_id)
 
             if names:
                 yield "names_list", names
@@ -105,10 +105,8 @@ class TodoistCreateSectionBlock(Block):
         order: Optional[int] = SchemaField(description="Optional order among other sections", default=None)
 
     class Output(BlockSchema):
-        id: str = SchemaField(description="ID of created section")
-        project_id: str = SchemaField(description="Project ID the section belongs to")
-        order: int = SchemaField(description="Order of the section")
-        name: str = SchemaField(description="Name of the section")
+        success: bool = SchemaField(description="Whether section was successfully created")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -124,15 +122,11 @@ class TodoistCreateSectionBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("id", "7025"),
-                ("project_id", "2203306141"),
-                ("order", 1),
-                ("name", "Groceries")
+                ("success", True)
             ],
             test_mock={
                 "create_section": lambda *args, **kwargs: (
                     {"id": "7025", "project_id": "2203306141", "order": 1, "name": "Groceries"},
-                    None,
                 )
             },
         )
@@ -163,10 +157,7 @@ class TodoistCreateSectionBlock(Block):
             )
 
             if section_data:
-                yield "id", section_data["id"]
-                yield "project_id", section_data["project_id"]
-                yield "order", section_data["order"]
-                yield "name", section_data["name"]
+                yield "success", True
 
         except Exception as e:
             yield "error", str(e)
@@ -183,6 +174,8 @@ class TodoistGetSectionBlock(Block):
         project_id: str = SchemaField(description="Project ID the section belongs to")
         order: int = SchemaField(description="Order of the section")
         name: str = SchemaField(description="Name of the section")
+        error: str = SchemaField(description="Error message if the request failed")
+
 
     def __init__(self):
         super().__init__(
@@ -205,7 +198,6 @@ class TodoistGetSectionBlock(Block):
             test_mock={
                 "get_section": lambda *args, **kwargs: (
                     {"id": "7025", "project_id": "2203306141", "order": 1, "name": "Groceries"},
-                    None,
                 )
             },
         )
@@ -248,6 +240,8 @@ class TodoistDeleteSectionBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether section was successfully deleted")
+        error: str = SchemaField(description="Error message if the request failed")
+
 
     def __init__(self):
         super().__init__(
@@ -265,7 +259,7 @@ class TodoistDeleteSectionBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "delete_section": lambda *args, **kwargs: (True, None)
+                "delete_section": lambda *args, **kwargs: (True)
             },
         )
 

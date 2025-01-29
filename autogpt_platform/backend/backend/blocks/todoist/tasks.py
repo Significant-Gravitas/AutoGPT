@@ -1,5 +1,6 @@
 from typing_extensions import Optional
 from todoist_api_python.api import TodoistAPI
+from datetime import datetime
 
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
@@ -25,19 +26,15 @@ class TodoistCreateTaskBlock(Block):
         order: Optional[int] = SchemaField(description="Optional order among other tasks", default=None)
         labels: Optional[list[str]] = SchemaField(description="Task labels", default=None)
         priority: Optional[int] = SchemaField(description="Task priority (1-4)", default=None)
-        due_string: Optional[str] = SchemaField(description="Human defined task due date", default=None)
-        due_date: Optional[str] = SchemaField(description="Due date in YYYY-MM-DD format", default=None)
-        due_datetime: Optional[str] = SchemaField(description="Due date and time in RFC3339 format", default=None)
-        due_lang: Optional[str] = SchemaField(description="2-letter language code for due_string", default=None)
+        due_date:Optional[datetime] = SchemaField(description="Due date in YYYY-MM-DD format",)
+        deadline_date: Optional[datetime] = SchemaField(description="Specific date in YYYY-MM-DD format relative to user's timezone", default=None)
         assignee_id: Optional[str] = SchemaField(description="Responsible user ID", default=None)
-        duration: Optional[int] = SchemaField(description="Task duration amount", default=None)
         duration_unit: Optional[str] = SchemaField(description="Task duration unit (minute/day)", default=None)
+        duration: Optional[int] = SchemaField(description="Task duration amount, You need to selecct the duration unit first",depends_on=["duration_unit"], default=None)
 
     class Output(BlockSchema):
-        project_id: str = SchemaField(description="Project ID")
-        id: str = SchemaField(description="ID of created task")
-        url: str = SchemaField(description="Task URL")
-        is_completed: bool = SchemaField(description="Task completion status")
+        success: bool = SchemaField(description="Whether the task was created successfully")
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -54,21 +51,10 @@ class TodoistCreateTaskBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("project_id", "2203306141"),
-                ("id", "2995104339"),
-                ("url", "https://todoist.com/showTask?id=2995104339"),
-                ("is_completed", False)
+                ("success", True),
             ],
             test_mock={
-                "create_task": lambda *args, **kwargs: (
-                    {
-                        "project_id": "2203306141",
-                        "id": "2995104339",
-                        "url": "https://todoist.com/showTask?id=2995104339",
-                        "is_completed": False
-                    },
-                    None,
-                )
+                "create_task": lambda *args, **kwargs: (True)
             },
         )
 
@@ -76,8 +62,8 @@ class TodoistCreateTaskBlock(Block):
     def create_task(credentials: TodoistCredentials, content: str, **kwargs):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
-            task = api.add_task(content=content, **kwargs)
-            return task.__dict__
+            api.add_task(content=content, **kwargs)
+            return True
 
         except Exception as e:
             raise e
@@ -98,26 +84,20 @@ class TodoistCreateTaskBlock(Block):
                 "order": input_data.order,
                 "labels": input_data.labels,
                 "priority": input_data.priority,
-                "due_string": input_data.due_string,
                 "due_date": input_data.due_date,
-                "due_datetime": input_data.due_datetime,
-                "due_lang": input_data.due_lang,
+                "deadline_date": input_data.deadline_date,
                 "assignee_id": input_data.assignee_id,
                 "duration": input_data.duration,
                 "duration_unit": input_data.duration_unit
             }
 
-            task_data = self.create_task(
+            success = self.create_task(
                 credentials,
                 input_data.content,
                 **{k:v for k,v in task_args.items() if v is not None}
             )
 
-            if task_data:
-                yield "project_id", task_data["project_id"]
-                yield "id", task_data["id"]
-                yield "url", task_data["url"]
-                yield "is_completed", False
+            yield "success", success
 
         except Exception as e:
             yield "error", str(e)
@@ -130,7 +110,7 @@ class TodoistGetTasksBlock(Block):
         project_id: Optional[str] = SchemaField(description="Filter tasks by project ID", default=None)
         section_id: Optional[str] = SchemaField(description="Filter tasks by section ID", default=None)
         label: Optional[str] = SchemaField(description="Filter tasks by label name", default=None)
-        filter: Optional[str] = SchemaField(description="Filter by any supported filter", default=None)
+        filter: Optional[str] = SchemaField(description="Filter by any supported filter, You can see How to use filters or create one of your one here - https://todoist.com/help/articles/introduction-to-filters-V98wIH", default=None)
         lang: Optional[str] = SchemaField(description="IETF language tag for filter language", default=None)
         ids: Optional[list[str]] = SchemaField(description="List of task IDs to retrieve", default=None)
 
@@ -139,6 +119,8 @@ class TodoistGetTasksBlock(Block):
         id: str = SchemaField(description="Task ID")
         url: str = SchemaField(description="Task URL")
         is_completed: bool = SchemaField(description="Task completion status")
+        complete_data: dict = SchemaField(description="Complete task data as dictionary")
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -166,7 +148,6 @@ class TodoistGetTasksBlock(Block):
                         "url": "https://todoist.com/showTask?id=2995104339",
                         "is_completed": False
                     }],
-                    None
                 )
             }
         )
@@ -207,6 +188,7 @@ class TodoistGetTasksBlock(Block):
                 yield "id", task["id"]
                 yield "url", task["url"]
                 yield "is_completed", task["is_completed"]
+                yield "complete_data", task
 
         except Exception as e:
             yield "error", str(e)
@@ -222,6 +204,7 @@ class TodoistGetTaskBlock(Block):
         project_id: str = SchemaField(description="Project ID containing the task")
         url: str = SchemaField(description="Task URL")
         complete_data: dict = SchemaField(description="Complete task data as dictionary")
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -251,7 +234,6 @@ class TodoistGetTaskBlock(Block):
                         "id": "2995104339",
                         "url": "https://todoist.com/showTask?id=2995104339"
                     },
-                    None,
                 )
             },
         )
@@ -289,19 +271,19 @@ class TodoistUpdateTaskBlock(Block):
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         task_id: str = SchemaField(description="Task ID to update")
-        content: Optional[str] = SchemaField(description="Task content", default=None)
+        content: str = SchemaField(description="Task content")
         description: Optional[str] = SchemaField(description="Task description", default=None)
+        project_id: Optional[str] = SchemaField(description="Project ID this task should belong to", default=None)
+        section_id: Optional[str] = SchemaField(description="Section ID this task should belong to", default=None)
+        parent_id: Optional[str] = SchemaField(description="Parent task ID", default=None)
+        order: Optional[int] = SchemaField(description="Optional order among other tasks", default=None)
         labels: Optional[list[str]] = SchemaField(description="Task labels", default=None)
         priority: Optional[int] = SchemaField(description="Task priority (1-4)", default=None)
-        due_string: Optional[str] = SchemaField(description="Human defined task due date", default=None)
-        due_date: Optional[str] = SchemaField(description="Due date in YYYY-MM-DD format", default=None)
-        due_datetime: Optional[str] = SchemaField(description="Due date and time in RFC3339 format", default=None)
-        due_lang: Optional[str] = SchemaField(description="2-letter language code for due_string", default=None)
+        due_date: Optional[datetime] = SchemaField(description="Due date in YYYY-MM-DD format")
+        deadline_date: Optional[datetime] = SchemaField(description="Specific date in YYYY-MM-DD format relative to user's timezone", default=None)
         assignee_id: Optional[str] = SchemaField(description="Responsible user ID", default=None)
-        duration: Optional[int] = SchemaField(description="Task duration amount", default=None)
         duration_unit: Optional[str] = SchemaField(description="Task duration unit (minute/day)", default=None)
-        deadline_date: Optional[str] = SchemaField(description="Deadline date in YYYY-MM-DD format", default=None)
-        deadline_lang: Optional[str] = SchemaField(description="2-letter language code for deadline", default=None)
+        duration: Optional[int] = SchemaField(description="Task duration amount, You need to selecct the duration unit first", depends_on=["duration_unit"], default=None)
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the update was successful")
@@ -349,17 +331,17 @@ class TodoistUpdateTaskBlock(Block):
             task_updates = {
                 "content": input_data.content,
                 "description": input_data.description,
+                "project_id": input_data.project_id,
+                "section_id": input_data.section_id,
+                "parent_id": input_data.parent_id,
+                "order": input_data.order,
                 "labels": input_data.labels,
                 "priority": input_data.priority,
-                "due_string": input_data.due_string,
                 "due_date": input_data.due_date,
-                "due_datetime": input_data.due_datetime,
-                "due_lang": input_data.due_lang,
+                "deadline_date": input_data.deadline_date,
                 "assignee_id": input_data.assignee_id,
                 "duration": input_data.duration,
-                "duration_unit": input_data.duration_unit,
-                "deadline_date": input_data.deadline_date,
-                "deadline_lang": input_data.deadline_lang
+                "duration_unit": input_data.duration_unit
             }
 
             is_success = self.update_task(
@@ -369,10 +351,8 @@ class TodoistUpdateTaskBlock(Block):
             )
 
             yield "success", is_success
-            yield "error", None
 
         except Exception as e:
-            yield "success", False
             yield "error", str(e)
 
 class TodoistCloseTaskBlock(Block):
@@ -457,10 +437,9 @@ class TodoistReopenTaskBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("success", True),
-                ("error", None)
             ],
             test_mock={
-                "reopen_task": lambda *args, **kwargs: (True, None)
+                "reopen_task": lambda *args, **kwargs: (True)
             },
         )
 
@@ -483,10 +462,8 @@ class TodoistReopenTaskBlock(Block):
         try:
             is_success = self.reopen_task(credentials, input_data.task_id)
             yield "success", is_success
-            yield "error", None
 
         except Exception as e:
-            yield "success", False
             yield "error", str(e)
 
 class TodoistDeleteTaskBlock(Block):
@@ -514,10 +491,9 @@ class TodoistDeleteTaskBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("success", True),
-                ("error", None)
             ],
             test_mock={
-                "delete_task": lambda *args, **kwargs: (True, None)
+                "delete_task": lambda *args, **kwargs: (True)
             },
         )
 
@@ -540,8 +516,6 @@ class TodoistDeleteTaskBlock(Block):
         try:
             is_success = self.delete_task(credentials, input_data.task_id)
             yield "success", is_success
-            yield "error", None
 
         except Exception as e:
-            yield "success", False
             yield "error", str(e)

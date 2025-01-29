@@ -1,3 +1,4 @@
+from backend.blocks.todoist._types import Colors
 from typing_extensions import Optional
 from todoist_api_python.api import TodoistAPI
 
@@ -19,15 +20,12 @@ class TodoistCreateLabelBlock(Block):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         name: str = SchemaField(description="Name of the label")
         order: Optional[int] = SchemaField(description="Label order", default=None)
-        color: Optional[str] = SchemaField(description="The color of the label icon", default=None)
-        is_favorite: Optional[bool] = SchemaField(description="Whether the label is a favorite", default=None)
+        color: Optional[Colors] = SchemaField(description="The color of the label icon", default=Colors.charcoal)
+        is_favorite: bool = SchemaField(description="Whether the label is a favorite", default=False)
 
     class Output(BlockSchema):
-        id: str = SchemaField(description="ID of created label")
-        name: str = SchemaField(description="Name of the label")
-        color: str = SchemaField(description="Color of the label")
-        order: int = SchemaField(description="Label order")
-        is_favorite: bool = SchemaField(description="Favorite status")
+        success: bool = SchemaField(description="Whether label creation was successful")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -45,22 +43,12 @@ class TodoistCreateLabelBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("id", "2156154810"),
-                ("name", "Test Label"),
-                ("color", "charcoal"),
-                ("order", 1),
-                ("is_favorite", False)
+                ("success", True)
             ],
             test_mock={
                 "create_label": lambda *args, **kwargs: (
-                    {
-                        "id": "2156154810",
-                        "name": "Test Label",
-                        "color": "charcoal",
-                        "order": 1,
-                        "is_favorite": False
-                    },
-                    None,
+                    True,
+                    None
                 )
             },
         )
@@ -69,8 +57,8 @@ class TodoistCreateLabelBlock(Block):
     def create_label(credentials: TodoistCredentials, name: str, **kwargs):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
-            label = api.add_label(name=name, **kwargs)
-            return label.__dict__
+            api.add_label(name=name, **kwargs)
+            return True
 
         except Exception as e:
             raise e
@@ -85,22 +73,17 @@ class TodoistCreateLabelBlock(Block):
         try:
             label_args = {
                 "order": input_data.order,
-                "color": input_data.color,
+                "color": input_data.color.value if input_data.color is not None else None,
                 "is_favorite": input_data.is_favorite
             }
 
-            label_data = self.create_label(
+            success = self.create_label(
                 credentials,
                 input_data.name,
                 **{k:v for k,v in label_args.items() if v is not None}
             )
 
-            if label_data:
-                yield "id", label_data["id"]
-                yield "name", label_data["name"]
-                yield "color", label_data["color"]
-                yield "order", label_data["order"]
-                yield "is_favorite", label_data["is_favorite"]
+            yield "success", success
 
         except Exception as e:
             yield "error", str(e)
@@ -112,7 +95,10 @@ class TodoistListLabelsBlock(Block):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
 
     class Output(BlockSchema):
-        labels: list = SchemaField(description="List of labels")
+        labels: list = SchemaField(description="List of complete label data")
+        label_ids: list = SchemaField(description="List of label IDs")
+        label_names: list = SchemaField(description="List of label names")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -134,7 +120,9 @@ class TodoistListLabelsBlock(Block):
                         "order": 1,
                         "is_favorite": False
                     }
-                ])
+                ]),
+                ("label_ids", ["2156154810"]),
+                ("label_names", ["Test Label"])
             ],
             test_mock={
                 "get_labels": lambda *args, **kwargs: (
@@ -170,6 +158,8 @@ class TodoistListLabelsBlock(Block):
         try:
             labels = self.get_labels(credentials)
             yield "labels", labels
+            yield "label_ids", [label["id"] for label in labels]
+            yield "label_names", [label["name"] for label in labels]
 
         except Exception as e:
             yield "error", str(e)
@@ -187,6 +177,9 @@ class TodoistGetLabelBlock(Block):
         color: str = SchemaField(description="Color of the label")
         order: int = SchemaField(description="Label order")
         is_favorite: bool = SchemaField(description="Favorite status")
+
+        error: str = SchemaField(description="Error message if the request failed")
+
 
     def __init__(self):
         super().__init__(
@@ -263,11 +256,8 @@ class TodoistUpdateLabelBlock(Block):
         is_favorite: Optional[bool] = SchemaField(description="Whether the label is a favorite", default=None)
 
     class Output(BlockSchema):
-        id: str = SchemaField(description="ID of the label")
-        name: str = SchemaField(description="Name of the label")
-        color: str = SchemaField(description="Color of the label")
-        order: int = SchemaField(description="Label order")
-        is_favorite: bool = SchemaField(description="Favorite status")
+        success: bool = SchemaField(description="Whether the update was successful")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -286,22 +276,12 @@ class TodoistUpdateLabelBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("id", "2156154810"),
-                ("name", "Updated Label"),
-                ("color", "charcoal"),
-                ("order", 2),
-                ("is_favorite", True)
+                ("success", True)
             ],
             test_mock={
                 "update_label": lambda *args, **kwargs: (
-                    {
-                        "id": "2156154810",
-                        "name": "Updated Label",
-                        "color": "charcoal",
-                        "order": 2,
-                        "is_favorite": True
-                    },
-                    None,
+                    True,
+                    None
                 )
             },
         )
@@ -310,8 +290,8 @@ class TodoistUpdateLabelBlock(Block):
     def update_label(credentials: TodoistCredentials, label_id: str, **kwargs):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
-            label = api.update_label(label_id=label_id, **kwargs)
-            return label.__dict__
+            api.update_label(label_id=label_id, **kwargs)
+            return True
 
         except Exception as e:
             raise e
@@ -331,18 +311,13 @@ class TodoistUpdateLabelBlock(Block):
                 "is_favorite": input_data.is_favorite
             }
 
-            label_data = self.update_label(
+            success = self.update_label(
                 credentials,
                 input_data.label_id,
                 **{k:v for k,v in label_args.items() if v is not None}
             )
 
-            if label_data:
-                yield "id", label_data["id"]
-                yield "name", label_data["name"]
-                yield "color", label_data["color"]
-                yield "order", label_data["order"]
-                yield "is_favorite", label_data["is_favorite"]
+            yield "success", success
 
         except Exception as e:
             yield "error", str(e)
@@ -356,6 +331,8 @@ class TodoistDeleteLabelBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the deletion was successful")
+        error: str = SchemaField(description="Error message if the request failed")
+
 
     def __init__(self):
         super().__init__(
@@ -410,13 +387,11 @@ class TodoistGetSharedLabelsBlock(Block):
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        omit_personal: Optional[bool] = SchemaField(
-            description="Whether to exclude personal labels",
-            default=False
-        )
 
     class Output(BlockSchema):
         labels: list = SchemaField(description="List of shared label names")
+        error: str = SchemaField(description="Error message if the request failed")
+
 
     def __init__(self):
         super().__init__(
@@ -426,8 +401,7 @@ class TodoistGetSharedLabelsBlock(Block):
             input_schema=TodoistGetSharedLabelsBlock.Input,
             output_schema=TodoistGetSharedLabelsBlock.Output,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "omit_personal": False
+                "credentials": TEST_CREDENTIALS_INPUT
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -442,7 +416,7 @@ class TodoistGetSharedLabelsBlock(Block):
         )
 
     @staticmethod
-    def get_shared_labels(credentials: TodoistCredentials, omit_personal: bool = False):
+    def get_shared_labels(credentials: TodoistCredentials):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
             labels = api.get_shared_labels()
@@ -476,6 +450,8 @@ class TodoistRenameSharedLabelsBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the rename was successful")
+        error: str = SchemaField(description="Error message if the request failed")
+
 
     def __init__(self):
         super().__init__(
@@ -535,6 +511,8 @@ class TodoistRemoveSharedLabelsBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the removal was successful")
+        error: str = SchemaField(description="Error message if the request failed")
+
 
     def __init__(self):
         super().__init__(
