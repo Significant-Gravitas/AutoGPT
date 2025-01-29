@@ -31,7 +31,7 @@ class TodoistCreateLabelBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a7b2c835-3f96-5g9b-d5e3-90f23b153def",
+            id="7288a968-de14-11ef-8997-32d3674e8b7e",
             description="Creates a new label in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateLabelBlock.Input,
@@ -116,7 +116,7 @@ class TodoistListLabelsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d9e4a167-2b8c-4f1d-9c3a-5e7b8d0f4a12",
+            id="776dd750-de14-11ef-b927-32d3674e8b7e",
             description="Gets all personal labels from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListLabelsBlock.Input,
@@ -190,7 +190,7 @@ class TodoistGetLabelBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f8c1b234-5d6e-7a8b-9c0d-1e2f3a4b5c6d",
+            id="7f236514-de14-11ef-bd7a-32d3674e8b7e",
             description="Gets a personal label from Todoist by ID",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetLabelBlock.Input,
@@ -271,7 +271,7 @@ class TodoistUpdateLabelBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b3c4d567-8e9f-0a1b-2c3d-4e5f6g7h8i9j",
+            id="8755614c-de14-11ef-9b56-32d3674e8b7e",
             description="Updates a personal label in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateLabelBlock.Input,
@@ -359,7 +359,7 @@ class TodoistDeleteLabelBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="k4l5m678-9n0p-1q2r-3s4t-5u6v7w8x9y10",
+            id="901b8f86-de14-11ef-98b8-32d3674e8b7e",
             description="Deletes a personal label in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteLabelBlock.Input,
@@ -420,7 +420,7 @@ class TodoistGetSharedLabelsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="m7n8p901-2q3r-4s5t-6u7v-8w9x0y1z2a3b",
+            id="55fba510-de15-11ef-aed2-32d3674e8b7e",
             description="Gets all shared labels from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetSharedLabelsBlock.Input,
@@ -479,7 +479,7 @@ class TodoistRenameSharedLabelsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c5d6e789-0f1g-2h3i-4j5k-6l7m8n9o0p1q",
+            id="9d63ad9a-de14-11ef-ab3f-32d3674e8b7e",
             description="Renames all instances of a shared label",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistRenameSharedLabelsBlock.Input,
@@ -538,7 +538,7 @@ class TodoistRemoveSharedLabelsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="r8s9t012-3u4v-5w6x-7y8z-9a0b1c2d3e4f",
+            id="a6c5cbde-de14-11ef-8863-32d3674e8b7e",
             description="Removes all instances of a shared label",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistRemoveSharedLabelsBlock.Input,

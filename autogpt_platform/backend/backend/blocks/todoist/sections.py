@@ -25,7 +25,7 @@ class TodoistListSectionsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="78a0b724-1c85-4f6a-b3d2-89e12a041dea",
+            id="d6a116d8-de14-11ef-a94c-32d3674e8b7e",
             description="Gets all sections and their details from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListSectionsBlock.Input,
@@ -112,7 +112,7 @@ class TodoistCreateSectionBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b6a1c724-2e85-4f8a-c4d2-89e12a042dec",
+            id="e3025cfc-de14-11ef-b9f2-32d3674e8b7e",
             description="Creates a new section in a Todoist project",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateSectionBlock.Input,
@@ -186,7 +186,7 @@ class TodoistGetSectionBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d4b2c724-3e85-4f8a-c4d2-89e12a043dec",
+            id="ea5580e2-de14-11ef-a5d3-32d3674e8b7e",
             description="Gets a single section by ID from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetSectionBlock.Input,
@@ -251,7 +251,7 @@ class TodoistDeleteSectionBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e5c3c724-4e85-4f8a-c4d2-89e12a044dec",
+            id="f0e52eee-de14-11ef-9b12-32d3674e8b7e",
             description="Deletes a section and all its tasks from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteSectionBlock.Input,

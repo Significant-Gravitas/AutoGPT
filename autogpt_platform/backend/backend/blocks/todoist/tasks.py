@@ -41,7 +41,7 @@ class TodoistCreateTaskBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b6a1c724-2e85-4f8a-c4d2-89e12a042def",
+            id="fde4f458-de14-11ef-bf0c-32d3674e8b7e",
             description="Creates a new task in a Todoist project",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateTaskBlock.Input,
@@ -142,7 +142,7 @@ class TodoistGetTasksBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e9a2c114-3e85-4f2a-c4d2-89e12a042123",
+            id="0b706e86-de15-11ef-a113-32d3674e8b7e",
             description="Get active tasks from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetTasksBlock.Input,
@@ -225,7 +225,7 @@ class TodoistGetTaskBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a7b3c445-4e85-4f2a-c4d2-89e12a042789",
+            id="16d7dc8c-de15-11ef-8ace-32d3674e8b7e",
             description="Get an active task from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetTaskBlock.Input,
@@ -305,11 +305,11 @@ class TodoistUpdateTaskBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the update was successful")
-        error: Optional[str] = SchemaField(description="Error message if update failed", default=None)
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
-            id="c8d4e556-5f96-4f3a-c4d2-89e12a042abc",
+            id="1eee6d32-de15-11ef-a2ff-32d3674e8b7e",
             description="Updates an existing task in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateTaskBlock.Input,
@@ -384,11 +384,11 @@ class TodoistCloseTaskBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the task was successfully closed")
-        error: Optional[str] = SchemaField(description="Error message if close failed", default=None)
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
-            id="d9e5f667-6g97-4f4a-c4d2-89e12a042def",
+            id="29fac798-de15-11ef-b839-32d3674e8b7e",
             description="Closes a task in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCloseTaskBlock.Input,
@@ -441,11 +441,11 @@ class TodoistReopenTaskBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the task was successfully reopened")
-        error: Optional[str] = SchemaField(description="Error message if reopen failed", default=None)
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
-            id="a1b2c333-7h98-4f5a-c4d2-89e12a042ghi",
+            id="2e6bf6f8-de15-11ef-ae7c-32d3674e8b7e",
             description="Reopens a task in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistReopenTaskBlock.Input,
@@ -498,11 +498,11 @@ class TodoistDeleteTaskBlock(Block):
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the task was successfully deleted")
-        error: Optional[str] = SchemaField(description="Error message if deletion failed", default=None)
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
-            id="f4g5h678-8i99-4f6a-c4d2-89e12a042jkl",
+            id="33c29ada-de15-11ef-bcbb-32d3674e8b7e",
             description="Deletes a task in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteTaskBlock.Input,

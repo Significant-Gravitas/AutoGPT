@@ -23,10 +23,11 @@ class TodoistListProjectsBlock(Block):
         ids_list: list[str] = SchemaField(description="List of project IDs")
         url_list: list[str] = SchemaField(description="List of project URLs")
         complete_data: list[dict] = SchemaField(description="Complete project data including all fields")
+        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
-            id="e141bce6-e0fa-4f3f-bbda-8a2bddc2c659",
+            id="5f3e1d5b-6bc5-40e3-97ee-1318b3f38813",
             description="Gets all projects and their details from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListProjectsBlock.Input,
@@ -121,7 +122,7 @@ class TodoistCreateProjectBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f252bde7-e1fa-4f3f-ccda-9a2bddc2c770",
+            id="ade60136-de14-11ef-b5e5-32d3674e8b7e",
             description="Creates a new project in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateProjectBlock.Input,
@@ -217,7 +218,7 @@ class TodoistGetProjectBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="g363cef8-f1fb-4f3f-ddeb-0a2bddc2c881",
+            id="b435b5ea-de14-11ef-8b51-32d3674e8b7e",
             description="Gets details for a specific Todoist project",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetProjectBlock.Input,
@@ -301,7 +302,7 @@ class TodoistUpdateProjectBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="h474dfg9-g2fc-4f3f-eefb-1b2bddc2c992",
+            id="ba41a20a-de14-11ef-91d7-32d3674e8b7e",
             description="Updates an existing project in Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateProjectBlock.Input,
@@ -379,7 +380,7 @@ class TodoistDeleteProjectBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="i585efg0-h3fd-4f3f-ffgc-2c2bddc2c003",
+            id="c2893acc-de14-11ef-a113-32d3674e8b7e",
             description="Deletes a Todoist project and all its contents",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteProjectBlock.Input,
@@ -442,7 +443,7 @@ class TodoistListCollaboratorsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="j696fgh1-i4ge-4f3f-gghd-3d2bddc2d114",
+            id="c99c804e-de14-11ef-9f47-32d3674e8b7e",
             description="Gets all collaborators for a specific Todoist project",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListCollaboratorsBlock.Input,

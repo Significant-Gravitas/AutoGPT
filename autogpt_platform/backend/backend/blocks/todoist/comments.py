@@ -1,3 +1,5 @@
+from typing import Literal, Union
+from pydantic import BaseModel
 from typing_extensions import Optional
 from todoist_api_python.api import TodoistAPI
 
@@ -31,7 +33,7 @@ class TodoistCreateCommentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b6a1c724-2e85-4f8a-c4d2-89e12a042def",
+            id="1bba7e54-2310-4a31-8e6f-54d5f9ab7459",
             description="Creates a new comment on a Todoist task or project",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateCommentBlock.Input,
@@ -108,27 +110,40 @@ class TodoistCreateCommentBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+class TaskId(BaseModel):
+    discriminator: Literal['task']
+    task_id: str
+
+class ProjectId(BaseModel):
+    discriminator: Literal['project']
+    project_id: str
+
 class TodoistGetCommentsBlock(Block):
     """Get all comments for a Todoist task or project"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        task_id: Optional[str] = SchemaField(description="Task ID to get comments for", default=None)
-        project_id: Optional[str] = SchemaField(description="Project ID to get comments for", default=None)
+        id_type: Union[TaskId, ProjectId] = SchemaField(
+            discriminator='discriminator',
+            description="Specify either task_id or project_id to get comments for"
+        )
 
     class Output(BlockSchema):
         comments: list = SchemaField(description="List of comments")
 
     def __init__(self):
         super().__init__(
-            id="b6a1c724-2e85-4f8a-c4d2-89e12a042def",
+            id="9972d8ae-ddf2-11ef-a9b8-32d3674e8b7e",
             description="Get all comments for a Todoist task or project",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetCommentsBlock.Input,
             output_schema=TodoistGetCommentsBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "task_id": "2995104339"
+                "id_type": {
+                    "discriminator": "task",
+                    "task_id": "2995104339"
+                }
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -179,13 +194,18 @@ class TodoistGetCommentsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            if not input_data.task_id and not input_data.project_id:
-                raise ValueError("Either task_id or project_id must be provided")
+            task_id = None
+            project_id = None
+
+            if isinstance(input_data.id_type, TaskId):
+                task_id = input_data.id_type.task_id
+            else:
+                project_id = input_data.id_type.project_id
 
             comments = self.get_comments(
                 credentials,
-                task_id=input_data.task_id,
-                project_id=input_data.project_id
+                task_id=task_id,
+                project_id=project_id
             )
 
             yield "comments", comments
@@ -210,7 +230,7 @@ class TodoistGetCommentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b6a1c724-2e85-4f8a-c4d2-89e12a042dff",
+            id="a809d264-ddf2-11ef-9764-32d3674e8b7e",
             description="Get a single comment from Todoist",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetCommentBlock.Input,
@@ -295,7 +315,7 @@ class TodoistUpdateCommentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b6a1c724-2e85-4f8a-c4d2-89e12a042d00",
+            id="b773c520-ddf2-11ef-9f34-32d3674e8b7e",
             description="Updates a Todoist comment",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateCommentBlock.Input,
@@ -389,7 +409,7 @@ class TodoistDeleteCommentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b6a1c724-2e85-4f8a-c4d2-89e12a042d01",
+            id="bda4c020-ddf2-11ef-b114-32d3674e8b7e",
             description="Deletes a Todoist comment",
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteCommentBlock.Input,
