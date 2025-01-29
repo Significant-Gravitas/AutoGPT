@@ -20,9 +20,11 @@ const preview: Preview = {
   },
   loaders: [mswLoader],
   decorators: [
-    (Story) => {
+    (Story, context) => {
+      const mockOptions = context.parameters.mockBackend || {};
+
       return (
-        <Providers useMockBackend={true}>
+        <Providers useMockBackend mockClientProps={mockOptions}>
           <Story />
         </Providers>
       );

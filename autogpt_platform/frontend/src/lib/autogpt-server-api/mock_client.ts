@@ -1,8 +1,56 @@
 import { faker } from "@faker-js/faker";
 import BackendAPI from "./client";
-import { Block, BlockUIType, User } from "./types";
+import { Block, BlockUIType, ProfileDetails, User } from "./types";
+
+export interface MockClientProps {
+  credits?: number;
+  blocks?: Block[];
+  profile?: ProfileDetails;
+}
+
+// Default mock data
+export const DEFAULT_MOCK_DATA: Required<MockClientProps> = {
+  credits: 10,
+  blocks: [
+    {
+      id: faker.string.uuid(),
+      name: faker.lorem.word(),
+      description: faker.lorem.sentence(),
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+      outputSchema: {
+        type: "object",
+        properties: {},
+      },
+      staticOutput: false,
+      categories: [],
+      uiType: BlockUIType.STANDARD,
+      costs: [],
+      hardcodedValues: {},
+    },
+  ],
+  profile: {
+    name: "John Doe",
+    username: "johndoe",
+    description: "",
+    links: [],
+    avatar_url: "https://avatars.githubusercontent.com/u/123456789?v=4",
+  },
+};
 
 export default class MockClient extends BackendAPI {
+  private props: Required<MockClientProps>;
+
+  constructor(props: MockClientProps = {}) {
+    super();
+    this.props = {
+      ...DEFAULT_MOCK_DATA,
+      ...props,
+    };
+  }
+
   override isAuthenticated(): Promise<boolean> {
     return Promise.resolve(true);
   }
@@ -15,7 +63,7 @@ export default class MockClient extends BackendAPI {
   }
 
   override getUserCredit(page?: string): Promise<{ credits: number }> {
-    return Promise.resolve({ credits: 10 });
+    return Promise.resolve({ credits: this.props.credits });
   }
 
   override getAutoTopUpConfig(): Promise<{
@@ -45,25 +93,10 @@ export default class MockClient extends BackendAPI {
   }
 
   override getBlocks(): Promise<Block[]> {
-    return Promise.resolve([
-      {
-        id: faker.string.uuid(),
-        name: faker.lorem.word(),
-        description: faker.lorem.sentence(),
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-        outputSchema: {
-          type: "object",
-          properties: {},
-        },
-        staticOutput: false,
-        categories: [],
-        uiType: BlockUIType.STANDARD,
-        costs: [],
-        hardcodedValues: {},
-      },
-    ] satisfies Block[]);
+    return Promise.resolve(this.props.blocks satisfies Block[]);
+  }
+
+  override getStoreProfile(page?: string): Promise<ProfileDetails> {
+    return Promise.resolve(this.props.profile);
   }
 }
