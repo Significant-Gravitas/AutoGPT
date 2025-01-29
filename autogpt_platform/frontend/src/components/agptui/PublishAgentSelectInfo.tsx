@@ -6,6 +6,18 @@ import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
 
+export interface PublishAgentInfoInitialData {
+  agent_id: string;
+  title: string;
+  subheader: string;
+  slug: string;
+  thumbnailSrc: string;
+  youtubeLink: string;
+  category: string;
+  description: string;
+  additionalImages?: string[];
+}
+
 interface PublishAgentInfoProps {
   onBack: () => void;
   onSubmit: (
@@ -18,17 +30,7 @@ interface PublishAgentInfoProps {
     categories: string[],
   ) => void;
   onClose: () => void;
-  initialData?: {
-    agent_id: string;
-    title: string;
-    subheader: string;
-    slug: string;
-    thumbnailSrc: string;
-    youtubeLink: string;
-    category: string;
-    description: string;
-    additionalImages?: string[];
-  };
+  initialData?: PublishAgentInfoInitialData;
 }
 
 export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
