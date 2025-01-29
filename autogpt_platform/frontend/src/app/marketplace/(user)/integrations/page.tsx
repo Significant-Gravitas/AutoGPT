@@ -179,6 +179,7 @@ export default function PrivatePage() {
                     {
                       oauth2: "OAuth2 credentials",
                       api_key: "API key",
+                      user_password: "Username & password",
                     }[cred.type]
                   }{" "}
                   - <code>{cred.id}</code>

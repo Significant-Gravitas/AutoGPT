@@ -250,7 +250,7 @@ const FlowEditor: React.FC<{
           if (deletedNodeData) {
             history.push({
               type: "DELETE_NODE",
-              payload: { node: deletedNodeData },
+              payload: { node: deletedNodeData.data },
               undo: () => addNodes(deletedNodeData),
               redo: () => deleteElements({ nodes: [{ id: nodeID }] }),
             });
