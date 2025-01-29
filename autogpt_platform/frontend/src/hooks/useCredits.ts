@@ -10,7 +10,7 @@ const stripePromise = loadStripe(
 export default function useCredits(): {
   credits: number | null;
   fetchCredits: () => void;
-  requestTopUp: (amount: number) => Promise<void>;
+  requestTopUp: (credit_amount: number) => Promise<void>;
   autoTopUpConfig: { amount: number; threshold: number } | null;
   fetchAutoTopUpConfig: () => void;
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
@@ -51,15 +51,14 @@ export default function useCredits(): {
   );
 
   const requestTopUp = useCallback(
-    async (amount: number) => {
+    async (credit_amount: number) => {
       const stripe = await stripePromise;
 
       if (!stripe) {
         return;
       }
 
-      // Convert dollar amount to credit count
-      const response = await api.requestTopUp(amount);
+      const response = await api.requestTopUp(credit_amount);
       router.push(response.checkout_url);
     },
     [api, router],

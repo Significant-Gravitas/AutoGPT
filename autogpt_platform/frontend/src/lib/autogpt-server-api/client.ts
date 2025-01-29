@@ -100,8 +100,8 @@ export default class BackendAPI {
     return this._request("POST", "/credits/auto-top-up", config);
   }
 
-  requestTopUp(amount: number): Promise<{ checkout_url: string }> {
-    return this._request("POST", "/credits", { amount });
+  requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {
+    return this._request("POST", "/credits", { credit_amount });
   }
 
   getUserPaymentPortalLink(): Promise<{ url: string }> {
