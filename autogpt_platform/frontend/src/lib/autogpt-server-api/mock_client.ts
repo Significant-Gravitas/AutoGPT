@@ -6,6 +6,7 @@ export interface MockClientProps {
   credits?: number;
   blocks?: Block[];
   profile?: ProfileDetails;
+  isAuthenticated?: boolean;
 }
 
 // Default mock data
@@ -38,6 +39,7 @@ export const DEFAULT_MOCK_DATA: Required<MockClientProps> = {
     links: [],
     avatar_url: "https://avatars.githubusercontent.com/u/123456789?v=4",
   },
+  isAuthenticated: true,
 };
 
 export default class MockClient extends BackendAPI {
@@ -52,7 +54,7 @@ export default class MockClient extends BackendAPI {
   }
 
   override isAuthenticated(): Promise<boolean> {
-    return Promise.resolve(true);
+    return Promise.resolve(this.props.isAuthenticated);
   }
 
   override createUser(): Promise<User> {
@@ -93,7 +95,7 @@ export default class MockClient extends BackendAPI {
   }
 
   override getBlocks(): Promise<Block[]> {
-    return Promise.resolve(this.props.blocks satisfies Block[]);
+    return Promise.resolve(this.props.blocks);
   }
 
   override getStoreProfile(page?: string): Promise<ProfileDetails> {
