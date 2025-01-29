@@ -183,7 +183,9 @@ async def configure_user_auto_top_up(
     else:
         await _user_credit_model.top_up_credits(user_id, 0)
 
-    await set_auto_top_up(user_id, threshold=request.threshold, amount=request.amount)
+    await set_auto_top_up(
+        user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
+    )
     return "Auto top-up settings updated"
 
 

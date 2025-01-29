@@ -517,10 +517,10 @@ async def get_stripe_customer_id(user_id: str) -> str:
     return customer.id
 
 
-async def set_auto_top_up(user_id: str, threshold: int, amount: int):
+async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     await User.prisma().update(
         where={"id": user_id},
-        data={"topUpConfig": Json({"threshold": threshold, "amount": amount})},
+        data={"topUpConfig": Json(config.model_dump())},
     )
 
 
