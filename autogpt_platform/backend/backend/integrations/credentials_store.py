@@ -137,6 +137,13 @@ screenshotone_credentials = APIKeyCredentials(
     title="Use Credits for ScreenshotOne",
     expires_at=None,
 )
+mem0_credentials = APIKeyCredentials(
+    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    provider="mem0",
+    api_key=SecretStr(settings.secrets.mem0_api_key),
+    title="Use Credits for Mem0",
+    expires_at=None,
+)
 
 
 DEFAULT_CREDENTIALS = [
@@ -154,6 +161,7 @@ DEFAULT_CREDENTIALS = [
     fal_credentials,
     exa_credentials,
     e2b_credentials,
+    mem0_credentials,
     nvidia_credentials,
     screenshotone_credentials,
 ]
@@ -221,6 +229,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(nvidia_credentials)
         if settings.secrets.screenshotone_api_key:
             all_credentials.append(screenshotone_credentials)
+        if settings.secrets.mem0_api_key:
+            all_credentials.append(mem0_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
