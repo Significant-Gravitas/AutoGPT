@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 from typing import (
     TYPE_CHECKING,
@@ -199,27 +200,42 @@ class OAuth2Credentials(_BaseCredentials):
     scopes: list[str]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
 
 
 class APIKeyCredentials(_BaseCredentials):
     type: Literal["api_key"] = "api_key"
     api_key: SecretStr
-    expires_at: Optional[int]
+    expires_at: Optional[int] = Field(
+        default=None,
+        description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
+    )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
+class UserPasswordCredentials(_BaseCredentials):
+    type: Literal["user_password"] = "user_password"
+    username: SecretStr
+    password: SecretStr
+
+    def auth_header(self) -> str:
+        # Converting the string to bytes using encode()
+        # Base64 encoding it with base64.b64encode()
+        # Converting the resulting bytes back to a string with decode()
+        return f"Basic {base64.b64encode(f'{self.username.get_secret_value()}:{self.password.get_secret_value()}'.encode()).decode()}"
+
+
 Credentials = Annotated[
-    OAuth2Credentials | APIKeyCredentials,
+    OAuth2Credentials | APIKeyCredentials | UserPasswordCredentials,
     Field(discriminator="type"),
 ]
 
 
-CredentialsType = Literal["api_key", "oauth2"]
+CredentialsType = Literal["api_key", "oauth2", "user_password"]
 
 
 class OAuthState(BaseModel):
@@ -347,3 +363,10 @@ def CredentialsField(
 
 class ContributorDetails(BaseModel):
     name: str = Field(title="Name", description="The name of the contributor.")
+
+
+class AutoTopUpConfig(BaseModel):
+    amount: int
+    """Amount of credits to top up."""
+    threshold: int
+    """Threshold to trigger auto top up."""
