@@ -362,12 +362,21 @@ class UserCredit(UserCreditBase):
         )
 
     async def top_up_intent(self, user_id: str, amount: int) -> str:
+        if amount < 500 or amount % 100 != 0:
+            raise ValueError(
+                f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
+            )
+
+        if not (user := await get_user_by_id(user_id)):
+            raise ValueError(f"User not found: {user_id}")
+
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=await get_stripe_customer_id(user_id),
+            customer_email=user.email,
             line_items=[
                 {
                     "price_data": {
@@ -387,6 +396,7 @@ class UserCredit(UserCreditBase):
             + "/marketplace/credits?topup=success",
             cancel_url=settings.config.platform_base_url
             + "/marketplace/credits?topup=cancel",
+            return_url=settings.config.platform_base_url + "/marketplace/credits",
         )
 
         await self._add_transaction(
