@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils";
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
-const Tooltip = ({ children, delayDuration = 10 }) => (
+const Tooltip = ({
+  children,
+  delayDuration = 10,
+}: {
+  children: React.ReactNode;
+  delayDuration?: number;
+}) => (
   <TooltipPrimitive.Root delayDuration={delayDuration}>
     {children}
   </TooltipPrimitive.Root>
