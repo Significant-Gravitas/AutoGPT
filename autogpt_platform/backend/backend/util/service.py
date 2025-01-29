@@ -62,7 +62,10 @@ def expose(func: C) -> C:
             return func(*args, **kwargs)
         except Exception as e:
             msg = f"Error in {func.__name__}: {e.__str__()}"
-            logger.exception(msg)
+            if isinstance(e, ValueError):
+                logger.warning(msg)
+            else:
+                logger.exception(msg)
             raise
 
     register_pydantic_serializers(func)
