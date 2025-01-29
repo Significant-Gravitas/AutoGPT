@@ -132,12 +132,14 @@ class UserCreditBase(ABC):
             },
         )
         transaction_balance = (
-            transactions[0].get("_sum", {}).get("amount", 0) + snapshot_balance
+            int(transactions[0].get("_sum", {}).get("amount", 0) + snapshot_balance)
             if transactions
             else snapshot_balance
         )
         transaction_time = (
-            transactions[0].get("_max", {}).get("createdAt", datetime_min)
+            datetime.fromisoformat(
+                str(transactions[0].get("_max", {}).get("createdAt", datetime_min))
+            )
             if transactions
             else snapshot_time
         )
@@ -517,10 +519,10 @@ async def get_stripe_customer_id(user_id: str) -> str:
     return customer.id
 
 
-async def set_auto_top_up(user_id: str, threshold: int, amount: int):
+async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     await User.prisma().update(
         where={"id": user_id},
-        data={"topUpConfig": Json({"threshold": threshold, "amount": amount})},
+        data={"topUpConfig": Json(config.model_dump())},
     )
 
 
