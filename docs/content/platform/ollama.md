@@ -45,13 +45,7 @@ Now that both Ollama and the AutoGPT platform are running we can move onto using
 2. In the "LLM Model" dropdown, select "llama3.2" (This is the model we downloaded earlier)
    ![Select Ollama Model](../imgs/ollama/Ollama-Select-Llama32.png)
 
-3. You will see it ask for "Ollama Credentials", simply press "Enter API key" 
-    ![Ollama Credentials](../imgs/ollama/Ollama-Enter-API-key.png)
-
-    And you will see "Add new API key for Ollama", In the API key field you can enter anything you want as Ollama does not require an API key, I usually just enter a space, for the Name call it "Ollama" then press "Save & use this API key"
-    ![Ollama Credentials](../imgs/ollama/Ollama-Credentials.png)
-
-4. After that you will now see the block again, add your prompts then save and then run the graph:
+3. Now we need to add some prompts then save and then run the graph:
 ![Add Prompt](../imgs/ollama/Ollama-Add-Prompts.png)
 
 That's it! You've successfully setup the AutoGPT platform and made a LLM call to Ollama.

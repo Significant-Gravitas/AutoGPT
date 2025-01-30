@@ -1,6 +1,11 @@
 import { useCallback } from "react";
 import { Node, Edge, useReactFlow, useViewport } from "@xyflow/react";
 
+interface CopyableData {
+  nodes: Node[];
+  edges: Edge[];
+}
+
 export function useCopyPaste(getNextNodeId: () => string) {
   const { setNodes, addEdges, getNodes, getEdges } = useReactFlow();
   const { x, y, zoom } = useViewport();
@@ -10,14 +15,22 @@ export function useCopyPaste(getNextNodeId: () => string) {
       if (event.ctrlKey || event.metaKey) {
         if (event.key === "c" || event.key === "C") {
           const selectedNodes = getNodes().filter((node) => node.selected);
-          const selectedEdges = getEdges().filter((edge) => edge.selected);
+          const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
 
-          const copiedData = {
+          // Only copy edges where both source and target nodes are selected
+          const selectedEdges = getEdges().filter(
+            (edge) =>
+              edge.selected &&
+              selectedNodeIds.has(edge.source) &&
+              selectedNodeIds.has(edge.target),
+          );
+
+          const copiedData: CopyableData = {
             nodes: selectedNodes.map((node) => ({
               ...node,
               data: {
                 ...node.data,
-                connections: [],
+                connections: node.data.connections || [], // Preserve connections
               },
             })),
             edges: selectedEdges,
@@ -28,7 +41,7 @@ export function useCopyPaste(getNextNodeId: () => string) {
         if (event.key === "v" || event.key === "V") {
           const copiedDataString = localStorage.getItem("copiedFlowData");
           if (copiedDataString) {
-            const copiedData = JSON.parse(copiedDataString);
+            const copiedData = JSON.parse(copiedDataString) as CopyableData;
             const oldToNewIdMap: Record<string, string> = {};
 
             const viewportCenter = {
@@ -62,13 +75,14 @@ export function useCopyPaste(getNextNodeId: () => string) {
                 },
                 data: {
                   ...node.data,
+                  connections: node.data.connections || [], // Preserve connections
                   status: undefined,
                   executionResults: undefined,
                 },
               };
             });
 
-            const pastedEdges = copiedData.edges.map((edge: Edge) => {
+            const pastedEdges = copiedData.edges.map((edge) => {
               const newSourceId = oldToNewIdMap[edge.source] ?? edge.source;
               const newTargetId = oldToNewIdMap[edge.target] ?? edge.target;
               return {
@@ -90,10 +104,10 @@ export function useCopyPaste(getNextNodeId: () => string) {
                 if (oldToNewIdMap[node.id]) {
                   const nodeConnections = pastedEdges
                     .filter(
-                      (edge) =>
+                      (edge: Edge) =>
                         edge.source === node.id || edge.target === node.id,
                     )
-                    .map((edge) => ({
+                    .map((edge: Edge) => ({
                       edge_id: edge.id,
                       source: edge.source,
                       target: edge.target,

@@ -98,6 +98,7 @@ export default function PrivatePage() {
   // This contains ids for built-in "Use Credits for X" credentials
   const hiddenCredentials = useMemo(
     () => [
+      "744fdc56-071a-4761-b5a5-0af0ce10a2b5", // Ollama
       "fdb7f412-f519-48d1-9b5f-d2f73d0e01fe", // Revid
       "760f84fc-b270-42de-91f6-08efe1b512d0", // Ideogram
       "6b9fc200-4726-4973-86c9-cd526f5ce5db", // Replicate
@@ -108,6 +109,11 @@ export default function PrivatePage() {
       "7f26de70-ba0d-494e-ba76-238e65e7b45f", // Jina
       "66f20754-1b81-48e4-91d0-f4f0dd82145f", // Unreal Speech
       "b5a0e27d-0c98-4df3-a4b9-10193e1f3c40", // Open Router
+      "6c0f5bd0-9008-4638-9d79-4b40b631803e", // FAL
+      "96153e04-9c6c-4486-895f-5bb683b1ecec", // Exa
+      "78d19fd7-4d59-4a16-8277-3ce310acf2b7", // E2B
+      "96b83908-2789-4dec-9968-18f0ece4ceb3", // Nvidia
+      "ed55ac19-356e-4243-a6cb-bc599e9b716f", // Mem0
     ],
     [],
   );
@@ -123,14 +129,22 @@ export default function PrivatePage() {
 
   const allCredentials = providers
     ? Object.values(providers).flatMap((provider) =>
-        [...provider.savedOAuthCredentials, ...provider.savedApiKeys]
+        [
+          ...provider.savedOAuthCredentials,
+          ...provider.savedApiKeys,
+          ...provider.savedUserPasswordCredentials,
+        ]
           .filter((cred) => !hiddenCredentials.includes(cred.id))
           .map((credentials) => ({
             ...credentials,
             provider: provider.provider,
             providerName: provider.providerName,
             ProviderIcon: providerIcons[provider.provider],
-            TypeIcon: { oauth2: IconUser, api_key: IconKey }[credentials.type],
+            TypeIcon: {
+              oauth2: IconUser,
+              api_key: IconKey,
+              user_password: IconKey,
+            }[credentials.type],
           })),
       )
     : [];
@@ -165,6 +179,7 @@ export default function PrivatePage() {
                     {
                       oauth2: "OAuth2 credentials",
                       api_key: "API key",
+                      user_password: "Username & password",
                     }[cred.type]
                   }{" "}
                   - <code>{cred.id}</code>
