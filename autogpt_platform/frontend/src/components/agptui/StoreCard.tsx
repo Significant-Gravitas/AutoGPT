@@ -74,7 +74,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (
-          <p className="font-lead mb-4 text-base font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="font-lead mb-2.5 text-base font-normal text-neutral-600 dark:text-neutral-400">
             by {creatorName}
           </p>
         )}
