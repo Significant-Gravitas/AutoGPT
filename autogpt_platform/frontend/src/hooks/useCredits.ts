@@ -1,4 +1,5 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import { TransactionHistory } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
@@ -14,6 +15,8 @@ export default function useCredits(): {
   autoTopUpConfig: { amount: number; threshold: number } | null;
   fetchAutoTopUpConfig: () => void;
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
+  transactionHistory: TransactionHistory;
+  fetchTransactionHistory: () => void;
 } {
   const [credits, setCredits] = useState<number | null>(null);
   const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
@@ -64,6 +67,30 @@ export default function useCredits(): {
     [api, router],
   );
 
+  const [transactionHistory, setTransactionHistory] =
+    useState<TransactionHistory>({
+      transactions: [],
+      next_transaction_time: null,
+    });
+
+  const fetchTransactionHistory = useCallback(async () => {
+    const response = await api.getTransactionHistory(
+      transactionHistory.next_transaction_time,
+      20,
+    );
+    setTransactionHistory({
+      transactions: [
+        ...transactionHistory.transactions,
+        ...response.transactions,
+      ],
+      next_transaction_time: response.next_transaction_time,
+    });
+  }, [api, transactionHistory]);
+
+  useEffect(() => {
+    fetchTransactionHistory();
+  }, []);
+
   return {
     credits,
     fetchCredits,
@@ -71,5 +98,7 @@ export default function useCredits(): {
     autoTopUpConfig,
     fetchAutoTopUpConfig,
     updateAutoTopUpConfig,
+    transactionHistory,
+    fetchTransactionHistory,
   };
 }
