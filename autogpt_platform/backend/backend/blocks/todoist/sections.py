@@ -95,72 +95,73 @@ class TodoistListSectionsBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
-class TodoistCreateSectionBlock(Block):
-    """Creates a new section in a Todoist project"""
+# Error in official todoist SDK. Will add this block using sync_api
+# class TodoistCreateSectionBlock(Block):
+#     """Creates a new section in a Todoist project"""
 
-    class Input(BlockSchema):
-        credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        name: str = SchemaField(description="Section name")
-        project_id: str = SchemaField(description="Project ID this section should belong to")
-        order: Optional[int] = SchemaField(description="Optional order among other sections", default=None)
+#     class Input(BlockSchema):
+#         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
+#         name: str = SchemaField(description="Section name")
+#         project_id: str = SchemaField(description="Project ID this section should belong to")
+#         order: Optional[int] = SchemaField(description="Optional order among other sections", default=None)
 
-    class Output(BlockSchema):
-        success: bool = SchemaField(description="Whether section was successfully created")
-        error: str = SchemaField(description="Error message if the request failed")
+#     class Output(BlockSchema):
+#         success: bool = SchemaField(description="Whether section was successfully created")
+#         error: str = SchemaField(description="Error message if the request failed")
 
-    def __init__(self):
-        super().__init__(
-            id="e3025cfc-de14-11ef-b9f2-32d3674e8b7e",
-            description="Creates a new section in a Todoist project",
-            categories={BlockCategory.PRODUCTIVITY},
-            input_schema=TodoistCreateSectionBlock.Input,
-            output_schema=TodoistCreateSectionBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "name": "Groceries",
-                "project_id": "2203306141"
-            },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "create_section": lambda *args, **kwargs: (
-                    {"id": "7025", "project_id": "2203306141", "order": 1, "name": "Groceries"},
-                )
-            },
-        )
+#     def __init__(self):
+#         super().__init__(
+#             id="e3025cfc-de14-11ef-b9f2-32d3674e8b7e",
+#             description="Creates a new section in a Todoist project",
+#             categories={BlockCategory.PRODUCTIVITY},
+#             input_schema=TodoistCreateSectionBlock.Input,
+#             output_schema=TodoistCreateSectionBlock.Output,
+#             test_input={
+#                 "credentials": TEST_CREDENTIALS_INPUT,
+#                 "name": "Groceries",
+#                 "project_id": "2203306141"
+#             },
+#             test_credentials=TEST_CREDENTIALS,
+#             test_output=[
+#                 ("success", True)
+#             ],
+#             test_mock={
+#                 "create_section": lambda *args, **kwargs: (
+#                     {"id": "7025", "project_id": "2203306141", "order": 1, "name": "Groceries"},
+#                 )
+#             },
+#         )
 
-    @staticmethod
-    def create_section(credentials: TodoistCredentials, name: str, project_id: str, order: Optional[int] = None):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            section = api.add_section(name=name, project_id=project_id, order=order)
-            return section.__dict__
+#     @staticmethod
+#     def create_section(credentials: TodoistCredentials, name: str, project_id: str, order: Optional[int] = None):
+#         try:
+#             api = TodoistAPI(credentials.access_token.get_secret_value())
+#             section = api.add_section(name=name, project_id=project_id, order=order)
+#             return section.__dict__
 
-        except Exception as e:
-            raise e
+#         except Exception as e:
+#             raise e
 
-    def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: TodoistCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        try:
-            section_data = self.create_section(
-                credentials,
-                input_data.name,
-                input_data.project_id,
-                input_data.order
-            )
+#     def run(
+#         self,
+#         input_data: Input,
+#         *,
+#         credentials: TodoistCredentials,
+#         **kwargs,
+#     ) -> BlockOutput:
+#         try:
+#             section_data = self.create_section(
+#                 credentials,
+#                 input_data.name,
+#                 input_data.project_id,
+#                 input_data.order
+#             )
 
-            if section_data:
-                yield "success", True
+#             if section_data:
+#                 yield "success", True
 
-        except Exception as e:
-            yield "error", str(e)
+#         except Exception as e:
+#             yield "error", str(e)
 
 class TodoistGetSectionBlock(Block):
     """Gets a single section from Todoist by ID"""
