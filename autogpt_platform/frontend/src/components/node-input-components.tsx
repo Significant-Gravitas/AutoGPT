@@ -41,7 +41,6 @@ import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
 import { CredentialsInput } from "./integrations/credentials-input";
-import { MultiSelect } from "./ui/multiselect-input";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -663,20 +662,6 @@ export const NodeGenericInputField: FC<{
           handleInputClick={handleInputClick}
         />
       );
-    case "object":
-      return (
-        <NodeKeyValueInput
-          nodeId={nodeId}
-          selfKey={propKey}
-          schema={propSchema}
-          entries={currentValue}
-          errors={errors}
-          className={className}
-          displayName={displayName}
-          connections={connections}
-          handleInputChange={handleInputChange}
-        />
-      );
     default:
       console.warn(
         `Schema for '${propKey}' specifies unknown type:`,
@@ -968,10 +953,8 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          /*
-          The `index` is used as a DOM key instead of the actual `key`
-          because the `key` can change with each input, causing the input to lose focus.
-          */
+          // The `index` is used as a DOM key instead of the actual `key`
+          // because the `key` can change with each input, causing the input to lose focus.
           <div key={index}>
             <NodeHandle
               keyName={getEntryKey(key)}

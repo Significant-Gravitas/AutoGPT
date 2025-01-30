@@ -43,6 +43,7 @@ export const Default: Story = {
     runs: 50000,
     rating: 4.7,
     onClick: () => console.log("Card clicked"),
+    backgroundColor: "bg-white",
   },
 };
 
@@ -60,6 +61,7 @@ export const LowRating: Story = {
     runs: 10000,
     rating: 2.8,
     onClick: () => console.log("Card clicked"),
+    backgroundColor: "bg-white",
   },
 };
 
@@ -77,6 +79,7 @@ export const HighRuns: Story = {
     runs: 1000000,
     rating: 4.9,
     onClick: () => console.log("Card clicked"),
+    backgroundColor: "bg-white",
   },
 };
 
@@ -92,6 +95,7 @@ export const NoCreatorImage: Story = {
     runs: 75000,
     rating: 4.5,
     onClick: () => console.log("Card clicked"),
+    backgroundColor: "bg-white",
   },
 };
 
@@ -108,6 +112,7 @@ export const ShortDescription: Story = {
     runs: 50000,
     rating: 4.2,
     onClick: () => console.log("Card clicked"),
+    backgroundColor: "bg-white",
   },
 };
 
@@ -125,6 +130,7 @@ export const WithInteraction: Story = {
     runs: 200000,
     rating: 4.6,
     onClick: () => console.log("Card clicked"),
+    backgroundColor: "bg-white",
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
