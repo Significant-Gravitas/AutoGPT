@@ -363,8 +363,10 @@ async def test_execute_preset(server: SpinTestServer):
         agent_id=test_graph.id,
         agent_version=test_graph.version,
         inputs={
-            "dictionary": {"key1": "Hello", "key2": "World"},
-            "selected_value": "key2",
+            "node_input": {
+                "dictionary": {"key1": "Hello", "key2": "World"},
+                "selected_value": "key2",
+            }
         },
         is_active=True,
     )
@@ -453,11 +455,14 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
         agent_id=test_graph.id,
         agent_version=test_graph.version,
         inputs={
-            "dictionary": {"key1": "Hello", "key2": "World"},
-            "selected_value": "key2",
+            "node_input": {
+                "dictionary": {"key1": "Hello", "key2": "World"},
+                "selected_value": "key2",
+            }
         },
         is_active=True,
     )
+
     created_preset = await server.agent_server.test_create_preset(preset, test_user.id)
 
     # Execute preset with overriding values
@@ -465,16 +470,17 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
         graph_id=test_graph.id,
         graph_version=test_graph.version,
         preset_id=created_preset.id,
-        node_input={"selected_value": "key1"},
+        node_input={"node_input": {"selected_value": "key1"}},
         user_id=test_user.id,
     )
 
     # Verify execution
-    assert result is not None
+    assert result is not None, f"Result should not be None: {result}"
     graph_exec_id = result["id"]
 
     # Wait for execution to complete
     executions = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
+    # assert executions == [], f"Executions: {executions}"
     assert len(executions) == 4
 
     # FindInDictionaryBlock should wait for the input pin to be provided,

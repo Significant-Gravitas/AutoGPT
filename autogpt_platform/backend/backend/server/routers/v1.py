@@ -487,6 +487,7 @@ def execute_graph(
     graph_version: Optional[int] = None,
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
+        logger.info(f"Node input: {node_input}")
         graph_exec = execution_manager_client().add_execution(
             graph_id, node_input, user_id=user_id, graph_version=graph_version
         )

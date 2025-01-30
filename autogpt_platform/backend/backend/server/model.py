@@ -71,6 +71,8 @@ class Pagination(pydantic.BaseModel):
     page_size: int = pydantic.Field(
         description="Number of items per page.", examples=[25]
     )
+
+
 class RequestTopUp(pydantic.BaseModel):
     amount: int
     """Amount of credits to top up."""

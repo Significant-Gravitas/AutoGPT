@@ -215,7 +215,7 @@ class AgentServer(backend.util.service.AppProcess):
         graph_id: str,
         graph_version: int,
         preset_id: str,
-        node_input: dict[typing.Any, typing.Any],
+        node_input: dict[Any, Any],
         user_id: str,
     ):
         return await backend.server.v2.library.routes.presets.execute_preset(

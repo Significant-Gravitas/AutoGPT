@@ -73,6 +73,10 @@ async def create_preset(
     ],
 ) -> backend.server.v2.library.model.LibraryAgentPreset:
     try:
+        # Automatically correct node_input format.
+        if preset.inputs is not None and "node_input" not in preset.inputs:
+            preset.inputs["node_input"] = preset.inputs
+
         return await backend.server.v2.library.db.create_or_update_preset(
             user_id, preset
         )
@@ -133,12 +137,20 @@ async def execute_preset(
             raise fastapi.HTTPException(status_code=404, detail="Preset not found")
 
         logger.info(f"Preset inputs: {preset.inputs}")
+        logger.info(f"Node input: {node_input}")
 
         updated_node_input = node_input.copy()
-        # Merge in preset input values
-        for key, value in preset.inputs.items():
-            if key not in updated_node_input:
-                updated_node_input[key] = value
+        if "node_input" not in updated_node_input:
+            updated_node_input = preset.inputs
+
+        elif "node_input" in preset.inputs and "node_input" in updated_node_input:
+            # Merge in preset input values
+            for key, value in preset.inputs["node_input"].items():
+                # If there is a value to update, update it
+                if key not in updated_node_input["node_input"]:
+                    updated_node_input["node_input"][key] = value
+
+        logger.info(f"Updated node input: {updated_node_input}")
 
         execution = execution_manager_client().add_execution(
             graph_id=graph_id,
