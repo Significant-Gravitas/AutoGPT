@@ -151,7 +151,9 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
 ):
-    checkout_url = await _user_credit_model.top_up_intent(user_id, request.amount)
+    checkout_url = await _user_credit_model.top_up_intent(
+        user_id, request.credit_amount
+    )
     return {"checkout_url": checkout_url}
 
 
