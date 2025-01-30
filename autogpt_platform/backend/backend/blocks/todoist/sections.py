@@ -197,9 +197,12 @@ class TodoistGetSectionBlock(Block):
                 ("name", "Groceries")
             ],
             test_mock={
-                "get_section": lambda *args, **kwargs: (
-                    {"id": "7025", "project_id": "2203306141", "order": 1, "name": "Groceries"},
-                )
+                "get_section": lambda *args, **kwargs: {
+                    "id": "7025",
+                    "project_id": "2203306141",
+                    "order": 1,
+                    "name": "Groceries"
+                }
             },
         )
 

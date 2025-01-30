@@ -41,7 +41,7 @@ class TodoistCreateLabelBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "name": "Test Label",
-                "color": "charcoal",
+                "color": Colors.charcoal.value,
                 "order": 1,
                 "is_favorite": False
             },
@@ -54,16 +54,13 @@ class TodoistCreateLabelBlock(Block):
                 ("is_favorite", False)
             ],
             test_mock={
-                "create_label": lambda *args, **kwargs: (
-                    {
-                        "id": "2156154810",
-                        "name": "Test Label",
-                        "color": "charcoal",
-                        "order": 1,
-                        "is_favorite": False
-                    },
-                    None
-                )
+                "create_label": lambda *args, **kwargs: {
+                    "id": "2156154810",
+                    "name": "Test Label",
+                    "color": "charcoal",
+                    "order": 1,
+                    "is_favorite": False
+                }
             },
         )
 
@@ -144,16 +141,13 @@ class TodoistListLabelsBlock(Block):
                 ("label_names", ["Test Label"])
             ],
             test_mock={
-                "get_labels": lambda *args, **kwargs: (
-                    [{
-                        "id": "2156154810",
-                        "name": "Test Label",
-                        "color": "charcoal",
-                        "order": 1,
-                        "is_favorite": False
-                    }],
-                    None,
-                )
+                "get_labels": lambda *args, **kwargs: [{
+                    "id": "2156154810",
+                    "name": "Test Label",
+                    "color": "charcoal",
+                    "order": 1,
+                    "is_favorite": False
+                }]
             },
         )
 
@@ -220,16 +214,13 @@ class TodoistGetLabelBlock(Block):
                 ("is_favorite", False)
             ],
             test_mock={
-                "get_label": lambda *args, **kwargs: (
-                    {
-                        "id": "2156154810",
-                        "name": "Test Label",
-                        "color": "charcoal",
-                        "order": 1,
-                        "is_favorite": False
-                    },
-                    None,
-                )
+                "get_label": lambda *args, **kwargs: {
+                    "id": "2156154810",
+                    "name": "Test Label",
+                    "color": "charcoal",
+                    "order": 1,
+                    "is_favorite": False
+                }
             },
         )
 
@@ -289,7 +280,7 @@ class TodoistUpdateLabelBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "label_id": "2156154810",
                 "name": "Updated Label",
-                "color": "charcoal",
+                "color": Colors.charcoal.value,
                 "order": 2,
                 "is_favorite": True
             },
@@ -298,10 +289,7 @@ class TodoistUpdateLabelBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "update_label": lambda *args, **kwargs: (
-                    True,
-                    None
-                )
+                "update_label": lambda *args, **kwargs: True
             },
         )
 
@@ -372,10 +360,7 @@ class TodoistDeleteLabelBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "delete_label": lambda *args, **kwargs: (
-                    True,
-                    None,
-                )
+                "delete_label": lambda *args, **kwargs: True
             },
         )
 
@@ -429,10 +414,7 @@ class TodoistGetSharedLabelsBlock(Block):
                 ("labels", ["Label1", "Label2", "Label3"])
             ],
             test_mock={
-                "get_shared_labels": lambda *args, **kwargs: (
-                    ["Label1", "Label2", "Label3"],
-                    None,
-                )
+                "get_shared_labels": lambda *args, **kwargs: ["Label1", "Label2", "Label3"]
             },
         )
 
@@ -490,10 +472,7 @@ class TodoistRenameSharedLabelsBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "rename_shared_labels": lambda *args, **kwargs: (
-                    True,
-                    None,
-                )
+                "rename_shared_labels": lambda *args, **kwargs: True
             },
         )
 
@@ -549,10 +528,7 @@ class TodoistRemoveSharedLabelsBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "remove_shared_labels": lambda *args, **kwargs: (
-                    True,
-                    None,
-                )
+                "remove_shared_label": lambda *args, **kwargs: True
             },
         )
 

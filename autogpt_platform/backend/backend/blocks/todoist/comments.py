@@ -69,16 +69,13 @@ class TodoistCreateCommentBlock(Block):
                 ("project_id", None)
             ],
             test_mock={
-                "add_comment": lambda *args, **kwargs: (
-                    {
-                        "id": "2992679862",
-                        "content": "Test comment",
-                        "posted_at": "2016-09-22T07:00:00.000000Z",
-                        "task_id": "2995104339",
-                        "project_id": None
-                    },
-                    None,
-                )
+                "create_comment": lambda content, credentials, task_id=None, project_id=None, attachment=None: {
+                    "id": "2992679862",
+                    "content": "Test comment",
+                    "posted_at": "2016-09-22T07:00:00.000000Z",
+                    "task_id": "2995104339",
+                    "project_id": None
+                }
             },
         )
 
@@ -176,19 +173,16 @@ class TodoistGetCommentsBlock(Block):
                 ])
             ],
             test_mock={
-                "get_comments": lambda *args, **kwargs: (
-                    [
-                        {
-                            "id": "2992679862",
-                            "content": "Test comment",
-                            "posted_at": "2016-09-22T07:00:00.000000Z",
-                            "task_id": "2995104339",
-                            "project_id": None,
-                            "attachment": None
-                        }
-                    ],
-                    None,
-                )
+                "get_comments": lambda credentials, task_id=None, project_id=None: [
+                    {
+                        "id": "2992679862",
+                        "content": "Test comment",
+                        "posted_at": "2016-09-22T07:00:00.000000Z",
+                        "task_id": "2995104339",
+                        "project_id": None,
+                        "attachment": None
+                    }
+                ]
             },
         )
 
@@ -268,17 +262,14 @@ class TodoistGetCommentBlock(Block):
                 ("attachment", None)
             ],
             test_mock={
-                "get_comment": lambda *args, **kwargs: (
-                    {
-                        "content": "Test comment",
-                        "id": "2992679862",
-                        "posted_at": "2016-09-22T07:00:00.000000Z",
-                        "project_id": None,
-                        "task_id": "2995104339",
-                        "attachment": None
-                    },
-                    None,
-                )
+                "get_comment": lambda credentials, comment_id: {
+                    "content": "Test comment",
+                    "id": "2992679862",
+                    "posted_at": "2016-09-22T07:00:00.000000Z",
+                    "project_id": None,
+                    "task_id": "2995104339",
+                    "attachment": None
+                }
             },
         )
 
@@ -345,10 +336,7 @@ class TodoistUpdateCommentBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "update_comment": lambda *args, **kwargs: (
-                    True,
-                    None,
-                )
+                "update_comment": lambda credentials, comment_id, content: True
             },
         )
 
@@ -411,10 +399,7 @@ class TodoistDeleteCommentBlock(Block):
                 ("success", True)
             ],
             test_mock={
-                "delete_comment": lambda *args, **kwargs: (
-                    True,
-                    None,
-                )
+                "delete_comment": lambda credentials, comment_id: True
             },
         )
 

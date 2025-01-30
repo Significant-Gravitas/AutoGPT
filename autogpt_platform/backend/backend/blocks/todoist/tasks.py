@@ -27,7 +27,7 @@ class TodoistCreateTaskBlock(Block):
         order: Optional[int] = SchemaField(description="Optional order among other tasks,[Non-zero integer value used by clients to sort tasks under the same parent]", default=None,advanced=True)
         labels: Optional[list[str]] = SchemaField(description="Task labels", default=None, advanced=True)
         priority: Optional[int] = SchemaField(description="Task priority from 1 (normal) to 4 (urgent)", default=None, advanced=True)
-        due_date:Optional[datetime] = SchemaField(description="Due date in YYYY-MM-DD format",advanced=True)
+        due_date:Optional[datetime] = SchemaField(description="Due date in YYYY-MM-DD format",advanced=True, default=None)
         deadline_date: Optional[datetime] = SchemaField(description="Specific date in YYYY-MM-DD format relative to user's timezone", default=None,advanced=True)
         assignee_id: Optional[str] = SchemaField(description="Responsible user ID", default=None,advanced=True)
         duration_unit: Optional[str] = SchemaField(description="Task duration unit (minute/day)", default=None,advanced=True)
@@ -60,14 +60,14 @@ class TodoistCreateTaskBlock(Block):
                     "id": "2995104339",
                     "project_id": "2203306141",
                     "url": "https://todoist.com/showTask?id=2995104339"
-                })
+                }),
             ],
             test_mock={
-                "create_task": lambda *args, **kwargs: {
+                "create_task": lambda *args, **kwargs: ("2995104339", "https://todoist.com/showTask?id=2995104339", {
                     "id": "2995104339",
                     "project_id": "2203306141",
                     "url": "https://todoist.com/showTask?id=2995104339"
-                }
+                })
             },
         )
 
@@ -158,17 +158,15 @@ class TodoistGetTasksBlock(Block):
                     "project_id": "2203306141",
                     "url": "https://todoist.com/showTask?id=2995104339",
                     "is_completed": False
-                }])
+                }]),
             ],
             test_mock={
-                "get_tasks": lambda *args, **kwargs: (
-                    [{
-                        "id": "2995104339",
-                        "project_id": "2203306141",
-                        "url": "https://todoist.com/showTask?id=2995104339",
-                        "is_completed": False
-                    }],
-                )
+                "get_tasks": lambda *args, **kwargs: [{
+                    "id": "2995104339",
+                    "project_id": "2203306141",
+                    "url": "https://todoist.com/showTask?id=2995104339",
+                    "is_completed": False
+                }]
             }
         )
 
@@ -242,16 +240,14 @@ class TodoistGetTaskBlock(Block):
                     "id": "2995104339",
                     "project_id": "2203306141",
                     "url": "https://todoist.com/showTask?id=2995104339"
-                })
+                }),
             ],
             test_mock={
-                "get_task": lambda *args, **kwargs: (
-                    {
-                        "project_id": "2203306141",
-                        "id": "2995104339",
-                        "url": "https://todoist.com/showTask?id=2995104339"
-                    },
-                )
+                "get_task": lambda *args, **kwargs: {
+                    "project_id": "2203306141",
+                    "id": "2995104339",
+                    "url": "https://todoist.com/showTask?id=2995104339"
+                }
             },
         )
 
@@ -320,11 +316,10 @@ class TodoistUpdateTaskBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("success", True),
-                ("error", None)
+                ("success", True)
             ],
             test_mock={
-                "update_task": lambda *args, **kwargs: (True, None)
+                "update_task": lambda *args, **kwargs: True
             },
         )
 
@@ -411,11 +406,10 @@ class TodoistCloseTaskBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("success", True),
-                ("error", None)
+                ("success", True)
             ],
             test_mock={
-                "close_task": lambda *args, **kwargs: (True, None)
+                "close_task": lambda *args, **kwargs: True
             },
         )
 
