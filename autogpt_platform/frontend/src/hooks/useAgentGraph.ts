@@ -21,7 +21,6 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -41,7 +40,6 @@ export default function useAgentGraph(
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
-  const [agentVersion, setAgentVersion] = useState<number>(0);
   const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
@@ -82,30 +80,6 @@ export default function useAgentGraph(
     [],
   );
 
-  // Connect to WebSocket
-  useEffect(() => {
-    api
-      .connectWebSocket()
-      .then(() => {
-        console.debug("WebSocket connected");
-        api.onWebSocketMessage("execution_event", (data) => {
-          setUpdateQueue((prev) => [...prev, data]);
-        });
-      })
-      .catch((error) => {
-        console.error("Failed to connect WebSocket:", error);
-      });
-
-    if (flowID && flowVersion) {
-      api.subscribeToExecution(flowID, flowVersion);
-      console.debug("Subscribed to execution");
-    }
-
-    return () => {
-      api.disconnectWebSocket();
-    };
-  }, [api, flowID, flowVersion]);
-
   // Load available blocks & flows
   useEffect(() => {
     api
@@ -117,7 +91,28 @@ export default function useAgentGraph(
       .listGraphs()
       .then((flows) => setAvailableFlows(flows))
       .catch();
+
+    api.connectWebSocket();
+
+    return () => {
+      api.disconnectWebSocket();
+    };
   }, [api]);
+
+  // Subscribe to execution events
+  useEffect(() => {
+    api.onWebSocketMessage("execution_event", (data) => {
+      if (data.graph_exec_id != flowExecutionID) {
+        return;
+      }
+      setUpdateQueue((prev) => [...prev, data]);
+    });
+
+    if (flowID && flowVersion) {
+      api.subscribeToExecution(flowID, flowVersion);
+      console.debug("Subscribed to execution");
+    }
+  }, [api, flowID, flowVersion, flowExecutionID]);
 
   //TODO kcze to utils? repeated in Flow
   const formatEdgeID = useCallback((conn: Link | Connection): string => {
@@ -149,7 +144,6 @@ export default function useAgentGraph(
       setSavedAgent(graph);
       setAgentName(graph.name);
       setAgentDescription(graph.description);
-      setAgentVersion(graph.version);
 
       setNodes((prevNodes) => {
         const newNodes = graph.nodes.map((node) => {
@@ -205,7 +199,7 @@ export default function useAgentGraph(
               id: formatEdgeID(link),
               type: "custom",
               data: {
-                // ...prevEdge?.data,
+                // ...prevEdge?.data, //todo kcze check if beads work
                 edgeColor: getTypeColor(
                   getOutputType(newNodes, link.source_id, link.source_name!),
                 ),
@@ -555,7 +549,7 @@ export default function useAgentGraph(
           });
           return;
         }
-        api.subscribeToExecution(savedAgent.id, savedAgent.version);
+        // api.subscribeToExecution(savedAgent.id, savedAgent.version);
         setSaveRunRequest({ request: "run", state: "running" });
         api
           .executeGraph(savedAgent.id, savedAgent.version)

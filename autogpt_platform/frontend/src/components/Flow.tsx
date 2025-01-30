@@ -71,9 +71,8 @@ export const FlowContext = createContext<FlowContextType | null>(null);
 const FlowEditor: React.FC<{
   flowID?: string;
   flowVersion?: string;
-  flowExecutionID?: string;
   className?: string;
-}> = ({ flowID, flowVersion, flowExecutionID, className }) => {
+}> = ({ flowID, flowVersion, className }) => {
   const {
     addNodes,
     addEdges,
@@ -87,6 +86,7 @@ const FlowEditor: React.FC<{
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
   >("animate");
+  const [flowExecutionID, setFlowExecutionID] = useState<string | undefined>();
   const {
     agentName,
     setAgentName,
@@ -164,6 +164,7 @@ const FlowEditor: React.FC<{
     if (params.get("open_scheduling") === "true") {
       setOpenCron(true);
     }
+    setFlowExecutionID(params.get("flowExecutionID") || undefined);
   }, [params]);
 
   useEffect(() => {
