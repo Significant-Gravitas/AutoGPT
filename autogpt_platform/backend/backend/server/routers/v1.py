@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
@@ -31,6 +32,7 @@ from backend.data.api_key import (
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    TransactionHistory,
     get_auto_top_up,
     get_block_costs,
     get_stripe_customer_id,
@@ -244,6 +246,22 @@ async def manage_payment_method(
             status_code=400, detail="Failed to create billing portal session"
         )
     return {"url": session.url}
+
+
+@v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
+async def get_credit_history(
+    user_id: Annotated[str, Depends(get_user_id)],
+    transaction_time: datetime | None = None,
+    transaction_count_limit: int = 100,
+) -> TransactionHistory:
+    if transaction_count_limit < 1 or transaction_count_limit > 1000:
+        raise ValueError("Transaction count limit must be between 1 and 1000")
+
+    return await _user_credit_model.get_transaction_history(
+        user_id=user_id,
+        transaction_time=transaction_time or datetime.max,
+        transaction_count_limit=transaction_count_limit,
+    )
 
 
 ########################################################
