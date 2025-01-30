@@ -1,4 +1,6 @@
 from enum import Enum
+
+
 class Colors(Enum):
     berry_red = "berry_red"
     red = "red"

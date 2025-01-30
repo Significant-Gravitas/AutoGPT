@@ -1,14 +1,14 @@
-from backend.blocks.todoist._types import Colors
-from typing_extensions import Optional
 from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     TodoistCredentials,
-    TodoistCredentialsInput,
     TodoistCredentialsField,
+    TodoistCredentialsInput,
 )
+from backend.blocks.todoist._types import Colors
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
@@ -23,7 +23,9 @@ class TodoistListProjectsBlock(Block):
         names_list: list[str] = SchemaField(description="List of project names")
         ids_list: list[str] = SchemaField(description="List of project IDs")
         url_list: list[str] = SchemaField(description="List of project URLs")
-        complete_data: list[dict] = SchemaField(description="Complete project data including all fields")
+        complete_data: list[dict] = SchemaField(
+            description="Complete project data including all fields"
+        )
         error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
@@ -41,18 +43,29 @@ class TodoistListProjectsBlock(Block):
                 ("names_list", ["Inbox"]),
                 ("ids_list", ["220474322"]),
                 ("url_list", ["https://todoist.com/showProject?id=220474322"]),
-                ("complete_data", [{
-                    "id": "220474322",
-                    "name": "Inbox",
-                    "url": "https://todoist.com/showProject?id=220474322"
-                }])
+                (
+                    "complete_data",
+                    [
+                        {
+                            "id": "220474322",
+                            "name": "Inbox",
+                            "url": "https://todoist.com/showProject?id=220474322",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "get_project_lists": lambda *args, **kwargs: (
                     ["Inbox"],
                     ["220474322"],
                     ["https://todoist.com/showProject?id=220474322"],
-                    [{"id": "220474322", "name": "Inbox", "url": "https://todoist.com/showProject?id=220474322"}],
+                    [
+                        {
+                            "id": "220474322",
+                            "name": "Inbox",
+                            "url": "https://todoist.com/showProject?id=220474322",
+                        }
+                    ],
                     None,
                 )
             },
@@ -102,16 +115,29 @@ class TodoistListProjectsBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistCreateProjectBlock(Block):
     """Creates a new project in Todoist"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         name: str = SchemaField(description="Name of the project", advanced=False)
-        parent_id: Optional[str] = SchemaField(description="Parent project ID", default=None, advanced=True)
-        color: Optional[Colors] = SchemaField(description="Color of the project icon", default=Colors.charcoal, advanced=True)
-        is_favorite: bool = SchemaField(description="Whether the project is a favorite", default=False ,advanced=True)
-        view_style: Optional[str] = SchemaField(description="Display style (list or board)", default=None, advanced=True)
+        parent_id: Optional[str] = SchemaField(
+            description="Parent project ID", default=None, advanced=True
+        )
+        color: Optional[Colors] = SchemaField(
+            description="Color of the project icon",
+            default=Colors.charcoal,
+            advanced=True,
+        )
+        is_favorite: bool = SchemaField(
+            description="Whether the project is a favorite",
+            default=False,
+            advanced=True,
+        )
+        view_style: Optional[str] = SchemaField(
+            description="Display style (list or board)", default=None, advanced=True
+        )
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the creation was successful")
@@ -124,25 +150,24 @@ class TodoistCreateProjectBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateProjectBlock.Input,
             output_schema=TodoistCreateProjectBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "name": "Test Project"
-            },
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "name": "Test Project"},
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "create_project": lambda *args, **kwargs: (True)
-            },
+            test_output=[("success", True)],
+            test_mock={"create_project": lambda *args, **kwargs: (True)},
         )
 
     @staticmethod
-    def create_project(credentials: TodoistCredentials, name: str, parent_id: Optional[str],
-                      color: Optional[Colors], is_favorite: bool , view_style: Optional[str]):
+    def create_project(
+        credentials: TodoistCredentials,
+        name: str,
+        parent_id: Optional[str],
+        color: Optional[Colors],
+        is_favorite: bool,
+        view_style: Optional[str],
+    ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
-            params = {"name": name,"is_favorite":is_favorite}
+            params = {"name": name, "is_favorite": is_favorite}
 
             if parent_id is not None:
                 params["parent_id"] = parent_id
@@ -171,7 +196,7 @@ class TodoistCreateProjectBlock(Block):
                 parent_id=input_data.parent_id,
                 color=input_data.color,
                 is_favorite=input_data.is_favorite,
-                view_style=input_data.view_style
+                view_style=input_data.view_style,
             )
 
             yield "success", success
@@ -179,18 +204,23 @@ class TodoistCreateProjectBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistGetProjectBlock(Block):
     """Gets details for a specific Todoist project"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        project_id: str = SchemaField(description="ID of the project to get details for", advanced=False)
+        project_id: str = SchemaField(
+            description="ID of the project to get details for", advanced=False
+        )
 
     class Output(BlockSchema):
         project_id: str = SchemaField(description="ID of project")
         project_name: str = SchemaField(description="Name of project")
         project_url: str = SchemaField(description="URL of project")
-        complete_data: dict = SchemaField(description="Complete project data including all fields")
+        complete_data: dict = SchemaField(
+            description="Complete project data including all fields"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -202,25 +232,32 @@ class TodoistGetProjectBlock(Block):
             output_schema=TodoistGetProjectBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "project_id": "2203306141"
+                "project_id": "2203306141",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("project_id", "2203306141"),
                 ("project_name", "Shopping List"),
                 ("project_url", "https://todoist.com/showProject?id=2203306141"),
-                ("complete_data", {
-                    "id": "2203306141",
-                    "name": "Shopping List",
-                    "url": "https://todoist.com/showProject?id=2203306141"
-                })
+                (
+                    "complete_data",
+                    {
+                        "id": "2203306141",
+                        "name": "Shopping List",
+                        "url": "https://todoist.com/showProject?id=2203306141",
+                    },
+                ),
             ],
             test_mock={
                 "get_project": lambda *args, **kwargs: (
                     "2203306141",
                     "Shopping List",
                     "https://todoist.com/showProject?id=2203306141",
-                    {"id": "2203306141", "name": "Shopping List", "url": "https://todoist.com/showProject?id=2203306141"}
+                    {
+                        "id": "2203306141",
+                        "name": "Shopping List",
+                        "url": "https://todoist.com/showProject?id=2203306141",
+                    },
                 )
             },
         )
@@ -245,8 +282,7 @@ class TodoistGetProjectBlock(Block):
     ) -> BlockOutput:
         try:
             project_id, project_name, project_url, data = self.get_project(
-                credentials=credentials,
-                project_id=input_data.project_id
+                credentials=credentials, project_id=input_data.project_id
             )
 
             if project_id:
@@ -261,16 +297,29 @@ class TodoistGetProjectBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistUpdateProjectBlock(Block):
     """Updates an existing project in Todoist"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        project_id: str = SchemaField(description="ID of project to update", advanced=False)
-        name: Optional[str] = SchemaField(description="New name for the project", default=None, advanced=False)
-        color: Optional[Colors] = SchemaField(description="New color for the project icon", default=None, advanced=True)
-        is_favorite: Optional[bool] = SchemaField(description="Whether the project should be a favorite", default=None, advanced=True)
-        view_style: Optional[str] = SchemaField(description="Display style (list or board)", default=None, advanced=True)
+        project_id: str = SchemaField(
+            description="ID of project to update", advanced=False
+        )
+        name: Optional[str] = SchemaField(
+            description="New name for the project", default=None, advanced=False
+        )
+        color: Optional[Colors] = SchemaField(
+            description="New color for the project icon", default=None, advanced=True
+        )
+        is_favorite: Optional[bool] = SchemaField(
+            description="Whether the project should be a favorite",
+            default=None,
+            advanced=True,
+        )
+        view_style: Optional[str] = SchemaField(
+            description="Display style (list or board)", default=None, advanced=True
+        )
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the update was successful")
@@ -286,20 +335,22 @@ class TodoistUpdateProjectBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
-                "name": "Things To Buy"
+                "name": "Things To Buy",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "update_project": lambda *args, **kwargs: (True)
-            },
+            test_output=[("success", True)],
+            test_mock={"update_project": lambda *args, **kwargs: (True)},
         )
 
     @staticmethod
-    def update_project(credentials: TodoistCredentials, project_id: str, name: Optional[str],
-                      color: Optional[Colors], is_favorite: Optional[bool], view_style: Optional[str]):
+    def update_project(
+        credentials: TodoistCredentials,
+        project_id: str,
+        name: Optional[str],
+        color: Optional[Colors],
+        is_favorite: Optional[bool],
+        view_style: Optional[str],
+    ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
             params = {}
@@ -333,26 +384,27 @@ class TodoistUpdateProjectBlock(Block):
                 name=input_data.name,
                 color=input_data.color,
                 is_favorite=input_data.is_favorite,
-                view_style=input_data.view_style
+                view_style=input_data.view_style,
             )
-
 
             yield "success", success
 
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistDeleteProjectBlock(Block):
     """Deletes a project and all of its sections and tasks"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        project_id: str = SchemaField(description="ID of project to delete", advanced=False)
+        project_id: str = SchemaField(
+            description="ID of project to delete", advanced=False
+        )
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the deletion was successful")
         error: str = SchemaField(description="Error message if the request failed")
-
 
     def __init__(self):
         super().__init__(
@@ -363,15 +415,11 @@ class TodoistDeleteProjectBlock(Block):
             output_schema=TodoistDeleteProjectBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "project_id": "2203306141"
+                "project_id": "2203306141",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "delete_project": lambda *args, **kwargs: (True)
-            },
+            test_output=[("success", True)],
+            test_mock={"delete_project": lambda *args, **kwargs: (True)},
         )
 
     @staticmethod
@@ -393,28 +441,37 @@ class TodoistDeleteProjectBlock(Block):
     ) -> BlockOutput:
         try:
             success = self.delete_project(
-                credentials=credentials,
-                project_id=input_data.project_id
+                credentials=credentials, project_id=input_data.project_id
             )
-
 
             yield "success", success
 
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistListCollaboratorsBlock(Block):
     """Gets all collaborators for a Todoist project"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        project_id: str = SchemaField(description="ID of the project to get collaborators for", advanced=False)
+        project_id: str = SchemaField(
+            description="ID of the project to get collaborators for", advanced=False
+        )
 
     class Output(BlockSchema):
-        collaborator_ids: list[str] = SchemaField(description="List of collaborator IDs")
-        collaborator_names: list[str] = SchemaField(description="List of collaborator names")
-        collaborator_emails: list[str] = SchemaField(description="List of collaborator email addresses")
-        complete_data: list[dict] = SchemaField(description="Complete collaborator data including all fields")
+        collaborator_ids: list[str] = SchemaField(
+            description="List of collaborator IDs"
+        )
+        collaborator_names: list[str] = SchemaField(
+            description="List of collaborator names"
+        )
+        collaborator_emails: list[str] = SchemaField(
+            description="List of collaborator email addresses"
+        )
+        complete_data: list[dict] = SchemaField(
+            description="Complete collaborator data including all fields"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -426,25 +483,24 @@ class TodoistListCollaboratorsBlock(Block):
             output_schema=TodoistListCollaboratorsBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "project_id": "2203306141"
+                "project_id": "2203306141",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("collaborator_ids", ["2671362", "2671366"]),
                 ("collaborator_names", ["Alice", "Bob"]),
                 ("collaborator_emails", ["alice@example.com", "bob@example.com"]),
-                ("complete_data", [
-                    {
-                        "id": "2671362",
-                        "name": "Alice",
-                        "email": "alice@example.com"
-                    },
-                    {
-                        "id": "2671366",
-                        "name": "Bob",
-                        "email": "bob@example.com"
-                    }
-                ])
+                (
+                    "complete_data",
+                    [
+                        {
+                            "id": "2671362",
+                            "name": "Alice",
+                            "email": "alice@example.com",
+                        },
+                        {"id": "2671366", "name": "Bob", "email": "bob@example.com"},
+                    ],
+                ),
             ],
             test_mock={
                 "get_collaborators": lambda *args, **kwargs: (
@@ -452,9 +508,13 @@ class TodoistListCollaboratorsBlock(Block):
                     ["Alice", "Bob"],
                     ["alice@example.com", "bob@example.com"],
                     [
-                        {"id": "2671362", "name": "Alice", "email": "alice@example.com"},
-                        {"id": "2671366", "name": "Bob", "email": "bob@example.com"}
-                    ]
+                        {
+                            "id": "2671362",
+                            "name": "Alice",
+                            "email": "alice@example.com",
+                        },
+                        {"id": "2671366", "name": "Bob", "email": "bob@example.com"},
+                    ],
                 )
             },
         )
@@ -490,8 +550,7 @@ class TodoistListCollaboratorsBlock(Block):
     ) -> BlockOutput:
         try:
             ids, names, emails, data = self.get_collaborators(
-                credentials=credentials,
-                project_id=input_data.project_id
+                credentials=credentials, project_id=input_data.project_id
             )
 
             if ids:

@@ -93,7 +93,7 @@ class TwitterPostTweetBlock(Block):
             discriminator="discriminator",
             description="Additional tweet data (media, deep link, poll, place or quote)",
             advanced=False,
-            default=Media(discriminator="media")
+            default=Media(discriminator="media"),
         )
 
         exclude_reply_user_ids: Optional[List[str]] = SchemaField(

@@ -1,27 +1,32 @@
-from typing_extensions import Optional
 from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     TodoistCredentials,
-    TodoistCredentialsInput,
     TodoistCredentialsField,
+    TodoistCredentialsInput,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+
 
 class TodoistListSectionsBlock(Block):
     """Gets all sections for a Todoist project"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        project_id: Optional[str] = SchemaField(description="Optional project ID to filter sections")
+        project_id: Optional[str] = SchemaField(
+            description="Optional project ID to filter sections"
+        )
 
     class Output(BlockSchema):
         names_list: list[str] = SchemaField(description="List of section names")
         ids_list: list[str] = SchemaField(description="List of section IDs")
-        complete_data: list[dict] = SchemaField(description="Complete section data including all fields")
+        complete_data: list[dict] = SchemaField(
+            description="Complete section data including all fields"
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -33,30 +38,44 @@ class TodoistListSectionsBlock(Block):
             output_schema=TodoistListSectionsBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "project_id": "2203306141"
+                "project_id": "2203306141",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("names_list", ["Groceries"]),
                 ("ids_list", ["7025"]),
-                ("complete_data", [{
-                    "id": "7025",
-                    "project_id": "2203306141",
-                    "order": 1,
-                    "name": "Groceries"
-                }])
+                (
+                    "complete_data",
+                    [
+                        {
+                            "id": "7025",
+                            "project_id": "2203306141",
+                            "order": 1,
+                            "name": "Groceries",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "get_section_lists": lambda *args, **kwargs: (
                     ["Groceries"],
                     ["7025"],
-                    [{"id": "7025", "project_id": "2203306141", "order": 1, "name": "Groceries"}],
+                    [
+                        {
+                            "id": "7025",
+                            "project_id": "2203306141",
+                            "order": 1,
+                            "name": "Groceries",
+                        }
+                    ],
                 )
             },
         )
 
     @staticmethod
-    def get_section_lists(credentials: TodoistCredentials, project_id: Optional[str] = None):
+    def get_section_lists(
+        credentials: TodoistCredentials, project_id: Optional[str] = None
+    ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
             sections = api.get_sections(project_id=project_id)
@@ -83,7 +102,9 @@ class TodoistListSectionsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            names, ids, data = self.get_section_lists(credentials, input_data.project_id)
+            names, ids, data = self.get_section_lists(
+                credentials, input_data.project_id
+            )
 
             if names:
                 yield "names_list", names
@@ -94,6 +115,7 @@ class TodoistListSectionsBlock(Block):
 
         except Exception as e:
             yield "error", str(e)
+
 
 # Error in official todoist SDK. Will add this block using sync_api
 # class TodoistCreateSectionBlock(Block):
@@ -163,6 +185,7 @@ class TodoistListSectionsBlock(Block):
 #         except Exception as e:
 #             yield "error", str(e)
 
+
 class TodoistGetSectionBlock(Block):
     """Gets a single section from Todoist by ID"""
 
@@ -177,7 +200,6 @@ class TodoistGetSectionBlock(Block):
         name: str = SchemaField(description="Name of the section")
         error: str = SchemaField(description="Error message if the request failed")
 
-
     def __init__(self):
         super().__init__(
             id="ea5580e2-de14-11ef-a5d3-32d3674e8b7e",
@@ -185,23 +207,20 @@ class TodoistGetSectionBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetSectionBlock.Input,
             output_schema=TodoistGetSectionBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "section_id": "7025"
-            },
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "section_id": "7025"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("id", "7025"),
                 ("project_id", "2203306141"),
                 ("order", 1),
-                ("name", "Groceries")
+                ("name", "Groceries"),
             ],
             test_mock={
                 "get_section": lambda *args, **kwargs: {
                     "id": "7025",
                     "project_id": "2203306141",
                     "order": 1,
-                    "name": "Groceries"
+                    "name": "Groceries",
                 }
             },
         )
@@ -235,6 +254,7 @@ class TodoistGetSectionBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistDeleteSectionBlock(Block):
     """Deletes a section and all its tasks from Todoist"""
 
@@ -243,9 +263,10 @@ class TodoistDeleteSectionBlock(Block):
         section_id: str = SchemaField(description="ID of section to delete")
 
     class Output(BlockSchema):
-        success: bool = SchemaField(description="Whether section was successfully deleted")
+        success: bool = SchemaField(
+            description="Whether section was successfully deleted"
+        )
         error: str = SchemaField(description="Error message if the request failed")
-
 
     def __init__(self):
         super().__init__(
@@ -254,17 +275,10 @@ class TodoistDeleteSectionBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteSectionBlock.Input,
             output_schema=TodoistDeleteSectionBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "section_id": "7025"
-            },
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "section_id": "7025"},
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "delete_section": lambda *args, **kwargs: (True)
-            },
+            test_output=[("success", True)],
+            test_mock={"delete_section": lambda *args, **kwargs: (True)},
         )
 
     @staticmethod

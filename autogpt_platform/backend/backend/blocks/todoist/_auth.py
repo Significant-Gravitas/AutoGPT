@@ -21,6 +21,7 @@ TodoistCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.TODOIST], Literal["oauth2"]
 ]
 
+
 def TodoistCredentialsField(scopes: list[str]) -> TodoistCredentialsInput:
     """
     Creates a Todoist credentials input on a block.
@@ -33,13 +34,20 @@ def TodoistCredentialsField(scopes: list[str]) -> TodoistCredentialsInput:
         description="The Todoist integration requires OAuth2 authentication.",
     )
 
+
 TEST_CREDENTIALS = OAuth2Credentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="todoist",
     access_token=SecretStr("mock-todoist-access-token"),
     refresh_token=None,
     access_token_expires_at=None,
-    scopes=["task:add", "data:read", "data:read_write", "data:delete", "project:delete"],
+    scopes=[
+        "task:add",
+        "data:read",
+        "data:read_write",
+        "data:delete",
+        "project:delete",
+    ],
     title="Mock Todoist OAuth2 Credentials",
     username="mock-todoist-username",
     refresh_token_expires_at=None,

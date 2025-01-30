@@ -1,26 +1,29 @@
 from typing import Literal, Union
+
 from pydantic import BaseModel
-from typing_extensions import Optional
 from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     TodoistCredentials,
-    TodoistCredentialsInput,
     TodoistCredentialsField,
+    TodoistCredentialsInput,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
 class TaskId(BaseModel):
-    discriminator: Literal['task']
+    discriminator: Literal["task"]
     task_id: str
 
+
 class ProjectId(BaseModel):
-    discriminator: Literal['project']
+    discriminator: Literal["project"]
     project_id: str
+
 
 class TodoistCreateCommentBlock(Block):
     """Creates a new comment on a Todoist task or project"""
@@ -29,19 +32,25 @@ class TodoistCreateCommentBlock(Block):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         content: str = SchemaField(description="Comment content")
         id_type: Union[TaskId, ProjectId] = SchemaField(
-            discriminator='discriminator',
+            discriminator="discriminator",
             description="Specify either task_id or project_id to comment on",
-            default=TaskId(discriminator="task",task_id=""),
-            advanced=False
+            default=TaskId(discriminator="task", task_id=""),
+            advanced=False,
         )
-        attachment: Optional[dict] = SchemaField(description="Optional file attachment", default=None)
+        attachment: Optional[dict] = SchemaField(
+            description="Optional file attachment", default=None
+        )
 
     class Output(BlockSchema):
         id: str = SchemaField(description="ID of created comment")
         content: str = SchemaField(description="Comment content")
         posted_at: str = SchemaField(description="Comment timestamp")
-        task_id: Optional[str] = SchemaField(description="Associated task ID", default=None)
-        project_id: Optional[str] = SchemaField(description="Associated project ID", default=None)
+        task_id: Optional[str] = SchemaField(
+            description="Associated task ID", default=None
+        )
+        project_id: Optional[str] = SchemaField(
+            description="Associated project ID", default=None
+        )
 
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -55,10 +64,7 @@ class TodoistCreateCommentBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "content": "Test comment",
-                "id_type": {
-                    "discriminator": "task",
-                    "task_id": "2995104339"
-                }
+                "id_type": {"discriminator": "task", "task_id": "2995104339"},
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -66,7 +72,7 @@ class TodoistCreateCommentBlock(Block):
                 ("content", "Test comment"),
                 ("posted_at", "2016-09-22T07:00:00.000000Z"),
                 ("task_id", "2995104339"),
-                ("project_id", None)
+                ("project_id", None),
             ],
             test_mock={
                 "create_comment": lambda content, credentials, task_id=None, project_id=None, attachment=None: {
@@ -74,21 +80,26 @@ class TodoistCreateCommentBlock(Block):
                     "content": "Test comment",
                     "posted_at": "2016-09-22T07:00:00.000000Z",
                     "task_id": "2995104339",
-                    "project_id": None
+                    "project_id": None,
                 }
             },
         )
 
     @staticmethod
-    def create_comment(credentials: TodoistCredentials, content: str, task_id: Optional[str] = None,
-                      project_id: Optional[str] = None, attachment: Optional[dict] = None):
+    def create_comment(
+        credentials: TodoistCredentials,
+        content: str,
+        task_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        attachment: Optional[dict] = None,
+    ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
             comment = api.add_comment(
                 content=content,
                 task_id=task_id,
                 project_id=project_id,
-                attachment=attachment
+                attachment=attachment,
             )
             return comment.__dict__
 
@@ -116,7 +127,7 @@ class TodoistCreateCommentBlock(Block):
                 input_data.content,
                 task_id=task_id,
                 project_id=project_id,
-                attachment=input_data.attachment
+                attachment=input_data.attachment,
             )
 
             if comment_data:
@@ -129,16 +140,17 @@ class TodoistCreateCommentBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistGetCommentsBlock(Block):
     """Get all comments for a Todoist task or project"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         id_type: Union[TaskId, ProjectId] = SchemaField(
-            discriminator='discriminator',
+            discriminator="discriminator",
             description="Specify either task_id or project_id to get comments for",
-            default=TaskId(discriminator="task",task_id=""),
-            advanced=False
+            default=TaskId(discriminator="task", task_id=""),
+            advanced=False,
         )
 
     class Output(BlockSchema):
@@ -154,23 +166,23 @@ class TodoistGetCommentsBlock(Block):
             output_schema=TodoistGetCommentsBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "id_type": {
-                    "discriminator": "task",
-                    "task_id": "2995104339"
-                }
+                "id_type": {"discriminator": "task", "task_id": "2995104339"},
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("comments", [
-                    {
-                        "id": "2992679862",
-                        "content": "Test comment",
-                        "posted_at": "2016-09-22T07:00:00.000000Z",
-                        "task_id": "2995104339",
-                        "project_id": None,
-                        "attachment": None
-                    }
-                ])
+                (
+                    "comments",
+                    [
+                        {
+                            "id": "2992679862",
+                            "content": "Test comment",
+                            "posted_at": "2016-09-22T07:00:00.000000Z",
+                            "task_id": "2995104339",
+                            "project_id": None,
+                            "attachment": None,
+                        }
+                    ],
+                )
             ],
             test_mock={
                 "get_comments": lambda credentials, task_id=None, project_id=None: [
@@ -180,15 +192,18 @@ class TodoistGetCommentsBlock(Block):
                         "posted_at": "2016-09-22T07:00:00.000000Z",
                         "task_id": "2995104339",
                         "project_id": None,
-                        "attachment": None
+                        "attachment": None,
                     }
                 ]
             },
         )
 
     @staticmethod
-    def get_comments(credentials: TodoistCredentials, task_id: Optional[str] = None,
-                    project_id: Optional[str] = None):
+    def get_comments(
+        credentials: TodoistCredentials,
+        task_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+    ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
             comments = api.get_comments(task_id=task_id, project_id=project_id)
@@ -214,15 +229,14 @@ class TodoistGetCommentsBlock(Block):
                 project_id = input_data.id_type.project_id
 
             comments = self.get_comments(
-                credentials,
-                task_id=task_id,
-                project_id=project_id
+                credentials, task_id=task_id, project_id=project_id
             )
 
             yield "comments", comments
 
         except Exception as e:
             yield "error", str(e)
+
 
 class TodoistGetCommentBlock(Block):
     """Get a single comment from Todoist using comment ID"""
@@ -235,9 +249,15 @@ class TodoistGetCommentBlock(Block):
         content: str = SchemaField(description="Comment content")
         id: str = SchemaField(description="Comment ID")
         posted_at: str = SchemaField(description="Comment timestamp")
-        project_id: Optional[str] = SchemaField(description="Associated project ID", default=None)
-        task_id: Optional[str] = SchemaField(description="Associated task ID", default=None)
-        attachment: Optional[dict] = SchemaField(description="Optional file attachment", default=None)
+        project_id: Optional[str] = SchemaField(
+            description="Associated project ID", default=None
+        )
+        task_id: Optional[str] = SchemaField(
+            description="Associated task ID", default=None
+        )
+        attachment: Optional[dict] = SchemaField(
+            description="Optional file attachment", default=None
+        )
 
         error: str = SchemaField(description="Error message if the request failed")
 
@@ -250,7 +270,7 @@ class TodoistGetCommentBlock(Block):
             output_schema=TodoistGetCommentBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "comment_id": "2992679862"
+                "comment_id": "2992679862",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -259,7 +279,7 @@ class TodoistGetCommentBlock(Block):
                 ("posted_at", "2016-09-22T07:00:00.000000Z"),
                 ("project_id", None),
                 ("task_id", "2995104339"),
-                ("attachment", None)
+                ("attachment", None),
             ],
             test_mock={
                 "get_comment": lambda credentials, comment_id: {
@@ -268,7 +288,7 @@ class TodoistGetCommentBlock(Block):
                     "posted_at": "2016-09-22T07:00:00.000000Z",
                     "project_id": None,
                     "task_id": "2995104339",
-                    "attachment": None
+                    "attachment": None,
                 }
             },
         )
@@ -292,8 +312,7 @@ class TodoistGetCommentBlock(Block):
     ) -> BlockOutput:
         try:
             comment_data = self.get_comment(
-                credentials,
-                comment_id=input_data.comment_id
+                credentials, comment_id=input_data.comment_id
             )
 
             if comment_data:
@@ -306,6 +325,7 @@ class TodoistGetCommentBlock(Block):
 
         except Exception as e:
             yield "error", str(e)
+
 
 class TodoistUpdateCommentBlock(Block):
     """Updates a Todoist comment"""
@@ -329,25 +349,18 @@ class TodoistUpdateCommentBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "comment_id": "2992679862",
-                "content": "Need one bottle of milk"
+                "content": "Need one bottle of milk",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "update_comment": lambda credentials, comment_id, content: True
-            },
+            test_output=[("success", True)],
+            test_mock={"update_comment": lambda credentials, comment_id, content: True},
         )
 
     @staticmethod
     def update_comment(credentials: TodoistCredentials, comment_id: str, content: str):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
-            api.update_comment(
-                comment_id=comment_id,
-                content=content
-            )
+            api.update_comment(comment_id=comment_id, content=content)
             return True
 
         except Exception as e:
@@ -364,13 +377,14 @@ class TodoistUpdateCommentBlock(Block):
             success = self.update_comment(
                 credentials,
                 comment_id=input_data.comment_id,
-                content=input_data.content
+                content=input_data.content,
             )
 
             yield "success", success
 
         except Exception as e:
             yield "error", str(e)
+
 
 class TodoistDeleteCommentBlock(Block):
     """Deletes a Todoist comment"""
@@ -392,15 +406,11 @@ class TodoistDeleteCommentBlock(Block):
             output_schema=TodoistDeleteCommentBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "comment_id": "2992679862"
+                "comment_id": "2992679862",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "delete_comment": lambda credentials, comment_id: True
-            },
+            test_output=[("success", True)],
+            test_mock={"delete_comment": lambda credentials, comment_id: True},
         )
 
     @staticmethod
@@ -421,10 +431,7 @@ class TodoistDeleteCommentBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.delete_comment(
-                credentials,
-                comment_id=input_data.comment_id
-            )
+            success = self.delete_comment(credentials, comment_id=input_data.comment_id)
 
             yield "success", success
 

@@ -1,14 +1,14 @@
-from backend.blocks.todoist._types import Colors
-from typing_extensions import Optional
 from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     TodoistCredentials,
-    TodoistCredentialsInput,
     TodoistCredentialsField,
+    TodoistCredentialsInput,
 )
+from backend.blocks.todoist._types import Colors
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
@@ -20,8 +20,12 @@ class TodoistCreateLabelBlock(Block):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         name: str = SchemaField(description="Name of the label")
         order: Optional[int] = SchemaField(description="Label order", default=None)
-        color: Optional[Colors] = SchemaField(description="The color of the label icon", default=Colors.charcoal)
-        is_favorite: bool = SchemaField(description="Whether the label is a favorite", default=False)
+        color: Optional[Colors] = SchemaField(
+            description="The color of the label icon", default=Colors.charcoal
+        )
+        is_favorite: bool = SchemaField(
+            description="Whether the label is a favorite", default=False
+        )
 
     class Output(BlockSchema):
         id: str = SchemaField(description="ID of the created label")
@@ -43,7 +47,7 @@ class TodoistCreateLabelBlock(Block):
                 "name": "Test Label",
                 "color": Colors.charcoal.value,
                 "order": 1,
-                "is_favorite": False
+                "is_favorite": False,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -51,7 +55,7 @@ class TodoistCreateLabelBlock(Block):
                 ("name", "Test Label"),
                 ("color", "charcoal"),
                 ("order", 1),
-                ("is_favorite", False)
+                ("is_favorite", False),
             ],
             test_mock={
                 "create_label": lambda *args, **kwargs: {
@@ -59,7 +63,7 @@ class TodoistCreateLabelBlock(Block):
                     "name": "Test Label",
                     "color": "charcoal",
                     "order": 1,
-                    "is_favorite": False
+                    "is_favorite": False,
                 }
             },
         )
@@ -84,14 +88,16 @@ class TodoistCreateLabelBlock(Block):
         try:
             label_args = {
                 "order": input_data.order,
-                "color": input_data.color.value if input_data.color is not None else None,
-                "is_favorite": input_data.is_favorite
+                "color": (
+                    input_data.color.value if input_data.color is not None else None
+                ),
+                "is_favorite": input_data.is_favorite,
             }
 
             label_data = self.create_label(
                 credentials,
                 input_data.name,
-                **{k:v for k,v in label_args.items() if v is not None}
+                **{k: v for k, v in label_args.items() if v is not None},
             )
 
             if label_data:
@@ -103,6 +109,7 @@ class TodoistCreateLabelBlock(Block):
 
         except Exception as e:
             yield "error", str(e)
+
 
 class TodoistListLabelsBlock(Block):
     """Gets all personal labels from Todoist"""
@@ -123,31 +130,34 @@ class TodoistListLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListLabelsBlock.Input,
             output_schema=TodoistListLabelsBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT
-            },
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("labels", [
+                (
+                    "labels",
+                    [
+                        {
+                            "id": "2156154810",
+                            "name": "Test Label",
+                            "color": "charcoal",
+                            "order": 1,
+                            "is_favorite": False,
+                        }
+                    ],
+                ),
+                ("label_ids", ["2156154810"]),
+                ("label_names", ["Test Label"]),
+            ],
+            test_mock={
+                "get_labels": lambda *args, **kwargs: [
                     {
                         "id": "2156154810",
                         "name": "Test Label",
                         "color": "charcoal",
                         "order": 1,
-                        "is_favorite": False
+                        "is_favorite": False,
                     }
-                ]),
-                ("label_ids", ["2156154810"]),
-                ("label_names", ["Test Label"])
-            ],
-            test_mock={
-                "get_labels": lambda *args, **kwargs: [{
-                    "id": "2156154810",
-                    "name": "Test Label",
-                    "color": "charcoal",
-                    "order": 1,
-                    "is_favorite": False
-                }]
+                ]
             },
         )
 
@@ -177,6 +187,7 @@ class TodoistListLabelsBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistGetLabelBlock(Block):
     """Gets a personal label from Todoist by ID"""
 
@@ -193,7 +204,6 @@ class TodoistGetLabelBlock(Block):
 
         error: str = SchemaField(description="Error message if the request failed")
 
-
     def __init__(self):
         super().__init__(
             id="7f236514-de14-11ef-bd7a-32d3674e8b7e",
@@ -203,7 +213,7 @@ class TodoistGetLabelBlock(Block):
             output_schema=TodoistGetLabelBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "label_id": "2156154810"
+                "label_id": "2156154810",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -211,7 +221,7 @@ class TodoistGetLabelBlock(Block):
                 ("name", "Test Label"),
                 ("color", "charcoal"),
                 ("order", 1),
-                ("is_favorite", False)
+                ("is_favorite", False),
             ],
             test_mock={
                 "get_label": lambda *args, **kwargs: {
@@ -219,7 +229,7 @@ class TodoistGetLabelBlock(Block):
                     "name": "Test Label",
                     "color": "charcoal",
                     "order": 1,
-                    "is_favorite": False
+                    "is_favorite": False,
                 }
             },
         )
@@ -254,16 +264,23 @@ class TodoistGetLabelBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistUpdateLabelBlock(Block):
     """Updates a personal label in Todoist using ID"""
 
     class Input(BlockSchema):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         label_id: str = SchemaField(description="ID of the label to update")
-        name: Optional[str] = SchemaField(description="New name of the label", default=None)
+        name: Optional[str] = SchemaField(
+            description="New name of the label", default=None
+        )
         order: Optional[int] = SchemaField(description="Label order", default=None)
-        color: Optional[Colors] = SchemaField(description="The color of the label icon", default=None)
-        is_favorite: bool = SchemaField(description="Whether the label is a favorite (true/false)", default=False)
+        color: Optional[Colors] = SchemaField(
+            description="The color of the label icon", default=None
+        )
+        is_favorite: bool = SchemaField(
+            description="Whether the label is a favorite (true/false)", default=False
+        )
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="Whether the update was successful")
@@ -282,15 +299,11 @@ class TodoistUpdateLabelBlock(Block):
                 "name": "Updated Label",
                 "color": Colors.charcoal.value,
                 "order": 2,
-                "is_favorite": True
+                "is_favorite": True,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "update_label": lambda *args, **kwargs: True
-            },
+            test_output=[("success", True)],
+            test_mock={"update_label": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -324,13 +337,14 @@ class TodoistUpdateLabelBlock(Block):
             success = self.update_label(
                 credentials,
                 input_data.label_id,
-                **{k:v for k,v in label_args.items() if v is not None}
+                **{k: v for k, v in label_args.items() if v is not None},
             )
 
             yield "success", success
 
         except Exception as e:
             yield "error", str(e)
+
 
 class TodoistDeleteLabelBlock(Block):
     """Deletes a personal label in Todoist"""
@@ -343,7 +357,6 @@ class TodoistDeleteLabelBlock(Block):
         success: bool = SchemaField(description="Whether the deletion was successful")
         error: str = SchemaField(description="Error message if the request failed")
 
-
     def __init__(self):
         super().__init__(
             id="901b8f86-de14-11ef-98b8-32d3674e8b7e",
@@ -353,15 +366,11 @@ class TodoistDeleteLabelBlock(Block):
             output_schema=TodoistDeleteLabelBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "label_id": "2156154810"
+                "label_id": "2156154810",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "delete_label": lambda *args, **kwargs: True
-            },
+            test_output=[("success", True)],
+            test_mock={"delete_label": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -388,6 +397,7 @@ class TodoistDeleteLabelBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistGetSharedLabelsBlock(Block):
     """Gets all shared labels from Todoist"""
 
@@ -398,7 +408,6 @@ class TodoistGetSharedLabelsBlock(Block):
         labels: list = SchemaField(description="List of shared label names")
         error: str = SchemaField(description="Error message if the request failed")
 
-
     def __init__(self):
         super().__init__(
             id="55fba510-de15-11ef-aed2-32d3674e8b7e",
@@ -406,15 +415,15 @@ class TodoistGetSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetSharedLabelsBlock.Input,
             output_schema=TodoistGetSharedLabelsBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT
-            },
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("labels", ["Label1", "Label2", "Label3"])
-            ],
+            test_output=[("labels", ["Label1", "Label2", "Label3"])],
             test_mock={
-                "get_shared_labels": lambda *args, **kwargs: ["Label1", "Label2", "Label3"]
+                "get_shared_labels": lambda *args, **kwargs: [
+                    "Label1",
+                    "Label2",
+                    "Label3",
+                ]
             },
         )
 
@@ -442,6 +451,7 @@ class TodoistGetSharedLabelsBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
+
 class TodoistRenameSharedLabelsBlock(Block):
     """Renames all instances of a shared label"""
 
@@ -454,7 +464,6 @@ class TodoistRenameSharedLabelsBlock(Block):
         success: bool = SchemaField(description="Whether the rename was successful")
         error: str = SchemaField(description="Error message if the request failed")
 
-
     def __init__(self):
         super().__init__(
             id="9d63ad9a-de14-11ef-ab3f-32d3674e8b7e",
@@ -465,15 +474,11 @@ class TodoistRenameSharedLabelsBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "name": "OldLabel",
-                "new_name": "NewLabel"
+                "new_name": "NewLabel",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "rename_shared_labels": lambda *args, **kwargs: True
-            },
+            test_output=[("success", True)],
+            test_mock={"rename_shared_labels": lambda *args, **kwargs: True},
         )
 
     @staticmethod
@@ -494,11 +499,14 @@ class TodoistRenameSharedLabelsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            success = self.rename_shared_labels(credentials, input_data.name, input_data.new_name)
+            success = self.rename_shared_labels(
+                credentials, input_data.name, input_data.new_name
+            )
             yield "success", success
 
         except Exception as e:
             yield "error", str(e)
+
 
 class TodoistRemoveSharedLabelsBlock(Block):
     """Removes all instances of a shared label"""
@@ -511,7 +519,6 @@ class TodoistRemoveSharedLabelsBlock(Block):
         success: bool = SchemaField(description="Whether the removal was successful")
         error: str = SchemaField(description="Error message if the request failed")
 
-
     def __init__(self):
         super().__init__(
             id="a6c5cbde-de14-11ef-8863-32d3674e8b7e",
@@ -519,17 +526,10 @@ class TodoistRemoveSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistRemoveSharedLabelsBlock.Input,
             output_schema=TodoistRemoveSharedLabelsBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "name": "LabelToRemove"
-            },
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "name": "LabelToRemove"},
             test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                ("success", True)
-            ],
-            test_mock={
-                "remove_shared_label": lambda *args, **kwargs: True
-            },
+            test_output=[("success", True)],
+            test_mock={"remove_shared_label": lambda *args, **kwargs: True},
         )
 
     @staticmethod
