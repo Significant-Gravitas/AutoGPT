@@ -67,7 +67,6 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           </div>
         )}
       </div>
-
       {/* Content Section */}
       <div className="w-full px-2 py-4">
         {/* Title and Creator */}
