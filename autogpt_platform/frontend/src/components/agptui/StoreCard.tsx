@@ -78,7 +78,6 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             by {creatorName}
           </p>
         )}
-
         {/* Description */}
         <p className="font-geist mb-4 line-clamp-3 text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {description}
