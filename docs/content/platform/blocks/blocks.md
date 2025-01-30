@@ -134,7 +134,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Twitter Post Tweet](twitter/twitter.md#twitter-post-tweet-block) | Creates a tweet on Twitter with text content and optional attachments including media, polls, quotes, or deep links |
 | [Twitter Delete Tweet](twitter/twitter.md#twitter-delete-tweet-block) | Deletes a specified tweet using its tweet ID |
-| [Twitter Search Recent](twitter/twitter.md#twitter-search-recent-block) | Searches for tweets matching specified criteria with options for filtering and pagination |
+| [Twitter Search Recent](twitter/twitter.md#twitter-search-recent-tweets-block) | Searches for tweets matching specified criteria with options for filtering and pagination |
 | [Twitter Get Quote Tweets](twitter/twitter.md#twitter-get-quote-tweets-block) | Gets tweets that quote a specified tweet ID with options for pagination and filtering |
 | [Twitter Retweet](twitter/twitter.md#twitter-retweet-block) | Creates a retweet of a specified tweet using its tweet ID |
 | [Twitter Remove Retweet](twitter/twitter.md#twitter-remove-retweet-block) | Removes an existing retweet of a specified tweet |
