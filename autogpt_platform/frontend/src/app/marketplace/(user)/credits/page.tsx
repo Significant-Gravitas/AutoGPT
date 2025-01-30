@@ -6,9 +6,24 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
 export default function CreditsPage() {
   const api = useBackendAPI();
-  const { requestTopUp, autoTopUpConfig, updateAutoTopUpConfig } = useCredits();
+  const {
+    requestTopUp,
+    autoTopUpConfig,
+    updateAutoTopUpConfig,
+    transactionHistory,
+    fetchTransactionHistory,
+  } = useCredits();
   const router = useRouter();
   const searchParams = useSearchParams();
   const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
@@ -179,6 +194,57 @@ export default function CreditsPage() {
           >
             Open Portal
           </Button>
+
+          {/* Transaction History */}
+          <h2 className="mt-6 text-lg">Transaction History</h2>
+          <br />
+          <p className="text-neutral-600">
+            Running balance might not be ordered accurately when concurrent
+            executions are happening.
+          </p>
+          <br />
+          <Table
+            className={
+              transactionHistory.transactions.length === 0 ? "hidden" : ""
+            }
+          >
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Balance</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {transactionHistory.transactions.map((transaction, i) => (
+                <TableRow key={i}>
+                  <TableCell>
+                    {new Date(transaction.transaction_time).toLocaleString()}
+                  </TableCell>
+                  <TableCell>{transaction.description}</TableCell>
+                  {/* Make it green if it's positive, red if it's negative */}
+                  <TableCell
+                    className={
+                      transaction.amount > 0 ? "text-green-500" : "text-red-500"
+                    }
+                  >
+                    <b>{transaction.amount}</b>
+                  </TableCell>
+                  <TableCell>{transaction.balance}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {transactionHistory.next_transaction_time && (
+            <Button
+              type="submit"
+              className="w-full"
+              onClick={() => fetchTransactionHistory()}
+            >
+              Load More
+            </Button>
+          )}
         </div>
       </div>
     </div>
