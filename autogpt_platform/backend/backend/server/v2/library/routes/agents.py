@@ -3,7 +3,6 @@ import typing
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
-import autogpt_libs.utils.cache
 import fastapi
 
 import backend.server.v2.library.db
@@ -32,7 +31,7 @@ async def get_library_agents(
         agents = await backend.server.v2.library.db.get_library_agents(user_id)
         return agents
     except Exception as e:
-        logger.exception(f"Exception occurred whilst getting library agents: {e}")
+        logger.exception("Exception occurred whilst getting library agents: %s", e)
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to get library agents"
         )
@@ -76,13 +75,15 @@ async def add_agent_to_library(
             detail=f"Store listing version {store_listing_version_id} not found",
         )
     except backend.server.v2.store.exceptions.DatabaseError as e:
-        logger.exception(f"Database error occurred whilst adding agent to library: {e}")
+        logger.exception(
+            "Database error occurred whilst adding agent to library: %s", e
+        )
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to add agent to library"
         )
     except Exception as e:
         logger.exception(
-            f"Unexpected exception occurred whilst adding agent to library: {e}"
+            "Unexpected exception occurred whilst adding agent to library: %s", e
         )
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to add agent to library"
@@ -135,13 +136,13 @@ async def update_library_agent(
         return fastapi.Response(status_code=204)
 
     except backend.server.v2.store.exceptions.DatabaseError as e:
-        logger.exception(f"Database error occurred whilst updating library agent: {e}")
+        logger.exception("Database error occurred whilst updating library agent: %s", e)
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to update library agent"
         )
     except Exception as e:
         logger.exception(
-            f"Unexpected exception occurred whilst updating library agent: {e}"
+            "Unexpected exception occurred whilst updating library agent: %s", e
         )
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to update library agent"

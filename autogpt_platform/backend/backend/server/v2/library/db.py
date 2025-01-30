@@ -5,7 +5,6 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-import backend.data.graph
 import backend.data.includes
 import backend.server.model
 import backend.server.v2.library.model
@@ -18,11 +17,11 @@ async def get_library_agents(
     user_id: str, search_query: str | None = None
 ) -> list[backend.server.v2.library.model.LibraryAgent]:
     logger.debug(
-        f"Fetching library agents for user_id={user_id} search_query={search_query}"
+        "Fetching library agents for user_id=%s search_query=%s", user_id, search_query
     )
 
     if search_query and len(search_query.strip()) > 100:
-        logger.warning(f"Search query too long: {search_query}")
+        logger.warning("Search query too long: %s", search_query)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Search query is too long."
         )
@@ -61,13 +60,15 @@ async def get_library_agents(
             },
             order=[{"updatedAt": "desc"}],
         )
-        logger.debug(f"Retrieved {len(library_agents)} agents for user_id={user_id}.")
+        logger.debug(
+            "Retrieved %s agents for user_id=%s.", len(library_agents), user_id
+        )
         return [
             backend.server.v2.library.model.LibraryAgent.from_db(agent)
             for agent in library_agents
         ]
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error fetching library agents: {e}")
+        logger.error("Database error fetching library agents: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Unable to fetch library agents."
         )
@@ -93,7 +94,7 @@ async def create_library_agent(
         )
         return library_agent
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating agent to library: {str(e)}")
+        logger.error("Database error creating agent to library: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create agent to library"
         ) from e
@@ -122,7 +123,7 @@ async def update_agent_version_in_library(
             ),
         )
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating agent version in library: {str(e)}")
+        logger.error("Database error updating agent version in library: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update agent version in library"
         ) from e
@@ -150,7 +151,7 @@ async def update_library_agent(
             ),
         )
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating library agent: {str(e)}")
+        logger.error("Database error updating library agent: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update library agent"
         ) from e
@@ -164,7 +165,9 @@ async def add_store_agent_to_library(
     if they don't already have it
     """
     logger.debug(
-        f"Adding agent from store listing version {store_listing_version_id} to library for user {user_id}"
+        "Adding agent from store listing version %s to library for user %s",
+        store_listing_version_id,
+        user_id,
     )
 
     try:
@@ -177,17 +180,17 @@ async def add_store_agent_to_library(
 
         if not store_listing_version or not store_listing_version.Agent:
             logger.warning(
-                f"Store listing version not found: {store_listing_version_id}"
+                "Store listing version not found: %s", store_listing_version_id
             )
             raise backend.server.v2.store.exceptions.AgentNotFoundError(
-                f"Store listing version {store_listing_version_id} not found"
+                "Store listing version %s not found", store_listing_version_id
             )
 
         agent = store_listing_version.Agent
 
         if agent.userId == user_id:
             logger.warning(
-                f"User {user_id} cannot add their own agent to their library"
+                "User %s cannot add their own agent to their library", user_id
             )
             raise backend.server.v2.store.exceptions.DatabaseError(
                 "Cannot add own agent to library"
@@ -204,7 +207,7 @@ async def add_store_agent_to_library(
 
         if existing_user_agent:
             logger.debug(
-                f"User {user_id} already has agent {agent.id} in their library"
+                "User %s already has agent %s in their library", user_id, agent.id
             )
             return
 
@@ -217,12 +220,12 @@ async def add_store_agent_to_library(
                 isCreatedByUser=False,
             )
         )
-        logger.debug(f"Added agent {agent.id} to library for user {user_id}")
+        logger.debug("Added agent %s to library for user %s", agent.id, user_id)
 
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error adding agent to library: {str(e)}")
+        logger.error("Database error adding agent to library: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to add agent to library"
         ) from e

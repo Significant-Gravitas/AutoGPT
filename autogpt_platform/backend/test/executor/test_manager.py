@@ -480,7 +480,6 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
 
     # Wait for execution to complete
     executions = await wait_execution(test_user.id, test_graph.id, graph_exec_id)
-    # assert executions == [], f"Executions: {executions}"
     assert len(executions) == 4
 
     # FindInDictionaryBlock should wait for the input pin to be provided,

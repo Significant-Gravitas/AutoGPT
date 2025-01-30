@@ -6,10 +6,8 @@ import autogpt_libs.auth.middleware
 import autogpt_libs.utils.cache
 import fastapi
 
-import backend.data.graph
 import backend.executor
 import backend.integrations.creds_manager
-import backend.integrations.webhooks.graph_lifecycle_hooks
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.util.service
@@ -98,7 +96,7 @@ async def update_preset(
             user_id, preset, preset_id
         )
     except Exception as e:
-        logger.exception(f"Exception occurred whilst updating preset: {e}")
+        logger.exception("Exception occurred whilst updating preset: %s", e)
         raise fastapi.HTTPException(status_code=500, detail="Failed to update preset")
 
 
@@ -113,7 +111,7 @@ async def delete_preset(
         await backend.server.v2.library.db.delete_preset(user_id, preset_id)
         return fastapi.Response(status_code=204)
     except Exception as e:
-        logger.exception(f"Exception occurred whilst deleting preset: {e}")
+        logger.exception("Exception occurred whilst deleting preset: %s", e)
         raise fastapi.HTTPException(status_code=500, detail="Failed to delete preset")
 
 
@@ -136,8 +134,8 @@ async def execute_preset(
         if not preset:
             raise fastapi.HTTPException(status_code=404, detail="Preset not found")
 
-        logger.info(f"Preset inputs: {preset.inputs}")
-        logger.info(f"Node input: {node_input}")
+        logger.info("Preset inputs: %s", preset.inputs)
+        logger.info("Node input: %s", node_input)
 
         updated_node_input = node_input.copy()
         if "node_input" not in updated_node_input:
@@ -150,7 +148,7 @@ async def execute_preset(
                 if key not in updated_node_input["node_input"]:
                     updated_node_input["node_input"][key] = value
 
-        logger.info(f"Updated node input: {updated_node_input}")
+        logger.info("Updated node input: %s", updated_node_input)
 
         execution = execution_manager_client().add_execution(
             graph_id=graph_id,
@@ -160,7 +158,7 @@ async def execute_preset(
             preset_id=preset_id,
         )
 
-        logger.info(f"Execution added: {execution} with input: {updated_node_input}")
+        logger.info("Execution added: %s with input: %s", execution, updated_node_input)
 
         return {"id": execution.graph_exec_id}
     except Exception as e:
