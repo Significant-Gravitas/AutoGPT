@@ -93,13 +93,13 @@ async def test_block_credit_reset(server: SpinTestServer):
 
     # set the calendar to month 2 but use current time from now
     user_credit.time_now = lambda: datetime.now(timezone.utc).replace(
-        month=month2, day=12
+        month=month2, day=1
     )
     month2credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
     # Month 1 result should only affect month 1
     user_credit.time_now = lambda: datetime.now(timezone.utc).replace(
-        month=month1, day=12
+        month=month1, day=1
     )
     month1credit = await user_credit.get_credits(DEFAULT_USER_ID)
     await top_up(100)
@@ -107,7 +107,7 @@ async def test_block_credit_reset(server: SpinTestServer):
 
     # Month 2 balance is unaffected
     user_credit.time_now = lambda: datetime.now(timezone.utc).replace(
-        month=month2, day=12
+        month=month2, day=1
     )
     assert await user_credit.get_credits(DEFAULT_USER_ID) == month2credit
 
