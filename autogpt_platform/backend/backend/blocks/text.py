@@ -252,3 +252,31 @@ class TextSplitBlock(Block):
             if input_data.strip:
                 texts = [text.strip() for text in texts]
             yield "texts", texts
+
+
+class TextReplaceBlock(Block):
+    class Input(BlockSchema):
+        text: str = SchemaField(description="The text to replace.")
+        old: str = SchemaField(description="The old text to replace.")
+        new: str = SchemaField(description="The new text to replace with.")
+
+    class Output(BlockSchema):
+        output: str = SchemaField(description="The text with the replaced text.")
+
+    def __init__(self):
+        super().__init__(
+            id="7e7c87ab-3469-4bcc-9abe-67705091b713",
+            description="This block is used to replace a text with a new text.",
+            categories={BlockCategory.TEXT},
+            input_schema=TextReplaceBlock.Input,
+            output_schema=TextReplaceBlock.Output,
+            test_input=[
+                {"text": "Hello, World!", "old": "Hello", "new": "Hi"},
+            ],
+            test_output=[
+                ("output", "Hi, World!"),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        yield "output", input_data.text.replace(input_data.old, input_data.new)
