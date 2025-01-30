@@ -109,8 +109,8 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex justify-center items-center min-h-screen">
-      <AuthCard >
+    <div className="flex min-h-screen items-center justify-center">
+      <AuthCard>
         <AuthHeader>Reset Password</AuthHeader>
         {user ? (
           <form onSubmit={changePasswordForm.handleSubmit(onChangePassword)}>
