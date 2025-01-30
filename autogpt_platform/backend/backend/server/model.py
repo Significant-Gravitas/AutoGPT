@@ -56,3 +56,7 @@ class SetGraphActiveVersion(pydantic.BaseModel):
 
 class UpdatePermissionsRequest(pydantic.BaseModel):
     permissions: List[APIKeyPermission]
+
+
+class RequestTopUp(pydantic.BaseModel):
+    credit_amount: int

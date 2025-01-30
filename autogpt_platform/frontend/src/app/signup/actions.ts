@@ -38,7 +38,7 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
       }
       console.log("Signed up");
       revalidatePath("/", "layout");
-      redirect("/store/profile");
+      redirect("/marketplace/profile");
     },
   );
 }

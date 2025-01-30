@@ -61,7 +61,7 @@ function SearchResults({
     };
 
     fetchData();
-  }, [searchTerm, sort]);
+  }, [api, searchTerm, sort]);
 
   const agentsCount = agents.length;
   const creatorsCount = creators.length;
@@ -151,11 +151,7 @@ function SearchResults({
             <div className="min-h-[500px] max-w-[1440px]">
               {showAgents && agentsCount > 0 && (
                 <div className="mt-[36px]">
-                  <AgentsSection
-                    agents={agents}
-                    sectionTitle="Agents"
-                    className="font-[Large-Poppins] text-[18px] font-semibold leading-[28px]"
-                  />
+                  <AgentsSection agents={agents} sectionTitle="Agents" />
                 </div>
               )}
 

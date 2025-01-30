@@ -84,7 +84,7 @@ export default function SignupPage() {
   }
 
   return (
-    <AuthCard>
+    <AuthCard className="mx-auto">
       <AuthHeader>Create a new account</AuthHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSignup)}>
@@ -95,7 +95,12 @@ export default function SignupPage() {
               <FormItem className="mb-6">
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="m@example.com" {...field} />
+                  <Input
+                    placeholder="m@example.com"
+                    {...field}
+                    type="email"
+                    autoComplete="email"
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -108,7 +113,7 @@ export default function SignupPage() {
               <FormItem className="mb-6">
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <PasswordInput {...field} />
+                  <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -121,7 +126,7 @@ export default function SignupPage() {
               <FormItem className="mb-4">
                 <FormLabel>Confirm Password</FormLabel>
                 <FormControl>
-                  <PasswordInput {...field} />
+                  <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormDescription className="text-sm font-normal leading-tight text-slate-500">
                   Password needs to be at least 6 characters long
