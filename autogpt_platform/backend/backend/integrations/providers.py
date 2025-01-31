@@ -32,6 +32,7 @@ class ProviderName(str, Enum):
     REPLICATE = "replicate"
     REVID = "revid"
     SLANT3D = "slant3d"
+    SMARTLEAD = "smartlead"
     SMTP = "smtp"
     TWITTER = "twitter"
     TODOIST = "todoist"

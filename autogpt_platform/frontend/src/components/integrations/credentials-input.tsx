@@ -87,6 +87,7 @@ export const providerIcons: Record<
   exa: fallbackIcon,
   hubspot: FaHubspot,
   todoist: fallbackIcon,
+  smartlead: fallbackIcon,
   zerobounce: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
