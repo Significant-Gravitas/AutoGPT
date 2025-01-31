@@ -326,6 +326,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     stripe_api_key: str = Field(default="", description="Stripe API Key")
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
+    screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
+
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
