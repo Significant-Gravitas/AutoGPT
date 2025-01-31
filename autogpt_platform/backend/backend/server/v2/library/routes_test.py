@@ -1,3 +1,5 @@
+import datetime
+
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
@@ -35,21 +37,29 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     mocked_value = [
         backend.server.v2.library.model.LibraryAgent(
             id="test-agent-1",
-            version=1,
-            is_active=True,
+            agent_id="test-agent-1",
+            agent_version=1,
+            preset_id="preset-1",
+            updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            is_favorite=False,
+            is_created_by_user=True,
+            is_latest_version=True,
             name="Test Agent 1",
             description="Test Description 1",
-            isCreatedByUser=True,
             input_schema={"type": "object", "properties": {}},
             output_schema={"type": "object", "properties": {}},
         ),
         backend.server.v2.library.model.LibraryAgent(
             id="test-agent-2",
-            version=1,
-            is_active=True,
+            agent_id="test-agent-2",
+            agent_version=1,
+            preset_id="preset-2",
+            updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            is_favorite=False,
+            is_created_by_user=False,
+            is_latest_version=True,
             name="Test Agent 2",
             description="Test Description 2",
-            isCreatedByUser=False,
             input_schema={"type": "object", "properties": {}},
             output_schema={"type": "object", "properties": {}},
         ),
@@ -65,10 +75,10 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
         for agent in response.json()
     ]
     assert len(data) == 2
-    assert data[0].id == "test-agent-1"
-    assert data[0].isCreatedByUser is True
-    assert data[1].id == "test-agent-2"
-    assert data[1].isCreatedByUser is False
+    assert data[0].agent_id == "test-agent-1"
+    assert data[0].is_created_by_user is True
+    assert data[1].agent_id == "test-agent-2"
+    assert data[1].is_created_by_user is False
     mock_db_call.assert_called_once_with("test-user-id")
 
 
