@@ -2,8 +2,14 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AnalyticsDetails,
   AnalyticsMetrics,
+  APIKey,
   APIKeyCredentials,
+  APIKeyPermission,
   Block,
+  CreatorsResponse,
+  CreatorDetails,
+  CreateAPIKeyResponse,
+  Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
@@ -13,26 +19,21 @@ import {
   GraphExecuteResponse,
   GraphMeta,
   GraphUpdateable,
-  NodeExecutionResult,
   MyAgentsResponse,
+  NodeExecutionResult,
   ProfileDetails,
-  User,
+  Schedule,
+  ScheduleCreatable,
   StoreAgentsResponse,
   StoreAgentDetails,
-  CreatorsResponse,
-  CreatorDetails,
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
   StoreSubmission,
   StoreReviewCreate,
   StoreReview,
-  ScheduleCreatable,
-  Schedule,
+  TransactionHistory,
+  User,
   UserPasswordCredentials,
-  Credentials,
-  APIKeyPermission,
-  CreateAPIKeyResponse,
-  APIKey,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -98,6 +99,23 @@ export default class BackendAPI {
     threshold: number;
   }): Promise<{ amount: number; threshold: number }> {
     return this._request("POST", "/credits/auto-top-up", config);
+  }
+
+  getTransactionHistory(
+    lastTransction: Date | null,
+    countLimit: number,
+  ): Promise<TransactionHistory> {
+    return this._get(
+      `/credits/transactions`,
+      lastTransction
+        ? {
+            transaction_time: lastTransction,
+            transaction_count_limit: countLimit,
+          }
+        : {
+            transaction_count_limit: countLimit,
+          },
+    );
   }
 
   requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {
