@@ -1,7 +1,7 @@
 import logging
 
 from backend.data import integrations
-from backend.data.model import APIKeyCredentials, Credentials, OAuth2Credentials
+from backend.data.model import Credentials
 
 from ._base import WT, BaseWebhooksManager
 
@@ -25,6 +25,6 @@ class ManualWebhookManagerBase(BaseWebhooksManager[WT]):
     async def _deregister_webhook(
         self,
         webhook: integrations.Webhook,
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: Credentials,
     ) -> None:
         pass

@@ -15,7 +15,7 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     featuredCreators: { control: "object" },
-    onCardClick: { action: "cardClicked" },
+    // onCardClick: { action: "cardClicked" },
   },
 } satisfies Meta<typeof FeaturedCreators>;
 
@@ -64,14 +64,14 @@ const defaultCreators = [
 export const Default: Story = {
   args: {
     featuredCreators: defaultCreators,
-    onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
+    // onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
   },
 };
 
 export const SingleCreator: Story = {
   args: {
     featuredCreators: [defaultCreators[0]],
-    onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
+    // onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
   },
 };
 
@@ -98,14 +98,14 @@ export const ManyCreators: Story = {
         num_agents: 25,
       },
     ],
-    onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
+    // onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
   },
 };
 
 export const WithInteraction: Story = {
   args: {
     featuredCreators: defaultCreators,
-    onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
+    // onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

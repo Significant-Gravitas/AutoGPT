@@ -250,7 +250,7 @@ const FlowEditor: React.FC<{
           if (deletedNodeData) {
             history.push({
               type: "DELETE_NODE",
-              payload: { node: deletedNodeData },
+              payload: { node: deletedNodeData.data },
               undo: () => addNodes(deletedNodeData),
               redo: () => deleteElements({ nodes: [{ id: nodeID }] }),
             });
@@ -660,7 +660,7 @@ const FlowEditor: React.FC<{
           onNodeDragStop={onNodeDragEnd}
           onNodeDragStart={onNodeDragStart}
           deleteKeyCode={["Backspace", "Delete"]}
-          minZoom={0.2}
+          minZoom={0.1}
           maxZoom={2}
           className="dark:bg-slate-900"
         >

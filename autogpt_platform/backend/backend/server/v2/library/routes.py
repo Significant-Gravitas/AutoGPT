@@ -91,7 +91,7 @@ async def add_agent_to_library(
 
         # Create a new graph from the template
         graph = await backend.data.graph.get_graph(
-            agent.id, agent.version, template=True, user_id=user_id
+            agent.id, agent.version, user_id=user_id
         )
 
         if not graph:

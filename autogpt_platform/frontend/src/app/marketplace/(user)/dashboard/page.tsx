@@ -33,14 +33,14 @@ export default function Page({}: {}) {
     } catch (error) {
       console.error("Error fetching submissions:", error);
     }
-  }, [api, supabase]);
+  }, [api]);
 
   useEffect(() => {
     if (!supabase) {
       return;
     }
     fetchData();
-  }, [supabase]);
+  }, [supabase, fetchData]);
 
   const onEditSubmission = useCallback((submission: StoreSubmissionRequest) => {
     setSubmissionData(submission);
@@ -56,7 +56,7 @@ export default function Page({}: {}) {
       api.deleteStoreSubmission(submission_id);
       fetchData();
     },
-    [supabase],
+    [api, supabase, fetchData],
   );
 
   const onOpenPopout = useCallback(() => {
@@ -106,28 +106,30 @@ export default function Page({}: {}) {
         <h2 className="mb-4 text-xl font-bold text-neutral-900 dark:text-neutral-100">
           Your uploaded agents
         </h2>
-        <AgentTable
-          agents={
-            (submissions?.submissions.map((submission, index) => ({
-              id: index,
-              agent_id: submission.agent_id,
-              agent_version: submission.agent_version,
-              sub_heading: submission.sub_heading,
-              date_submitted: submission.date_submitted,
-              agentName: submission.name,
-              description: submission.description,
-              imageSrc: submission.image_urls || [""],
-              dateSubmitted: new Date(
-                submission.date_submitted,
-              ).toLocaleDateString(),
-              status: submission.status.toLowerCase() as StatusType,
-              runs: submission.runs,
-              rating: submission.rating,
-            })) as AgentTableRowProps[]) || []
-          }
-          onEditSubmission={onEditSubmission}
-          onDeleteSubmission={onDeleteSubmission}
-        />
+        {submissions && (
+          <AgentTable
+            agents={
+              submissions?.submissions.map((submission, index) => ({
+                id: index,
+                agent_id: submission.agent_id,
+                agent_version: submission.agent_version,
+                sub_heading: submission.sub_heading,
+                date_submitted: submission.date_submitted,
+                agentName: submission.name,
+                description: submission.description,
+                imageSrc: submission.image_urls || [""],
+                dateSubmitted: new Date(
+                  submission.date_submitted,
+                ).toLocaleDateString(),
+                status: submission.status.toLowerCase() as StatusType,
+                runs: submission.runs,
+                rating: submission.rating,
+              })) || []
+            }
+            onEditSubmission={onEditSubmission}
+            onDeleteSubmission={onDeleteSubmission}
+          />
+        )}
       </div>
     </main>
   );

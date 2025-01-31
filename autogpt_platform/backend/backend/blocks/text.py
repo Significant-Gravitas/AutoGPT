@@ -212,3 +212,71 @@ class CombineTextsBlock(Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         combined_text = input_data.delimiter.join(input_data.input)
         yield "output", combined_text
+
+
+class TextSplitBlock(Block):
+    class Input(BlockSchema):
+        text: str = SchemaField(description="The text to split.")
+        delimiter: str = SchemaField(description="The delimiter to split the text by.")
+        strip: bool = SchemaField(
+            description="Whether to strip the text.", default=True
+        )
+
+    class Output(BlockSchema):
+        texts: list[str] = SchemaField(
+            description="The text split into a list of strings."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="d5ea33c8-a575-477a-b42f-2fe3be5055ec",
+            description="This block is used to split a text into a list of strings.",
+            categories={BlockCategory.TEXT},
+            input_schema=TextSplitBlock.Input,
+            output_schema=TextSplitBlock.Output,
+            test_input=[
+                {"text": "Hello, World!", "delimiter": ","},
+                {"text": "Hello, World!", "delimiter": ",", "strip": False},
+            ],
+            test_output=[
+                ("texts", ["Hello", "World!"]),
+                ("texts", ["Hello", " World!"]),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        if len(input_data.text) == 0:
+            yield "texts", []
+        else:
+            texts = input_data.text.split(input_data.delimiter)
+            if input_data.strip:
+                texts = [text.strip() for text in texts]
+            yield "texts", texts
+
+
+class TextReplaceBlock(Block):
+    class Input(BlockSchema):
+        text: str = SchemaField(description="The text to replace.")
+        old: str = SchemaField(description="The old text to replace.")
+        new: str = SchemaField(description="The new text to replace with.")
+
+    class Output(BlockSchema):
+        output: str = SchemaField(description="The text with the replaced text.")
+
+    def __init__(self):
+        super().__init__(
+            id="7e7c87ab-3469-4bcc-9abe-67705091b713",
+            description="This block is used to replace a text with a new text.",
+            categories={BlockCategory.TEXT},
+            input_schema=TextReplaceBlock.Input,
+            output_schema=TextReplaceBlock.Output,
+            test_input=[
+                {"text": "Hello, World!", "old": "Hello", "new": "Hi"},
+            ],
+            test_output=[
+                ("output", "Hi, World!"),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        yield "output", input_data.text.replace(input_data.old, input_data.new)
