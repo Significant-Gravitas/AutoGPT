@@ -18,6 +18,7 @@ const CREDENTIALS_PROVIDER_NAMES = Object.values(
 // --8<-- [start:CredentialsProviderNames]
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
   anthropic: "Anthropic",
+  apollo: "Apollo",
   discord: "Discord",
   d_id: "D-ID",
   e2b: "E2B",
