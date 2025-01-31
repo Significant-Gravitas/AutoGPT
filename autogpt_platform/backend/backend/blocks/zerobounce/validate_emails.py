@@ -1,4 +1,12 @@
-from typing import Any, Optional
+from typing import Optional
+
+from pydantic import BaseModel
+from zerobouncesdk.zb_validate_response import (
+    ZBValidateResponse,
+    ZBValidateStatus,
+    ZBValidateSubStatus,
+)
+
 from backend.blocks.zerobounce._api import ZeroBounceClient
 from backend.blocks.zerobounce._auth import (
     TEST_CREDENTIALS,
@@ -8,12 +16,6 @@ from backend.blocks.zerobounce._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from pydantic import BaseModel
-from zerobouncesdk.zb_validate_response import (
-    ZBValidateResponse,
-    ZBValidateStatus,
-    ZBValidateSubStatus,
-)
 
 
 class Response(BaseModel):
