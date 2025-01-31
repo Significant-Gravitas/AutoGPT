@@ -26,7 +26,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import { BlockUIType, Link } from "@/lib/autogpt-server-api";
+import { BlockUIType, formatEdgeID } from "@/lib/autogpt-server-api";
 import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
@@ -274,14 +274,6 @@ const FlowEditor: React.FC<{
     },
     [deleteElements, setNodes, nodes, edges, addNodes],
   );
-
-  const formatEdgeID = useCallback((conn: Link | Connection): string => {
-    if ("sink_id" in conn) {
-      return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
-    } else {
-      return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
-    }
-  }, []);
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {

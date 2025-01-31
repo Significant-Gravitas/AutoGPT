@@ -40,9 +40,7 @@ class ConnectionManager:
         if key in self.subscriptions:
             message = WsMessage(
                 method=Methods.EXECUTION_EVENT,
-                channel=str(
-                    key
-                ),  # todo kcze verify that frontend can handle this (cannot hash the same way)
+                channel=str(key),
                 data=result.model_dump(),
             ).model_dump_json()
             for connection in self.subscriptions[key]:

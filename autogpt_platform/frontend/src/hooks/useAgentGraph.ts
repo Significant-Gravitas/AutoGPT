@@ -4,8 +4,8 @@ import BackendAPI, {
   Block,
   BlockIOSubSchema,
   BlockUIType,
+  formatEdgeID,
   Graph,
-  Link,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
@@ -14,7 +14,7 @@ import {
   removeEmptyStringsAndNulls,
   setNestedProperty,
 } from "@/lib/utils";
-import { Connection, MarkerType } from "@xyflow/react";
+import { MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
@@ -114,15 +114,6 @@ export default function useAgentGraph(
     }
   }, [api, flowID, flowVersion, flowExecutionID]);
 
-  //TODO kcze to utils? repeated in Flow
-  const formatEdgeID = useCallback((conn: Link | Connection): string => {
-    if ("sink_id" in conn) {
-      return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
-    } else {
-      return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
-    }
-  }, []);
-
   const getOutputType = useCallback(
     (nodes: CustomNode[], nodeId: string, handleId: string) => {
       const node = nodes.find((n) => n.id === nodeId);
@@ -192,14 +183,12 @@ export default function useAgentGraph(
           };
           return newNode;
         });
-        setEdges((prevEdges) =>
+        setEdges(() =>
           graph.links.map((link) => {
-            const prevEdge = prevEdges.find((e) => e.id === link.id);
             return {
               id: formatEdgeID(link),
               type: "custom",
               data: {
-                // ...prevEdge?.data, //todo kcze check if beads work
                 edgeColor: getTypeColor(
                   getOutputType(newNodes, link.source_id, link.source_name!),
                 ),
