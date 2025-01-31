@@ -33,5 +33,6 @@ class ProviderName(str, Enum):
     SLANT3D = "slant3d"
     SMTP = "smtp"
     TWITTER = "twitter"
+    TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
     # --8<-- [end:ProviderName]
