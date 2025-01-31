@@ -5,7 +5,6 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-import backend.data.includes
 import backend.server.model
 import backend.server.v2.library.model
 import backend.server.v2.store.exceptions
@@ -183,7 +182,7 @@ async def add_store_agent_to_library(
                 "Store listing version not found: %s", store_listing_version_id
             )
             raise backend.server.v2.store.exceptions.AgentNotFoundError(
-                "Store listing version %s not found", store_listing_version_id
+                f"Store listing version {store_listing_version_id} not found"
             )
 
         agent = store_listing_version.Agent
@@ -268,7 +267,7 @@ async def get_presets(
         )
 
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error getting presets: {str(e)}")
+        logger.error("Database error getting presets: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch presets"
         ) from e
@@ -285,7 +284,7 @@ async def get_preset(
             return None
         return backend.server.v2.library.model.LibraryAgentPreset.from_db(preset)
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error getting preset: {str(e)}")
+        logger.error("Database error getting preset: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch preset"
         ) from e
@@ -298,7 +297,7 @@ async def create_or_update_preset(
 ) -> backend.server.v2.library.model.LibraryAgentPreset:
     try:
 
-        logger.info(f"DB Creating Preset with inputs: {preset.inputs}")
+        logger.info("DB Creating Preset with inputs: %s", preset.inputs)
         new_preset = await prisma.models.AgentPreset.prisma().upsert(
             where={
                 "id": preset_id if preset_id else "",
@@ -327,7 +326,7 @@ async def create_or_update_preset(
         )
         return backend.server.v2.library.model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating preset: {str(e)}")
+        logger.error("Database error creating preset: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create preset"
         ) from e
@@ -340,7 +339,7 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
             data={"isDeleted": True},
         )
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error deleting preset: {str(e)}")
+        logger.error("Database error deleting preset: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to delete preset"
         ) from e

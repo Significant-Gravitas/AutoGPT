@@ -128,8 +128,8 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
     output = defaultdict(list)
-    for name, data in obj.execute(data):
-        output[name].append(data)
+    for name, loop_data in obj.execute(data):
+        output[name].append(loop_data)
     return output
 
 

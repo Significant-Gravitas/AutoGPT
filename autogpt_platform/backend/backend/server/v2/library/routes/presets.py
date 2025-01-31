@@ -39,7 +39,7 @@ async def get_presets(
         )
         return presets
     except Exception as e:
-        logger.exception(f"Exception occurred whilst getting presets: {e}")
+        logger.exception("Exception occurred whilst getting presets: %s", e)
         raise fastapi.HTTPException(status_code=500, detail="Failed to get presets")
 
 
@@ -59,7 +59,7 @@ async def get_preset(
             )
         return preset
     except Exception as e:
-        logger.exception(f"Exception occurred whilst getting preset: {e}")
+        logger.exception("Exception occurred whilst getting preset: %s", e)
         raise fastapi.HTTPException(status_code=500, detail="Failed to get preset")
 
 
@@ -79,7 +79,7 @@ async def create_preset(
             user_id, preset
         )
     except Exception as e:
-        logger.exception(f"Exception occurred whilst creating preset: {e}")
+        logger.exception("Exception occurred whilst creating preset: %s", e)
         raise fastapi.HTTPException(status_code=500, detail="Failed to create preset")
 
 
