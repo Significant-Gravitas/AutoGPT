@@ -141,6 +141,7 @@ export const PROVIDER_NAMES = {
   REDDIT: "reddit",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  TODOIST: "todoist",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
@@ -568,4 +569,21 @@ export interface APIKey {
 export interface CreateAPIKeyResponse {
   api_key: APIKey;
   plain_text_key: string;
+}
+
+export interface CreditTransaction {
+  transaction_time: Date;
+  transaction_type: string;
+  amount: number;
+  balance: number;
+  description: string;
+  usage_graph_id: string;
+  usage_execution_id: string;
+  usage_node_count: number;
+  usage_starting_time: Date;
+}
+
+export interface TransactionHistory {
+  transactions: CreditTransaction[];
+  next_transaction_time: Date | null;
 }
