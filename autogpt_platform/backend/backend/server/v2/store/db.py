@@ -809,12 +809,11 @@ async def get_agent(
     try:
         store_listing_version = (
             await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id},
-                include={"Agent": True},
+                where={"id": store_listing_version_id}
             )
         )
 
-        if not store_listing_version or not store_listing_version.Agent:
+        if not store_listing_version:
             raise fastapi.HTTPException(
                 status_code=404,
                 detail=f"Store listing version {store_listing_version_id} not found",
