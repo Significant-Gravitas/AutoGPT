@@ -143,6 +143,7 @@ export const PROVIDER_NAMES = {
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
   TODOIST: "todoist",
+  ZEROBOUNCE: "zerobounce",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 

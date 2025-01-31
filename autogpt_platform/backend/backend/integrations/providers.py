@@ -36,4 +36,5 @@ class ProviderName(str, Enum):
     TWITTER = "twitter"
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
+    ZEROBOUNCE = "zerobounce"
     # --8<-- [end:ProviderName]
