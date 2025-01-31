@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from backend.blocks.zerobounce._api import ZeroBounceAPI
+from backend.blocks.zerobounce._api import ZeroBounceClient
 from backend.blocks.zerobounce._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -130,7 +130,7 @@ class ValidateEmailsBlock(Block):
         credentials: ZeroBounceCredentials,
         **kwargs,
     ) -> BlockOutput:
-        client = ZeroBounceAPI(credentials.api_key.get_secret_value())
+        client = ZeroBounceClient(credentials.api_key.get_secret_value())
 
         # query = SearchPeopleRequest(**input_data.model_dump(exclude={"credentials"}))
         response: ZBValidateResponse = client.validate_email(

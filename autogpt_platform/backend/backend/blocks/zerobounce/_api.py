@@ -1,7 +1,7 @@
 from zerobouncesdk import ZBValidateResponse, ZeroBounce
 
 
-class ZeroBounceAPI:
+class ZeroBounceClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.client = ZeroBounce(api_key)
