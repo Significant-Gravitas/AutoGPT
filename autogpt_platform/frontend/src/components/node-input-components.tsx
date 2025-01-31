@@ -662,6 +662,20 @@ export const NodeGenericInputField: FC<{
           handleInputClick={handleInputClick}
         />
       );
+    case "object":
+      return (
+        <NodeKeyValueInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={propSchema}
+          entries={currentValue}
+          errors={errors}
+          className={className}
+          displayName={displayName}
+          connections={connections}
+          handleInputChange={handleInputChange}
+        />
+      );
     default:
       console.warn(
         `Schema for '${propKey}' specifies unknown type:`,
