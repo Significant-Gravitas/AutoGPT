@@ -70,7 +70,7 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
 
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
-  additionalProperties: { type: "string" | "number" | "integer" };
+  additionalProperties?: { type: "string" | "number" | "integer" };
   default?: { [key: string]: string | number };
   secret?: boolean;
 };
