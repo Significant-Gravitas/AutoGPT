@@ -115,7 +115,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # Deprecated Groq models
     GEMMA_7B = "gemma-7b-it"
     LLAMA3_1_70B = "llama-3.1-70b-versatile"
-    LLAMA3_1_405B = "llama-3.1-405b-reasoning" # missing in the docs
+    LLAMA3_1_405B = "llama-3.1-405b-reasoning"  # missing in the docs
     # Ollama models
     OLLAMA_LLAMA3_3 = "llama3.3"
     OLLAMA_LLAMA3_2 = "llama3.2"
@@ -123,13 +123,15 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     OLLAMA_DOLPHIN = "dolphin-mistral:latest"
     # OpenRouter models
-    GEMINI_FLASH_1_5_8B = "google/gemini-flash-1.5" # Actually: google/gemini-flash-1.5-8b
+    GEMINI_FLASH_1_5_8B = (
+        "google/gemini-flash-1.5"  # Actually: google/gemini-flash-1.5-8b
+    )
     GROK_BETA = "x-ai/grok-beta"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
-    DEEPSEEK_CHAT = "deepseek/deepseek-chat" # Actually: DeepSeek V3
+    DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
     PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
         "perplexity/llama-3.1-sonar-large-128k-online"
     )
@@ -157,18 +159,30 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 
 MODEL_METADATA = {
     # https://platform.openai.com/docs/models
-    LlmModel.O3_MINI: ModelMetadata("openai", 200000, 100000), # o3-mini-2025-01-31
-    LlmModel.O1: ModelMetadata("openai", 200000, 100000), # o1-2024-12-17
-    LlmModel.O1_PREVIEW: ModelMetadata("openai", 128000, 32768), # o1-preview-2024-09-12
-    LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536), # o1-mini-2024-09-12
-    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, 16384), # gpt-4o-mini-2024-07-18
-    LlmModel.GPT4O: ModelMetadata("openai", 128000, 16384), # gpt-4o-2024-08-06
-    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, 4096), # gpt-4-turbo-2024-04-09
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096), # gpt-3.5-turbo-0125
+    LlmModel.O3_MINI: ModelMetadata("openai", 200000, 100000),  # o3-mini-2025-01-31
+    LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
+    LlmModel.O1_PREVIEW: ModelMetadata(
+        "openai", 128000, 32768
+    ),  # o1-preview-2024-09-12
+    LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
+    LlmModel.GPT4O_MINI: ModelMetadata(
+        "openai", 128000, 16384
+    ),  # gpt-4o-mini-2024-07-18
+    LlmModel.GPT4O: ModelMetadata("openai", 128000, 16384),  # gpt-4o-2024-08-06
+    LlmModel.GPT4_TURBO: ModelMetadata(
+        "openai", 128000, 4096
+    ),  # gpt-4-turbo-2024-04-09
+    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096),  # gpt-3.5-turbo-0125
     # https://docs.anthropic.com/en/docs/about-claude/models
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, 8192), # claude-3-5-sonnet-20241022
-    LlmModel.CLAUDE_3_5_HAIKU: ModelMetadata("anthropic", 200000, 8192), # claude-3-5-haiku-20241022
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, 4096), # claude-3-haiku-20240307
+    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata(
+        "anthropic", 200000, 8192
+    ),  # claude-3-5-sonnet-20241022
+    LlmModel.CLAUDE_3_5_HAIKU: ModelMetadata(
+        "anthropic", 200000, 8192
+    ),  # claude-3-5-haiku-20241022
+    LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
+        "anthropic", 200000, 4096
+    ),  # claude-3-haiku-20240307
     # https://console.groq.com/docs/models
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, None),
     LlmModel.LLAMA3_3_70B: ModelMetadata("groq", 128000, 32768),
@@ -192,13 +206,17 @@ MODEL_METADATA = {
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 16384, 4096),
-    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router",  64000, 2048),
+    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
     LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
         "open_router", 127072, 127072
     ),
     LlmModel.QWEN_QWQ_32B_PREVIEW: ModelMetadata("open_router", 32768, 32768),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata("open_router", 131000, 4096),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: ModelMetadata("open_router", 12288, 12288),
+    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
+        "open_router", 131000, 4096
+    ),
+    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: ModelMetadata(
+        "open_router", 12288, 12288
+    ),
     LlmModel.AMAZON_NOVA_LITE_V1: ModelMetadata("open_router", 300000, 5120),
     LlmModel.AMAZON_NOVA_MICRO_V1: ModelMetadata("open_router", 128000, 5120),
     LlmModel.AMAZON_NOVA_PRO_V1: ModelMetadata("open_router", 300000, 5120),
