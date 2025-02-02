@@ -129,7 +129,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
-    DEEPSEEK_CHAT = "deepseek/deepseek-chat" # missing in the library
+    DEEPSEEK_CHAT = "deepseek/deepseek-chat" # Actually: DeepSeek V3
     PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
         "perplexity/llama-3.1-sonar-large-128k-online"
     )
@@ -192,7 +192,7 @@ MODEL_METADATA = {
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 16384, 4096),
-    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 8192, None),
+    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router",  64000, 2048),
     LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
         "open_router", 127072, 127072
     ),
