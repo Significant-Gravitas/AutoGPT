@@ -4,14 +4,14 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
     healthcheck:
       test: pg_isready -U postgres -d ${POSTGRES_PORT}
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
-      - "${DB_PORT}:5432"
+      - "${POSTGRES_PORT}:5432"
     networks:
       - app-network-test
   redis-test:
