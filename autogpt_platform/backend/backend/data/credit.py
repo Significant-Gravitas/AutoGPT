@@ -504,7 +504,11 @@ class UserCredit(UserCreditBase):
         )
         tx_time = None
         for t in transactions:
-            metadata = UsageTransactionMetadata.model_validate(t.metadata)
+            metadata = (
+                UsageTransactionMetadata.model_validate(t.metadata)
+                if t.metadata
+                else UsageTransactionMetadata()
+            )
             tx_time = t.createdAt.replace(tzinfo=None)
 
             if t.type == CreditTransactionType.USAGE and metadata.graph_exec_id:
