@@ -60,17 +60,24 @@ class CreateCampaignBlock(Block):
             test_input={"name": "Test Campaign", "credentials": TEST_CREDENTIALS_INPUT},
             test_output=[
                 (
-                    "campaign",
-                    {
-                        "id": "1",
-                        "name": "Test Campaign",
-                        "ok": True,
-                        "created_at": "2024-01-01T00:00:00Z",
-                    },
-                )
+                    "ok",
+                    True,
+                ),
+                (
+                    "id",
+                    1,
+                ),
+                (
+                    "name",
+                    "Test Campaign",
+                ),
+                (
+                    "created_at",
+                    "2024-01-01T00:00:00Z",
+                ),
             ],
             test_mock={
-                "create_campaign": lambda name: CreateCampaignResponse(
+                "create_campaign": lambda name, credentials: CreateCampaignResponse(
                     ok=True,
                     id=1,
                     name=name,
@@ -79,6 +86,13 @@ class CreateCampaignBlock(Block):
             },
         )
 
+    @staticmethod
+    def create_campaign(
+        name: str, credentials: SmartLeadCredentials
+    ) -> CreateCampaignResponse:
+        client = SmartLeadClient(credentials.api_key.get_secret_value())
+        return client.create_campaign(CreateCampaignRequest(name=name))
+
     def run(
         self,
         input_data: Input,
@@ -86,10 +100,7 @@ class CreateCampaignBlock(Block):
         credentials: SmartLeadCredentials,
         **kwargs,
     ) -> BlockOutput:
-        client = SmartLeadClient(credentials.api_key.get_secret_value())
-
-        # query = SearchPeopleRequest(**input_data.model_dump(exclude={"credentials"}))
-        response = client.create_campaign(CreateCampaignRequest(name=input_data.name))
+        response = self.create_campaign(input_data.name, credentials)
 
         yield "ok", response.ok
         yield "id", response.id
@@ -163,15 +174,20 @@ class AddLeadToCampaignBlock(Block):
             },
             test_output=[
                 (
-                    "campaign",
-                    {
-                        "ok": True,
-                        "upload_count": 1,
-                    },
-                )
+                    "campaign_id",
+                    1,
+                ),
+                (
+                    "ok",
+                    True,
+                ),
+                (
+                    "upload_count",
+                    1,
+                ),
             ],
             test_mock={
-                "add_leads_to_campaign": lambda campaign_id, lead_list: AddLeadsToCampaignResponse(
+                "add_leads_to_campaign": lambda campaign_id, lead_list, credentials: AddLeadsToCampaignResponse(
                     ok=True,
                     upload_count=1,
                     already_added_to_campaign=0,
@@ -189,6 +205,24 @@ class AddLeadToCampaignBlock(Block):
             },
         )
 
+    @staticmethod
+    def add_leads_to_campaign(
+        campaign_id: int, lead_list: list[LeadInput], credentials: SmartLeadCredentials
+    ) -> AddLeadsToCampaignResponse:
+        client = SmartLeadClient(credentials.api_key.get_secret_value())
+        return client.add_leads_to_campaign(
+            AddLeadsRequest(
+                campaign_id=campaign_id,
+                lead_list=lead_list,
+                settings=LeadUploadSettings(
+                    ignore_global_block_list=False,
+                    ignore_unsubscribe_list=False,
+                    ignore_community_bounce_list=False,
+                    ignore_duplicate_leads_in_other_campaign=False,
+                ),
+            ),
+        )
+
     def run(
         self,
         input_data: Input,
@@ -196,19 +230,8 @@ class AddLeadToCampaignBlock(Block):
         credentials: SmartLeadCredentials,
         **kwargs,
     ) -> BlockOutput:
-        client = SmartLeadClient(credentials.api_key.get_secret_value())
-
-        response = client.add_leads_to_campaign(
-            AddLeadsRequest(
-                campaign_id=input_data.campaign_id,
-                lead_list=input_data.lead_list,
-                settings=LeadUploadSettings(
-                    ignore_global_block_list=False,
-                    ignore_unsubscribe_list=False,
-                    ignore_community_bounce_list=False,
-                    ignore_duplicate_leads_in_other_campaign=False,
-                ),
-            )
+        response = self.add_leads_to_campaign(
+            input_data.campaign_id, input_data.lead_list, credentials
         )
 
         yield "campaign_id", input_data.campaign_id
@@ -276,19 +299,29 @@ class SaveCampaignSequencesBlock(Block):
             },
             test_output=[
                 (
-                    "campaign",
-                    {
-                        "ok": True,
-                        "message": "Sequences saved successfully",
-                    },
-                )
+                    "ok",
+                    True,
+                ),
+                (
+                    "message",
+                    "Sequences saved successfully",
+                ),
             ],
             test_mock={
-                "save_campaign_sequences": lambda campaign_id, sequences: SaveSequencesResponse(
+                "save_campaign_sequences": lambda campaign_id, sequences, credentials: SaveSequencesResponse(
                     ok=True,
                     message="Sequences saved successfully",
                 )
             },
+        )
+
+    @staticmethod
+    def save_campaign_sequences(
+        campaign_id: int, sequences: list[Sequence], credentials: SmartLeadCredentials
+    ) -> SaveSequencesResponse:
+        client = SmartLeadClient(credentials.api_key.get_secret_value())
+        return client.save_campaign_sequences(
+            campaign_id=campaign_id, request=SaveSequencesRequest(sequences=sequences)
         )
 
     def run(
@@ -298,11 +331,8 @@ class SaveCampaignSequencesBlock(Block):
         credentials: SmartLeadCredentials,
         **kwargs,
     ) -> BlockOutput:
-        client = SmartLeadClient(credentials.api_key.get_secret_value())
-
-        response = client.save_campaign_sequences(
-            campaign_id=input_data.campaign_id,
-            request=SaveSequencesRequest(sequences=input_data.sequences),
+        response = self.save_campaign_sequences(
+            input_data.campaign_id, input_data.sequences, credentials
         )
 
         yield "ok", response.ok
