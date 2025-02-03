@@ -59,5 +59,4 @@ class UpdatePermissionsRequest(pydantic.BaseModel):
 
 
 class RequestTopUp(pydantic.BaseModel):
-    amount: int
-    """Amount of credits to top up."""
+    credit_amount: int

@@ -41,7 +41,6 @@ import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
 import { ConnectionData } from "./CustomNode";
 import { CredentialsInput } from "./integrations/credentials-input";
-import { MultiSelect } from "./ui/multiselect-input";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -968,10 +967,8 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          /*
-          The `index` is used as a DOM key instead of the actual `key`
-          because the `key` can change with each input, causing the input to lose focus.
-          */
+          // The `index` is used as a DOM key instead of the actual `key`
+          // because the `key` can change with each input, causing the input to lose focus.
           <div key={index}>
             <NodeHandle
               keyName={getEntryKey(key)}

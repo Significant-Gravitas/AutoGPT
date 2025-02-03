@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING
 
+from backend.integrations.oauth.todoist import TodoistOAuthHandler
+
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .linear import LinearOAuthHandler
@@ -19,6 +21,7 @@ HANDLERS_BY_NAME: dict["ProviderName", type["BaseOAuthHandler"]] = {
         NotionOAuthHandler,
         TwitterOAuthHandler,
         LinearOAuthHandler,
+        TodoistOAuthHandler,
     ]
 }
 # --8<-- [end:HANDLERS_BY_NAMEExample]

@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import Navbar from "./Navbar";
+import { Navbar } from "./Navbar";
 import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-import { jest } from "@jest/globals";
+// You can't import this here, jest is not available in storybook and will crash it
+// import { jest } from "@jest/globals";
 
 // Mock the API responses
 const mockProfileData: ProfileDetails = {
@@ -19,14 +20,14 @@ const mockCreditData = {
 };
 
 // Mock the API module
-jest.mock("@/lib/autogpt-server-api", () => {
-  return function () {
-    return {
-      getStoreProfile: () => Promise.resolve(mockProfileData),
-      getUserCredit: () => Promise.resolve(mockCreditData),
-    };
-  };
-});
+// jest.mock("@/lib/autogpt-server-api", () => {
+//   return function () {
+//     return {
+//       getStoreProfile: () => Promise.resolve(mockProfileData),
+//       getUserCredit: () => Promise.resolve(mockCreditData),
+//     };
+//   };
+// });
 
 const meta = {
   title: "AGPT UI/Navbar",
@@ -36,12 +37,12 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
-    isLoggedIn: { control: "boolean" },
-    avatarSrc: { control: "text" },
+    // isLoggedIn: { control: "boolean" },
+    // avatarSrc: { control: "text" },
     links: { control: "object" },
-    activeLink: { control: "text" },
+    // activeLink: { control: "text" },
     menuItemGroups: { control: "object" },
-    params: { control: { type: "object", defaultValue: { lang: "en" } } },
+    // params: { control: { type: "object", defaultValue: { lang: "en" } } },
   },
 } satisfies Meta<typeof Navbar>;
 
@@ -90,11 +91,11 @@ const defaultLinks = [
 
 export const Default: Story = {
   args: {
-    params: { lang: "en" },
-    isLoggedIn: true,
+    // params: { lang: "en" },
+    // isLoggedIn: true,
     links: defaultLinks,
-    activeLink: "/marketplace",
-    avatarSrc: mockProfileData.avatar_url,
+    // activeLink: "/marketplace",
+    // avatarSrc: mockProfileData.avatar_url,
     menuItemGroups: defaultMenuItemGroups,
   },
 };
@@ -102,21 +103,21 @@ export const Default: Story = {
 export const WithActiveLink: Story = {
   args: {
     ...Default.args,
-    activeLink: "/library",
+    // activeLink: "/library",
   },
 };
 
 export const LongUserName: Story = {
   args: {
     ...Default.args,
-    avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
+    // avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
   },
 };
 
 export const NoAvatar: Story = {
   args: {
     ...Default.args,
-    avatarSrc: undefined,
+    // avatarSrc: undefined,
   },
 };
 
@@ -138,8 +139,8 @@ export const WithInteraction: Story = {
 export const NotLoggedIn: Story = {
   args: {
     ...Default.args,
-    isLoggedIn: false,
-    avatarSrc: undefined,
+    // isLoggedIn: false,
+    // avatarSrc: undefined,
   },
 };
 
