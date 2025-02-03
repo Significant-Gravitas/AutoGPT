@@ -9,7 +9,6 @@ from backend.blocks.apollo.models import (
     Contact,
     ContactEmailStatuses,
     SearchPeopleRequest,
-    SearchPeopleResponse,
     SenorityLevels,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
