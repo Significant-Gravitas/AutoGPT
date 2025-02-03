@@ -408,7 +408,6 @@ class UserCredit(UserCreditBase):
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            customer_email=user.email,
             line_items=[
                 {
                     "price_data": {
