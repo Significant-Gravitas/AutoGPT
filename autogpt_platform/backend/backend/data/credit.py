@@ -421,9 +421,9 @@ class UserCredit(UserCreditBase):
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=settings.config.platform_base_url
+            success_url=settings.config.frontend_base_url
             + "/marketplace/credits?topup=success",
-            cancel_url=settings.config.platform_base_url
+            cancel_url=settings.config.frontend_base_url
             + "/marketplace/credits?topup=cancel",
         )
 
