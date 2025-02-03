@@ -106,11 +106,11 @@ def execute_block_test(block: Block):
 
     # Populate credentials argument(s)
     extra_exec_kwargs: dict = {
-        "graph_id": uuid.uuid4(),
-        "node_id": uuid.uuid4(),
-        "graph_exec_id": uuid.uuid4(),
-        "node_exec_id": uuid.uuid4(),
-        "user_id": uuid.uuid4(),
+        "graph_id": str(uuid.uuid4()),
+        "node_id": str(uuid.uuid4()),
+        "graph_exec_id": str(uuid.uuid4()),
+        "node_exec_id": str(uuid.uuid4()),
+        "user_id": str(uuid.uuid4()),
     }
     input_model = cast(type[BlockSchema], block.input_schema)
     credentials_input_fields = input_model.get_credentials_fields()
