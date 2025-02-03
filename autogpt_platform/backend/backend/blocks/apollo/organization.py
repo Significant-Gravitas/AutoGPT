@@ -98,41 +98,75 @@ Use the page parameter to search the different pages of data.""",
             test_input={"query": "Google", "credentials": TEST_CREDENTIALS_INPUT},
             test_output=[
                 (
+                    "organization",
+                    Organization(
+                        id="1",
+                        name="Google",
+                        website_url="https://google.com",
+                        blog_url="https://google.com/blog",
+                        angellist_url="https://angel.co/google",
+                        linkedin_url="https://linkedin.com/company/google",
+                        twitter_url="https://twitter.com/google",
+                        facebook_url="https://facebook.com/google",
+                        primary_phone=PrimaryPhone(
+                            source="google",
+                            number="1234567890",
+                            sanitized_number="1234567890",
+                        ),
+                        languages=["en"],
+                        alexa_ranking=1000,
+                        phone="1234567890",
+                        linkedin_uid="1234567890",
+                        founded_year=2000,
+                        publicly_traded_symbol="GOOGL",
+                        publicly_traded_exchange="NASDAQ",
+                        logo_url="https://google.com/logo.png",
+                        chrunchbase_url="https://chrunchbase.com/google",
+                        primary_domain="google.com",
+                        sanitized_phone="1234567890",
+                        owned_by_organization_id="1",
+                        intent_strength="strong",
+                        show_intent=True,
+                        has_intent_signal_account=True,
+                        intent_signal_account="1",
+                    ),
+                ),
+                (
                     "organizations",
                     [
-                        {
-                            "id": "1",
-                            "name": "Google",
-                            "website_url": "https://google.com",
-                            "blog_url": "https://google.com/blog",
-                            "angellist_url": "https://angel.co/google",
-                            "linkedin_url": "https://linkedin.com/company/google",
-                            "twitter_url": "https://twitter.com/google",
-                            "facebook_url": "https://facebook.com/google",
-                            "primary_phone": {
-                                "source": "google",
-                                "number": "1234567890",
-                                "sanitized_number": "1234567890",
-                            },
-                            "languages": ["en"],
-                            "alexa_ranking": 1000,
-                            "phone": "1234567890",
-                            "linkedin_uid": "1234567890",
-                            "founded_year": 2000,
-                            "publicly_traded_symbol": "GOOGL",
-                            "publicly_traded_exchange": "NASDAQ",
-                            "logo_url": "https://google.com/logo.png",
-                            "chrunchbase_url": "https://chrunchbase.com/google",
-                            "primary_domain": "google.com",
-                            "sanitized_phone": "1234567890",
-                            "owned_by_organization_id": "1",
-                            "intent_strength": "strong",
-                            "show_intent": True,
-                            "has_intent_signal_account": True,
-                            "intent_signal_account": "1",
-                        }
+                        Organization(
+                            id="1",
+                            name="Google",
+                            website_url="https://google.com",
+                            blog_url="https://google.com/blog",
+                            angellist_url="https://angel.co/google",
+                            linkedin_url="https://linkedin.com/company/google",
+                            twitter_url="https://twitter.com/google",
+                            facebook_url="https://facebook.com/google",
+                            primary_phone=PrimaryPhone(
+                                source="google",
+                                number="1234567890",
+                                sanitized_number="1234567890",
+                            ),
+                            languages=["en"],
+                            alexa_ranking=1000,
+                            phone="1234567890",
+                            linkedin_uid="1234567890",
+                            founded_year=2000,
+                            publicly_traded_symbol="GOOGL",
+                            publicly_traded_exchange="NASDAQ",
+                            logo_url="https://google.com/logo.png",
+                            chrunchbase_url="https://chrunchbase.com/google",
+                            primary_domain="google.com",
+                            sanitized_phone="1234567890",
+                            owned_by_organization_id="1",
+                            intent_strength="strong",
+                            show_intent=True,
+                            has_intent_signal_account=True,
+                            intent_signal_account="1",
+                        ),
                     ],
-                )
+                ),
             ],
             test_mock={
                 "search_organizations": lambda *args, **kwargs: [
@@ -171,14 +205,20 @@ Use the page parameter to search the different pages of data.""",
             },
         )
 
+    @staticmethod
+    def search_organizations(
+        query: SearchOrganizationsRequest, credentials: ApolloCredentials
+    ) -> list[Organization]:
+        client = ApolloClient(credentials)
+        return client.search_organizations(query)
+
     def run(
         self, input_data: Input, *, credentials: ApolloCredentials, **kwargs
     ) -> BlockOutput:
-        client = ApolloClient(credentials)
         query = SearchOrganizationsRequest(
             **input_data.model_dump(exclude={"credentials"})
         )
-        organizations = client.search_organizations(query)
+        organizations = self.search_organizations(query, credentials)
         for organization in organizations:
             yield "organization", organization
         yield "organizations", organizations
