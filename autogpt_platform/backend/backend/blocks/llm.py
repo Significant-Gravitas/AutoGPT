@@ -158,6 +158,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     def context_window(self) -> int:
         return self.metadata.context_window
 
+    @property
+    def max_output_tokens(self) -> int | None:
+        return self.metadata.max_output_tokens
+
 
 MODEL_METADATA = {
     # https://platform.openai.com/docs/models
@@ -350,7 +354,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         llm_model: LlmModel,
         prompt: list[dict],
         json_format: bool,
-        max_tokens: int | None = None,
+        max_tokens: int,
         ollama_host: str = "localhost:11434",
     ) -> tuple[str, int, int]:
         """
@@ -417,7 +421,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     model=llm_model.value,
                     system=sysprompt,
                     messages=messages,
-                    max_tokens=max_tokens or 8192,
+                    max_tokens=max_tokens,
                 )
                 self.prompt = json.dumps(prompt)
 
@@ -559,7 +563,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     prompt=prompt,
                     json_format=bool(input_data.expected_format),
                     ollama_host=input_data.ollama_host,
-                    max_tokens=input_data.max_tokens,
+                    max_tokens=input_data.max_tokens
+                    or llm_model.max_output_tokens
+                    or 4096,
                 )
                 self.merge_stats(
                     {
