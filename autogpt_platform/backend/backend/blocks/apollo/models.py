@@ -400,19 +400,18 @@ To find IDs, identify the values for organization_id when you call this endpoint
         advanced=True,
     )
 
+    page: int = SchemaField(
+        description="""The page number of the Apollo data that you want to retrieve.
 
-#     page: int = SchemaField(
-#         description="""The page number of the Apollo data that you want to retrieve.
+Use this parameter in combination with the per_page parameter to make search results for navigable and improve the performance of the endpoint.""",
+        default=1,
+    )
+    per_page: int = SchemaField(
+        description="""The number of search results that should be returned for each page. Limited the number of results per page improves the endpoint's performance.
 
-# Use this parameter in combination with the per_page parameter to make search results for navigable and improve the performance of the endpoint.""",
-#         default=1,
-#     )
-#     per_page: int = SchemaField(
-#         description="""The number of search results that should be returned for each page. Limited the number of results per page improves the endpoint's performance.
-
-# Use the page parameter to search the different pages of data.""",
-#         default=100,
-#     )
+Use the page parameter to search the different pages of data.""",
+        default=100,
+    )
 
 
 class SearchOrganizationsResponse(BaseModel):
@@ -510,6 +509,13 @@ Use this parameter in combination with the per_page parameter to make search res
 
 Use the page parameter to search the different pages of data.""",
         default=100,
+    )
+    max_results: int = SchemaField(
+        description="""The maximum number of results to return. If you don't specify this parameter, the default is 100.""",
+        default=100,
+        ge=1,
+        le=50000,
+        advanced=True,
     )
 
 

@@ -29,13 +29,35 @@ class ApolloClient:
         response = self.requests.get(
             f"{self.API_URL}/mixed_people/search",
             headers=self._get_headers(),
-            params=query.model_dump(exclude={"credentials"}),
+            params=query.model_dump(exclude={"credentials", "max_results"}),
         )
-        response_json = response.json()
-        parsed_response = SearchPeopleResponse(**response_json)
+        parsed_response = SearchPeopleResponse(**response.json())
         if parsed_response.pagination.total_entries == 0:
             return []
-        return parsed_response.people
+
+        people = parsed_response.people
+
+        # handle pagination
+        if (
+            query.max_results is not None
+            and query.max_results < parsed_response.pagination.total_entries
+            and len(people) < query.max_results
+        ):
+            while (
+                len(people) < query.max_results
+                and query.page < parsed_response.pagination.total_pages
+                and len(parsed_response.people) > 0
+            ):
+                query.page += 1
+                response = self.requests.get(
+                    f"{self.API_URL}/mixed_people/search",
+                    headers=self._get_headers(),
+                    params=query.model_dump(exclude={"credentials", "max_results"}),
+                )
+                parsed_response = SearchPeopleResponse(**response.json())
+                people.extend(parsed_response.people[: query.max_results - len(people)])
+
+        return people[: query.max_results] if query.max_results else people
 
     def search_organizations(
         self, query: SearchOrganizationsRequest
@@ -44,9 +66,38 @@ class ApolloClient:
         response = self.requests.get(
             f"{self.API_URL}/mixed_companies/search",
             headers=self._get_headers(),
-            params=query.model_dump(exclude={"credentials"}),
+            params=query.model_dump(exclude={"credentials", "max_results"}),
         )
         parsed_response = SearchOrganizationsResponse(**response.json())
         if parsed_response.pagination.total_entries == 0:
             return []
-        return parsed_response.organizations
+
+        organizations = parsed_response.organizations
+
+        # handle pagination
+        if (
+            query.max_results is not None
+            and query.max_results < parsed_response.pagination.total_entries
+            and len(organizations) < query.max_results
+        ):
+            while (
+                len(organizations) < query.max_results
+                and query.page < parsed_response.pagination.total_pages
+                and len(parsed_response.organizations) > 0
+            ):
+                query.page += 1
+                response = self.requests.get(
+                    f"{self.API_URL}/mixed_companies/search",
+                    headers=self._get_headers(),
+                    params=query.model_dump(exclude={"credentials", "max_results"}),
+                )
+                parsed_response = SearchOrganizationsResponse(**response.json())
+                organizations.extend(
+                    parsed_response.organizations[
+                        : query.max_results - len(organizations)
+                    ]
+                )
+
+        return (
+            organizations[: query.max_results] if query.max_results else organizations
+        )

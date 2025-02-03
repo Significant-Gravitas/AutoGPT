@@ -96,20 +96,7 @@ class SearchPeopleBlock(Block):
             le=50000,
             advanced=True,
         )
-        # page: int = SchemaField(
-        #     description="""The page number of the Apollo data that you want to retrieve.
 
-        # Use this parameter in combination with the per_page parameter to make search results for navigable and improve the performance of the endpoint.""",
-        #     default=1,
-        #     advanced=True,
-        # )
-        # per_page: int = SchemaField(
-        #     description="""The number of search results that should be returned for each page. Limited the number of results per page improves the endpoint's performance.
-
-        # Use the page parameter to search the different pages of data.""",
-        #     default=100,
-        #     advanced=True,
-        # )
         credentials: ApolloCredentialsInput = SchemaField(
             description="Apollo credentials",
         )
