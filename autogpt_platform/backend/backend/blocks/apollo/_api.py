@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 from backend.blocks.apollo._auth import ApolloCredentials
@@ -10,7 +11,6 @@ from backend.blocks.apollo.models import (
     SearchPeopleResponse,
 )
 from backend.util.request import Requests
-import logging
 
 logger = logging.getLogger(name=__name__)
 
