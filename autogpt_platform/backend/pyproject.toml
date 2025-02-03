@@ -55,7 +55,7 @@ sqlalchemy = "^2.0.36"
 psycopg2-binary = "^2.9.10"
 google-cloud-storage = "^2.18.2"
 launchdarkly-server-sdk = "^9.8.0"
-mem0ai = "^0.1.44"
+mem0ai = "^0.1.48"
 todoist-api-python = "^2.1.7"
 moviepy = "^2.1.2"
 
