@@ -41,6 +41,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   openweathermap: "OpenWeatherMap",
   open_router: "Open Router",
   pinecone: "Pinecone",
+  screenshotone: "ScreenshotOne",
   slant3d: "Slant3D",
   smartlead: "SmartLead",
   smtp: "SMTP",
