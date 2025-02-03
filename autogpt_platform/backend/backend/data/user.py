@@ -34,9 +34,11 @@ async def get_or_create_user(user_data: dict) -> User:
     return User.model_validate(user)
 
 
-async def get_user_by_id(user_id: str) -> Optional[User]:
+async def get_user_by_id(user_id: str) -> User:
     user = await prisma.user.find_unique(where={"id": user_id})
-    return User.model_validate(user) if user else None
+    if not user:
+        raise ValueError(f"User not found with ID: {user_id}")
+    return User.model_validate(user)
 
 
 async def create_default_user() -> Optional[User]:
