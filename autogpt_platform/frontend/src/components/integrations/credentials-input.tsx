@@ -14,6 +14,7 @@ import {
   FaGoogle,
   FaMedium,
   FaKey,
+  FaHubspot,
 } from "react-icons/fa";
 import { FC, useMemo, useState } from "react";
 import {
@@ -66,20 +67,24 @@ export const providerIcons: Record<
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
+  linear: fallbackIcon,
   medium: FaMedium,
+  mem0: fallbackIcon,
   ollama: fallbackIcon,
   openai: fallbackIcon,
   openweathermap: fallbackIcon,
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
   slant3d: fallbackIcon,
+  smtp: fallbackIcon,
   replicate: fallbackIcon,
+  reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
   twitter: FaTwitter,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
-  hubspot: fallbackIcon,
+  hubspot: FaHubspot,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
@@ -105,6 +110,10 @@ export const CredentialsInput: FC<{
   const credentials = useCredentials(selfKey);
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
+  const [
+    isUserPasswordCredentialsModalOpen,
+    setUserPasswordCredentialsModalOpen,
+  ] = useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupController, setOAuthPopupController] =
     useState<AbortController | null>(null);
@@ -120,8 +129,10 @@ export const CredentialsInput: FC<{
     providerName,
     supportsApiKey,
     supportsOAuth2,
+    supportsUserPassword,
     savedApiKeys,
     savedOAuthCredentials,
+    savedUserPasswordCredentials,
     oAuthCallback,
   } = credentials;
 
@@ -235,6 +246,17 @@ export const CredentialsInput: FC<{
           providerName={providerName}
         />
       )}
+      {supportsUserPassword && (
+        <UserPasswordCredentialsModal
+          credentialsFieldName={selfKey}
+          open={isUserPasswordCredentialsModalOpen}
+          onClose={() => setUserPasswordCredentialsModalOpen(false)}
+          onCredentialsCreate={(creds) => {
+            onSelectCredentials(creds);
+            setUserPasswordCredentialsModalOpen(false);
+          }}
+        />
+      )}
     </>
   );
 
@@ -243,13 +265,18 @@ export const CredentialsInput: FC<{
     selectedCredentials &&
     !savedApiKeys
       .concat(savedOAuthCredentials)
+      .concat(savedUserPasswordCredentials)
       .some((c) => c.id === selectedCredentials.id)
   ) {
     onSelectCredentials(undefined);
   }
 
   // No saved credentials yet
-  if (savedApiKeys.length === 0 && savedOAuthCredentials.length === 0) {
+  if (
+    savedApiKeys.length === 0 &&
+    savedOAuthCredentials.length === 0 &&
+    savedUserPasswordCredentials.length === 0
+  ) {
     return (
       <>
         <div className="mb-2 flex gap-1">
@@ -271,6 +298,12 @@ export const CredentialsInput: FC<{
               Enter API key
             </Button>
           )}
+          {supportsUserPassword && (
+            <Button onClick={() => setUserPasswordCredentialsModalOpen(true)}>
+              <ProviderIcon className="mr-2 h-4 w-4" />
+              Enter username and password
+            </Button>
+          )}
         </div>
         {modals}
         {oAuthError && (
@@ -280,12 +313,29 @@ export const CredentialsInput: FC<{
     );
   }
 
-  const singleCredential =
-    savedApiKeys.length === 1 && savedOAuthCredentials.length === 0
-      ? savedApiKeys[0]
-      : savedOAuthCredentials.length === 1 && savedApiKeys.length === 0
-        ? savedOAuthCredentials[0]
-        : null;
+  const getCredentialCounts = () => ({
+    apiKeys: savedApiKeys.length,
+    oauth: savedOAuthCredentials.length,
+    userPass: savedUserPasswordCredentials.length,
+  });
+
+  const getSingleCredential = () => {
+    const counts = getCredentialCounts();
+    const totalCredentials = Object.values(counts).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+
+    if (totalCredentials !== 1) return null;
+
+    if (counts.apiKeys === 1) return savedApiKeys[0];
+    if (counts.oauth === 1) return savedOAuthCredentials[0];
+    if (counts.userPass === 1) return savedUserPasswordCredentials[0];
+
+    return null;
+  };
+
+  const singleCredential = getSingleCredential();
 
   if (singleCredential) {
     if (!selectedCredentials) {
@@ -309,6 +359,7 @@ export const CredentialsInput: FC<{
     } else {
       const selectedCreds = savedApiKeys
         .concat(savedOAuthCredentials)
+        .concat(savedUserPasswordCredentials)
         .find((c) => c.id == newValue)!;
 
       onSelectCredentials({
@@ -347,6 +398,13 @@ export const CredentialsInput: FC<{
               {credentials.title}
             </SelectItem>
           ))}
+          {savedUserPasswordCredentials.map((credentials, index) => (
+            <SelectItem key={index} value={credentials.id}>
+              <ProviderIcon className="mr-2 inline h-4 w-4" />
+              <IconUserPlus className="mr-1.5 inline" />
+              {credentials.title}
+            </SelectItem>
+          ))}
           <SelectSeparator />
           {supportsOAuth2 && (
             <SelectItem value="sign-in">
@@ -358,6 +416,12 @@ export const CredentialsInput: FC<{
             <SelectItem value="add-api-key">
               <IconKeyPlus className="mr-1.5 inline" />
               Add new API key
+            </SelectItem>
+          )}
+          {supportsUserPassword && (
+            <SelectItem value="add-user-password">
+              <IconUserPlus className="mr-1.5 inline" />
+              Add new user password
             </SelectItem>
           )}
         </SelectContent>
@@ -498,6 +562,130 @@ export const APIKeyCredentialsModal: FC<{
             />
             <Button type="submit" className="w-full">
               Save & use this API key
+            </Button>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export const UserPasswordCredentialsModal: FC<{
+  credentialsFieldName: string;
+  open: boolean;
+  onClose: () => void;
+  onCredentialsCreate: (creds: CredentialsMetaInput) => void;
+}> = ({ credentialsFieldName, open, onClose, onCredentialsCreate }) => {
+  const credentials = useCredentials(credentialsFieldName);
+
+  const formSchema = z.object({
+    username: z.string().min(1, "Username is required"),
+    password: z.string().min(1, "Password is required"),
+    title: z.string().min(1, "Name is required"),
+  });
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      title: "",
+    },
+  });
+
+  if (
+    !credentials ||
+    credentials.isLoading ||
+    !credentials.supportsUserPassword
+  ) {
+    return null;
+  }
+
+  const { schema, provider, providerName, createUserPasswordCredentials } =
+    credentials;
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    const newCredentials = await createUserPasswordCredentials({
+      username: values.username,
+      password: values.password,
+      title: values.title,
+    });
+    onCredentialsCreate({
+      provider,
+      id: newCredentials.id,
+      type: "user_password",
+      title: newCredentials.title,
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Add new username & password for {providerName}
+          </DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="username"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Username</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="text"
+                      placeholder="Enter username..."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="password"
+                      placeholder="Enter password..."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="text"
+                      placeholder="Enter a name for this user login..."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button type="submit" className="w-full">
+              Save & use this user login
             </Button>
           </form>
         </Form>

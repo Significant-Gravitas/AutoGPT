@@ -11,7 +11,6 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     title: { control: "text" },
-    heading: { control: "text" },
     description: { control: "text" },
     buttonText: { control: "text" },
     onButtonClick: { action: "buttonClicked" },
@@ -24,7 +23,6 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     title: "Want to contribute?",
-    heading: "We're always looking for more Creators!",
     description: "Join our ever-growing community of hackers and tinkerers",
     buttonText: "Become a Creator",
     onButtonClick: () => console.log("Button clicked"),
@@ -34,7 +32,6 @@ export const Default: Story = {
 export const CustomText: Story = {
   args: {
     title: "Become a Creator Today!",
-    heading: "Join Our Creator Community",
     description: "Share your ideas and build amazing AI agents with us",
     buttonText: "Start Creating",
     onButtonClick: () => console.log("Custom button clicked"),

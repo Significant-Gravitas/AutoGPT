@@ -1,7 +1,8 @@
 import contextlib
 import logging
-import typing
+from typing import Any, Optional
 
+import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
 import starlette.middleware.cors
@@ -17,9 +18,11 @@ import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
 import backend.server.v2.library.routes
+import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
+from backend.server.external.api import external_app
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -94,6 +97,8 @@ app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 
+app.mount("/external-api", external_app)
+
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
@@ -117,9 +122,27 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_execute_graph(
-        graph_id: str, node_input: dict[typing.Any, typing.Any], user_id: str
+        graph_id: str,
+        node_input: dict[str, Any],
+        user_id: str,
+        graph_version: Optional[int] = None,
     ):
-        return backend.server.routers.v1.execute_graph(graph_id, node_input, user_id)
+        return backend.server.routers.v1.execute_graph(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            node_input=node_input,
+        )
+
+    @staticmethod
+    async def test_get_graph(
+        graph_id: str,
+        graph_version: int,
+        user_id: str,
+    ):
+        return await backend.server.routers.v1.get_graph(
+            graph_id, user_id, graph_version
+        )
 
     @staticmethod
     async def test_create_graph(
@@ -148,6 +171,19 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         return await backend.server.routers.v1.delete_graph(graph_id, user_id)
+
+    @staticmethod
+    async def test_create_store_listing(
+        request: backend.server.v2.store.model.StoreSubmissionRequest, user_id: str
+    ):
+        return await backend.server.v2.store.routes.create_submission(request, user_id)
+
+    @staticmethod
+    async def test_review_store_listing(
+        request: backend.server.v2.store.model.ReviewSubmissionRequest,
+        user: autogpt_libs.auth.models.User,
+    ):
+        return await backend.server.v2.store.routes.review_submission(request, user)
 
     def set_test_dependency_overrides(self, overrides: dict):
         app.dependency_overrides.update(overrides)
