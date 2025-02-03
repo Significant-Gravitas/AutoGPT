@@ -111,19 +111,53 @@ class ValidateEmailsBlock(Block):
             input_schema=ValidateEmailsBlock.Input,
             output_schema=ValidateEmailsBlock.Output,
             test_credentials=TEST_CREDENTIALS,
-            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "email": "test@test.com",
+            },
             test_output=[
                 (
-                    "people",
-                    [
-                        {
-                            "id": "1",
-                            "name": "John Doe",
-                        }
-                    ],
+                    "response",
+                    Response(
+                        address="test@test.com",
+                        status=ZBValidateStatus.valid,
+                        sub_status=ZBValidateSubStatus.allowed,
+                        account="test",
+                        domain="test.com",
+                        did_you_mean=None,
+                        domain_age_days=None,
+                        free_email=False,
+                        mx_found=False,
+                        mx_record=None,
+                        smtp_provider=None,
+                    ),
                 )
             ],
+            test_mock={
+                "validate_email": lambda email, ip_address, credentials: ZBValidateResponse(
+                    data={
+                        "address": email,
+                        "status": ZBValidateStatus.valid,
+                        "sub_status": ZBValidateSubStatus.allowed,
+                        "account": "test",
+                        "domain": "test.com",
+                        "did_you_mean": None,
+                        "domain_age_days": None,
+                        "free_email": False,
+                        "mx_found": False,
+                        "mx_record": None,
+                        "smtp_provider": None,
+                    }
+                )
+            },
         )
+
+    @staticmethod
+    def validate_email(
+        email: str, ip_address: str, credentials: ZeroBounceCredentials
+    ) -> ZBValidateResponse:
+        client = ZeroBounceClient(credentials.api_key.get_secret_value())
+        return client.validate_email(email, ip_address)
 
     def run(
         self,
@@ -132,11 +166,8 @@ class ValidateEmailsBlock(Block):
         credentials: ZeroBounceCredentials,
         **kwargs,
     ) -> BlockOutput:
-        client = ZeroBounceClient(credentials.api_key.get_secret_value())
-
-        # query = SearchPeopleRequest(**input_data.model_dump(exclude={"credentials"}))
-        response: ZBValidateResponse = client.validate_email(
-            input_data.email, input_data.ip_address
+        response: ZBValidateResponse = self.validate_email(
+            input_data.email, input_data.ip_address, credentials
         )
 
         response_model = Response(**response.__dict__)
