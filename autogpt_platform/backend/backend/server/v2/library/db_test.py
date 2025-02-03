@@ -80,12 +80,8 @@ async def test_get_library_agents(mocker):
     assert result[0].id == "ua1"
     assert result[0].name == "Test Agent 2"
     assert result[0].description == "Test Description 2"
-    assert result[0].is_created_by_user is False
-    assert result[0].is_latest_version is True
-    assert result[0].is_favorite is False
     assert result[0].agent_id == "agent2"
     assert result[0].agent_version == 1
-    assert result[0].preset_id is None
 
 
 @pytest.mark.asyncio

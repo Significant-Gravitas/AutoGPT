@@ -25,6 +25,8 @@ async def get_library_agents(
             "Search query is too long."
         )
 
+    prisma.types.AgentGraphRelationFilter
+
     where_clause = prisma.types.LibraryAgentWhereInput(
         userId=user_id,
         isDeleted=False,
@@ -48,14 +50,17 @@ async def get_library_agents(
         ]
 
     try:
+
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
             include={
                 "Agent": {
                     "include": {
-                        "AgentNodes": {"include": {"Input": True, "Output": True}}
-                    }
-                }
+                        "AgentNodes": {"include": {"Input": True, "Output": True}},
+                        "AgentGraphExecution": {"where": {"userId": user_id}},
+                    },
+                },
+                "Creator": True,
             },
             order=[{"updatedAt": "desc"}],
         )
@@ -186,6 +191,8 @@ async def add_store_agent_to_library(
                 f"Store listing version {store_listing_version_id} not found"
             )
 
+        # We need the agent object to be able to check if
+        # the user_id is the same as the agent's user_id
         agent = store_listing_version.Agent
 
         if agent.userId == user_id:
@@ -353,3 +360,27 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to delete preset"
         ) from e
+
+
+async def main():
+    import time
+
+    import backend.data.db
+
+    await backend.data.db.connect()
+
+    try:
+
+        time.sleep(2)
+        library_agents = await get_library_agents(
+            "5f8edafd-27ab-4343-88b3-6dbc02be7b06"
+        )
+        print(library_agents)
+    finally:
+        await backend.data.db.disconnect()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())

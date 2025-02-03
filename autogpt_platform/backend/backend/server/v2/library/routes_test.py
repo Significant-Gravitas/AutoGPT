@@ -39,29 +39,33 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
             id="test-agent-1",
             agent_id="test-agent-1",
             agent_version=1,
-            preset_id="preset-1",
+            image_url="",
+            creator_name="Test Creator",
+            creator_image_url="",
+            status=backend.server.v2.library.model.AgentStatus.COMPLETED,
             updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
-            is_favorite=False,
-            is_created_by_user=True,
-            is_latest_version=True,
             name="Test Agent 1",
             description="Test Description 1",
             input_schema={"type": "object", "properties": {}},
-            output_schema={"type": "object", "properties": {}},
+            new_output=False,
+            can_access_graph=True,
+            is_latest_version=True,
         ),
         backend.server.v2.library.model.LibraryAgent(
             id="test-agent-2",
             agent_id="test-agent-2",
             agent_version=1,
-            preset_id="preset-2",
+            image_url="",
+            creator_name="Test Creator",
+            creator_image_url="",
+            status=backend.server.v2.library.model.AgentStatus.COMPLETED,
             updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
-            is_favorite=False,
-            is_created_by_user=False,
-            is_latest_version=True,
             name="Test Agent 2",
             description="Test Description 2",
             input_schema={"type": "object", "properties": {}},
-            output_schema={"type": "object", "properties": {}},
+            new_output=False,
+            can_access_graph=False,
+            is_latest_version=True,
         ),
     ]
     mock_db_call = mocker.patch("backend.server.v2.library.db.get_library_agents")
@@ -76,9 +80,9 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     ]
     assert len(data) == 2
     assert data[0].agent_id == "test-agent-1"
-    assert data[0].is_created_by_user is True
+    assert data[0].can_access_graph is True
     assert data[1].agent_id == "test-agent-2"
-    assert data[1].is_created_by_user is False
+    assert data[1].can_access_graph is False
     mock_db_call.assert_called_once_with("test-user-id")
 
 

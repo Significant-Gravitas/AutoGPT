@@ -1,7 +1,9 @@
 import datetime
+import enum
 import json
 import typing
 
+import prisma.enums
 import prisma.models
 import pydantic
 
@@ -10,25 +12,40 @@ import backend.data.graph
 import backend.server.model
 
 
+class AgentStatus(str, enum.Enum):
+    # The agent has completed all runs
+    COMPLETED = "COMPLETED"
+    # An agent is running, but not all runs have completed
+    HEALTHY = "HEALTHY"
+    # An agent is waiting to start or waiting for another reason
+    WAITING = "WAITING"
+    # An agent is in an error state
+    ERROR = "ERROR"
+
+
 class LibraryAgent(pydantic.BaseModel):
     id: str  # Changed from agent_id to match GraphMeta
 
     agent_id: str
     agent_version: int  # Changed from agent_version to match GraphMeta
 
-    preset_id: str | None
+    image_url: str
+
+    creator_name: str  # from profile
+    creator_image_url: str  # from profile
+
+    status: AgentStatus
 
     updated_at: datetime.datetime
 
-    name: str
-    description: str
+    name: str  # from graph
+    description: str  # from graph
 
     # Made input_schema and output_schema match GraphMeta's type
     input_schema: dict[str, typing.Any]  # Should be BlockIOObjectSubSchema in frontend
-    output_schema: dict[str, typing.Any]  # Should be BlockIOObjectSubSchema in frontend
 
-    is_favorite: bool
-    is_created_by_user: bool
+    new_output: bool
+    can_access_graph: bool
 
     is_latest_version: bool
 
@@ -42,6 +59,18 @@ class LibraryAgent(pydantic.BaseModel):
         agent_updated_at = agent.Agent.updatedAt
         lib_agent_updated_at = agent.updatedAt
 
+        name = graph.name
+        description = graph.description
+        image_url = agent.image_url if agent.image_url else ""
+        if agent.Creator:
+            creator_name = agent.Creator.name
+            creator_image_url = (
+                agent.Creator.avatarUrl if agent.Creator.avatarUrl else ""
+            )
+        else:
+            creator_name = "Unknown"
+            creator_image_url = ""
+
         # Take the latest updated_at timestamp either when the graph was updated or the library agent was updated
         updated_at = (
             max(agent_updated_at, lib_agent_updated_at)
@@ -49,20 +78,54 @@ class LibraryAgent(pydantic.BaseModel):
             else lib_agent_updated_at
         )
 
+        # Getting counts as expecting more refined logic for determining status
+        status_counts = {status: 0 for status in prisma.enums.AgentExecutionStatus}
+        new_output = False
+
+        runs_since = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=7)
+        if not agent.Agent.AgentGraphExecution:
+            status = AgentStatus.COMPLETED
+        else:
+            for execution in agent.Agent.AgentGraphExecution:
+                if runs_since > execution.createdAt:
+                    if (
+                        execution.executionStatus
+                        == prisma.enums.AgentExecutionStatus.COMPLETED
+                    ):
+                        new_output = True
+                    status_counts[execution.executionStatus] += 1
+
+            if status_counts[prisma.enums.AgentExecutionStatus.FAILED] > 0:
+                status = AgentStatus.ERROR
+            elif status_counts[prisma.enums.AgentExecutionStatus.QUEUED] > 0:
+                status = AgentStatus.WAITING
+            elif status_counts[prisma.enums.AgentExecutionStatus.RUNNING] > 0:
+                status = AgentStatus.HEALTHY
+            else:
+                status = AgentStatus.COMPLETED
+
         return LibraryAgent(
             id=agent.id,
             agent_id=agent.agentId,
             agent_version=agent.agentVersion,
+            image_url=image_url,
+            creator_name=creator_name,
+            creator_image_url=creator_image_url,
+            name=name,
+            description=description,
+            status=status,
             updated_at=updated_at,
-            name=graph.name,
-            description=graph.description,
             input_schema=graph.input_schema,
-            output_schema=graph.output_schema,
-            is_favorite=agent.isFavorite,
-            is_created_by_user=agent.isCreatedByUser,
-            is_latest_version=graph.is_active,
-            preset_id=agent.AgentPreset.id if agent.AgentPreset else None,
+            new_output=new_output,
+            can_access_graph=agent.Agent.userId == agent.userId,
+            # TODO: work out how to calculate this efficiently
+            is_latest_version=True,
         )
+
+
+class LibraryAgentResponse:
+    agents: typing.List[LibraryAgent]
+    pagination: backend.server.model.Pagination  # info
 
 
 class LibraryAgentPreset(pydantic.BaseModel):
