@@ -203,6 +203,9 @@ export default function CreditsPage() {
             executions are happening.
           </p>
           <br />
+          {transactionHistory.transactions.length === 0 && (
+            <p className="text-neutral-600">No transactions found.</p>
+          )}
           <Table
             className={
               transactionHistory.transactions.length === 0 ? "hidden" : ""
