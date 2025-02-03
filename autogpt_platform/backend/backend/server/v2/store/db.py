@@ -809,7 +809,7 @@ async def get_agent(
     try:
         store_listing_version = (
             await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}
+                where={"id": store_listing_version_id}, include={"Agent": True}
             )
         )
 
