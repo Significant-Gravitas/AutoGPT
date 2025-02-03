@@ -418,13 +418,13 @@ class UserCredit(UserCreditBase):
                 }
             ],
             mode="payment",
+            ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
             success_url=settings.config.platform_base_url
             + "/marketplace/credits?topup=success",
             cancel_url=settings.config.platform_base_url
             + "/marketplace/credits?topup=cancel",
-            return_url=settings.config.platform_base_url + "/marketplace/credits",
         )
 
         await self._add_transaction(
