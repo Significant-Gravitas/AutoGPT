@@ -1,6 +1,7 @@
 import json
 import logging
 
+import fastapi
 import prisma.errors
 import prisma.models
 import prisma.types
@@ -8,6 +9,8 @@ import prisma.types
 import backend.server.model
 import backend.server.v2.library.model
 import backend.server.v2.store.exceptions
+import backend.server.v2.store.image_gen
+import backend.server.v2.store.media
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +89,53 @@ async def create_library_agent(
     """
 
     try:
+
+        agent = await prisma.models.AgentGraph.prisma().find_unique(
+            where={"id": agent_id, "version": agent_version}
+        )
+
+        if not agent:
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(
+                f"Agent {agent_id} version {agent_version} not found"
+            )
+        try:
+            # Use .jpeg here since we are generating JPEG images
+            filename = f"agent_{agent_id}.jpeg"
+
+            image_url = await backend.server.v2.store.media.check_media_exists(
+                user_id, filename
+            )
+
+            if not image_url:
+                # Generate agent image as JPEG
+                image = await backend.server.v2.store.image_gen.generate_agent_image(
+                    agent=agent
+                )
+
+                # Create UploadFile with the correct filename and content_type
+                image_file = fastapi.UploadFile(
+                    file=image,
+                    filename=filename,
+                )
+
+                image_url = await backend.server.v2.store.media.upload_media(
+                    user_id=user_id, file=image_file, use_file_name=True
+                )
+        except Exception as e:
+            logger.error("Error generating agent image: %s", e)
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                "Failed to generate agent image"
+            ) from e
+
         library_agent = await prisma.models.LibraryAgent.prisma().create(
             data=prisma.types.LibraryAgentCreateInput(
                 userId=user_id,
                 agentId=agent_id,
                 agentVersion=agent_version,
-                isCreatedByUser=False,
+                image_url=image_url,
+                isCreatedByUser=user_id == agent.userId,
                 useGraphIsActiveVersion=True,
+                Creator={"connect": {"id": agent.userId}},
             )
         )
         return library_agent
