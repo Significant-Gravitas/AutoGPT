@@ -10,6 +10,9 @@ from backend.blocks.apollo.models import (
     SearchPeopleResponse,
 )
 from backend.util.request import Requests
+import logging
+
+logger = logging.getLogger(name=__name__)
 
 
 class ApolloClient:
@@ -57,6 +60,7 @@ class ApolloClient:
                 parsed_response = SearchPeopleResponse(**response.json())
                 people.extend(parsed_response.people[: query.max_results - len(people)])
 
+        logger.info(f"Found {len(people)} people")
         return people[: query.max_results] if query.max_results else people
 
     def search_organizations(
@@ -98,6 +102,7 @@ class ApolloClient:
                     ]
                 )
 
+        logger.info(f"Found {len(organizations)} organizations")
         return (
             organizations[: query.max_results] if query.max_results else organizations
         )

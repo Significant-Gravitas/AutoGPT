@@ -294,7 +294,7 @@ class Contact(BaseModel):
     photo_url: Optional[str] = None
     present_raw_address: Optional[str] = None
     linkededin_uid: Optional[str] = None
-    extrapolated_email_confidence: Optional[str] = None
+    extrapolated_email_confidence: Optional[float] = None
     salesforce_id: Optional[str] = None
     salesforce_lead_id: Optional[str] = None
     salesforce_contact_id: Optional[str] = None
