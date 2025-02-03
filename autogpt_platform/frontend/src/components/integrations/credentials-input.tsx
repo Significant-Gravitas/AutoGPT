@@ -86,8 +86,8 @@ export const providerIcons: Record<
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
   hubspot: FaHubspot,
-  todoist: fallbackIcon,
   smartlead: fallbackIcon,
+  todoist: fallbackIcon,
   zerobounce: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
