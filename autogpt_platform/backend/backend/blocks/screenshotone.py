@@ -1,4 +1,5 @@
 from base64 import b64encode
+from enum import Enum
 from typing import Literal
 
 from pydantic import SecretStr
@@ -13,6 +14,12 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.file import MediaFile, store_media_file
 from backend.util.request import Requests
+
+
+class Format(str, Enum):
+    PNG = "png"
+    JPEG = "jpeg"
+    WEBP = "webp"
 
 
 class ScreenshotWebPageBlock(Block):
@@ -35,8 +42,8 @@ class ScreenshotWebPageBlock(Block):
         full_page: bool = SchemaField(
             description="Whether to capture the full page length", default=False
         )
-        format: str = SchemaField(
-            description="Output format (png, jpeg, webp)", default="png"
+        format: Format = SchemaField(
+            description="Output format (png, jpeg, webp)", default=Format.PNG
         )
         block_ads: bool = SchemaField(description="Whether to block ads", default=True)
         block_cookie_banners: bool = SchemaField(
@@ -105,7 +112,7 @@ class ScreenshotWebPageBlock(Block):
         viewport_width: int,
         viewport_height: int,
         full_page: bool,
-        format: str,
+        format: Format,
         block_ads: bool,
         block_cookie_banners: bool,
         block_chats: bool,
@@ -123,7 +130,7 @@ class ScreenshotWebPageBlock(Block):
             "viewport_width": viewport_width,
             "viewport_height": viewport_height,
             "full_page": str(full_page).lower(),
-            "format": format,
+            "format": format.value,
             "block_ads": str(block_ads).lower(),
             "block_cookie_banners": str(block_cookie_banners).lower(),
             "block_chats": str(block_chats).lower(),
@@ -134,8 +141,9 @@ class ScreenshotWebPageBlock(Block):
 
         return {
             "image": store_media_file(
-                graph_exec_id,
-                f"data:{format};base64,{b64encode(response.content).decode('utf-8')}",
+                graph_exec_id=graph_exec_id,
+                file=f"data:image/{format.value};base64,{b64encode(response.content).decode('utf-8')}",
+                return_content=True,
             )
         }
 
