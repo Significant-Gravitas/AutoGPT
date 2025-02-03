@@ -112,6 +112,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     LLAMA3_70B = "llama3-70b-8192"
     LLAMA3_8B = "llama3-8b-8192"
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
+    # Groq preview models
+    DEEPSEEK_LLAMA_70B = "deepseek-r1-distill-llama-70b"
     # Deprecated Groq models
     GEMMA_7B = "gemma-7b-it"
     LLAMA3_1_70B = "llama-3.1-70b-versatile"
@@ -193,6 +195,7 @@ MODEL_METADATA = {
     LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, None),
     LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, None),
     LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, None),
+    LlmModel.DEEPSEEK_LLAMA_70B: ModelMetadata("groq", 128000, None),
     # https://ollama.com/library
     LlmModel.OLLAMA_LLAMA3_3: ModelMetadata("ollama", 8192, None),
     LlmModel.OLLAMA_LLAMA3_2: ModelMetadata("ollama", 8192, None),
