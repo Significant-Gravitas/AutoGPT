@@ -1,6 +1,8 @@
+import base64
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import SecretStr
 
@@ -20,6 +22,15 @@ from backend.data.model import (
 from backend.util.settings import Settings
 
 settings = Settings()
+
+# This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
+ollama_credentials = APIKeyCredentials(
+    id="744fdc56-071a-4761-b5a5-0af0ce10a2b5",
+    provider="ollama",
+    api_key=SecretStr("FAKE_API_KEY"),
+    title="Use Credits for Ollama",
+    expires_at=None,
+)
 
 revid_credentials = APIKeyCredentials(
     id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
@@ -91,9 +102,52 @@ open_router_credentials = APIKeyCredentials(
     title="Use Credits for Open Router",
     expires_at=None,
 )
+fal_credentials = APIKeyCredentials(
+    id="6c0f5bd0-9008-4638-9d79-4b40b631803e",
+    provider="fal",
+    api_key=SecretStr(settings.secrets.fal_api_key),
+    title="Use Credits for FAL",
+    expires_at=None,
+)
+exa_credentials = APIKeyCredentials(
+    id="96153e04-9c6c-4486-895f-5bb683b1ecec",
+    provider="exa",
+    api_key=SecretStr(settings.secrets.exa_api_key),
+    title="Use Credits for Exa search",
+    expires_at=None,
+)
+e2b_credentials = APIKeyCredentials(
+    id="78d19fd7-4d59-4a16-8277-3ce310acf2b7",
+    provider="e2b",
+    api_key=SecretStr(settings.secrets.e2b_api_key),
+    title="Use Credits for E2B",
+    expires_at=None,
+)
+nvidia_credentials = APIKeyCredentials(
+    id="96b83908-2789-4dec-9968-18f0ece4ceb3",
+    provider="nvidia",
+    api_key=SecretStr(settings.secrets.nvidia_api_key),
+    title="Use Credits for Nvidia",
+    expires_at=None,
+)
+screenshotone_credentials = APIKeyCredentials(
+    id="3b1bdd16-8818-4bc2-8cbb-b23f9a3439ed",
+    provider="screenshotone",
+    api_key=SecretStr(settings.secrets.screenshotone_api_key),
+    title="Use Credits for ScreenshotOne",
+    expires_at=None,
+)
+mem0_credentials = APIKeyCredentials(
+    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    provider="mem0",
+    api_key=SecretStr(settings.secrets.mem0_api_key),
+    title="Use Credits for Mem0",
+    expires_at=None,
+)
 
 
 DEFAULT_CREDENTIALS = [
+    ollama_credentials,
     revid_credentials,
     ideogram_credentials,
     replicate_credentials,
@@ -104,6 +158,12 @@ DEFAULT_CREDENTIALS = [
     jina_credentials,
     unreal_credentials,
     open_router_credentials,
+    fal_credentials,
+    exa_credentials,
+    e2b_credentials,
+    mem0_credentials,
+    nvidia_credentials,
+    screenshotone_credentials,
 ]
 
 
@@ -135,6 +195,10 @@ class IntegrationCredentialsStore:
     def get_all_creds(self, user_id: str) -> list[Credentials]:
         users_credentials = self._get_user_integrations(user_id).credentials
         all_credentials = users_credentials
+        # These will always be added
+        all_credentials.append(ollama_credentials)
+
+        # These will only be added if the API key is set
         if settings.secrets.revid_api_key:
             all_credentials.append(revid_credentials)
         if settings.secrets.ideogram_api_key:
@@ -155,6 +219,18 @@ class IntegrationCredentialsStore:
             all_credentials.append(unreal_credentials)
         if settings.secrets.open_router_api_key:
             all_credentials.append(open_router_credentials)
+        if settings.secrets.fal_api_key:
+            all_credentials.append(fal_credentials)
+        if settings.secrets.exa_api_key:
+            all_credentials.append(exa_credentials)
+        if settings.secrets.e2b_api_key:
+            all_credentials.append(e2b_credentials)
+        if settings.secrets.nvidia_api_key:
+            all_credentials.append(nvidia_credentials)
+        if settings.secrets.screenshotone_api_key:
+            all_credentials.append(screenshotone_credentials)
+        if settings.secrets.mem0_api_key:
+            all_credentials.append(mem0_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
@@ -210,18 +286,24 @@ class IntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
-    def store_state_token(self, user_id: str, provider: str, scopes: list[str]) -> str:
+    def store_state_token(
+        self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
+    ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+        (code_challenge, code_verifier) = self._generate_code_challenge()
 
         state = OAuthState(
             token=token,
             provider=provider,
+            code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
         )
 
         with self.locked_user_integrations(user_id):
+
             user_integrations = self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
             oauth_states.append(state)
@@ -231,39 +313,21 @@ class IntegrationCredentialsStore:
                 user_id=user_id, data=user_integrations
             )
 
-        return token
+        return token, code_challenge
 
-    def get_any_valid_scopes_from_state_token(
+    def _generate_code_challenge(self) -> tuple[str, str]:
+        """
+        Generate code challenge using SHA256 from the code verifier.
+        Currently only SHA256 is supported.(In future if we want to support more methods we can add them here)
+        """
+        code_verifier = secrets.token_urlsafe(128)
+        sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8")
+        return code_challenge.replace("=", ""), code_verifier
+
+    def verify_state_token(
         self, user_id: str, token: str, provider: str
-    ) -> list[str]:
-        """
-        Get the valid scopes from the OAuth state token. This will return any valid scopes
-        from any OAuth state token for the given provider. If no valid scopes are found,
-        an empty list is returned. DO NOT RELY ON THIS TOKEN TO AUTHENTICATE A USER, AS IT
-        IS TO CHECK IF THE USER HAS GIVEN PERMISSIONS TO THE APPLICATION BEFORE EXCHANGING
-        THE CODE FOR TOKENS.
-        """
-        user_integrations = self._get_user_integrations(user_id)
-        oauth_states = user_integrations.oauth_states
-
-        now = datetime.now(timezone.utc)
-        valid_state = next(
-            (
-                state
-                for state in oauth_states
-                if state.token == token
-                and state.provider == provider
-                and state.expires_at > now.timestamp()
-            ),
-            None,
-        )
-
-        if valid_state:
-            return valid_state.scopes
-
-        return []
-
-    def verify_state_token(self, user_id: str, token: str, provider: str) -> bool:
+    ) -> Optional[OAuthState]:
         with self.locked_user_integrations(user_id):
             user_integrations = self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
@@ -285,9 +349,9 @@ class IntegrationCredentialsStore:
                 oauth_states.remove(valid_state)
                 user_integrations.oauth_states = oauth_states
                 self.db_manager.update_user_integrations(user_id, user_integrations)
-                return True
+                return valid_state
 
-        return False
+        return None
 
     def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]

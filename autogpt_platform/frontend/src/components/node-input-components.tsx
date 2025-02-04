@@ -17,6 +17,7 @@ import {
   BlockIOStringSubSchema,
   BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
+  BlockIOSimpleTypeSubSchema,
 } from "@/lib/autogpt-server-api/types";
 import React, { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
@@ -376,12 +377,54 @@ export const NodeGenericInputField: FC<{
   }
 
   if ("anyOf" in propSchema) {
+    // Optional oneOf
+    if (
+      "oneOf" in propSchema.anyOf[0] &&
+      propSchema.anyOf[0].oneOf &&
+      "discriminator" in propSchema.anyOf[0] &&
+      propSchema.anyOf[0].discriminator
+    ) {
+      return (
+        <NodeOneOfDiscriminatorField
+          nodeId={nodeId}
+          propKey={propKey}
+          propSchema={propSchema.anyOf[0]}
+          defaultValue={propSchema.default}
+          currentValue={currentValue}
+          errors={errors}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
+        />
+      );
+    }
+
     // optional items
     const types = propSchema.anyOf.map((s) =>
       "type" in s ? s.type : undefined,
     );
     if (types.includes("string") && types.includes("null")) {
-      // optional string
+      // optional string and datetime
+
+      if (
+        "format" in propSchema.anyOf[0] &&
+        propSchema.anyOf[0].format === "date-time"
+      ) {
+        return (
+          <NodeDateTimeInput
+            selfKey={propKey}
+            schema={propSchema.anyOf[0]}
+            value={currentValue}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={handleInputChange}
+          />
+        );
+      }
+
       return (
         <NodeStringInput
           selfKey={propKey}
@@ -442,6 +485,42 @@ export const NodeGenericInputField: FC<{
         />
       );
     } else if (types.includes("object") && types.includes("null")) {
+      // rendering optional mutliselect
+      if (
+        Object.values(
+          (propSchema.anyOf[0] as BlockIOObjectSubSchema).properties,
+        ).every(
+          (subSchema) => "type" in subSchema && subSchema.type == "boolean",
+        ) &&
+        Object.keys((propSchema.anyOf[0] as BlockIOObjectSubSchema).properties)
+          .length >= 1
+      ) {
+        const options = Object.keys(
+          (propSchema.anyOf[0] as BlockIOObjectSubSchema).properties,
+        );
+        const selectedKeys = Object.entries(currentValue || {})
+          .filter(([_, v]) => v)
+          .map(([k, _]) => k);
+        return (
+          <NodeMultiSelectInput
+            selfKey={propKey}
+            schema={propSchema.anyOf[0] as BlockIOObjectSubSchema}
+            selection={selectedKeys}
+            error={errors[propKey]}
+            className={className}
+            displayName={displayName}
+            handleInputChange={(key, selection) => {
+              handleInputChange(
+                key,
+                Object.fromEntries(
+                  options.map((option) => [option, selection.includes(option)]),
+                ),
+              );
+            }}
+          />
+        );
+      }
+
       return (
         <NodeKeyValueInput
           nodeId={nodeId}
@@ -477,6 +556,7 @@ export const NodeGenericInputField: FC<{
         propKey={propKey}
         propSchema={propSchema}
         currentValue={currentValue}
+        defaultValue={propSchema.default}
         errors={errors}
         connections={connections}
         handleInputChange={handleInputChange}
@@ -621,8 +701,9 @@ const NodeOneOfDiscriminatorField: FC<{
   propKey: string;
   propSchema: any;
   currentValue?: any;
+  defaultValue?: any;
   errors: { [key: string]: string | undefined };
-  connections: any;
+  connections: ConnectionData;
   handleInputChange: (key: string, value: any) => void;
   handleInputClick: (key: string) => void;
   className?: string;
@@ -632,15 +713,14 @@ const NodeOneOfDiscriminatorField: FC<{
   propKey,
   propSchema,
   currentValue,
+  defaultValue,
   errors,
   connections,
   handleInputChange,
   handleInputClick,
   className,
-  displayName,
 }) => {
   const discriminator = propSchema.discriminator;
-
   const discriminatorProperty = discriminator.propertyName;
 
   const variantOptions = useMemo(() => {
@@ -653,19 +733,36 @@ const NodeOneOfDiscriminatorField: FC<{
 
         return {
           value: variantDiscValue,
-          schema: variant,
+          schema: variant as BlockIOSubSchema,
         };
       })
       .filter((v: any) => v.value != null);
   }, [discriminatorProperty, propSchema.oneOf]);
 
-  const currentVariant = variantOptions.find(
-    (opt: any) => currentValue?.[discriminatorProperty] === opt.value,
-  );
+  const initialVariant = defaultValue
+    ? variantOptions.find(
+        (opt: any) => defaultValue[discriminatorProperty] === opt.value,
+      )
+    : currentValue
+      ? variantOptions.find(
+          (opt: any) => currentValue[discriminatorProperty] === opt.value,
+        )
+      : null;
 
   const [chosenType, setChosenType] = useState<string>(
-    currentVariant?.value || "",
+    initialVariant?.value || "",
   );
+
+  useEffect(() => {
+    if (initialVariant && !currentValue) {
+      handleInputChange(
+        propKey,
+        defaultValue || {
+          [discriminatorProperty]: initialVariant.value,
+        },
+      );
+    }
+  }, []);
 
   const handleVariantChange = (newType: string) => {
     setChosenType(newType);
@@ -684,8 +781,24 @@ const NodeOneOfDiscriminatorField: FC<{
     (opt: any) => opt.value === chosenType,
   )?.schema;
 
+  function getEntryKey(key: string): string {
+    // use someKey for handle purpose (not childKey)
+    return `${propKey}_#_${key}`;
+  }
+
+  function isConnected(key: string): boolean {
+    return connections.some(
+      (c) => c.targetHandle === getEntryKey(key) && c.target === nodeId,
+    );
+  }
+
   return (
-    <div className={cn("flex flex-col space-y-2", className)}>
+    <div
+      className={cn(
+        "flex min-w-[400px] max-w-[95%] flex-col space-y-4",
+        className,
+      )}
+    >
       <Select value={chosenType || ""} onValueChange={handleVariantChange}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Select a type..." />
@@ -706,32 +819,38 @@ const NodeOneOfDiscriminatorField: FC<{
               if (someKey === "discriminator") {
                 return null;
               }
-              const childKey = propKey ? `${propKey}.${someKey}` : someKey;
+              const childKey = propKey ? `${propKey}.${someKey}` : someKey; // for history redo/undo purpose
               return (
                 <div
                   key={childKey}
-                  className="flex w-full flex-row justify-between space-y-2"
+                  className="mb-4 flex w-full flex-col justify-between space-y-2"
                 >
-                  <span className="mr-2 mt-3 dark:text-gray-300">
-                    {(childSchema as BlockIOSubSchema).title ||
-                      beautifyString(someKey)}
-                  </span>
-                  <NodeGenericInputField
-                    nodeId={nodeId}
-                    key={propKey}
-                    propKey={childKey}
-                    propSchema={childSchema as BlockIOSubSchema}
-                    currentValue={
-                      currentValue ? currentValue[someKey] : undefined
-                    }
-                    errors={errors}
-                    connections={connections}
-                    handleInputChange={handleInputChange}
-                    handleInputClick={handleInputClick}
-                    displayName={
-                      chosenVariantSchema.title || beautifyString(someKey)
-                    }
+                  <NodeHandle
+                    keyName={getEntryKey(someKey)}
+                    schema={childSchema as BlockIOSubSchema}
+                    isConnected={isConnected(getEntryKey(someKey))}
+                    isRequired={false}
+                    side="left"
                   />
+
+                  {!isConnected(someKey) && (
+                    <NodeGenericInputField
+                      nodeId={nodeId}
+                      key={propKey}
+                      propKey={childKey}
+                      propSchema={childSchema as BlockIOSubSchema}
+                      currentValue={
+                        currentValue
+                          ? currentValue[someKey]
+                          : defaultValue?.[someKey]
+                      }
+                      errors={errors}
+                      connections={connections}
+                      handleInputChange={handleInputChange}
+                      handleInputClick={handleInputClick}
+                      displayName={beautifyString(someKey)}
+                    />
+                  )}
                 </div>
               );
             },
@@ -848,10 +967,8 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          /*
-          The `index` is used as a DOM key instead of the actual `key`
-          because the `key` can change with each input, causing the input to lose focus.
-          */
+          // The `index` is used as a DOM key instead of the actual `key`
+          // because the `key` can change with each input, causing the input to lose focus.
           <div key={index}>
             <NodeHandle
               keyName={getEntryKey(key)}
@@ -925,6 +1042,13 @@ const NodeKeyValueInput: FC<{
     </div>
   );
 };
+
+// Checking if schema is type of string
+function isStringSubSchema(
+  schema: BlockIOSimpleTypeSubSchema,
+): schema is BlockIOStringSubSchema {
+  return "type" in schema && schema.type === "string";
+}
 
 const NodeArrayInput: FC<{
   nodeId: string;

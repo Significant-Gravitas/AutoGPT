@@ -34,6 +34,7 @@ export default function SignupPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  //TODO: Remove after closed beta
   const [showWaitlistPrompt, setShowWaitlistPrompt] = useState(false);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
@@ -58,10 +59,16 @@ export default function SignupPage() {
       const error = await signup(data);
       setIsLoading(false);
       if (error) {
-        setShowWaitlistPrompt(true);
+        if (error === "user_already_exists") {
+          setFeedback("User with this email already exists");
+          return;
+        } else {
+          setShowWaitlistPrompt(true);
+        }
         return;
       }
       setFeedback(null);
+      setShowWaitlistPrompt(false);
     },
     [form],
   );
@@ -84,7 +91,7 @@ export default function SignupPage() {
   }
 
   return (
-    <AuthCard>
+    <AuthCard className="mx-auto">
       <AuthHeader>Create a new account</AuthHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSignup)}>
@@ -95,7 +102,12 @@ export default function SignupPage() {
               <FormItem className="mb-6">
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="m@example.com" {...field} />
+                  <Input
+                    placeholder="m@example.com"
+                    {...field}
+                    type="email"
+                    autoComplete="email"
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -108,7 +120,7 @@ export default function SignupPage() {
               <FormItem className="mb-6">
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <PasswordInput {...field} />
+                  <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -121,7 +133,7 @@ export default function SignupPage() {
               <FormItem className="mb-4">
                 <FormLabel>Confirm Password</FormLabel>
                 <FormControl>
-                  <PasswordInput {...field} />
+                  <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormDescription className="text-sm font-normal leading-tight text-slate-500">
                   Password needs to be at least 6 characters long

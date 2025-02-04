@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
@@ -38,7 +39,9 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         self.token_uri = "https://oauth2.googleapis.com/token"
         self.revoke_uri = "https://oauth2.googleapis.com/revoke"
 
-    def get_login_url(self, scopes: list[str], state: str) -> str:
+    def get_login_url(
+        self, scopes: list[str], state: str, code_challenge: Optional[str]
+    ) -> str:
         all_scopes = list(set(scopes + self.DEFAULT_SCOPES))
         logger.debug(f"Setting up OAuth flow with scopes: {all_scopes}")
         flow = self._setup_oauth_flow(all_scopes)
@@ -52,7 +55,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         return authorization_url
 
     def exchange_code_for_tokens(
-        self, code: str, scopes: list[str]
+        self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         logger.debug(f"Exchanging code for tokens with scopes: {scopes}")
 
