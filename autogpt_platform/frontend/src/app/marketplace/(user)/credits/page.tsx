@@ -108,7 +108,7 @@ export default function CreditsPage() {
                 htmlFor="topUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Top-up Amount (Credits)
+                Top-up Amount (Credits, Minimum 500 = 5 USD)
               </label>
               <input
                 type="number"
@@ -137,7 +137,7 @@ export default function CreditsPage() {
                 htmlFor="autoTopUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Auto Top-up Amount (Credits)
+                Auto Top-up Amount (Credits, Minimum 500 = 5 USD)
               </label>
               <input
                 type="number"
