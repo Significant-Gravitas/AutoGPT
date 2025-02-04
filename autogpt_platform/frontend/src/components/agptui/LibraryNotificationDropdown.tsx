@@ -9,7 +9,7 @@ import {
 import { Button } from "./Button";
 import { BellIcon, X } from "lucide-react";
 import { motion, useAnimationControls, useScroll } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import LibraryNotificationCard, {
   NotificationCardData,
 } from "./LibraryNotificationCard";
@@ -31,36 +31,40 @@ export const LibraryNotificationDropdown = () => {
     return () => unsubscribe();
   }, [scrollY]);
 
-  const initialNotificationData = [
-    {
-      type: "audio" as "audio",
-      title: "Audio Processing Complete",
-      id: "4",
-    },
-    {
-      type: "text" as "text",
-      title: "LinkedIn Post Generator: YouTube to Professional Content",
-      id: "1",
-      content:
-        "As artificial intelligence (AI) continues to evolve, it's increasingly clear that AI isn't just a trend—it's reshaping the way we work, innovate, and solve complex problems. However, for many professionals, the question remains: How can I leverage AI to drive meaningful results in my own field? In this article, we'll explore how AI can empower businesses and individuals alike to be more efficient, make better decisions, and unlock new opportunities. Whether you're in tech, finance, healthcare, or any other industry, understanding the potential of AI can set you apart.",
-    },
-    {
-      type: "image" as "image",
-      title: "New Image Upload",
-      id: "2",
-    },
-    {
-      type: "video" as "video",
-      title: "Video Processing Complete",
-      id: "3",
-    },
-  ] as NotificationCardData[];
+  const initialNotificationData = useMemo(
+    () =>
+      [
+        {
+          type: "audio" as "audio",
+          title: "Audio Processing Complete",
+          id: "4",
+        },
+        {
+          type: "text" as "text",
+          title: "LinkedIn Post Generator: YouTube to Professional Content",
+          id: "1",
+          content:
+            "As artificial intelligence (AI) continues to evolve, it's increasingly clear that AI isn't just a trend—it's reshaping the way we work, innovate, and solve complex problems. However, for many professionals, the question remains: How can I leverage AI to drive meaningful results in my own field? In this article, we'll explore how AI can empower businesses and individuals alike to be more efficient, make better decisions, and unlock new opportunities. Whether you're in tech, finance, healthcare, or any other industry, understanding the potential of AI can set you apart.",
+        },
+        {
+          type: "image" as "image",
+          title: "New Image Upload",
+          id: "2",
+        },
+        {
+          type: "video" as "video",
+          title: "Video Processing Complete",
+          id: "3",
+        },
+      ] as NotificationCardData[],
+    [],
+  );
 
   useEffect(() => {
     if (initialNotificationData) {
       setNotifications(initialNotificationData);
     }
-  }, []);
+  }, [initialNotificationData]);
 
   const handleHoverStart = () => {
     controls.start({
