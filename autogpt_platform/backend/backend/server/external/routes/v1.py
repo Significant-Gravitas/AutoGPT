@@ -49,7 +49,7 @@ class GraphExecutionResult(TypedDict):
     execution_id: str
     status: str
     nodes: List[ExecutionNode]
-    outputs: Optional[List[ExecutionNodeOutput]]
+    agent_output: Optional[str]
 
 
 @v1_router.get(
@@ -119,6 +119,11 @@ async def get_graph_execution_results(
     execution_status = (
         last_result.status if last_result else AgentExecutionStatus.INCOMPLETE
     )
+    agent_output = (
+        last_result.output_data.get("output", [None])[0]
+        if last_result and execution_status == AgentExecutionStatus.COMPLETED
+        else None
+    )
 
     return GraphExecutionResult(
         execution_id=graph_exec_id,
@@ -131,17 +136,5 @@ async def get_graph_execution_results(
             )
             for result in results
         ],
-        outputs=(
-            [
-                ExecutionNodeOutput(
-                    node_id=last_result.node_id,
-                    outputs=[
-                        NodeOutput(key=k, value=v)
-                        for k, v in last_result.output_data.items()
-                    ],
-                )
-            ]
-            if last_result and execution_status == AgentExecutionStatus.COMPLETED
-            else None
-        ),
+        agent_output=agent_output,
     )
