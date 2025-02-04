@@ -71,17 +71,22 @@ async def test_get_library_agents(mocker):
     mock_library_agent.return_value.find_many = mocker.AsyncMock(
         return_value=mock_library_agents
     )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
     # Call function
     result = await db.get_library_agents("test-user")
 
     # Verify results
-    assert len(result) == 1
-    assert result[0].id == "ua1"
-    assert result[0].name == "Test Agent 2"
-    assert result[0].description == "Test Description 2"
-    assert result[0].agent_id == "agent2"
-    assert result[0].agent_version == 1
+    assert len(result.agents) == 1
+    assert result.agents[0].id == "ua1"
+    assert result.agents[0].name == "Test Agent 2"
+    assert result.agents[0].description == "Test Description 2"
+    assert result.agents[0].agent_id == "agent2"
+    assert result.agents[0].agent_version == 1
+    assert result.pagination.total_items == 1
+    assert result.pagination.total_pages == 1
+    assert result.pagination.current_page == 1
+    assert result.pagination.page_size == 50
 
 
 @pytest.mark.asyncio

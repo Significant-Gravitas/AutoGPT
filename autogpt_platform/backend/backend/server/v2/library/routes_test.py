@@ -7,6 +7,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 
+import backend.server.model
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -34,65 +35,81 @@ app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_u
 
 
 def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
-    mocked_value = [
-        backend.server.v2.library.model.LibraryAgent(
-            id="test-agent-1",
-            agent_id="test-agent-1",
-            agent_version=1,
-            image_url="",
-            creator_name="Test Creator",
-            creator_image_url="",
-            status=backend.server.v2.library.model.AgentStatus.COMPLETED,
-            updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
-            name="Test Agent 1",
-            description="Test Description 1",
-            input_schema={"type": "object", "properties": {}},
-            new_output=False,
-            can_access_graph=True,
-            is_latest_version=True,
+    mocked_value = backend.server.v2.library.model.LibraryAgentResponse(
+        agents=[
+            backend.server.v2.library.model.LibraryAgent(
+                id="test-agent-1",
+                agent_id="test-agent-1",
+                agent_version=1,
+                image_url="",
+                creator_name="Test Creator",
+                creator_image_url="",
+                status=backend.server.v2.library.model.AgentStatus.COMPLETED,
+                updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
+                name="Test Agent 1",
+                description="Test Description 1",
+                input_schema={"type": "object", "properties": {}},
+                new_output=False,
+                can_access_graph=True,
+                is_latest_version=True,
+            ),
+            backend.server.v2.library.model.LibraryAgent(
+                id="test-agent-2",
+                agent_id="test-agent-2",
+                agent_version=1,
+                image_url="",
+                creator_name="Test Creator",
+                creator_image_url="",
+                status=backend.server.v2.library.model.AgentStatus.COMPLETED,
+                updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
+                name="Test Agent 2",
+                description="Test Description 2",
+                input_schema={"type": "object", "properties": {}},
+                new_output=False,
+                can_access_graph=False,
+                is_latest_version=True,
+            ),
+        ],
+        pagination=backend.server.model.Pagination(
+            total_items=2, total_pages=1, current_page=1, page_size=50
         ),
-        backend.server.v2.library.model.LibraryAgent(
-            id="test-agent-2",
-            agent_id="test-agent-2",
-            agent_version=1,
-            image_url="",
-            creator_name="Test Creator",
-            creator_image_url="",
-            status=backend.server.v2.library.model.AgentStatus.COMPLETED,
-            updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
-            name="Test Agent 2",
-            description="Test Description 2",
-            input_schema={"type": "object", "properties": {}},
-            new_output=False,
-            can_access_graph=False,
-            is_latest_version=True,
-        ),
-    ]
+    )
     mock_db_call = mocker.patch("backend.server.v2.library.db.get_library_agents")
     mock_db_call.return_value = mocked_value
 
-    response = client.get("/agents")
+    response = client.get("/agents?search_term=test")
     assert response.status_code == 200
 
-    data = [
-        backend.server.v2.library.model.LibraryAgent.model_validate(agent)
-        for agent in response.json()
-    ]
-    assert len(data) == 2
-    assert data[0].agent_id == "test-agent-1"
-    assert data[0].can_access_graph is True
-    assert data[1].agent_id == "test-agent-2"
-    assert data[1].can_access_graph is False
-    mock_db_call.assert_called_once_with("test-user-id")
+    data = backend.server.v2.library.model.LibraryAgentResponse.model_validate(
+        response.json()
+    )
+    assert len(data.agents) == 2
+    assert data.agents[0].agent_id == "test-agent-1"
+    assert data.agents[0].can_access_graph is True
+    assert data.agents[1].agent_id == "test-agent-2"
+    assert data.agents[1].can_access_graph is False
+    mock_db_call.assert_called_once_with(
+        "test-user-id",
+        "test",
+        backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
+        1,
+        50,
+    )
 
 
 def test_get_library_agents_error(mocker: pytest_mock.MockFixture):
     mock_db_call = mocker.patch("backend.server.v2.library.db.get_library_agents")
     mock_db_call.side_effect = Exception("Test error")
 
-    response = client.get("/agents")
+    response = client.get("/agents?search_term=test")
     assert response.status_code == 500
-    mock_db_call.assert_called_once_with("test-user-id")
+    mock_db_call.assert_called_once_with(
+        "test-user-id",
+        "test",
+        backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
+        1,
+        50,
+    )
 
 
 @pytest.mark.skip(reason="Mocker Not implemented")

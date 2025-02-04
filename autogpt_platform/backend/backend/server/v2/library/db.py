@@ -16,16 +16,24 @@ logger = logging.getLogger(__name__)
 
 
 async def get_library_agents(
-    user_id: str, search_query: str | None = None
-) -> list[backend.server.v2.library.model.LibraryAgent]:
+    user_id: str,
+    search_term: str | None = None,
+    sort_by: backend.server.v2.library.model.LibraryAgentFilter = backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
+    page: int = 1,
+    page_size: int = 50,
+) -> backend.server.v2.library.model.LibraryAgentResponse:
     logger.debug(
-        "Fetching library agents for user_id=%s search_query=%s", user_id, search_query
+        "Fetching library agents for user_id=%s search_term=%s sort_by=%s page=%d",
+        user_id,
+        search_term,
+        sort_by,
+        page,
     )
 
-    if search_query and len(search_query.strip()) > 100:
-        logger.warning("Search query too long: %s", search_query)
+    if search_term and len(search_term.strip()) > 100:
+        logger.warning("Search term too long: %s", search_term)
         raise backend.server.v2.store.exceptions.DatabaseError(
-            "Search query is too long."
+            "Search term is too long."
         )
 
     prisma.types.AgentGraphRelationFilter
@@ -36,23 +44,35 @@ async def get_library_agents(
         isArchived=False,
     )
 
-    if search_query:
+    if search_term:
         where_clause["OR"] = [
             {
                 "Agent": {
-                    "is": {"name": {"contains": search_query, "mode": "insensitive"}}
+                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
                 }
             },
             {
                 "Agent": {
                     "is": {
-                        "description": {"contains": search_query, "mode": "insensitive"}
+                        "description": {"contains": search_term, "mode": "insensitive"}
                     }
                 }
             },
         ]
 
     try:
+        order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
+        if sort_by == backend.server.v2.library.model.LibraryAgentFilter.CREATED_AT:
+            order_by = {"createdAt": "desc"}
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT:
+            order_by = {"updatedAt": "desc"}
+        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_FAVOURITE:
+            order_by = {"isFavorite": "desc"}
+        elif (
+            sort_by
+            == backend.server.v2.library.model.LibraryAgentFilter.CAN_ACCESS_GRAPH
+        ):
+            order_by = {"isCreatedByUser": "desc"}
 
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
@@ -65,15 +85,29 @@ async def get_library_agents(
                 },
                 "Creator": True,
             },
-            order=[{"updatedAt": "desc"}],
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
         )
         logger.debug(
             "Retrieved %s agents for user_id=%s.", len(library_agents), user_id
         )
-        return [
-            backend.server.v2.library.model.LibraryAgent.from_db(agent)
-            for agent in library_agents
-        ]
+
+        agent_count = await prisma.models.LibraryAgent.prisma().count(
+            where=where_clause
+        )
+        return backend.server.v2.library.model.LibraryAgentResponse(
+            agents=[
+                backend.server.v2.library.model.LibraryAgent.from_db(agent)
+                for agent in library_agents
+            ],
+            pagination=backend.server.model.Pagination(
+                total_items=agent_count,
+                total_pages=(agent_count // page_size) + 1,
+                current_page=page,
+                page_size=page_size,
+            ),
+        )
     except prisma.errors.PrismaError as e:
         logger.error("Database error fetching library agents: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(

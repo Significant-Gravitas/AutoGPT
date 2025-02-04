@@ -123,7 +123,7 @@ class LibraryAgent(pydantic.BaseModel):
         )
 
 
-class LibraryAgentResponse:
+class LibraryAgentResponse(pydantic.BaseModel):
     agents: typing.List[LibraryAgent]
     pagination: backend.server.model.Pagination  # info
 
@@ -172,3 +172,10 @@ class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
     agent_id: str
     agent_version: int
     is_active: bool
+
+
+class LibraryAgentFilter(str, enum.Enum):
+    CREATED_AT = "createdAt"
+    UPDATED_AT = "updatedAt"
+    IS_FAVOURITE = "isFavourite"
+    CAN_ACCESS_GRAPH = "canAccessGraph"
