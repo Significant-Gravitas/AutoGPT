@@ -239,7 +239,7 @@ async def manage_payment_method(
 ) -> dict[str, str]:
     session = stripe.billing_portal.Session.create(
         customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.platform_base_url + "/marketplace/credits",
+        return_url=settings.config.frontend_base_url + "/marketplace/credits",
     )
     if not session:
         raise HTTPException(
