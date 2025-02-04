@@ -210,16 +210,16 @@ def execute_node(
             ):
                 yield execution
 
-            # Update execution status and spend credits
-            res = update_execution(ExecutionStatus.COMPLETED)
-            s = input_size + output_size
-            t = (
-                (res.end_time - res.start_time).total_seconds()
-                if res.end_time and res.start_time
-                else 0
-            )
-            data.data = input_data
-            db_client.spend_credits(data, s, t)
+        # Update execution status and spend credits
+        res = update_execution(ExecutionStatus.COMPLETED)
+        s = input_size + output_size
+        t = (
+            (res.end_time - res.start_time).total_seconds()
+            if res.end_time and res.start_time
+            else 0
+        )
+        data.data = input_data
+        db_client.spend_credits(data, s, t)
 
     except Exception as e:
         error_msg = str(e)
