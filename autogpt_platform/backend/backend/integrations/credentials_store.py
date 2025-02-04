@@ -130,6 +130,13 @@ nvidia_credentials = APIKeyCredentials(
     title="Use Credits for Nvidia",
     expires_at=None,
 )
+screenshotone_credentials = APIKeyCredentials(
+    id="3b1bdd16-8818-4bc2-8cbb-b23f9a3439ed",
+    provider="screenshotone",
+    api_key=SecretStr(settings.secrets.screenshotone_api_key),
+    title="Use Credits for ScreenshotOne",
+    expires_at=None,
+)
 mem0_credentials = APIKeyCredentials(
     id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
     provider="mem0",
@@ -154,8 +161,9 @@ DEFAULT_CREDENTIALS = [
     fal_credentials,
     exa_credentials,
     e2b_credentials,
-    nvidia_credentials,
     mem0_credentials,
+    nvidia_credentials,
+    screenshotone_credentials,
 ]
 
 
@@ -219,6 +227,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(e2b_credentials)
         if settings.secrets.nvidia_api_key:
             all_credentials.append(nvidia_credentials)
+        if settings.secrets.screenshotone_api_key:
+            all_credentials.append(screenshotone_credentials)
         if settings.secrets.mem0_api_key:
             all_credentials.append(mem0_credentials)
         return all_credentials

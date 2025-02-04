@@ -399,16 +399,12 @@ class UserCredit(UserCreditBase):
                 f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
             )
 
-        if not (user := await get_user_by_id(user_id)):
-            raise ValueError(f"User not found: {user_id}")
-
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            customer_email=user.email,
             line_items=[
                 {
                     "price_data": {
@@ -422,13 +418,13 @@ class UserCredit(UserCreditBase):
                 }
             ],
             mode="payment",
+            ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=settings.config.platform_base_url
+            success_url=settings.config.frontend_base_url
             + "/marketplace/credits?topup=success",
-            cancel_url=settings.config.platform_base_url
+            cancel_url=settings.config.frontend_base_url
             + "/marketplace/credits?topup=cancel",
-            return_url=settings.config.platform_base_url + "/marketplace/credits",
         )
 
         await self._add_transaction(
@@ -508,7 +504,11 @@ class UserCredit(UserCreditBase):
         )
         tx_time = None
         for t in transactions:
-            metadata = UsageTransactionMetadata.model_validate(t.metadata)
+            metadata = (
+                UsageTransactionMetadata.model_validate(t.metadata)
+                if t.metadata
+                else UsageTransactionMetadata()
+            )
             tx_time = t.createdAt.replace(tzinfo=None)
 
             if t.type == CreditTransactionType.USAGE and metadata.graph_exec_id:
@@ -602,8 +602,6 @@ def get_block_costs() -> dict[str, list[BlockCost]]:
 
 async def get_stripe_customer_id(user_id: str) -> str:
     user = await get_user_by_id(user_id)
-    if not user:
-        raise ValueError(f"User not found: {user_id}")
 
     if user.stripeCustomerId:
         return user.stripeCustomerId
@@ -624,8 +622,6 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     user = await get_user_by_id(user_id)
-    if not user:
-        raise ValueError("Invalid user ID")
 
     if not user.topUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
