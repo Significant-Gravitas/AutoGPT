@@ -1,10 +1,10 @@
 import logging
 from collections import defaultdict
-from typing import Any, Sequence
+from typing import Any, Dict, List, Optional, Sequence, TypedDict
 
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Depends, HTTPException
-from prisma.enums import APIKeyPermission
+from prisma.enums import AgentExecutionStatus, APIKeyPermission
 
 import backend.data.block
 from backend.data import execution as execution_db
@@ -26,6 +26,29 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 v1_router = APIRouter()
+
+
+class NodeOutput(TypedDict):
+    key: str
+    value: Any
+
+
+class ExecutionNode(TypedDict):
+    node_id: str
+    input: Any
+    output: Dict[str, Any]
+
+
+class ExecutionNodeOutput(TypedDict):
+    node_id: str
+    outputs: List[NodeOutput]
+
+
+class GraphExecutionResult(TypedDict):
+    execution_id: str
+    status: str
+    nodes: List[ExecutionNode]
+    outputs: Optional[List[ExecutionNodeOutput]]
 
 
 @v1_router.get(
@@ -77,35 +100,44 @@ def execute_graph(
         raise HTTPException(status_code=400, detail=msg)
 
 
-@v1_router.get(
-    path="/graphs/{graph_id}/executions/{graph_exec_id}/results",
-    tags=["graphs"],
-)
 async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
     api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
-) -> dict:
+) -> GraphExecutionResult:
     graph = await graph_db.get_graph(graph_id, user_id=api_key.user_id)
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     results = await execution_db.get_execution_results(graph_exec_id)
+    last_result = results[-1] if results else None
+    execution_status = (
+        last_result.status if last_result else AgentExecutionStatus.INCOMPLETE
+    )
 
-    return {
-        "execution_id": graph_exec_id,
-        "nodes": [
-            {
-                "node_id": result.node_id,
-                "input": (
-                    result.input_data.get("value")
-                    if "value" in result.input_data
-                    else result.input_data
-                ),
-                "output": {
-                    key: value for key, value in result.output_data.items()
-                },
-            }
+    return GraphExecutionResult(
+        execution_id=graph_exec_id,
+        status=execution_status,
+        nodes=[
+            ExecutionNode(
+                node_id=result.node_id,
+                input=result.input_data.get("value", result.input_data),
+                output={k: v for k, v in result.output_data.items()},
+            )
             for result in results
         ],
-    }
+        outputs=(
+            [
+                ExecutionNodeOutput(
+                    node_id=result.node_id,
+                    outputs=[
+                        NodeOutput(key=k, value=v)
+                        for k, v in result.output_data.items()
+                    ],
+                )
+                for result in results
+            ]
+            if execution_status == AgentExecutionStatus.COMPLETED
+            else None
+        ),
+    )
