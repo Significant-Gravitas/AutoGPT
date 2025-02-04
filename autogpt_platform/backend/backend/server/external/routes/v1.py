@@ -102,9 +102,9 @@ async def get_graph_execution_results(
                     if "value" in result.input_data
                     else result.input_data
                 ),
-                "output": result.output_data.get(
-                    "response", result.output_data.get("result", [])
-                ),
+                "output": {
+                    key: value for key, value in result.output_data.items()
+                },
             }
             for result in results
         ],
