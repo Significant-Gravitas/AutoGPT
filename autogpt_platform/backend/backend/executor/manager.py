@@ -1,5 +1,4 @@
 import atexit
-from datetime import datetime
 import logging
 import multiprocessing
 import os
@@ -11,14 +10,13 @@ from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
+from redis.lock import Lock as RedisLock
+
 from backend.notifications.models import (
     AgentRunData,
-    NotificationEvent,
     NotificationType,
-    ZeroBalanceData,
     create_notification,
 )
-from redis.lock import Lock as RedisLock
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
@@ -226,17 +224,29 @@ def execute_node(
             ):
                 yield execution
 
-            # Update execution status and spend credits
-            res = update_execution(ExecutionStatus.COMPLETED)
-            s = input_size + output_size
-            t = (
-                (res.end_time - res.start_time).total_seconds()
-                if res.end_time and res.start_time
-                else 0
+        # Update execution status and spend credits
+        res = update_execution(ExecutionStatus.COMPLETED)
+        s = input_size + output_size
+        t = (
+            (res.end_time - res.start_time).total_seconds()
+            if res.end_time and res.start_time
+            else 0
+        )
+        data.data = input_data
+        db_client.spend_credits(data, s, t)
+        notification_service.queue_notification(
+            create_notification(
+                user_id=user_id,
+                type=NotificationType.AGENT_RUN,
+                data=AgentRunData(
+                    agent_name=node_block.name,
+                    credits_used=s,
+                    execution_time=t,
+                    graph_id=graph_id,
+                    node_count=1,
+                ),
             )
-            data.data = input_data
-            db_client.spend_credits(data, s, t)
-            
+        )
 
     except Exception as e:
         error_msg = str(e)

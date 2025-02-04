@@ -1,7 +1,8 @@
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Generic, Literal, Optional, Self, TypeVar, Union, overload
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from typing import Annotated, Generic, Literal, Optional, TypeVar, Union, overload
+
+from pydantic import BaseModel, EmailStr, Field
 
 
 class BatchingStrategy(str, Enum):

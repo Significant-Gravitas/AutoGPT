@@ -1,27 +1,24 @@
-from collections import defaultdict
 import logging
-from datetime import datetime, timedelta
 import time
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
+
 from autogpt_libs.utils.cache import thread_cached
+
 from backend.notifications.models import (
     BatchingStrategy,
-    DailySummaryData,
-    MonthlySummaryData,
     NotificationBatch,
     NotificationEvent,
     NotificationResult,
     NotificationType,
-    WeeklySummaryData,
-    create_notification,
 )
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
 
+from backend.data.redis import get_redis, get_redis_async
 from backend.notifications.summary import SummaryManager
 from backend.util.service import AppService, expose, get_service_client
-from backend.data.redis import get_redis, get_redis_async
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)

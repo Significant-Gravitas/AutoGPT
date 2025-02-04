@@ -2,7 +2,10 @@
 import logging
 from collections import defaultdict
 from datetime import datetime
+
 from autogpt_libs.utils.cache import thread_cached
+
+from backend.executor.database import DatabaseManager
 from backend.notifications.models import (
     DailySummaryData,
     MonthlySummaryData,
@@ -10,7 +13,6 @@ from backend.notifications.models import (
     WeeklySummaryData,
     create_notification,
 )
-from backend.executor.database import DatabaseManager
 from backend.util.service import get_service_client
 
 logger = logging.getLogger(__name__)
