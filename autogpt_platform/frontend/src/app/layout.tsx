@@ -1,7 +1,6 @@
 import React from "react";
 import type { Metadata } from "next";
 import { Inter, Poppins } from "next/font/google";
-import { Inter, Poppins } from "next/font/google";
 import { Providers } from "@/app/providers";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/agptui/Navbar";
