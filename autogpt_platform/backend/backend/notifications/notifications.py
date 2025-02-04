@@ -254,7 +254,7 @@ class NotificationManager(AppService):
                 # Process regular notifications
                 message = pubsub.get_message(ignore_subscribe_messages=True)
                 if message and message["type"] == "message":
-                    batch_key = message["data"].decode()
+                    batch_key = message["data"]
                     self.run_and_wait(self._process_batch(batch_key))
 
                 # Check summaries every minute
