@@ -40,6 +40,10 @@ class NotificationManager(AppService):
         self.summary_manager = SummaryManager()
         self.running = True
 
+    @classmethod
+    def get_port(cls) -> int:
+        return settings.config.notification_service_port
+
     async def _get_user_backoff(
         self, user_id: str, notification_type: NotificationType
     ) -> int:
