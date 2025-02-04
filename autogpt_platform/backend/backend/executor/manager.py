@@ -8,9 +8,8 @@ import threading
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
-from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
 if TYPE_CHECKING:
@@ -20,7 +19,14 @@ from autogpt_libs.utils.cache import thread_cached
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
-from backend.data.block import Block, BlockData, BlockInput, BlockType, get_block
+from backend.data.block import (
+    Block,
+    BlockData,
+    BlockInput,
+    BlockSchema,
+    BlockType,
+    get_block,
+)
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionResult,
@@ -31,10 +37,10 @@ from backend.data.execution import (
     parse_execution_output,
 )
 from backend.data.graph import GraphModel, Link, Node
-from backend.data.model import CREDENTIALS_FIELD_NAME, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
+from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import set_service_name
 from backend.util.service import (
@@ -164,23 +170,27 @@ def execute_node(
     log_metadata.info("Executed node with input", input=input_data_str)
     update_execution(ExecutionStatus.RUNNING)
 
-    extra_exec_kwargs = {}
+    # Inject extra execution arguments for the blocks via kwargs
+    extra_exec_kwargs: dict = {
+        "graph_id": graph_id,
+        "node_id": node_id,
+        "graph_exec_id": graph_exec_id,
+        "node_exec_id": node_exec_id,
+        "user_id": user_id,
+    }
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
     creds_lock = None
-    if CREDENTIALS_FIELD_NAME in input_data:
-        credentials_meta = CredentialsMetaInput(**input_data[CREDENTIALS_FIELD_NAME])
+    input_model = cast(type[BlockSchema], node_block.input_schema)
+    for field_name, input_type in input_model.get_credentials_fields().items():
+        credentials_meta = input_type(**input_data[field_name])
         credentials, creds_lock = creds_manager.acquire(user_id, credentials_meta.id)
-        extra_exec_kwargs["credentials"] = credentials
+        extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
-    end_status = ExecutionStatus.COMPLETED
-    credit = db_client.get_or_refill_credit(user_id)
-    if credit < 0:
-        raise ValueError(f"Insufficient credit: {credit}")
-
     try:
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
@@ -200,11 +210,21 @@ def execute_node(
             ):
                 yield execution
 
+            # Update execution status and spend credits
+            res = update_execution(ExecutionStatus.COMPLETED)
+            s = input_size + output_size
+            t = (
+                (res.end_time - res.start_time).total_seconds()
+                if res.end_time and res.start_time
+                else 0
+            )
+            data.data = input_data
+            db_client.spend_credits(data, s, t)
+
     except Exception as e:
-        end_status = ExecutionStatus.FAILED
         error_msg = str(e)
-        log_metadata.exception(f"Node execution failed with error {error_msg}")
         db_client.upsert_execution_output(node_exec_id, "error", error_msg)
+        update_execution(ExecutionStatus.FAILED)
 
         for execution in _enqueue_next_nodes(
             db_client=db_client,
@@ -226,17 +246,6 @@ def execute_node(
             except Exception as e:
                 log_metadata.error(f"Failed to release credentials lock: {e}")
 
-        # Update execution status and spend credits
-        res = update_execution(end_status)
-        if end_status == ExecutionStatus.COMPLETED:
-            s = input_size + output_size
-            t = (
-                (res.end_time - res.start_time).total_seconds()
-                if res.end_time and res.start_time
-                else 0
-            )
-            db_client.spend_credits(user_id, credit, node_block.id, input_data, s, t)
-
         # Update execution stats
         if execution_stats is not None:
             execution_stats.update(node_block.execution_stats)
@@ -254,7 +263,7 @@ def _enqueue_next_nodes(
     log_metadata: LogMetadata,
 ) -> list[NodeExecutionEntry]:
     def add_enqueued_execution(
-        node_exec_id: str, node_id: str, data: BlockInput
+        node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
         exec_update = db_client.update_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
@@ -266,6 +275,7 @@ def _enqueue_next_nodes(
             graph_id=graph_id,
             node_exec_id=node_exec_id,
             node_id=node_id,
+            block_id=block_id,
             data=data,
         )
 
@@ -319,7 +329,12 @@ def _enqueue_next_nodes(
             # Input is complete, enqueue the execution.
             log_metadata.info(f"Enqueued {suffix}")
             enqueued_executions.append(
-                add_enqueued_execution(next_node_exec_id, next_node_id, next_node_input)
+                add_enqueued_execution(
+                    node_exec_id=next_node_exec_id,
+                    node_id=next_node_id,
+                    block_id=next_node.block_id,
+                    data=next_node_input,
+                )
             )
 
             # Next execution stops here if the link is not static.
@@ -349,7 +364,12 @@ def _enqueue_next_nodes(
                     continue
                 log_metadata.info(f"Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
-                    add_enqueued_execution(iexec.node_exec_id, next_node_id, idata)
+                    add_enqueued_execution(
+                        node_exec_id=iexec.node_exec_id,
+                        node_id=next_node_id,
+                        block_id=next_node.block_id,
+                        data=idata,
+                    )
                 )
             return enqueued_executions
 
@@ -542,9 +562,15 @@ class Executor:
                 q.add(execution)
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
         except Exception as e:
-            log_metadata.exception(
-                f"Failed node execution {node_exec.node_exec_id}: {e}"
-            )
+            # Avoid user error being marked as an actual error.
+            if isinstance(e, ValueError):
+                log_metadata.info(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
+            else:
+                log_metadata.exception(
+                    f"Failed node execution {node_exec.node_exec_id}: {e}"
+                )
 
     @classmethod
     def on_graph_executor_start(cls):
@@ -591,7 +617,7 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        timing_info, (exec_stats, error) = cls._on_graph_execution(
+        timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
         exec_stats["walltime"] = timing_info.wall_time
@@ -599,6 +625,7 @@ class Executor:
         exec_stats["error"] = str(error) if error else None
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
+            status=status,
             stats=exec_stats,
         )
         cls.db_client.send_execution_update(result)
@@ -610,11 +637,12 @@ class Executor:
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[dict[str, Any], Exception | None]:
+    ) -> tuple[dict[str, Any], ExecutionStatus, Exception | None]:
         """
         Returns:
-            The execution statistics of the graph execution.
-            The error that occurred during the execution.
+            dict: The execution statistics of the graph execution.
+            ExecutionStatus: The final status of the graph execution.
+            Exception | None: The error that occurred during the execution, if any.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         exec_stats = {
@@ -640,6 +668,10 @@ class Executor:
         try:
             queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
+                exec_update = cls.db_client.update_execution_status(
+                    node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.data
+                )
+                cls.db_client.send_execution_update(exec_update)
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
@@ -659,8 +691,7 @@ class Executor:
 
             while not queue.empty():
                 if cancel.is_set():
-                    error = RuntimeError("Execution is cancelled")
-                    return exec_stats, error
+                    return exec_stats, ExecutionStatus.TERMINATED, error
 
                 exec_data = queue.get()
 
@@ -690,8 +721,7 @@ class Executor:
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
-                            error = RuntimeError("Execution is cancelled")
-                            return exec_stats, error
+                            return exec_stats, ExecutionStatus.TERMINATED, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -710,7 +740,13 @@ class Executor:
                 finished = True
                 cancel.set()
             cancel_thread.join()
-            return exec_stats, error
+            clean_exec_files(graph_exec.graph_exec_id)
+
+        return (
+            exec_stats,
+            ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED,
+            error,
+        )
 
 
 class ExecutionManager(AppService):
@@ -769,7 +805,8 @@ class ExecutionManager(AppService):
         graph_id: str,
         data: BlockInput,
         user_id: str,
-        graph_version: int | None = None,
+        graph_version: Optional[int] = None,
+        preset_id: str | None = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -792,8 +829,8 @@ class ExecutionManager(AppService):
             # Extract request input data, and assign it to the input pin.
             if block.block_type == BlockType.INPUT:
                 name = node.input_default.get("name")
-                if name and name in data:
-                    input_data = {"value": data[name]}
+                if name in data.get("node_input", {}):
+                    input_data = {"value": data["node_input"][name]}
 
             # Extract webhook payload, and assign it to the input pin
             webhook_payload_key = f"webhook_{node.webhook_id}_payload"
@@ -818,6 +855,7 @@ class ExecutionManager(AppService):
             graph_version=graph.version,
             nodes_input=nodes_input,
             user_id=user_id,
+            preset_id=preset_id,
         )
 
         starting_node_execs = []
@@ -829,13 +867,10 @@ class ExecutionManager(AppService):
                     graph_id=node_exec.graph_id,
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
+                    block_id=node_exec.block_id,
                     data=node_exec.input_data,
                 )
             )
-            exec_update = self.db_client.update_execution_status(
-                node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.input_data
-            )
-            self.db_client.send_execution_update(exec_update)
 
         graph_exec = GraphExecutionEntry(
             user_id=user_id,
@@ -876,11 +911,8 @@ class ExecutionManager(AppService):
                 ExecutionStatus.COMPLETED,
                 ExecutionStatus.FAILED,
             ):
-                self.db_client.upsert_execution_output(
-                    node_exec.node_exec_id, "error", "TERMINATED"
-                )
                 exec_update = self.db_client.update_execution_status(
-                    node_exec.node_exec_id, ExecutionStatus.FAILED
+                    node_exec.node_exec_id, ExecutionStatus.TERMINATED
                 )
                 self.db_client.send_execution_update(exec_update)
 
@@ -893,41 +925,39 @@ class ExecutionManager(AppService):
                 raise ValueError(f"Unknown block {node.block_id} for node #{node.id}")
 
             # Find any fields of type CredentialsMetaInput
-            model_fields = cast(type[BaseModel], block.input_schema).model_fields
-            if CREDENTIALS_FIELD_NAME not in model_fields:
+            credentials_fields = cast(
+                type[BlockSchema], block.input_schema
+            ).get_credentials_fields()
+            if not credentials_fields:
                 continue
 
-            field = model_fields[CREDENTIALS_FIELD_NAME]
-
-            # The BlockSchema class enforces that a `credentials` field is always a
-            # `CredentialsMetaInput`, so we can safely assume this here.
-            credentials_meta_type = cast(CredentialsMetaInput, field.annotation)
-            credentials_meta = credentials_meta_type.model_validate(
-                node.input_default[CREDENTIALS_FIELD_NAME]
-            )
-            # Fetch the corresponding Credentials and perform sanity checks
-            credentials = self.credentials_store.get_creds_by_id(
-                user_id, credentials_meta.id
-            )
-            if not credentials:
-                raise ValueError(
-                    f"Unknown credentials #{credentials_meta.id} "
-                    f"for node #{node.id}"
+            for field_name, credentials_meta_type in credentials_fields.items():
+                credentials_meta = credentials_meta_type.model_validate(
+                    node.input_default[field_name]
                 )
-            if (
-                credentials.provider != credentials_meta.provider
-                or credentials.type != credentials_meta.type
-            ):
-                logger.warning(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch: "
-                    f"{credentials_meta.type}<>{credentials.type};"
-                    f"{credentials_meta.provider}<>{credentials.provider}"
+                # Fetch the corresponding Credentials and perform sanity checks
+                credentials = self.credentials_store.get_creds_by_id(
+                    user_id, credentials_meta.id
                 )
-                raise ValueError(
-                    f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                    "type/provider mismatch"
-                )
+                if not credentials:
+                    raise ValueError(
+                        f"Unknown credentials #{credentials_meta.id} "
+                        f"for node #{node.id} input '{field_name}'"
+                    )
+                if (
+                    credentials.provider != credentials_meta.provider
+                    or credentials.type != credentials_meta.type
+                ):
+                    logger.warning(
+                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                        "type/provider mismatch: "
+                        f"{credentials_meta.type}<>{credentials.type};"
+                        f"{credentials_meta.provider}<>{credentials.provider}"
+                    )
+                    raise ValueError(
+                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
+                        "type/provider mismatch"
+                    )
 
 
 # ------- UTILITIES ------- #
@@ -947,7 +977,8 @@ def synchronized(key: str, timeout: int = 60):
         lock.acquire()
         yield
     finally:
-        lock.release()
+        if lock.locked():
+            lock.release()
 
 
 def llprint(message: str):

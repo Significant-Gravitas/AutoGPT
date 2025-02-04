@@ -8,6 +8,7 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 export interface Agent {
   slug: string;
@@ -34,12 +35,12 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
 }) => {
   const router = useRouter();
 
-  // Take only the first 9 agents
-  const displayedAgents = allAgents.slice(0, 9);
+  // TODO: Update this when we have pagination
+  const displayedAgents = allAgents;
 
   const handleCardClick = (creator: string, slug: string) => {
     router.push(
-      `/store/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+      `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
     );
   };
 

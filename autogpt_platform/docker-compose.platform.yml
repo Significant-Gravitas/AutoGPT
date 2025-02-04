@@ -144,51 +144,6 @@ services:
     networks:
       - app-network
 
-  market:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/market/Dockerfile
-    develop:
-      watch:
-        - path: ./
-          target: autogpt_platform/market/
-          action: rebuild
-    depends_on:
-      db:
-        condition: service_healthy
-      market-migrations:
-        condition: service_completed_successfully
-    environment:
-      - SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=market
-      - BACKEND_CORS_ALLOW_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
-    ports:
-      - "8015:8015"
-    networks:
-      - app-network
-
-  market-migrations:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/market/Dockerfile
-    command: ["sh", "-c", "poetry run prisma migrate deploy"]
-    develop:
-      watch:
-        - path: ./
-          target: autogpt_platform/market/
-          action: rebuild
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - SUPABASE_URL=http://kong:8000
-      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
-      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=market
-    networks:
-      - app-network
 #  frontend:
 #    build:
 #      context: ../

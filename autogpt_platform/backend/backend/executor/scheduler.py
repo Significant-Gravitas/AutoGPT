@@ -63,7 +63,10 @@ def execute_graph(**kwargs):
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
         get_execution_client().add_execution(
-            args.graph_id, args.input_data, args.user_id
+            graph_id=args.graph_id,
+            data=args.input_data,
+            user_id=args.user_id,
+            graph_version=args.graph_version,
         )
     except Exception as e:
         logger.exception(f"Error executing graph {args.graph_id}: {e}")
@@ -99,6 +102,10 @@ class ExecutionScheduler(AppService):
     def get_port(cls) -> int:
         return config.execution_scheduler_port
 
+    @classmethod
+    def db_pool_size(cls) -> int:
+        return config.scheduler_db_pool_size
+
     @property
     @thread_cached
     def execution_client(self) -> ExecutionManager:
@@ -110,7 +117,11 @@ class ExecutionScheduler(AppService):
         self.scheduler = BlockingScheduler(
             jobstores={
                 "default": SQLAlchemyJobStore(
-                    engine=create_engine(db_url),
+                    engine=create_engine(
+                        url=db_url,
+                        pool_size=self.db_pool_size(),
+                        max_overflow=0,
+                    ),
                     metadata=MetaData(schema=db_schema),
                 )
             }

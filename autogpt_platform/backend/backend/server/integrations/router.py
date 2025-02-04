@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
@@ -12,12 +12,7 @@ from backend.data.integrations import (
     publish_webhook_event,
     wait_for_webhook_event,
 )
-from backend.data.model import (
-    APIKeyCredentials,
-    Credentials,
-    CredentialsType,
-    OAuth2Credentials,
-)
+from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
 from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
@@ -60,11 +55,12 @@ def login(
     requested_scopes = scopes.split(",") if scopes else []
 
     # Generate and store a secure random state token along with the scopes
-    state_token = creds_manager.store.store_state_token(
+    state_token, code_challenge = creds_manager.store.store_state_token(
         user_id, provider, requested_scopes
     )
-
-    login_url = handler.get_login_url(requested_scopes, state_token)
+    login_url = handler.get_login_url(
+        requested_scopes, state_token, code_challenge=code_challenge
+    )
 
     return LoginResponse(login_url=login_url, state_token=state_token)
 
@@ -92,20 +88,27 @@ def callback(
     handler = _get_provider_oauth_handler(request, provider)
 
     # Verify the state token
-    if not creds_manager.store.verify_state_token(user_id, state_token, provider):
+    valid_state = creds_manager.store.verify_state_token(user_id, state_token, provider)
+
+    if not valid_state:
         logger.warning(f"Invalid or expired state token for user {user_id}")
         raise HTTPException(status_code=400, detail="Invalid or expired state token")
-
     try:
-        scopes = creds_manager.store.get_any_valid_scopes_from_state_token(
-            user_id, state_token, provider
-        )
+        scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
 
         scopes = handler.handle_default_scopes(scopes)
 
-        credentials = handler.exchange_code_for_tokens(code, scopes)
+        credentials = handler.exchange_code_for_tokens(
+            code, scopes, valid_state.code_verifier
+        )
+
         logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
+
+        # Linear returns scopes as a single string with spaces, so we need to split them
+        # TODO: make a bypass of this part of the OAuth handler
+        if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
+            credentials.scopes = credentials.scopes[0].split(" ")
 
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
@@ -196,31 +199,21 @@ def get_credential(
 
 
 @router.post("/{provider}/credentials", status_code=201)
-def create_api_key_credentials(
+def create_credentials(
     user_id: Annotated[str, Depends(get_user_id)],
     provider: Annotated[
         ProviderName, Path(title="The provider to create credentials for")
     ],
-    api_key: Annotated[str, Body(title="The API key to store")],
-    title: Annotated[str, Body(title="Optional title for the credentials")],
-    expires_at: Annotated[
-        int | None, Body(title="Unix timestamp when the key expires")
-    ] = None,
-) -> APIKeyCredentials:
-    new_credentials = APIKeyCredentials(
-        provider=provider,
-        api_key=SecretStr(api_key),
-        title=title,
-        expires_at=expires_at,
-    )
-
+    credentials: Credentials,
+) -> Credentials:
+    credentials.provider = provider
     try:
-        creds_manager.create(user_id, new_credentials)
+        creds_manager.create(user_id, credentials)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
         )
-    return new_credentials
+    return credentials
 
 
 class CredentialsDeletionResponse(BaseModel):
@@ -317,7 +310,8 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
         executor.add_execution(
-            node.graph_id,
+            graph_id=node.graph_id,
+            graph_version=node.graph_version,
             data={f"webhook_{webhook_id}_payload": payload},
             user_id=webhook.user_id,
         )

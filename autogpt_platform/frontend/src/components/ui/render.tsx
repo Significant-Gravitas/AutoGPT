@@ -11,21 +11,36 @@ const getYouTubeVideoId = (url: string) => {
 };
 
 const isValidVideoUrl = (url: string): boolean => {
+  if (url.startsWith("data:video")) {
+    return true;
+  }
+  const validUrl = /^(https?:\/\/)(www\.)?/i;
   const videoExtensions = /\.(mp4|webm|ogg)$/i;
   const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
-  return videoExtensions.test(url) || youtubeRegex.test(url);
+  const cleanedUrl = url.split("?")[0];
+  return (
+    (validUrl.test(cleanedUrl) && videoExtensions.test(cleanedUrl)) ||
+    youtubeRegex.test(cleanedUrl)
+  );
 };
 
 const isValidImageUrl = (url: string): boolean => {
+  if (url.startsWith("data:image/")) {
+    return true;
+  }
   const imageExtensions = /\.(jpeg|jpg|gif|png|svg|webp)$/i;
   const cleanedUrl = url.split("?")[0];
   return imageExtensions.test(cleanedUrl);
 };
 
 const isValidAudioUrl = (url: string): boolean => {
+  if (url.startsWith("data:audio")) {
+    return true;
+  }
+  const validUrl = /^(https?:\/\/)(www\.)?/i;
   const audioExtensions = /\.(mp3|wav)$/i;
   const cleanedUrl = url.split("?")[0];
-  return audioExtensions.test(cleanedUrl);
+  return validUrl.test(cleanedUrl) && audioExtensions.test(cleanedUrl);
 };
 
 const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
@@ -50,19 +65,21 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
   );
 };
 
-const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => (
-  <div className="w-full p-2">
-    <picture>
-      <img
-        src={imageUrl}
-        alt="Image"
-        className="h-auto max-w-full"
-        width="100%"
-        height="auto"
-      />
-    </picture>
-  </div>
-);
+const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => {
+  return (
+    <div className="w-full p-2">
+      <picture>
+        <img
+          src={imageUrl}
+          alt="Image"
+          className="h-auto max-w-full"
+          width="100%"
+          height="auto"
+        />
+      </picture>
+    </div>
+  );
+};
 
 const AudioRenderer: React.FC<{ audioUrl: string }> = ({ audioUrl }) => (
   <div className="w-full p-2">
@@ -92,6 +109,9 @@ export const ContentRenderer: React.FC<{
   truncateLongData?: boolean;
 }> = ({ value, truncateLongData }) => {
   if (typeof value === "string") {
+    if (value.startsWith("data:image/")) {
+      return <ImageRenderer imageUrl={value} />;
+    }
     if (isValidVideoUrl(value)) {
       return <VideoRenderer videoUrl={value} />;
     } else if (isValidImageUrl(value)) {

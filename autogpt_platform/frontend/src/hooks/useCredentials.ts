@@ -17,16 +17,20 @@ export type CredentialsData =
       schema: BlockIOCredentialsSubSchema;
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
+      supportsUserPassword: boolean;
       isLoading: true;
     }
   | (CredentialsProviderData & {
       schema: BlockIOCredentialsSubSchema;
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
+      supportsUserPassword: boolean;
       isLoading: false;
     });
 
-export default function useCredentials(): CredentialsData | null {
+export default function useCredentials(
+  inputFieldName: string,
+): CredentialsData | null {
   const nodeId = useNodeId();
   const allProviders = useContext(CredentialsProvidersContext);
 
@@ -35,8 +39,9 @@ export default function useCredentials(): CredentialsData | null {
   }
 
   const data = useNodesData<Node<CustomNodeData>>(nodeId)!.data;
-  const credentialsSchema = data.inputSchema.properties
-    .credentials as BlockIOCredentialsSubSchema;
+  const credentialsSchema = data.inputSchema.properties[
+    inputFieldName
+  ] as BlockIOCredentialsSubSchema;
 
   const discriminatorValue: CredentialsProviderName | null =
     (credentialsSchema.discriminator &&
@@ -69,6 +74,8 @@ export default function useCredentials(): CredentialsData | null {
   const supportsApiKey =
     credentialsSchema.credentials_types.includes("api_key");
   const supportsOAuth2 = credentialsSchema.credentials_types.includes("oauth2");
+  const supportsUserPassword =
+    credentialsSchema.credentials_types.includes("user_password");
 
   // No provider means maybe it's still loading
   if (!provider) {
@@ -90,13 +97,17 @@ export default function useCredentials(): CredentialsData | null {
       )
     : provider.savedOAuthCredentials;
 
+  const savedUserPasswordCredentials = provider.savedUserPasswordCredentials;
+
   return {
     ...provider,
     provider: providerName,
     schema: credentialsSchema,
     supportsApiKey,
     supportsOAuth2,
+    supportsUserPassword,
     savedOAuthCredentials,
+    savedUserPasswordCredentials,
     isLoading: false,
   };
 }

@@ -10,7 +10,6 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
-    onRunAgent: { action: "run agent clicked" },
     name: { control: "text" },
     creator: { control: "text" },
     shortDescription: { control: "text" },
@@ -28,8 +27,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    onRunAgent: () => console.log("Run agent clicked"),
     name: "AI Video Generator",
+    storeListingVersionId: "123",
     creator: "Toran Richards",
     shortDescription:
       "Transform ideas into breathtaking images with this AI-powered Image Generator.",

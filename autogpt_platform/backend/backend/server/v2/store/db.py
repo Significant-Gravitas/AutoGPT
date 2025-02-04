@@ -1,14 +1,18 @@
 import logging
 import random
 from datetime import datetime
+from typing import Optional
 
+import fastapi
 import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
 
+import backend.data.graph
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
+from backend.data.graph import GraphModel
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ async def get_store_agents(
         sanitized_query = search_query.strip()
         if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
             raise backend.server.v2.store.exceptions.DatabaseError(
-                "Invalid search query"
+                f"Invalid search query: len({len(sanitized_query)}) query: {search_query}"
             )
 
         # Escape special SQL characters
@@ -321,7 +325,10 @@ async def get_store_submissions(
         where = prisma.types.StoreSubmissionWhereInput(user_id=user_id)
         # Query submissions from database
         submissions = await prisma.models.StoreSubmission.prisma().find_many(
-            where=where, skip=skip, take=page_size, order=[{"date_submitted": "desc"}]
+            where=where,
+            skip=skip,
+            take=page_size,
+            order=[{"date_submitted": "desc"}],
         )
 
         # Get total count for pagination
@@ -401,9 +408,7 @@ async def delete_store_submission(
             )
 
         # Delete the submission
-        await prisma.models.StoreListing.prisma().delete(
-            where=prisma.types.StoreListingWhereUniqueInput(id=submission.id)
-        )
+        await prisma.models.StoreListing.prisma().delete(where={"id": submission.id})
 
         logger.debug(
             f"Successfully deleted submission {submission_id} for user {user_id}"
@@ -449,6 +454,11 @@ async def create_store_submission(
     )
 
     try:
+        # Sanitize slug to only allow letters and hyphens
+        slug = "".join(
+            c if c.isalpha() or c == "-" or c.isnumeric() else "" for c in slug
+        ).lower()
+
         # First verify the agent belongs to this user
         agent = await prisma.models.AgentGraph.prisma().find_first(
             where=prisma.types.AgentGraphWhereInput(
@@ -495,7 +505,15 @@ async def create_store_submission(
                         "subHeading": sub_heading,
                     }
                 },
-            }
+            },
+            include={"StoreListingVersions": True},
+        )
+
+        store_listing_version_id = (
+            listing.StoreListingVersions[0].id
+            if listing.StoreListingVersions is not None
+            and len(listing.StoreListingVersions) > 0
+            else None
         )
 
         logger.debug(f"Created store listing for agent {agent_id}")
@@ -512,6 +530,7 @@ async def create_store_submission(
             status=prisma.enums.SubmissionStatus.PENDING,
             runs=0,
             rating=0.0,
+            store_listing_version_id=store_listing_version_id,
         )
 
     except (
@@ -636,7 +655,12 @@ async def update_or_create_profile(
     logger.info(f"Updating profile for user {user_id} data: {profile}")
 
     try:
-        # Check if profile exists for user
+        # Sanitize username to only allow letters and hyphens
+        username = "".join(
+            c if c.isalpha() or c == "-" or c.isnumeric() else ""
+            for c in profile.username
+        ).lower()
+
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
         )
@@ -651,7 +675,7 @@ async def update_or_create_profile(
                 data={
                     "userId": user_id,
                     "name": profile.name,
-                    "username": profile.username.lower(),
+                    "username": username,
                     "description": profile.description,
                     "links": profile.links or [],
                     "avatarUrl": profile.avatar_url,
@@ -676,7 +700,7 @@ async def update_or_create_profile(
             if profile.name is not None:
                 update_data["name"] = profile.name
             if profile.username is not None:
-                update_data["username"] = profile.username.lower()
+                update_data["username"] = username
             if profile.description is not None:
                 update_data["description"] = profile.description
             if profile.links is not None:
@@ -775,4 +799,113 @@ async def get_my_agents(
         logger.error(f"Error getting my agents: {str(e)}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch my agents"
+        ) from e
+
+
+async def get_agent(
+    store_listing_version_id: str, version_id: Optional[int]
+) -> GraphModel:
+    """Get agent using the version ID and store listing version ID."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id}
+            )
+        )
+
+        if not store_listing_version:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing version {store_listing_version_id} not found",
+            )
+
+        graph = await backend.data.graph.get_graph(
+            store_listing_version.agentId, store_listing_version.agentVersion
+        )
+
+        if not graph:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=(
+                    f"Agent #{store_listing_version.agentId} not found "
+                    f"for store listing version #{store_listing_version_id}"
+                ),
+            )
+
+        graph.version = 1
+        graph.is_template = False
+        graph.is_active = True
+        delattr(graph, "user_id")
+
+        return graph
+
+    except Exception as e:
+        logger.error(f"Error getting agent: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch agent"
+        ) from e
+
+
+async def review_store_submission(
+    store_listing_version_id: str, is_approved: bool, comments: str, reviewer_id: str
+) -> prisma.models.StoreListingSubmission:
+    """Review a store listing submission."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id},
+                include={"StoreListing": True},
+            )
+        )
+
+        if not store_listing_version or not store_listing_version.StoreListing:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing version {store_listing_version_id} not found",
+            )
+
+        if is_approved:
+            await prisma.models.StoreListing.prisma().update(
+                where={"id": store_listing_version.StoreListing.id},
+                data={"isApproved": True},
+            )
+
+        submission_status = (
+            prisma.enums.SubmissionStatus.APPROVED
+            if is_approved
+            else prisma.enums.SubmissionStatus.REJECTED
+        )
+
+        update_data: prisma.types.StoreListingSubmissionUpdateInput = {
+            "Status": submission_status,
+            "reviewComments": comments,
+            "Reviewer": {"connect": {"id": reviewer_id}},
+            "StoreListing": {"connect": {"id": store_listing_version.StoreListing.id}},
+        }
+
+        create_data: prisma.types.StoreListingSubmissionCreateInput = {
+            **update_data,
+            "StoreListingVersion": {"connect": {"id": store_listing_version_id}},
+        }
+
+        submission = await prisma.models.StoreListingSubmission.prisma().upsert(
+            where={"storeListingVersionId": store_listing_version_id},
+            data={
+                "create": create_data,
+                "update": update_data,
+            },
+        )
+
+        if not submission:
+            raise fastapi.HTTPException(  # FIXME: don't return HTTP exceptions here
+                status_code=404,
+                detail=f"Store listing submission {store_listing_version_id} not found",
+            )
+
+        return submission
+
+    except Exception as e:
+        logger.error(f"Could not create store submission review: {str(e)}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to create store submission review"
         ) from e

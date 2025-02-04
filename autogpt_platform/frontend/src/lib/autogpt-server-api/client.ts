@@ -2,8 +2,14 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AnalyticsDetails,
   AnalyticsMetrics,
+  APIKey,
   APIKeyCredentials,
+  APIKeyPermission,
   Block,
+  CreatorsResponse,
+  CreatorDetails,
+  CreateAPIKeyResponse,
+  Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
@@ -13,23 +19,27 @@ import {
   GraphExecuteResponse,
   GraphMeta,
   GraphUpdateable,
-  NodeExecutionResult,
   MyAgentsResponse,
-  OAuth2Credentials,
+  NodeExecutionResult,
   ProfileDetails,
-  User,
+  Schedule,
+  ScheduleCreatable,
   StoreAgentsResponse,
   StoreAgentDetails,
-  CreatorsResponse,
-  CreatorDetails,
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
   StoreSubmission,
   StoreReviewCreate,
   StoreReview,
-  ScheduleCreatable,
-  Schedule,
-  LibraryAgentFilterEnum,
+  TransactionHistory,
+  User,
+  UserPasswordCredentials,
+  LibraryAgentResponse,
+  LibraryAgentPresetResponse,
+  CreateLibraryAgentPresetRequest,
+  LibraryAgent,
+  LibraryAgentPreset,
+  AgentStatus,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -84,6 +94,46 @@ export default class BackendAPI {
     } catch (error) {
       return Promise.resolve({ credits: 0 });
     }
+  }
+
+  getAutoTopUpConfig(): Promise<{ amount: number; threshold: number }> {
+    return this._get("/credits/auto-top-up");
+  }
+
+  setAutoTopUpConfig(config: {
+    amount: number;
+    threshold: number;
+  }): Promise<{ amount: number; threshold: number }> {
+    return this._request("POST", "/credits/auto-top-up", config);
+  }
+
+  getTransactionHistory(
+    lastTransction: Date | null,
+    countLimit: number,
+  ): Promise<TransactionHistory> {
+    return this._get(
+      `/credits/transactions`,
+      lastTransction
+        ? {
+            transaction_time: lastTransction,
+            transaction_count_limit: countLimit,
+          }
+        : {
+            transaction_count_limit: countLimit,
+          },
+    );
+  }
+
+  requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {
+    return this._request("POST", "/credits", { credit_amount });
+  }
+
+  getUserPaymentPortalLink(): Promise<{ url: string }> {
+    return this._get("/credits/manage");
+  }
+
+  fulfillCheckout(): Promise<void> {
+    return this._request("PATCH", "/credits");
   }
 
   getBlocks(): Promise<Block[]> {
@@ -189,7 +239,17 @@ export default class BackendAPI {
     return this._request(
       "POST",
       `/integrations/${credentials.provider}/credentials`,
-      credentials,
+      { ...credentials, type: "api_key" },
+    );
+  }
+
+  createUserPasswordCredentials(
+    credentials: Omit<UserPasswordCredentials, "id" | "type">,
+  ): Promise<UserPasswordCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      { ...credentials, type: "user_password" },
     );
   }
 
@@ -201,10 +261,7 @@ export default class BackendAPI {
     );
   }
 
-  getCredentials(
-    provider: string,
-    id: string,
-  ): Promise<APIKeyCredentials | OAuth2Credentials> {
+  getCredentials(provider: string, id: string): Promise<Credentials> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
@@ -220,6 +277,36 @@ export default class BackendAPI {
       `/integrations/${provider}/credentials/${id}`,
       force ? { force: true } : undefined,
     );
+  }
+
+  // API Key related requests
+  async createAPIKey(
+    name: string,
+    permissions: APIKeyPermission[],
+    description?: string,
+  ): Promise<CreateAPIKeyResponse> {
+    return this._request("POST", "/api-keys", {
+      name,
+      permissions,
+      description,
+    });
+  }
+
+  async listAPIKeys(): Promise<APIKey[]> {
+    return this._get("/api-keys");
+  }
+
+  async revokeAPIKey(keyId: string): Promise<APIKey> {
+    return this._request("DELETE", `/api-keys/${keyId}`);
+  }
+
+  async updateAPIKeyPermissions(
+    keyId: string,
+    permissions: APIKeyPermission[],
+  ): Promise<APIKey> {
+    return this._request("PUT", `/api-keys/${keyId}/permissions`, {
+      permissions,
+    });
   }
 
   /**
@@ -312,6 +399,7 @@ export default class BackendAPI {
       "/store/submissions/generate_image?agent_id=" + agent_id,
     );
   }
+
   deleteStoreSubmission(submission_id: string): Promise<boolean> {
     return this._request("DELETE", `/store/submissions/${submission_id}`);
   }
@@ -348,44 +436,81 @@ export default class BackendAPI {
     return this._get("/store/myagents", params);
   }
 
+  downloadStoreAgent(
+    storeListingVersionId: string,
+    version?: number,
+  ): Promise<BlobPart> {
+    const url = version
+      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
+      : `/store/download/agents/${storeListingVersionId}`;
+
+    return this._get(url);
+  }
+
   /////////////////////////////////////////
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(
-    paginationToken?: string,
-  ): Promise<{ agents: GraphMeta[]; next_token: string | null }> {
-    return this._get(
-      "/library/agents",
-      paginationToken ? { pagination_token: paginationToken } : undefined,
-    );
-  }
-
-  async librarySearchAgent(
-    search?: string,
-    filter?: LibraryAgentFilterEnum,
-    token?: string,
-  ): Promise<{ agents: GraphMeta[]; next_token: string | null }> {
-    const queryParams: Record<string, any> = {};
-
-    if (search != undefined) {
-      queryParams.search_term = search;
-    }
-
-    if (filter) {
-      queryParams.sort_by = filter;
-    }
-
-    if (token) {
-      queryParams.pagination_token = token;
-    }
-
-    return this._get("/library/agents/search", queryParams);
+  async listLibraryAgents(): Promise<LibraryAgentResponse> {
+    return this._get("/library/agents");
   }
 
   async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
     console.log("Adding to the library");
     await this._request("POST", `/library/agents/${storeListingVersionId}`);
+  }
+
+  async updateLibraryAgent(
+    libraryAgentId: string,
+    params: {
+      auto_update_version?: boolean;
+      is_favorite?: boolean;
+      is_archived?: boolean;
+      is_deleted?: boolean;
+    },
+  ): Promise<void> {
+    await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  async listLibraryAgentPresets(params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<LibraryAgentPresetResponse> {
+    return this._get("/library/presets", params);
+  }
+
+  async getLibraryAgentPreset(presetId: string): Promise<LibraryAgentPreset> {
+    return this._get(`/library/presets/${presetId}`);
+  }
+
+  async createLibraryAgentPreset(
+    preset: CreateLibraryAgentPresetRequest,
+  ): Promise<LibraryAgentPreset> {
+    return this._request("POST", "/library/presets", preset);
+  }
+
+  async updateLibraryAgentPreset(
+    presetId: string,
+    preset: CreateLibraryAgentPresetRequest,
+  ): Promise<LibraryAgentPreset> {
+    return this._request("PUT", `/library/presets/${presetId}`, preset);
+  }
+
+  async deleteLibraryAgentPreset(presetId: string): Promise<void> {
+    await this._request("DELETE", `/library/presets/${presetId}`);
+  }
+
+  async executeLibraryAgentPreset(
+    presetId: string,
+    graphId: string,
+    graphVersion: number,
+    nodeInput: { [key: string]: any },
+  ): Promise<{ id: string }> {
+    return this._request("POST", `/library/presets/${presetId}/execute`, {
+      graph_id: graphId,
+      graph_version: graphVersion,
+      node_input: nodeInput,
+    });
   }
 
   ///////////////////////////////////////////
@@ -519,7 +644,22 @@ export default class BackendAPI {
       let errorDetail;
       try {
         const errorData = await response.json();
-        errorDetail = errorData.detail || response.statusText;
+        if (
+          Array.isArray(errorData.detail) &&
+          errorData.detail.length > 0 &&
+          errorData.detail[0].loc
+        ) {
+          // This appears to be a Pydantic validation error
+          const errors = errorData.detail.map(
+            (err: _PydanticValidationError) => {
+              const location = err.loc.join(" -> ");
+              return `${location}: ${err.msg}`;
+            },
+          );
+          errorDetail = errors.join("\n");
+        } else {
+          errorDetail = errorData.detail || response.statusText;
+        }
       } catch (e) {
         errorDetail = response.statusText;
       }
@@ -700,6 +840,13 @@ type WebsocketMessage = {
     data: WebsocketMessageTypeMap[M];
   };
 }[keyof WebsocketMessageTypeMap];
+
+type _PydanticValidationError = {
+  type: string;
+  loc: string[];
+  msg: string;
+  input: any;
+};
 
 /* *** HELPER FUNCTIONS *** */
 

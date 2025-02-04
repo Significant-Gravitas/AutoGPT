@@ -63,12 +63,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
             <IconAutoGPTLogo className="h-full w-full" />
           </div>
           {links.map((link) => (
-            <NavbarLink
-              key={link.name}
-              name={link.name}
-              href={link.href}
-              className="font-poppins text-[20px] leading-[28px]"
-            />
+            <NavbarLink key={link.name} name={link.name} href={link.href} />
           ))}
         </div>
         {/* Profile section */}

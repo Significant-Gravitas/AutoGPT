@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import logging
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -16,6 +18,7 @@ from typing import (
 )
 from uuid import uuid4
 
+from prisma.enums import CreditTransactionType
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -134,13 +137,20 @@ def SchemaField(
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
-    advanced: Optional[bool] = False,
+    advanced: Optional[bool] = None,
     secret: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
     depends_on: list[str] | None = None,
+    image_upload: Optional[bool] = None,
+    image_output: Optional[bool] = None,
     **kwargs,
 ) -> T:
+    if default is PydanticUndefined and default_factory is None:
+        advanced = False
+    elif advanced is None:
+        advanced = True
+
     json_extra = {
         k: v
         for k, v in {
@@ -149,6 +159,8 @@ def SchemaField(
             "advanced": advanced,
             "hidden": hidden,
             "depends_on": depends_on,
+            "image_upload": image_upload,
+            "image_output": image_output,
         }.items()
         if v is not None
     }
@@ -190,33 +202,49 @@ class OAuth2Credentials(_BaseCredentials):
     scopes: list[str]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
 
 
 class APIKeyCredentials(_BaseCredentials):
     type: Literal["api_key"] = "api_key"
     api_key: SecretStr
-    expires_at: Optional[int]
+    expires_at: Optional[int] = Field(
+        default=None,
+        description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
+    )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
+class UserPasswordCredentials(_BaseCredentials):
+    type: Literal["user_password"] = "user_password"
+    username: SecretStr
+    password: SecretStr
+
+    def auth_header(self) -> str:
+        # Converting the string to bytes using encode()
+        # Base64 encoding it with base64.b64encode()
+        # Converting the resulting bytes back to a string with decode()
+        return f"Basic {base64.b64encode(f'{self.username.get_secret_value()}:{self.password.get_secret_value()}'.encode()).decode()}"
+
+
 Credentials = Annotated[
-    OAuth2Credentials | APIKeyCredentials,
+    OAuth2Credentials | APIKeyCredentials | UserPasswordCredentials,
     Field(discriminator="type"),
 ]
 
 
-CredentialsType = Literal["api_key", "oauth2"]
+CredentialsType = Literal["api_key", "oauth2", "user_password"]
 
 
 class OAuthState(BaseModel):
     token: str
     provider: str
     expires_at: int
+    code_verifier: Optional[str] = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
     scopes: list[str]
 
@@ -240,7 +268,8 @@ CP = TypeVar("CP", bound=ProviderName)
 CT = TypeVar("CT", bound=CredentialsType)
 
 
-CREDENTIALS_FIELD_NAME = "credentials"
+def is_credentials_field_name(field_name: str) -> bool:
+    return field_name == "credentials" or field_name.endswith("_credentials")
 
 
 class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
@@ -249,21 +278,21 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     provider: CP
     type: CT
 
-    @staticmethod
-    def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
-        schema["credentials_provider"] = get_args(
-            cls.model_fields["provider"].annotation
-        )
-        schema["credentials_types"] = get_args(cls.model_fields["type"].annotation)
+    @classmethod
+    def allowed_providers(cls) -> tuple[ProviderName, ...]:
+        return get_args(cls.model_fields["provider"].annotation)
 
-    model_config = ConfigDict(
-        json_schema_extra=_add_json_schema_extra,  # type: ignore
-    )
+    @classmethod
+    def allowed_cred_types(cls) -> tuple[CredentialsType, ...]:
+        return get_args(cls.model_fields["type"].annotation)
 
     @classmethod
     def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
-        """Validates the schema of a `credentials` field"""
-        field_schema = model.jsonschema()["properties"][CREDENTIALS_FIELD_NAME]
+        """Validates the schema of a credentials input field"""
+        field_name = next(
+            name for name, type in model.get_credentials_fields().items() if type is cls
+        )
+        field_schema = model.jsonschema()["properties"][field_name]
         try:
             schema_extra = _CredentialsFieldSchemaExtra[CP, CT].model_validate(
                 field_schema
@@ -277,11 +306,20 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
                 f"{field_schema}"
             ) from e
 
-        if (
-            len(schema_extra.credentials_provider) > 1
-            and not schema_extra.discriminator
-        ):
-            raise TypeError("Multi-provider CredentialsField requires discriminator!")
+        if len(cls.allowed_providers()) > 1 and not schema_extra.discriminator:
+            raise TypeError(
+                f"Multi-provider CredentialsField '{field_name}' "
+                "requires discriminator!"
+            )
+
+    @staticmethod
+    def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
+        schema["credentials_provider"] = cls.allowed_providers()
+        schema["credentials_types"] = cls.allowed_cred_types()
+
+    model_config = ConfigDict(
+        json_schema_extra=_add_json_schema_extra,  # type: ignore
+    )
 
 
 class _CredentialsFieldSchemaExtra(BaseModel, Generic[CP, CT]):
@@ -327,3 +365,27 @@ def CredentialsField(
 
 class ContributorDetails(BaseModel):
     name: str = Field(title="Name", description="The name of the contributor.")
+
+
+class AutoTopUpConfig(BaseModel):
+    amount: int
+    """Amount of credits to top up."""
+    threshold: int
+    """Threshold to trigger auto top up."""
+
+
+class UserTransaction(BaseModel):
+    transaction_time: datetime = datetime.min
+    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
+    amount: int = 0
+    balance: int = 0
+    description: str | None = None
+    usage_graph_id: str | None = None
+    usage_execution_id: str | None = None
+    usage_node_count: int = 0
+    usage_start_time: datetime = datetime.max
+
+
+class TransactionHistory(BaseModel):
+    transactions: list[UserTransaction]
+    next_transaction_time: datetime | None

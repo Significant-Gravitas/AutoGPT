@@ -1,11 +1,12 @@
 import logging
 import time
-from typing import Sequence
+import uuid
+from typing import Sequence, cast
 
 from backend.data import db
-from backend.data.block import Block, initialize_blocks
+from backend.data.block import Block, BlockSchema, initialize_blocks
 from backend.data.execution import ExecutionResult, ExecutionStatus
-from backend.data.model import CREDENTIALS_FIELD_NAME
+from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
 from backend.server.rest_api import AgentServer
@@ -57,7 +58,7 @@ async def wait_execution(
     user_id: str,
     graph_id: str,
     graph_exec_id: str,
-    timeout: int = 20,
+    timeout: int = 30,
 ) -> Sequence[ExecutionResult]:
     async def is_execution_completed():
         status = await AgentServer().test_get_graph_run_status(graph_exec_id, user_id)
@@ -65,6 +66,9 @@ async def wait_execution(
         if status == ExecutionStatus.FAILED:
             log.info("Execution failed")
             raise Exception("Execution failed")
+        if status == ExecutionStatus.TERMINATED:
+            log.info("Execution terminated")
+            raise Exception("Execution terminated")
         return status == ExecutionStatus.COMPLETED
 
     # Wait for the executions to complete
@@ -100,21 +104,37 @@ def execute_block_test(block: Block):
         else:
             log.info(f"{prefix} mock {mock_name} not found in block")
 
-    extra_exec_kwargs = {}
-
-    if CREDENTIALS_FIELD_NAME in block.input_schema.model_fields:
-        if not block.test_credentials:
-            raise ValueError(
-                f"{prefix} requires credentials but has no test_credentials"
-            )
-        extra_exec_kwargs[CREDENTIALS_FIELD_NAME] = block.test_credentials
+    # Populate credentials argument(s)
+    extra_exec_kwargs: dict = {
+        "graph_id": uuid.uuid4(),
+        "node_id": uuid.uuid4(),
+        "graph_exec_id": uuid.uuid4(),
+        "node_exec_id": uuid.uuid4(),
+        "user_id": uuid.uuid4(),
+    }
+    input_model = cast(type[BlockSchema], block.input_schema)
+    credentials_input_fields = input_model.get_credentials_fields()
+    if len(credentials_input_fields) == 1 and isinstance(
+        block.test_credentials, _BaseCredentials
+    ):
+        field_name = next(iter(credentials_input_fields))
+        extra_exec_kwargs[field_name] = block.test_credentials
+    elif credentials_input_fields and block.test_credentials:
+        if not isinstance(block.test_credentials, dict):
+            raise TypeError(f"Block {block.name} has no usable test credentials")
+        else:
+            for field_name in credentials_input_fields:
+                if field_name in block.test_credentials:
+                    extra_exec_kwargs[field_name] = block.test_credentials[field_name]
 
     for input_data in block.test_input:
         log.info(f"{prefix} in: {input_data}")
 
         for output_name, output_data in block.execute(input_data, **extra_exec_kwargs):
             if output_index >= len(block.test_output):
-                raise ValueError(f"{prefix} produced output more than expected")
+                raise ValueError(
+                    f"{prefix} produced output more than expected {output_index} >= {len(block.test_output)}:\nOutput Expected:\t\t{block.test_output}\nFailed Output Produced:\t('{output_name}', {output_data})\nNote that this may not be the one that was unexpected, but it is the first that triggered the extra output warning"
+                )
             ex_output_name, ex_output_data = block.test_output[output_index]
 
             def compare(data, expected_data):
@@ -131,7 +151,9 @@ def execute_block_test(block: Block):
                 log.info(f"{prefix} {mark} comparing `{data}` vs `{expected_data}`")
                 if not is_matching:
                     raise ValueError(
-                        f"{prefix}: wrong output {data} vs {expected_data}"
+                        f"{prefix}: wrong output {data} vs {expected_data}\n"
+                        f"Output Expected:\t\t{block.test_output}\n"
+                        f"Failed Output Produced:\t('{output_name}', {output_data})"
                     )
 
             compare(output_data, ex_output_data)

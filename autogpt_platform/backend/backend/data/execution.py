@@ -1,9 +1,10 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
 
 from prisma.enums import AgentExecutionStatus
+from prisma.errors import PrismaError
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
@@ -31,6 +32,7 @@ class NodeExecutionEntry(BaseModel):
     graph_id: str
     node_exec_id: str
     node_id: str
+    block_id: str
     data: BlockInput
 
 
@@ -136,6 +138,7 @@ async def create_graph_execution(
     graph_version: int,
     nodes_input: list[tuple[str, BlockInput]],
     user_id: str,
+    preset_id: str | None = None,
 ) -> tuple[str, list[ExecutionResult]]:
     """
     Create a new AgentGraphExecution record.
@@ -163,6 +166,7 @@ async def create_graph_execution(
                 ]
             },
             "userId": user_id,
+            "agentPresetId": preset_id,
         },
         include=GRAPH_EXECUTION_INCLUDE,
     )
@@ -270,9 +274,9 @@ async def update_graph_execution_start_time(graph_exec_id: str):
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
+    status: ExecutionStatus,
     stats: dict[str, Any],
 ) -> ExecutionResult:
-    status = ExecutionStatus.FAILED if stats.get("error") else ExecutionStatus.COMPLETED
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
@@ -322,6 +326,30 @@ async def update_execution_status(
         raise ValueError(f"Execution {node_exec_id} not found.")
 
     return ExecutionResult.from_db(res)
+
+
+async def get_execution(
+    execution_id: str, user_id: str
+) -> Optional[AgentNodeExecution]:
+    """
+    Get an execution by ID. Returns None if not found.
+
+    Args:
+        execution_id: The ID of the execution to retrieve
+
+    Returns:
+        The execution if found, None otherwise
+    """
+    try:
+        execution = await AgentNodeExecution.prisma().find_unique(
+            where={
+                "id": execution_id,
+                "userId": user_id,
+            }
+        )
+        return execution
+    except PrismaError:
+        return None
 
 
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:

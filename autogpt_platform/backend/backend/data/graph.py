@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Optional, Type
 
 import prisma
-from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeLink
+from prisma.models import (
+    AgentGraph,
+    AgentGraphExecution,
+    AgentNode,
+    AgentNodeLink,
+    StoreListingVersion,
+)
 from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
@@ -193,7 +199,8 @@ class Graph(BaseDbModel):
             "properties": {
                 p.name: {
                     "secret": p.secret,
-                    "advanced": p.advanced,
+                    # Default value has to be set for advanced fields.
+                    "advanced": p.advanced and p.value is not None,
                     "title": p.title or p.name,
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
@@ -423,6 +430,26 @@ class GraphModel(Graph):
                 result[key] = value
         return result
 
+    def clean_graph(self):
+        blocks = [block() for block in get_blocks().values()]
+
+        input_blocks = [
+            node
+            for node in self.nodes
+            if next(
+                (
+                    b
+                    for b in blocks
+                    if b.id == node.block_id and b.block_type == BlockType.INPUT
+                ),
+                None,
+            )
+        ]
+
+        for node in self.nodes:
+            if any(input_block.id == node.id for input_block in input_blocks):
+                node.input_default["value"] = ""
+
 
 # --------------------- CRUD functions --------------------- #
 
@@ -522,21 +549,35 @@ async def get_graph(
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
     }
+
     if version is not None:
         where_clause["version"] = version
     elif not template:
         where_clause["isActive"] = True
-
-    # TODO: Fix hack workaround to get adding store agents to work
-    if user_id is not None and not template:
-        where_clause["userId"] = user_id
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-    return GraphModel.from_db(graph, for_export) if graph else None
+
+    # For access, the graph must be owned by the user or listed in the store
+    if graph is None or (
+        graph.userId != user_id
+        and not (
+            await StoreListingVersion.prisma().find_first(
+                where={
+                    "agentId": graph_id,
+                    "agentVersion": version or graph.version,
+                    "isDeleted": False,
+                    "StoreListing": {"is": {"isApproved": True}},
+                }
+            )
+        )
+    ):
+        return None
+
+    return GraphModel.from_db(graph, for_export)
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
@@ -608,23 +649,18 @@ async def __create_graph(tx, graph: Graph, user_id: str):
             "isTemplate": graph.is_template,
             "isActive": graph.is_active,
             "userId": user_id,
+            "AgentNodes": {
+                "create": [
+                    {
+                        "id": node.id,
+                        "agentBlockId": node.block_id,
+                        "constantInput": json.dumps(node.input_default),
+                        "metadata": json.dumps(node.metadata),
+                    }
+                    for node in graph.nodes
+                ]
+            },
         }
-    )
-
-    await asyncio.gather(
-        *[
-            AgentNode.prisma(tx).create(
-                {
-                    "id": node.id,
-                    "agentBlockId": node.block_id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "constantInput": json.dumps(node.input_default),
-                    "metadata": json.dumps(node.metadata),
-                }
-            )
-            for node in graph.nodes
-        ]
     )
 
     await asyncio.gather(
