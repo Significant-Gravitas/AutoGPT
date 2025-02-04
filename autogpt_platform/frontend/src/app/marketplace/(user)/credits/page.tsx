@@ -108,7 +108,7 @@ export default function CreditsPage() {
                 htmlFor="topUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Top-up Amount (Credits)
+                Top-up Amount (Credits, Minimum 500 = 5 USD)
               </label>
               <input
                 type="number"
@@ -137,7 +137,7 @@ export default function CreditsPage() {
                 htmlFor="autoTopUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Auto Top-up Amount (Credits)
+                Auto Top-up Amount (Credits, Minimum 500 = 5 USD)
               </label>
               <input
                 type="number"
@@ -145,6 +145,7 @@ export default function CreditsPage() {
                 name="topUpAmount"
                 defaultValue={autoTopUpConfig?.amount || ""}
                 placeholder="Enter auto top-up amount"
+                min="500"
                 step="100"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
@@ -164,6 +165,7 @@ export default function CreditsPage() {
                 name="threshold"
                 defaultValue={autoTopUpConfig?.threshold || ""}
                 placeholder="Enter threshold value"
+                min="500"
                 step="100"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
