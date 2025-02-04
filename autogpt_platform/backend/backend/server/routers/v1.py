@@ -177,6 +177,8 @@ async def configure_user_auto_top_up(
 ) -> str:
     if request.threshold < 0:
         raise ValueError("Threshold must be greater than 0")
+    if request.amount < 500:
+        raise ValueError("Amount must be greater than or equal to 500")
     if request.amount < request.threshold:
         raise ValueError("Amount must be greater than or equal to threshold")
 

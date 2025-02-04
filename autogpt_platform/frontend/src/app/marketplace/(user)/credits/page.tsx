@@ -145,6 +145,7 @@ export default function CreditsPage() {
                 name="topUpAmount"
                 defaultValue={autoTopUpConfig?.amount || ""}
                 placeholder="Enter auto top-up amount"
+                min="500"
                 step="100"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
@@ -164,6 +165,7 @@ export default function CreditsPage() {
                 name="threshold"
                 defaultValue={autoTopUpConfig?.threshold || ""}
                 placeholder="Enter threshold value"
+                min="500"
                 step="100"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
