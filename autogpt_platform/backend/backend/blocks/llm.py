@@ -347,7 +347,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         llm_model: LlmModel,
         prompt: list[dict],
         json_format: bool,
-        max_tokens: int,
+        max_tokens: int | None,
         ollama_host: str = "localhost:11434",
     ) -> tuple[str, int, int]:
         """
@@ -365,6 +365,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             The number of tokens used in the completion.
         """
         provider = llm_model.metadata.provider
+        max_tokens = max_tokens or llm_model.max_output_tokens or 4096
 
         if provider == "openai":
             oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
@@ -556,9 +557,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     prompt=prompt,
                     json_format=bool(input_data.expected_format),
                     ollama_host=input_data.ollama_host,
-                    max_tokens=input_data.max_tokens
-                    or llm_model.max_output_tokens
-                    or 4096,
+                    max_tokens=input_data.max_tokens,
                 )
                 self.merge_stats(
                     {
