@@ -135,6 +135,7 @@ export const PROVIDER_NAMES = {
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
   SLANT3D: "slant3d",
+  SCREENSHOTONE: "screenshotone",
   SMTP: "smtp",
   TWITTER: "twitter",
   REPLICATE: "replicate",
