@@ -1,10 +1,11 @@
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Sequence, TypedDict
+from typing import Any, Dict, List, Optional, Sequence
 
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Depends, HTTPException
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
+from typing_extensions import TypedDict
 
 import backend.data.block
 from backend.data import execution as execution_db
@@ -100,6 +101,10 @@ def execute_graph(
         raise HTTPException(status_code=400, detail=msg)
 
 
+@v1_router.get(
+    path="/graphs/{graph_id}/executions/{graph_exec_id}/results",
+    tags=["graphs"],
+)
 async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
@@ -129,15 +134,14 @@ async def get_graph_execution_results(
         outputs=(
             [
                 ExecutionNodeOutput(
-                    node_id=result.node_id,
+                    node_id=last_result.node_id,
                     outputs=[
                         NodeOutput(key=k, value=v)
-                        for k, v in result.output_data.items()
+                        for k, v in last_result.output_data.items()
                     ],
                 )
-                for result in results
             ]
-            if execution_status == AgentExecutionStatus.COMPLETED
+            if last_result and execution_status == AgentExecutionStatus.COMPLETED
             else None
         ),
     )
