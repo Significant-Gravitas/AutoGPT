@@ -320,8 +320,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
+    todoist_client_id: str = Field(default="", description="Todoist client ID")
+    todoist_client_secret: str = Field(default="", description="Todoist client secret")
+
     stripe_api_key: str = Field(default="", description="Stripe API Key")
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
+
+    screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
 
     # Add more secret fields as needed
 
