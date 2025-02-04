@@ -172,23 +172,28 @@ export default function CreditsPage() {
               />
             </div>
 
-            {autoTopUpConfig?.amount
-              ? <>
-                  <Button type="submit" className="w-full">
-                    Save Changes
-                  </Button>
-                  <Button
-                      className="w-full"
-                      variant="destructive"
-                      onClick={() => updateAutoTopUpConfig(0, 0).then(() => {
-                          toast({ title: "Auto top-up config disabled! 🎉" });
-                      })}
-                  >Disable Auto-Refill</Button>
-                </>
-              : <Button type="submit" className="w-full">
-                    Enable Auto-Refill
+            {autoTopUpConfig?.amount ? (
+              <>
+                <Button type="submit" className="w-full">
+                  Save Changes
                 </Button>
-            }
+                <Button
+                  className="w-full"
+                  variant="destructive"
+                  onClick={() =>
+                    updateAutoTopUpConfig(0, 0).then(() => {
+                      toast({ title: "Auto top-up config disabled! 🎉" });
+                    })
+                  }
+                >
+                  Disable Auto-Refill
+                </Button>
+              </>
+            ) : (
+              <Button type="submit" className="w-full">
+                Enable Auto-Refill
+              </Button>
+            )}
           </form>
         </div>
 
