@@ -121,9 +121,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OLLAMA_LLAMA3_405B = "llama3.1:405b"
     OLLAMA_DOLPHIN = "dolphin-mistral:latest"
     # OpenRouter models
-    GEMINI_FLASH_1_5_8B = (
-        "google/gemini-flash-1.5"  # Actually: google/gemini-flash-1.5-8b
-    )
+    GEMINI_FLASH_1_5 = "google/gemini-flash-1.5"
     GROK_BETA = "x-ai/grok-beta"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
@@ -200,7 +198,7 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, None),
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
-    LlmModel.GEMINI_FLASH_1_5_8B: ModelMetadata("open_router", 1000000, 8192),
+    LlmModel.GEMINI_FLASH_1_5: ModelMetadata("open_router", 1000000, 8192),
     LlmModel.GROK_BETA: ModelMetadata("open_router", 131072, 131072),
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
