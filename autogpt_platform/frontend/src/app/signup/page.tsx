@@ -34,6 +34,7 @@ export default function SignupPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  //TODO: Remove after closed beta
   const [showWaitlistPrompt, setShowWaitlistPrompt] = useState(false);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
@@ -58,10 +59,16 @@ export default function SignupPage() {
       const error = await signup(data);
       setIsLoading(false);
       if (error) {
-        setShowWaitlistPrompt(true);
+        if (error === "user_already_exists") {
+          setFeedback("User with this email already exists");
+          return;
+        } else {
+          setShowWaitlistPrompt(true);
+        }
         return;
       }
       setFeedback(null);
+      setShowWaitlistPrompt(false);
     },
     [form],
   );
