@@ -24,13 +24,15 @@ async def get_library_agents(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
-    search_term: str = fastapi.Query(..., description="Search term to filter agents"),
-    sort_by: backend.server.v2.library.model.LibraryAgentFilter = fastapi.Query(
+    search_term: str | None = fastapi.Query(
+        None, description="Search term to filter agents"
+    ),
+    sort_by: backend.server.v2.library.model.LibraryAgentFilter | None = fastapi.Query(
         backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
         description="Sort results by criteria",
     ),
-    page: int = fastapi.Query(1, description="Page number to retrieve"),
-    page_size: int = fastapi.Query(50, description="Number of agents per page"),
+    page: str = fastapi.Query("1", description="Page number to retrieve"),
+    page_size: str = fastapi.Query("50", description="Number of agents per page"),
 ) -> backend.server.v2.library.model.LibraryAgentResponse:
     """
     Get all agents in the user's library, including both created and saved agents.
@@ -40,8 +42,12 @@ async def get_library_agents(
         search (str, optional): Search term to filter agents by name
     """
     try:
+
+        page_num = int(page)
+        page_size_num = int(page_size)
+
         return await backend.server.v2.library.db.get_library_agents(
-            user_id, search_term, sort_by, page, page_size
+            user_id, search_term, sort_by, page_num, page_size_num
         )
     except Exception as e:
         logger.exception("Exception occurred whilst getting library agents: %s", e)

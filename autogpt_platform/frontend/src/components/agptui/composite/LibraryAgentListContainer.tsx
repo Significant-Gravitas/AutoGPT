@@ -21,7 +21,7 @@ export type AgentStatus =
 const LibraryAgentListContainer: React.FC<
   LibraryAgentListContainerProps
 > = ({}) => {
-  const [nextToken, setNextToken] = useState<string | null>(null);
+  const [nextToken, setNextToken] = useState<number>(1);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const api = useBackendAPI();
@@ -29,15 +29,15 @@ const LibraryAgentListContainer: React.FC<
     useLibraryPageContext();
 
   const fetchAgents = useCallback(
-    async (paginationToken?: string) => {
+    async (page: number) => {
       try {
-        const response = await api.listLibraryAgents(paginationToken);
-        if (paginationToken) {
+        const response = await api.listLibraryAgents({ page: page });
+        if (page) {
           setAgents((prevAgent) => [...prevAgent, ...response.agents]);
         } else {
           setAgents(response.agents);
         }
-        setNextToken(response.next_token);
+        setNextToken(page + 1);
       } finally {
         setAgentLoading(false);
         setLoadingMore(false);
@@ -47,7 +47,7 @@ const LibraryAgentListContainer: React.FC<
   );
 
   useEffect(() => {
-    fetchAgents();
+    fetchAgents(1);
   }, [fetchAgents]);
 
   const handleInfiniteScroll = useCallback(
@@ -85,13 +85,19 @@ const LibraryAgentListContainer: React.FC<
               <LibraryAgentCard
                 key={agent.id}
                 id={agent.id}
+                can_access_graph={agent.can_access_graph}
+                creator_name={agent.creator_name}
+                creator_image_url={agent.creator_image_url}
+                image_url={agent.image_url}
                 name={agent.name}
-                isCreatedByUser={agent.isCreatedByUser}
-                input_schema={agent.input_schema}
-                output_schema={agent.output_schema}
-                is_active={agent.is_active}
-                version={agent.version}
                 description={agent.description}
+                input_schema={agent.input_schema}
+                agent_id={agent.agent_id}
+                agent_version={agent.agent_version}
+                status={agent.status}
+                updated_at={agent.updated_at}
+                new_output={agent.new_output}
+                is_latest_version={agent.is_latest_version}
               />
             ))}
           </div>

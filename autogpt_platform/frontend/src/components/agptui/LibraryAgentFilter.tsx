@@ -22,6 +22,7 @@ const LibraryAgentFilter = ({}: {}) => {
     let response = await api.listLibraryAgents({
       search_term: searchTerm,
       sort_by: value,
+      page: 1,
     });
     setAgents(response.agents);
     setAgentLoading(false);

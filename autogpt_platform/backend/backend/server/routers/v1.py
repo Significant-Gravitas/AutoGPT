@@ -349,12 +349,6 @@ async def do_create_graph(
             )
         graph.version = 1
 
-        # Create a library agent for the new graph
-        await backend.server.v2.library.db.create_library_agent(
-            graph.id,
-            graph.version,
-            user_id,
-        )
     else:
         raise HTTPException(
             status_code=400, detail="Either graph or template_id must be provided."
@@ -368,6 +362,13 @@ async def do_create_graph(
     graph = await on_graph_activate(
         graph,
         get_credentials=lambda id: integration_creds_manager.get(user_id, id),
+    )
+
+    # Create a library agent for the new graph
+    await backend.server.v2.library.db.create_library_agent(
+        graph.id,
+        graph.version,
+        user_id,
     )
     return graph
 

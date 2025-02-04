@@ -22,6 +22,7 @@ export const LibrarySearchBar = () => {
       const response = await api.listLibraryAgents({
         search_term: value,
         sort_by: libraryFilter,
+        page: 1,
       });
       setAgents(response.agents);
       setAgentLoading(false);

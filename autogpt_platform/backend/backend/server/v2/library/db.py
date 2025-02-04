@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 async def get_library_agents(
     user_id: str,
     search_term: str | None = None,
-    sort_by: backend.server.v2.library.model.LibraryAgentFilter = backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
+    sort_by: (
+        backend.server.v2.library.model.LibraryAgentFilter | None
+    ) = backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
 ) -> backend.server.v2.library.model.LibraryAgentResponse:
@@ -44,35 +46,41 @@ async def get_library_agents(
         isArchived=False,
     )
 
-    if search_term:
-        where_clause["OR"] = [
-            {
-                "Agent": {
-                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
-                }
-            },
-            {
-                "Agent": {
-                    "is": {
-                        "description": {"contains": search_term, "mode": "insensitive"}
-                    }
-                }
-            },
-        ]
+    # if search_term:
+    #     where_clause["OR"] = [
+    #         {
+    #             "Agent": {
+    #                 "is": {"name": {"contains": search_term, "mode": "insensitive"}}
+    #             }
+    #         },
+    #         {
+    #             "Agent": {
+    #                 "is": {
+    #                     "description": {"contains": search_term, "mode": "insensitive"}
+    #                 }
+    #             }
+    #         },
+    #     ]
 
     try:
         order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
-        if sort_by == backend.server.v2.library.model.LibraryAgentFilter.CREATED_AT:
-            order_by = {"createdAt": "desc"}
-        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT:
-            order_by = {"updatedAt": "desc"}
-        elif sort_by == backend.server.v2.library.model.LibraryAgentFilter.IS_FAVOURITE:
-            order_by = {"isFavorite": "desc"}
-        elif (
-            sort_by
-            == backend.server.v2.library.model.LibraryAgentFilter.CAN_ACCESS_GRAPH
-        ):
-            order_by = {"isCreatedByUser": "desc"}
+        if sort_by:
+            if sort_by == backend.server.v2.library.model.LibraryAgentFilter.CREATED_AT:
+                order_by = {"createdAt": "desc"}
+            elif (
+                sort_by == backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT
+            ):
+                order_by = {"updatedAt": "desc"}
+            elif (
+                sort_by
+                == backend.server.v2.library.model.LibraryAgentFilter.IS_FAVOURITE
+            ):
+                order_by = {"isFavorite": "desc"}
+            elif (
+                sort_by
+                == backend.server.v2.library.model.LibraryAgentFilter.CAN_ACCESS_GRAPH
+            ):
+                order_by = {"isCreatedByUser": "desc"}
 
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
@@ -89,9 +97,7 @@ async def get_library_agents(
             skip=(page - 1) * page_size,
             take=page_size,
         )
-        logger.debug(
-            "Retrieved %s agents for user_id=%s.", len(library_agents), user_id
-        )
+        logger.info("Retrieved %s agents for user_id=%s.", len(library_agents), user_id)
 
         agent_count = await prisma.models.LibraryAgent.prisma().count(
             where=where_clause
@@ -121,13 +127,28 @@ async def create_library_agent(
     """
     Adds an agent to the user's library (LibraryAgent table)
     """
+    logger.info(
+        "Creating library agent for agent_id=%s agent_version=%s user_id=%s",
+        agent_id,
+        agent_version,
+        user_id,
+    )
+    try:
+        # Find the agent using the compound primary key
+
+        agent = await prisma.models.AgentGraph.prisma().find_first(
+            where={
+                "id": agent_id,
+                "version": agent_version,
+            }
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error("Database error finding agent: %s", e)
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to find agent"
+        ) from e
 
     try:
-
-        agent = await prisma.models.AgentGraph.prisma().find_unique(
-            where={"id": agent_id, "version": agent_version}
-        )
-
         if not agent:
             raise backend.server.v2.store.exceptions.AgentNotFoundError(
                 f"Agent {agent_id} version {agent_version} not found"
@@ -160,17 +181,29 @@ async def create_library_agent(
             raise backend.server.v2.store.exceptions.DatabaseError(
                 "Failed to generate agent image"
             ) from e
+        # Ensure that we have the necessary data before proceeding.
+        assert agent is not None, "Agent data is missing"
+        assert image_url, "Image URL is required"
+        assert user_id, "User ID is required"
+        assert (
+            hasattr(agent, "userId") and agent.userId
+        ), "Agent must have a valid userId"
 
         library_agent = await prisma.models.LibraryAgent.prisma().create(
-            data=prisma.types.LibraryAgentCreateInput(
-                userId=user_id,
-                agentId=agent_id,
-                agentVersion=agent_version,
-                image_url=image_url,
-                isCreatedByUser=user_id == agent.userId,
-                useGraphIsActiveVersion=True,
-                Creator={"connect": {"id": agent.userId}},
-            )
+            data={
+                "image_url": image_url,
+                "isCreatedByUser": (user_id == agent.userId),
+                "useGraphIsActiveVersion": True,
+                "isDeleted": False,
+                "isArchived": False,
+                "User": {"connect": {"id": agent.userId}},
+                "Agent": {
+                    "connect": {
+                        "graphVersionId": {"id": agent_id, "version": agent_version}
+                    }
+                },
+                # "Creator": {"connect": {"userId": agent.userId}},
+            }
         )
         return library_agent
     except prisma.errors.PrismaError as e:
