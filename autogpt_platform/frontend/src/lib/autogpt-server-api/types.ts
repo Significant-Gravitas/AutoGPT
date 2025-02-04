@@ -232,7 +232,6 @@ export type GraphMeta = {
   version: number;
   is_active: boolean;
   name: string;
-  isCreatedByUser?: boolean;
   description: string;
   input_schema: BlockIOObjectSubSchema;
   output_schema: BlockIOObjectSubSchema;
@@ -547,10 +546,114 @@ export type StoreReviewCreate = {
   comments?: string;
 };
 
-// Types for v2 Library
-export enum LibraryAgentFilterEnum {
-  CREATED_AT = "createdAt",
-  UPDATED_AT = "updatedAt",
-  IS_FAVOURITE = "isFavourite",
-  IS_CREATED_BY_USER = "isCreatedByUser",
+// API Key Types
+
+export enum APIKeyPermission {
+  EXECUTE_GRAPH = "EXECUTE_GRAPH",
+  READ_GRAPH = "READ_GRAPH",
+  EXECUTE_BLOCK = "EXECUTE_BLOCK",
+  READ_BLOCK = "READ_BLOCK",
+}
+
+export enum APIKeyStatus {
+  ACTIVE = "ACTIVE",
+  REVOKED = "REVOKED",
+  SUSPENDED = "SUSPENDED",
+}
+
+export interface APIKey {
+  id: string;
+  name: string;
+  prefix: string;
+  postfix: string;
+  status: APIKeyStatus;
+  permissions: APIKeyPermission[];
+  created_at: string;
+  last_used_at?: string;
+  revoked_at?: string;
+  description?: string;
+}
+
+export interface CreateAPIKeyResponse {
+  api_key: APIKey;
+  plain_text_key: string;
+}
+
+export interface CreditTransaction {
+  transaction_time: Date;
+  transaction_type: string;
+  amount: number;
+  balance: number;
+  description: string;
+  usage_graph_id: string;
+  usage_execution_id: string;
+  usage_node_count: number;
+  usage_starting_time: Date;
+}
+
+export interface TransactionHistory {
+  transactions: CreditTransaction[];
+  next_transaction_time: Date | null;
+}
+
+export enum AgentStatus {
+  COMPLETED = "COMPLETED",
+  HEALTHY = "HEALTHY",
+  WAITING = "WAITING",
+  ERROR = "ERROR",
+}
+
+export interface LibraryAgent {
+  id: string;
+  agent_id: string;
+  agent_version: number;
+  image_url: string;
+  creator_name: string;
+  creator_image_url: string;
+  status: AgentStatus;
+  updated_at: Date;
+  name: string;
+  description: string;
+  input_schema: { [key: string]: any };
+  new_output: boolean;
+  can_access_graph: boolean;
+  is_latest_version: boolean;
+}
+
+export interface LibraryAgentResponse {
+  agents: LibraryAgent[];
+  pagination: {
+    total: number;
+    page: number;
+    size: number;
+  };
+}
+
+export interface LibraryAgentPreset {
+  id: string;
+  updated_at: Date;
+  agent_id: string;
+  agent_version: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  inputs: { [key: string]: any };
+}
+
+export interface LibraryAgentPresetResponse {
+  presets: LibraryAgentPreset[];
+  pagination: {
+    total: number;
+    page: number;
+    size: number;
+  };
+}
+
+export interface CreateLibraryAgentPresetRequest {
+  name: string;
+  description: string;
+  inputs: { [key: string]: any };
+  agent_id: string;
+  agent_version: number;
+  is_active: boolean;
 }
