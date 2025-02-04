@@ -658,3 +658,11 @@ export interface CreateLibraryAgentPresetRequest {
   agent_version: number;
   is_active: boolean;
 }
+
+// Types for v2 Library
+export enum LibraryAgentFilterEnum {
+  CREATED_AT = "createdAt",
+  UPDATED_AT = "updatedAt",
+  IS_FAVOURITE = "isFavourite",
+  IS_CREATED_BY_USER = "isCreatedByUser",
+}

@@ -1,10 +1,14 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import Image from "next/image";
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import { LibraryAgent } from "@/lib/autogpt-server-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-export const LibraryAgentCard = ({ id, name, isCreatedByUser }: GraphMeta) => {
+export const LibraryAgentCard = ({
+  id,
+  name,
+  can_access_graph,
+}: LibraryAgent) => {
   const descriptions = `An intelligent agent that helps automate your workflow,
     saving valuable time and improving productivity with smart automations,
     and enabling you to focus on what matters most.`;
@@ -67,7 +71,7 @@ export const LibraryAgentCard = ({ id, name, isCreatedByUser }: GraphMeta) => {
               See runs
             </Link>
 
-            {!isCreatedByUser && (
+            {!can_access_graph && (
               <Link
                 href={`/build?flowID=${id}`}
                 className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"

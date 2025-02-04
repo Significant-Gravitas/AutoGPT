@@ -19,7 +19,10 @@ export const LibrarySearchBar = () => {
       setAgentLoading(true);
       setSearchTerm(value);
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const response = await api.librarySearchAgent(value, libraryFilter);
+      const response = await api.listLibraryAgents({
+        search_term: value,
+        sort_by: libraryFilter,
+      });
       setAgents(response.agents);
       setAgentLoading(false);
     } catch (error) {

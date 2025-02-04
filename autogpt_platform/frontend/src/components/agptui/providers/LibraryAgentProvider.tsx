@@ -1,4 +1,4 @@
-import { GraphMeta, LibraryAgentFilterEnum } from "@/lib/autogpt-server-api";
+import { LibraryAgent, LibraryAgentFilterEnum } from "@/lib/autogpt-server-api";
 import {
   createContext,
   useState,
@@ -9,8 +9,8 @@ import {
 } from "react";
 
 interface LibraryPageContextType {
-  agents: GraphMeta[];
-  setAgents: Dispatch<SetStateAction<GraphMeta[]>>;
+  agents: LibraryAgent[];
+  setAgents: Dispatch<SetStateAction<LibraryAgent[]>>;
   agentLoading: boolean;
   setAgentLoading: Dispatch<SetStateAction<boolean>>;
   searchTerm: string | undefined;
@@ -30,7 +30,7 @@ interface LibraryPageProviderProps {
 }
 
 export function LibraryPageProvider({ children }: LibraryPageProviderProps) {
-  const [agents, setAgents] = useState<GraphMeta[]>([]);
+  const [agents, setAgents] = useState<LibraryAgent[]>([]);
   const [agentLoading, setAgentLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string | undefined>("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);

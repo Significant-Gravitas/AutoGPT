@@ -19,7 +19,10 @@ const LibraryAgentFilter = ({}: {}) => {
     setLibraryFilter(value);
     setAgentLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    let response = await api.librarySearchAgent(searchTerm, value, undefined);
+    let response = await api.listLibraryAgents({
+      search_term: searchTerm,
+      sort_by: value,
+    });
     setAgents(response.agents);
     setAgentLoading(false);
   };
