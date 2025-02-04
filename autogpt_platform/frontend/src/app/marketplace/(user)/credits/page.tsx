@@ -137,7 +137,7 @@ export default function CreditsPage() {
                 htmlFor="threshold"
                 className="mb-1 block text-neutral-700"
               >
-                Make sure the balance is always above this threshold:
+                When my balance goes below this amount:
               </label>
               <input
                 type="number"
@@ -157,7 +157,7 @@ export default function CreditsPage() {
                 htmlFor="autoTopUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                When the balance is below the threshold, top-up this amount:
+                Automatically refill my balance with this amount:
               </label>
               <input
                 type="number"
