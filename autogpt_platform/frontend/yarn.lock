@@ -8461,10 +8461,10 @@ lru-cache@^5.1.1:
   dependencies:
     yallist "^3.0.2"
 
-lucide-react@^0.474.0:
-  version "0.474.0"
-  resolved "https://registry.yarnpkg.com/lucide-react/-/lucide-react-0.474.0.tgz#9fcaa96250fa2de0b3e2803d4ad744eaea572247"
-  integrity sha512-CmghgHkh0OJNmxGKWc0qfPJCYHASPMVSyGY8fj3xgk4v84ItqDg64JNKFZn5hC6E0vHi6gxnbCgwhyVB09wQtA==
+lucide-react@^0.468.0:
+  version "0.468.0"
+  resolved "https://registry.yarnpkg.com/lucide-react/-/lucide-react-0.468.0.tgz#830c1bfd905575ddd23b832baa420c87db166910"
+  integrity sha512-6koYRhnM2N0GGZIdXzSeiNwguv1gt/FAjZOiPl76roBi3xKEXa4WmfpxgQwTTL4KipXjefrnf3oV4IsYhi4JFA==
 
 lz-string@^1.5.0:
   version "1.5.0"
@@ -9014,7 +9014,7 @@ mz@^2.7.0:
     object-assign "^4.0.1"
     thenify-all "^1.0.0"
 
-nanoid@^3.3.6, nanoid@^3.3.8:
+nanoid@^3.3.6, nanoid@^3.3.7, nanoid@^3.3.8:
   version "3.3.8"
   resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-3.3.8.tgz#b1be3030bee36aaff18bacb375e5cce521684baf"
   integrity sha512-WNLf5Sd8oZxOm+TzppcYk8gVOgP+l58xNy58D0nbUnOxOWRWvlcCV4kUF7ltmI6PsrLl/BgKEyS4mqsGChFN0w==
@@ -10011,6 +10011,14 @@ react-docgen@^7.0.0:
   dependencies:
     loose-envify "^1.1.0"
     scheduler "^0.23.2"
+
+react-drag-drop-files@^2.4.0:
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/react-drag-drop-files/-/react-drag-drop-files-2.4.0.tgz#d4c4f14cf3e76bb7fb2734aed2174e7120e56733"
+  integrity sha512-MGPV3HVVnwXEXq3gQfLtSU3jz5j5jrabvGedokpiSEMoONrDHgYl/NpIOlfsqGQ4zBv1bzzv7qbKURZNOX32PA==
+  dependencies:
+    prop-types "^15.7.2"
+    styled-components "^6.1.11"
 
 react-hook-form@^7.54.2:
   version "7.54.2"
