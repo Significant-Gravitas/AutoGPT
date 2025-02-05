@@ -23,7 +23,7 @@ export default function CreditsPage() {
     updateAutoTopUpConfig,
     transactionHistory,
     fetchTransactionHistory,
-    renderCredits,
+    formatCredits,
   } = useCredits();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -261,9 +261,9 @@ export default function CreditsPage() {
                       transaction.amount > 0 ? "text-green-500" : "text-red-500"
                     }
                   >
-                    <b>{renderCredits(transaction.amount)}</b>
+                    <b>{formatCredits(transaction.amount)}</b>
                   </TableCell>
-                  <TableCell>{renderCredits(transaction.balance)}</TableCell>
+                  <TableCell>{formatCredits(transaction.balance)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

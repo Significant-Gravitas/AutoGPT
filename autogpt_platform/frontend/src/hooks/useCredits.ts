@@ -17,7 +17,7 @@ export default function useCredits(): {
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
   transactionHistory: TransactionHistory;
   fetchTransactionHistory: () => void;
-  renderCredits: (credit: number | null) => string;
+  formatCredits: (credit: number | null) => string;
 } {
   const [credits, setCredits] = useState<number | null>(null);
   const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
@@ -90,9 +90,12 @@ export default function useCredits(): {
 
   useEffect(() => {
     fetchTransactionHistory();
-  }, [fetchTransactionHistory]);
+    // Note: We only need to fetch transaction history once.
+    // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const renderCredits = useCallback((credit: number | null) => {
+  const formatCredits = useCallback((credit: number | null) => {
     if (credit === null) {
       return "-";
     }
@@ -112,6 +115,6 @@ export default function useCredits(): {
     updateAutoTopUpConfig,
     transactionHistory,
     fetchTransactionHistory,
-    renderCredits,
+    formatCredits,
   };
 }
