@@ -328,7 +328,7 @@ class UserCredit(UserCreditBase):
 
         # Auto top-up if balance just went below threshold due to this transaction.
         auto_top_up = await get_auto_top_up(user_id)
-        if balance < auto_top_up.threshold <= balance - cost:
+        if balance < auto_top_up.threshold <= balance + cost:
             try:
                 await self.top_up_credits(user_id=user_id, amount=auto_top_up.amount)
             except Exception as e:

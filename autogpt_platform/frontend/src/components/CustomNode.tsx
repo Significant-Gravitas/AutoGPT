@@ -54,6 +54,8 @@ import {
   ExitIcon,
 } from "@radix-ui/react-icons";
 
+import useCredits from "@/hooks/useCredits";
+
 export type ConnectionData = Array<{
   edge_id: string;
   source: string;
@@ -110,6 +112,7 @@ export function CustomNode({
   const isInitialSetup = useRef(true);
   const flowContext = useContext(FlowContext);
   const api = useBackendAPI();
+  const { formatCredits } = useCredits();
   let nodeFlowId = "";
 
   if (data.uiType === BlockUIType.AGENT) {
@@ -712,9 +715,10 @@ export function CustomNode({
                 <span className="ml-auto flex items-center">
                   <IconCoin />{" "}
                   <span className="mx-1 font-medium">
-                    {blockCost.cost_amount}
-                  </span>{" "}
-                  credits/{blockCost.cost_type}
+                    {formatCredits(blockCost.cost_amount)}
+                  </span>
+                  {" \/ "}
+                  {blockCost.cost_type}
                 </span>
               </div>
             )}
