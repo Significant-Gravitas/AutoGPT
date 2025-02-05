@@ -33,7 +33,7 @@ interface NavbarProps {
       onClick?: () => void;
     }[];
   }[];
-  mockUser: User;
+  mockUser?: User;
   mockClientProps?: MockClientProps;
 }
 
