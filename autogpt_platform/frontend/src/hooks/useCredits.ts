@@ -1,4 +1,5 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import { TransactionHistory } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
@@ -10,10 +11,13 @@ const stripePromise = loadStripe(
 export default function useCredits(): {
   credits: number | null;
   fetchCredits: () => void;
-  requestTopUp: (amount: number) => Promise<void>;
+  requestTopUp: (credit_amount: number) => Promise<void>;
   autoTopUpConfig: { amount: number; threshold: number } | null;
   fetchAutoTopUpConfig: () => void;
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
+  transactionHistory: TransactionHistory;
+  fetchTransactionHistory: () => void;
+  formatCredits: (credit: number | null) => string;
 } {
   const [credits, setCredits] = useState<number | null>(null);
   const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
@@ -51,19 +55,56 @@ export default function useCredits(): {
   );
 
   const requestTopUp = useCallback(
-    async (amount: number) => {
+    async (credit_amount: number) => {
       const stripe = await stripePromise;
 
       if (!stripe) {
         return;
       }
 
-      // Convert dollar amount to credit count
-      const response = await api.requestTopUp(amount);
+      const response = await api.requestTopUp(credit_amount);
       router.push(response.checkout_url);
     },
     [api, router],
   );
+
+  const [transactionHistory, setTransactionHistory] =
+    useState<TransactionHistory>({
+      transactions: [],
+      next_transaction_time: null,
+    });
+
+  const fetchTransactionHistory = useCallback(async () => {
+    const response = await api.getTransactionHistory(
+      transactionHistory.next_transaction_time,
+      20,
+    );
+    setTransactionHistory({
+      transactions: [
+        ...transactionHistory.transactions,
+        ...response.transactions,
+      ],
+      next_transaction_time: response.next_transaction_time,
+    });
+  }, [api, transactionHistory]);
+
+  useEffect(() => {
+    fetchTransactionHistory();
+    // Note: We only need to fetch transaction history once.
+    // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const formatCredits = useCallback((credit: number | null) => {
+    if (credit === null) {
+      return "-";
+    }
+    const value = Math.abs(credit);
+    const sign = credit < 0 ? "-" : "";
+    const precision =
+      2 - (value % 100 === 0 ? 1 : 0) - (value % 10 === 0 ? 1 : 0);
+    return `${sign}$${(value / 100).toFixed(precision)}`;
+  }, []);
 
   return {
     credits,
@@ -72,5 +113,8 @@ export default function useCredits(): {
     autoTopUpConfig,
     fetchAutoTopUpConfig,
     updateAutoTopUpConfig,
+    transactionHistory,
+    fetchTransactionHistory,
+    formatCredits,
   };
 }
