@@ -10,7 +10,9 @@ import { NavbarLink } from "./NavbarLink";
 import getServerUser from "@/lib/supabase/getServerUser";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { User } from "@supabase/supabase-js";
-import MockClient, { MockClientProps } from "@/lib/autogpt-server-api/mock_client";
+import MockClient, {
+  MockClientProps,
+} from "@/lib/autogpt-server-api/mock_client";
 
 // Disable theme toggle for now
 // import { ThemeToggle } from "./ThemeToggle";
@@ -31,9 +33,8 @@ interface NavbarProps {
       onClick?: () => void;
     }[];
   }[];
-  mockUser: User
+  mockUser: User;
   mockClientProps?: MockClientProps;
-
 }
 
 async function getProfileData(mockClientProps?: MockClientProps) {
