@@ -77,6 +77,7 @@ export const providerIcons: Record<
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
   slant3d: fallbackIcon,
+  screenshotone: fallbackIcon,
   smtp: fallbackIcon,
   replicate: fallbackIcon,
   reddit: fallbackIcon,
@@ -86,6 +87,7 @@ export const providerIcons: Record<
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
   hubspot: FaHubspot,
+  todoist: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
