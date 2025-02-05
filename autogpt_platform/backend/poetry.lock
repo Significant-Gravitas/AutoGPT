@@ -293,14 +293,14 @@ develop = true
 [package.dependencies]
 colorama = "^0.4.6"
 expiringdict = "^1.2.2"
-google-cloud-logging = "^3.11.3"
-pydantic = "^2.10.5"
+google-cloud-logging = "^3.11.4"
+pydantic = "^2.10.6"
 pydantic-settings = "^2.7.1"
 pyjwt = "^2.10.1"
-pytest-asyncio = "^0.25.2"
+pytest-asyncio = "^0.25.3"
 pytest-mock = "^3.14.0"
 python-dotenv = "^1.0.1"
-supabase = "^2.11.0"
+supabase = "^2.13.0"
 
 [package.source]
 type = "directory"
@@ -1147,14 +1147,14 @@ grpc = ["grpcio (>=1.38.0,<2.0dev)", "grpcio-status (>=1.38.0,<2.0.dev0)"]
 
 [[package]]
 name = "google-cloud-logging"
-version = "3.11.3"
+version = "3.11.4"
 description = "Stackdriver Logging API client library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "google_cloud_logging-3.11.3-py2.py3-none-any.whl", hash = "sha256:b8ec23f2998f76a58f8492db26a0f4151dd500425c3f08448586b85972f3c494"},
-    {file = "google_cloud_logging-3.11.3.tar.gz", hash = "sha256:0a73cd94118875387d4535371d9e9426861edef8e44fba1261e86782d5b8d54f"},
+    {file = "google_cloud_logging-3.11.4-py2.py3-none-any.whl", hash = "sha256:1d465ac62df29fb94bba4d6b4891035e57d573d84541dd8a40eebbc74422b2f0"},
+    {file = "google_cloud_logging-3.11.4.tar.gz", hash = "sha256:32305d989323f3c58603044e2ac5d9cf23e9465ede511bbe90b4309270d3195c"},
 ]
 
 [package.dependencies]
