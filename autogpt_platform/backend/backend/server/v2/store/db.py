@@ -16,6 +16,25 @@ from backend.data.graph import GraphModel
 logger = logging.getLogger(__name__)
 
 
+def sanitize_query(query: str | None) -> str | None:
+    if query is None:
+        return query
+    query = query.strip()[:100]
+    return (
+        query.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace("'", "\\'")
+        .replace('"', '\\"')
+        .replace(";", "\\;")
+        .replace("--", "\\--")
+        .replace("/*", "\\/*")
+        .replace("*/", "\\*/")
+    )
+
+
 async def get_store_agents(
     featured: bool = False,
     creator: str | None = None,
@@ -28,29 +47,7 @@ async def get_store_agents(
     logger.debug(
         f"Getting store agents. featured={featured}, creator={creator}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
-    sanitized_query = None
-    # Sanitize and validate search query by escaping special characters
-    if search_query is not None:
-        sanitized_query = search_query.strip()
-        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
-            raise backend.server.v2.store.exceptions.DatabaseError(
-                f"Invalid search query: len({len(sanitized_query)}) query: {search_query}"
-            )
-
-        # Escape special SQL characters
-        sanitized_query = (
-            sanitized_query.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("'", "\\'")
-            .replace('"', '\\"')
-            .replace(";", "\\;")
-            .replace("--", "\\--")
-            .replace("/*", "\\/*")
-            .replace("*/", "\\*/")
-        )
+    sanitized_query = sanitize_query(search_query)
 
     where_clause = {}
     if featured:
@@ -637,7 +634,7 @@ async def update_profile(
         )
         if not existing_profile:
             raise backend.server.v2.store.exceptions.ProfileNotFoundError(
-                "Profile not found for user %s. This should not be possible.", user_id
+                f"Profile not found for user {user_id}. This should not be possible."
             )
 
         # Verify that the user is authorized to update this profile

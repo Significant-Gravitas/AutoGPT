@@ -72,9 +72,6 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
--- Drop the old trigger if it exists
-DROP TRIGGER IF EXISTS user_added_to_platform ON auth.users;
-
 DO $$
 BEGIN
     -- Check if the auth schema and users table exist
