@@ -79,7 +79,6 @@ export const Default: Story = {
       credits: 1500,
       profile: mockProfileData,
     },
-
   },
 };
 
