@@ -1,5 +1,4 @@
 import logging
-import random
 from datetime import datetime
 from typing import Optional
 
@@ -93,8 +92,8 @@ async def get_store_agents(
                 slug=agent.slug,
                 agent_name=agent.agent_name,
                 agent_image=agent.agent_image[0] if agent.agent_image else "",
-                creator=agent.creator_username,
-                creator_avatar=agent.creator_avatar,
+                creator=agent.creator_username or "Needs Profile",
+                creator_avatar=agent.creator_avatar or "",
                 sub_heading=agent.sub_heading,
                 description=agent.description,
                 runs=agent.runs,
@@ -587,7 +586,7 @@ async def create_store_review(
 
 async def get_user_profile(
     user_id: str,
-) -> backend.server.v2.store.model.ProfileDetails:
+) -> backend.server.v2.store.model.ProfileDetails | None:
     logger.debug(f"Getting user profile for {user_id}")
 
     try:
@@ -596,25 +595,7 @@ async def get_user_profile(
         )
 
         if not profile:
-            logger.warning(f"Profile not found for user {user_id}")
-            new_profile = await prisma.models.Profile.prisma().create(
-                data=prisma.types.ProfileCreateInput(
-                    userId=user_id,
-                    name="No Profile Data",
-                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower(),
-                    description="No Profile Data",
-                    links=[],
-                    avatarUrl="",
-                )
-            )
-            return backend.server.v2.store.model.ProfileDetails(
-                name=new_profile.name,
-                username=new_profile.username,
-                description=new_profile.description,
-                links=new_profile.links,
-                avatar_url=new_profile.avatarUrl,
-            )
-
+            return None
         return backend.server.v2.store.model.ProfileDetails(
             name=profile.name,
             username=profile.username,
@@ -623,115 +604,90 @@ async def get_user_profile(
             avatar_url=profile.avatarUrl,
         )
     except Exception as e:
-        logger.error(f"Error getting user profile: {str(e)}")
-        return backend.server.v2.store.model.ProfileDetails(
-            name="No Profile Data",
-            username="No Profile Data",
-            description="No Profile Data",
-            links=[],
-            avatar_url="",
-        )
+        logger.error("Error getting user profile: %s", str(e))
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to get user profile"
+        ) from e
 
 
-async def update_or_create_profile(
+async def update_profile(
     user_id: str, profile: backend.server.v2.store.model.Profile
 ) -> backend.server.v2.store.model.CreatorDetails:
     """
-    Update the store profile for a user. Creates a new profile if one doesn't exist.
-    Only allows updating if the user_id matches the owning user.
-    If a field is None, it will not overwrite the existing value in the case of an update.
-
+    Update the store profile for a user or create a new one if it doesn't exist.
     Args:
         user_id: ID of the authenticated user
         profile: Updated profile details
-
     Returns:
-        CreatorDetails: The updated profile
-
+        CreatorDetails: The updated or created profile details
     Raises:
-        HTTPException: If user is not authorized to update this profile
-        DatabaseError: If profile cannot be updated due to database issues
+        HTTPException: If the user is not authorized to update the profile
+        DatabaseError: If there's an issue updating or creating the profile
     """
-    logger.info(f"Updating profile for user {user_id} data: {profile}")
-
+    logger.info("Updating profile for user %s with data: %s", user_id, profile)
     try:
-        # Sanitize username to only allow letters and hyphens
+        # Sanitize username to allow only letters, numbers, and hyphens
         username = "".join(
             c if c.isalpha() or c == "-" or c.isnumeric() else ""
             for c in profile.username
         ).lower()
-
+        # Check if profile exists for the given user_id
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
         )
-
-        # If no profile exists, create a new one
         if not existing_profile:
-            logger.debug(
-                f"No existing profile found. Creating new profile for user {user_id}"
-            )
-            # Create new profile since one doesn't exist
-            new_profile = await prisma.models.Profile.prisma().create(
-                data={
-                    "userId": user_id,
-                    "name": profile.name,
-                    "username": username,
-                    "description": profile.description,
-                    "links": profile.links or [],
-                    "avatarUrl": profile.avatar_url,
-                    "isFeatured": False,
-                }
+            raise backend.server.v2.store.exceptions.ProfileNotFoundError(
+                "Profile not found for user %s. This should not be possible.", user_id
             )
 
-            return backend.server.v2.store.model.CreatorDetails(
-                name=new_profile.name,
-                username=new_profile.username,
-                description=new_profile.description,
-                links=new_profile.links,
-                avatar_url=new_profile.avatarUrl or "",
-                agent_rating=0.0,
-                agent_runs=0,
-                top_categories=[],
+        # Verify that the user is authorized to update this profile
+        if existing_profile.userId != user_id:
+            logger.error(
+                "Unauthorized update attempt for profile %s by user %s",
+                existing_profile.userId,
+                user_id,
             )
-        else:
-            logger.debug(f"Updating existing profile for user {user_id}")
-            # Update only provided fields for the existing profile
-            update_data = {}
-            if profile.name is not None:
-                update_data["name"] = profile.name
-            if profile.username is not None:
-                update_data["username"] = username
-            if profile.description is not None:
-                update_data["description"] = profile.description
-            if profile.links is not None:
-                update_data["links"] = profile.links
-            if profile.avatar_url is not None:
-                update_data["avatarUrl"] = profile.avatar_url
+            raise fastapi.HTTPException(
+                status_code=403, detail="Unauthorized to update this profile"
+            )
+        logger.debug("Updating existing profile for user %s", user_id)
+        # Prepare update data, only including non-None values
+        update_data = {}
+        if profile.name is not None:
+            update_data["name"] = profile.name
+        if profile.username is not None:
+            update_data["username"] = username
+        if profile.description is not None:
+            update_data["description"] = profile.description
+        if profile.links is not None:
+            update_data["links"] = profile.links
+        if profile.avatar_url is not None:
+            update_data["avatarUrl"] = profile.avatar_url
 
-            # Update the existing profile
-            updated_profile = await prisma.models.Profile.prisma().update(
-                where={"id": existing_profile.id},
-                data=prisma.types.ProfileUpdateInput(**update_data),
+        # Update the existing profile
+        updated_profile = await prisma.models.Profile.prisma().update(
+            where={"id": existing_profile.id},
+            data=prisma.types.ProfileUpdateInput(**update_data),
+        )
+        if updated_profile is None:
+            logger.error("Failed to update profile for user %s", user_id)
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                "Failed to update profile"
             )
-            if updated_profile is None:
-                logger.error(f"Failed to update profile for user {user_id}")
-                raise backend.server.v2.store.exceptions.DatabaseError(
-                    "Failed to update profile"
-                )
 
-            return backend.server.v2.store.model.CreatorDetails(
-                name=updated_profile.name,
-                username=updated_profile.username,
-                description=updated_profile.description,
-                links=updated_profile.links,
-                avatar_url=updated_profile.avatarUrl or "",
-                agent_rating=0.0,
-                agent_runs=0,
-                top_categories=[],
-            )
+        return backend.server.v2.store.model.CreatorDetails(
+            name=updated_profile.name,
+            username=updated_profile.username,
+            description=updated_profile.description,
+            links=updated_profile.links,
+            avatar_url=updated_profile.avatarUrl or "",
+            agent_rating=0.0,
+            agent_runs=0,
+            top_categories=[],
+        )
 
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating profile: {str(e)}")
+        logger.error("Database error updating profile: %s", str(e))
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update profile"
         ) from e
