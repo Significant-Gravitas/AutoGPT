@@ -42,6 +42,11 @@ async def get_profile(
     """
     try:
         profile = await backend.server.v2.store.db.get_user_profile(user_id)
+        if profile is None:
+            return fastapi.responses.JSONResponse(
+                status_code=404,
+                content={"detail": "Profile not found"},
+            )
         return profile
     except Exception:
         logger.exception("Exception occurred whilst getting user profile")
