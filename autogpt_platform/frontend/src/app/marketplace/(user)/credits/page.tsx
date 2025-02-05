@@ -108,7 +108,7 @@ export default function CreditsPage() {
                 htmlFor="topUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Top-up Amount (Credits, Minimum 500 = 5 USD)
+                Amount, minimum 500 credits = 5 USD:
               </label>
               <input
                 type="number"
@@ -130,41 +130,21 @@ export default function CreditsPage() {
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="mt-6 space-y-4">
-            <h3 className="text-lg font-medium">Auto Top-up Configuration</h3>
-
-            <div>
-              <label
-                htmlFor="autoTopUpAmount"
-                className="mb-1 block text-neutral-700"
-              >
-                Auto Top-up Amount (Credits, Minimum 500 = 5 USD)
-              </label>
-              <input
-                type="number"
-                id="autoTopUpAmount"
-                name="topUpAmount"
-                defaultValue={autoTopUpConfig?.amount || ""}
-                placeholder="Enter auto top-up amount"
-                min="500"
-                step="100"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
-                required
-              />
-            </div>
+            <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
 
             <div>
               <label
                 htmlFor="threshold"
                 className="mb-1 block text-neutral-700"
               >
-                Threshold (Credits)
+                When my balance goes below this amount:
               </label>
               <input
                 type="number"
                 id="threshold"
                 name="threshold"
                 defaultValue={autoTopUpConfig?.threshold || ""}
-                placeholder="Enter threshold value"
+                placeholder="Amount, minimum 500 credits = 5 USD"
                 min="500"
                 step="100"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
@@ -172,9 +152,48 @@ export default function CreditsPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full">
-              Save
-            </Button>
+            <div>
+              <label
+                htmlFor="autoTopUpAmount"
+                className="mb-1 block text-neutral-700"
+              >
+                Automatically refill my balance with this amount:
+              </label>
+              <input
+                type="number"
+                id="autoTopUpAmount"
+                name="topUpAmount"
+                defaultValue={autoTopUpConfig?.amount || ""}
+                placeholder="Amount, minimum 500 credits = 5 USD"
+                min="500"
+                step="100"
+                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                required
+              />
+            </div>
+
+            {autoTopUpConfig?.amount ? (
+              <>
+                <Button type="submit" className="w-full">
+                  Save Changes
+                </Button>
+                <Button
+                  className="w-full"
+                  variant="destructive"
+                  onClick={() =>
+                    updateAutoTopUpConfig(0, 0).then(() => {
+                      toast({ title: "Auto top-up config disabled! 🎉" });
+                    })
+                  }
+                >
+                  Disable Auto-Refill
+                </Button>
+              </>
+            ) : (
+              <Button type="submit" className="w-full">
+                Enable Auto-Refill
+              </Button>
+            )}
           </form>
         </div>
 
