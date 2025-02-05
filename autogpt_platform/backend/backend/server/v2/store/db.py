@@ -644,9 +644,10 @@ async def update_profile(
                 existing_profile.userId,
                 user_id,
             )
-            raise fastapi.HTTPException(
-                status_code=403, detail="Unauthorized to update this profile"
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
             )
+
         logger.debug("Updating existing profile for user %s", user_id)
         # Prepare update data, only including non-None values
         update_data = {}
