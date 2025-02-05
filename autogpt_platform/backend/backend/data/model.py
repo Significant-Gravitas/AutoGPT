@@ -389,3 +389,13 @@ class UserTransaction(BaseModel):
 class TransactionHistory(BaseModel):
     transactions: list[UserTransaction]
     next_transaction_time: datetime | None
+
+
+class PassableUser(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    createdAt: datetime
+    updatedAt: datetime
+    metadata: dict
+    integrations: str

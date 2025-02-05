@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 from typing import Optional, cast
 
@@ -7,7 +8,12 @@ from prisma import Json
 from prisma.models import User
 
 from backend.data.db import prisma
-from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
+from backend.data.model import (
+    PassableUser,
+    UserIntegrations,
+    UserMetadata,
+    UserMetadataRaw,
+)
 from backend.util.encryption import JSONCryptor
 
 logger = logging.getLogger(__name__)
@@ -130,3 +136,21 @@ async def migrate_and_encrypt_user_integrations():
             where={"id": user.id},
             data={"metadata": Json(raw_metadata)},
         )
+
+
+async def get_active_users_in_timerange(
+    start_time: str, end_time: str
+) -> list[PassableUser]:
+    users = await User.prisma().find_many(
+        where={
+            "AgentGraphExecutions": {
+                "some": {
+                    "createdAt": {
+                        "gte": datetime.fromisoformat(start_time),
+                        "lte": datetime.fromisoformat(end_time),
+                    }
+                }
+            }
+        },
+    )
+    return [PassableUser(**user.model_dump()) for user in users]
