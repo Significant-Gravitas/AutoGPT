@@ -232,7 +232,7 @@ class UserCreditBase(ABC):
 
             if amount < 0 and user_balance < abs(amount):
                 raise ValueError(
-                    f"Insufficient balance for user {user_id}, balance: {user_balance}, amount: {amount}"
+                    f"Insufficient balance of ${user_balance/100} to run the block that costs ${abs(amount)/100}"
                 )
 
             # Create the transaction
