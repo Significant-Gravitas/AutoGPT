@@ -17,6 +17,7 @@ export default function useCredits(): {
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
   transactionHistory: TransactionHistory;
   fetchTransactionHistory: () => void;
+  renderCredits: (credit: number | null) => string;
 } {
   const [credits, setCredits] = useState<number | null>(null);
   const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
@@ -89,6 +90,17 @@ export default function useCredits(): {
 
   useEffect(() => {
     fetchTransactionHistory();
+  }, [fetchTransactionHistory]);
+
+  const renderCredits = useCallback((credit: number | null) => {
+    if (credit === null) {
+      return "-";
+    }
+    const value = Math.abs(credit);
+    const sign = credit < 0 ? "-" : "";
+    const precision =
+      2 - (value % 100 === 0 ? 1 : 0) - (value % 10 === 0 ? 1 : 0);
+    return `${sign}$${(value / 100).toFixed(precision)}`;
   }, []);
 
   return {
@@ -100,5 +112,6 @@ export default function useCredits(): {
     updateAutoTopUpConfig,
     transactionHistory,
     fetchTransactionHistory,
+    renderCredits,
   };
 }

@@ -23,6 +23,7 @@ export default function CreditsPage() {
     updateAutoTopUpConfig,
     transactionHistory,
     fetchTransactionHistory,
+    renderCredits,
   } = useCredits();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -60,7 +61,7 @@ export default function CreditsPage() {
     e.preventDefault();
     const form = e.currentTarget;
     const amount = parseInt(new FormData(form).get("topUpAmount") as string);
-    toastOnFail("request top-up", () => requestTopUp(amount));
+    toastOnFail("request top-up", () => requestTopUp(amount * 100));
   };
 
   const submitAutoTopUpConfig = (e: React.FormEvent<HTMLFormElement>) => {
@@ -70,7 +71,7 @@ export default function CreditsPage() {
     const amount = parseInt(formData.get("topUpAmount") as string);
     const threshold = parseInt(formData.get("threshold") as string);
     toastOnFail("update auto top-up config", () =>
-      updateAutoTopUpConfig(amount, threshold).then(() => {
+      updateAutoTopUpConfig(amount * 100, threshold * 100).then(() => {
         toast({ title: "Auto top-up config updated! 🎉" });
       }),
     );
@@ -108,16 +109,16 @@ export default function CreditsPage() {
                 htmlFor="topUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Amount, minimum 500 credits = 5 USD:
+                Top-up amount (USD), minimum $5:
               </label>
               <input
                 type="number"
                 id="topUpAmount"
                 name="topUpAmount"
                 placeholder="Enter top-up amount"
-                min="500"
-                step="100"
-                defaultValue={500}
+                min="5"
+                step="1"
+                defaultValue={5}
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
@@ -143,10 +144,14 @@ export default function CreditsPage() {
                 type="number"
                 id="threshold"
                 name="threshold"
-                defaultValue={autoTopUpConfig?.threshold || ""}
-                placeholder="Amount, minimum 500 credits = 5 USD"
-                min="500"
-                step="100"
+                defaultValue={
+                  autoTopUpConfig?.threshold
+                    ? autoTopUpConfig.threshold / 100
+                    : ""
+                }
+                placeholder="Refill threshold, minimum $5"
+                min="5"
+                step="1"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
@@ -163,10 +168,12 @@ export default function CreditsPage() {
                 type="number"
                 id="autoTopUpAmount"
                 name="topUpAmount"
-                defaultValue={autoTopUpConfig?.amount || ""}
-                placeholder="Amount, minimum 500 credits = 5 USD"
-                min="500"
-                step="100"
+                defaultValue={
+                  autoTopUpConfig?.amount ? autoTopUpConfig.amount / 100 : ""
+                }
+                placeholder="Refill amount, minimum $5"
+                min="5"
+                step="1"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
@@ -253,9 +260,9 @@ export default function CreditsPage() {
                       transaction.amount > 0 ? "text-green-500" : "text-red-500"
                     }
                   >
-                    <b>{transaction.amount}</b>
+                    <b>{renderCredits(transaction.amount)}</b>
                   </TableCell>
-                  <TableCell>{transaction.balance}</TableCell>
+                  <TableCell>{renderCredits(transaction.balance)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
