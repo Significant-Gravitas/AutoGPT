@@ -63,6 +63,8 @@ const meta = {
   argTypes: {
     links: { control: "object" },
     menuItemGroups: { control: "object" },
+    mockUser: { control: "object" },
+    mockClientProps: { control: "object" },
   },
 } satisfies Meta<typeof Navbar>;
 
@@ -73,6 +75,22 @@ export const Default: Story = {
   args: {
     links: defaultLinks,
     menuItemGroups: defaultMenuItemGroups,
+    mockUser: {
+      id: "123",
+      email: "test@test.com",
+      user_metadata: {
+        name: "Test User",
+      },
+      app_metadata: {
+        provider: "email",
+      },
+      aud: "test",
+      created_at: new Date().toISOString(),
+    },
+    mockClientProps: {
+      credits: 1500,
+      profile: mockProfileData,
+    },
   },
   parameters: {
     mockBackend: {
