@@ -763,14 +763,14 @@ typing-extensions = ">=4.1.0"
 
 [[package]]
 name = "e2b-code-interpreter"
-version = "1.0.4"
+version = "1.0.5"
 description = "E2B Code Interpreter - Stateful code execution"
 optional = false
 python-versions = "<4.0,>=3.8"
 groups = ["main"]
 files = [
-    {file = "e2b_code_interpreter-1.0.4-py3-none-any.whl", hash = "sha256:e8cea4946b3457072a524250aee712f7f8d44834b91cd9c13da3bdf96eda1a6e"},
-    {file = "e2b_code_interpreter-1.0.4.tar.gz", hash = "sha256:fec5651d98ca0d03dd038c5df943a0beaeb59c6d422112356f55f2b662d8dea1"},
+    {file = "e2b_code_interpreter-1.0.5-py3-none-any.whl", hash = "sha256:4c7814e9eabba58097bf5e4019d327b3a82fab0813eafca4311b29ca6ea0639d"},
+    {file = "e2b_code_interpreter-1.0.5.tar.gz", hash = "sha256:e7f70b039e6a70f8e592f90f806d696dc1056919414daabeb89e86c9b650a987"},
 ]
 
 [package.dependencies]
@@ -827,14 +827,14 @@ typing-extensions = "*"
 
 [[package]]
 name = "fastapi"
-version = "0.115.7"
+version = "0.115.8"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "fastapi-0.115.7-py3-none-any.whl", hash = "sha256:eb6a8c8bf7f26009e8147111ff15b5177a0e19bb4a45bc3486ab14804539d21e"},
-    {file = "fastapi-0.115.7.tar.gz", hash = "sha256:0f106da6c01d88a6786b3248fb4d7a940d071f6f488488898ad5d354b25ed015"},
+    {file = "fastapi-0.115.8-py3-none-any.whl", hash = "sha256:753a96dd7e036b34eeef8babdfcfe3f28ff79648f86551eb36bfc1b0bf4a8cbf"},
+    {file = "fastapi-0.115.8.tar.gz", hash = "sha256:0ce9111231720190473e222cdf0f07f7206ad7e53ea02beb1d2dc36e2f0741e9"},
 ]
 
 [package.dependencies]
@@ -1393,14 +1393,14 @@ test = ["objgraph", "psutil"]
 
 [[package]]
 name = "groq"
-version = "0.15.0"
+version = "0.18.0"
 description = "The official Python library for the groq API"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "groq-0.15.0-py3-none-any.whl", hash = "sha256:c200558b67fee4b4f2bb89cc166337e3419a68c23280065770f8f8b0729c79ef"},
-    {file = "groq-0.15.0.tar.gz", hash = "sha256:9ad08ba6156c67d0975595a8515b517f22ff63158e063c55192e161ed3648af1"},
+    {file = "groq-0.18.0-py3-none-any.whl", hash = "sha256:81d5ac00057a45d8ce559d23ab5d3b3893011d1f12c35187ab35a9182d826ea6"},
+    {file = "groq-0.18.0.tar.gz", hash = "sha256:8e2ccfea406d68b3525af4b7c0e321fcb3d2a73fc60bb70b4156e6cd88c72f03"},
 ]
 
 [package.dependencies]
@@ -2439,14 +2439,14 @@ pydantic = ">=2.9.0,<3.0.0"
 
 [[package]]
 name = "openai"
-version = "1.60.2"
+version = "1.61.1"
 description = "The official Python library for the openai API"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "openai-1.60.2-py3-none-any.whl", hash = "sha256:993bd11b96900b9098179c728026f016b4982ded7ee30dfcf4555eab1171fff9"},
-    {file = "openai-1.60.2.tar.gz", hash = "sha256:a8f843e10f2855713007f491d96afb2694b11b5e02cb97c7d01a0be60bc5bb51"},
+    {file = "openai-1.61.1-py3-none-any.whl", hash = "sha256:72b0826240ce26026ac2cd17951691f046e5be82ad122d20a8e1b30ca18bd11e"},
+    {file = "openai-1.61.1.tar.gz", hash = "sha256:ce1851507218209961f89f3520e06726c0aa7d0512386f0f977e3ac3e4f2472e"},
 ]
 
 [package.dependencies]
@@ -4246,14 +4246,14 @@ typing-extensions = {version = ">=4.5.0", markers = "python_version >= \"3.7\""}
 
 [[package]]
 name = "supabase"
-version = "2.12.0"
+version = "2.13.0"
 description = "Supabase client for Python."
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "supabase-2.12.0-py3-none-any.whl", hash = "sha256:f8896f3314179fdf27f8bb8357947493ec32b98dcdac7114208aaf21cd59ce35"},
-    {file = "supabase-2.12.0.tar.gz", hash = "sha256:284612c3e94ff4ed2f18c985f5eba4d6e17b5e2bf16a9a24290bb83c9c217078"},
+    {file = "supabase-2.13.0-py3-none-any.whl", hash = "sha256:6cfccc055be21dab311afc5e9d5b37f3a4966f8394703763fbc8f8e86f36eaa6"},
+    {file = "supabase-2.13.0.tar.gz", hash = "sha256:452574d34bd978c8d11b5f02b0182b48e8854e511c969483c83875ec01495f11"},
 ]
 
 [package.dependencies]
@@ -5050,4 +5050,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "0f7dda46ad3cce4486a3ca4162babff974bd270c100c7b82b1ff8dec563488ad"
+content-hash = "fdb3477d3a44e3d471d8b89800030511fbbdcba020a4e6bc1debd534b8b25d3f"
