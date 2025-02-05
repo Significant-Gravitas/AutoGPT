@@ -110,7 +110,7 @@ async def get_store_agents(
             ),
         )
     except Exception as e:
-        logger.error(f"Error getting store agents: {str(e)}")
+        logger.error(f"Error getting store agents: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store agents"
         ) from e
@@ -152,7 +152,7 @@ async def get_store_agent_details(
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Error getting store agent details: {str(e)}")
+        logger.error(f"Error getting store agent details: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch agent details"
         ) from e
@@ -266,7 +266,7 @@ async def get_store_creators(
             ),
         )
     except Exception as e:
-        logger.error(f"Error getting store creators: {str(e)}")
+        logger.error(f"Error getting store creators: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store creators"
         ) from e
@@ -303,7 +303,7 @@ async def get_store_creator_details(
     except backend.server.v2.store.exceptions.CreatorNotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Error getting store creator details: {str(e)}")
+        logger.error(f"Error getting store creator details: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch creator details"
         ) from e
@@ -362,7 +362,7 @@ async def get_store_submissions(
         )
 
     except Exception as e:
-        logger.error(f"Error fetching store submissions: {str(e)}")
+        logger.error(f"Error fetching store submissions: {e}")
         # Return empty response rather than exposing internal errors
         return backend.server.v2.store.model.StoreSubmissionsResponse(
             submissions=[],
@@ -412,7 +412,7 @@ async def delete_store_submission(
         return True
 
     except Exception as e:
-        logger.error(f"Error deleting store submission: {str(e)}")
+        logger.error(f"Error deleting store submission: {e}")
         return False
 
 
@@ -535,7 +535,7 @@ async def create_store_submission(
     ):
         raise
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating store submission: {str(e)}")
+        logger.error(f"Database error creating store submission: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store submission"
         ) from e
@@ -575,7 +575,7 @@ async def create_store_review(
         )
 
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating store review: {str(e)}")
+        logger.error(f"Database error creating store review: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store review"
         ) from e
@@ -601,7 +601,7 @@ async def get_user_profile(
             avatar_url=profile.avatarUrl,
         )
     except Exception as e:
-        logger.error("Error getting user profile: %s", str(e))
+        logger.error("Error getting user profile: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to get user profile"
         ) from e
@@ -618,7 +618,6 @@ async def update_profile(
     Returns:
         CreatorDetails: The updated or created profile details
     Raises:
-        HTTPException: If the user is not authorized to update the profile
         DatabaseError: If there's an issue updating or creating the profile
     """
     logger.info("Updating profile for user %s with data: %s", user_id, profile)
@@ -685,7 +684,7 @@ async def update_profile(
         )
 
     except prisma.errors.PrismaError as e:
-        logger.error("Database error updating profile: %s", str(e))
+        logger.error("Database error updating profile: %s", e)
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update profile"
         ) from e
@@ -750,7 +749,7 @@ async def get_my_agents(
             ),
         )
     except Exception as e:
-        logger.error(f"Error getting my agents: {str(e)}")
+        logger.error(f"Error getting my agents: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch my agents"
         ) from e
@@ -794,7 +793,7 @@ async def get_agent(
         return graph
 
     except Exception as e:
-        logger.error(f"Error getting agent: {str(e)}")
+        logger.error(f"Error getting agent: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch agent"
         ) from e
@@ -859,7 +858,7 @@ async def review_store_submission(
         return submission
 
     except Exception as e:
-        logger.error(f"Could not create store submission review: {str(e)}")
+        logger.error(f"Could not create store submission review: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store submission review"
         ) from e
