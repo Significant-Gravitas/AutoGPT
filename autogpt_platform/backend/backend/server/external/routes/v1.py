@@ -12,6 +12,7 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.data.execution import ExecutionResult
 from backend.executor import ExecutionManager
 from backend.server.external.middleware import require_permission
 from backend.util.service import get_service_client
@@ -49,8 +50,18 @@ class GraphExecutionResult(TypedDict):
     execution_id: str
     status: str
     nodes: List[ExecutionNode]
-    agent_output: Optional[str]
+    output: Optional[List[Dict[str, str]]]
 
+
+def get_outputs_with_names(results: List[ExecutionResult]) -> List[Dict[str, str]]:
+   outputs = []
+   for result in results:
+       if 'output' in result.output_data:
+           output_value = result.output_data['output'][0]
+           name = result.output_data.get('name', [None])[0]
+           if output_value and name:
+               outputs.append({name: output_value})
+   return outputs
 
 @v1_router.get(
     path="/blocks",
@@ -106,9 +117,9 @@ def execute_graph(
     tags=["graphs"],
 )
 async def get_graph_execution_results(
-    graph_id: str,
-    graph_exec_id: str,
-    api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
+        graph_id: str,
+        graph_exec_id: str,
+        api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> GraphExecutionResult:
     graph = await graph_db.get_graph(graph_id, user_id=api_key.user_id)
     if not graph:
@@ -119,11 +130,7 @@ async def get_graph_execution_results(
     execution_status = (
         last_result.status if last_result else AgentExecutionStatus.INCOMPLETE
     )
-    agent_output = (
-        last_result.output_data.get("output", [None])[0]
-        if last_result and execution_status == AgentExecutionStatus.COMPLETED
-        else None
-    )
+    outputs = get_outputs_with_names(results)
 
     return GraphExecutionResult(
         execution_id=graph_exec_id,
@@ -136,5 +143,5 @@ async def get_graph_execution_results(
             )
             for result in results
         ],
-        agent_output=agent_output,
+        output=outputs if execution_status == AgentExecutionStatus.COMPLETED else None,
     )
