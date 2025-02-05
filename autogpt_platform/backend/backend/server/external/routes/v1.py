@@ -54,14 +54,15 @@ class GraphExecutionResult(TypedDict):
 
 
 def get_outputs_with_names(results: List[ExecutionResult]) -> List[Dict[str, str]]:
-   outputs = []
-   for result in results:
-       if 'output' in result.output_data:
-           output_value = result.output_data['output'][0]
-           name = result.output_data.get('name', [None])[0]
-           if output_value and name:
-               outputs.append({name: output_value})
-   return outputs
+    outputs = []
+    for result in results:
+        if "output" in result.output_data:
+            output_value = result.output_data["output"][0]
+            name = result.output_data.get("name", [None])[0]
+            if output_value and name:
+                outputs.append({name: output_value})
+    return outputs
+
 
 @v1_router.get(
     path="/blocks",
@@ -117,9 +118,9 @@ def execute_graph(
     tags=["graphs"],
 )
 async def get_graph_execution_results(
-        graph_id: str,
-        graph_exec_id: str,
-        api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
+    graph_id: str,
+    graph_exec_id: str,
+    api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> GraphExecutionResult:
     graph = await graph_db.get_graph(graph_id, user_id=api_key.user_id)
     if not graph:
