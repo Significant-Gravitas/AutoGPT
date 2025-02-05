@@ -1,5 +1,4 @@
 import logging
-import random
 from datetime import datetime
 from typing import Optional
 
@@ -585,72 +584,9 @@ async def create_store_review(
         ) from e
 
 
-async def create_new_user_profile(
-    user: prisma.models.User,
-) -> backend.server.v2.store.model.ProfileDetails:
-    """Creates or retrieves a profile for a user.
-
-    If a profile already exists for the user, returns the existing profile.
-    Otherwise creates a new profile with:
-    - Name from the user's email (before @)
-    - Random username in format: [adjective]-[animal]_[number]
-    - Default description and empty links/avatar
-
-    Args:
-        user: The Prisma User model instance to create/get profile for
-
-    Returns:
-        ProfileDetails containing the user's profile information
-
-    Raises:
-        DatabaseError: If there is an error creating or retrieving the profile
-    """
-    logger.debug("Creating new user profile for %s", user.id)
-
-    try:
-
-        # Check if a profile already exists for this user
-        existing_profile = await prisma.models.Profile.prisma().find_first(
-            where={"userId": user.id}
-        )
-
-        if existing_profile:
-            return backend.server.v2.store.model.ProfileDetails(
-                name=existing_profile.name,
-                username=existing_profile.username,
-                description=existing_profile.description,
-                links=existing_profile.links,
-                avatar_url=existing_profile.avatarUrl,
-            )
-
-        username = f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower()
-        profile = await prisma.models.Profile.prisma().create(
-            data=prisma.types.ProfileCreateInput(
-                userId=user.id,
-                name=user.email.split("@")[0],
-                username=username,
-                description="I'm new here",
-                links=[],
-                avatarUrl="",
-            )
-        )
-        return backend.server.v2.store.model.ProfileDetails(
-            name=profile.name,
-            username=profile.username,
-            description=profile.description,
-            links=profile.links,
-            avatar_url=profile.avatarUrl,
-        )
-    except prisma.errors.PrismaError as e:
-        logger.error("Database error creating new user profile: %s", str(e))
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to create new user profile"
-        ) from e
-
-
 async def get_user_profile(
     user_id: str,
-) -> backend.server.v2.store.model.ProfileDetails:
+) -> backend.server.v2.store.model.ProfileDetails | None:
     logger.debug(f"Getting user profile for {user_id}")
 
     try:
@@ -659,25 +595,7 @@ async def get_user_profile(
         )
 
         if not profile:
-            logger.warning(f"Profile not found for user {user_id}")
-            new_profile = await prisma.models.Profile.prisma().create(
-                data=prisma.types.ProfileCreateInput(
-                    userId=user_id,
-                    name="No Profile Data",
-                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower(),
-                    description="No Profile Data",
-                    links=[],
-                    avatarUrl="",
-                )
-            )
-            return backend.server.v2.store.model.ProfileDetails(
-                name=new_profile.name,
-                username=new_profile.username,
-                description=new_profile.description,
-                links=new_profile.links,
-                avatar_url=new_profile.avatarUrl,
-            )
-
+            return None
         return backend.server.v2.store.model.ProfileDetails(
             name=profile.name,
             username=profile.username,
@@ -686,17 +604,13 @@ async def get_user_profile(
             avatar_url=profile.avatarUrl,
         )
     except Exception as e:
-        logger.error(f"Error getting user profile: {str(e)}")
-        return backend.server.v2.store.model.ProfileDetails(
-            name="No Profile Data",
-            username="No Profile Data",
-            description="No Profile Data",
-            links=[],
-            avatar_url="",
-        )
+        logger.error("Error getting user profile: %s", str(e))
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to get user profile"
+        ) from e
 
 
-async def update_or_create_profile(
+async def update_profile(
     user_id: str, profile: backend.server.v2.store.model.Profile
 ) -> backend.server.v2.store.model.CreatorDetails:
     """
@@ -722,77 +636,55 @@ async def update_or_create_profile(
             where={"userId": user_id}
         )
         if not existing_profile:
-            logger.debug(
-                "No existing profile found. Creating new profile for user %s", user_id
+            raise backend.server.v2.store.exceptions.ProfileNotFoundError(
+                "Profile not found for user %s. This should not be possible.", user_id
             )
-            # Create a new profile with default values
-            new_profile = await prisma.models.Profile.prisma().create(
-                data={
-                    "userId": user_id,
-                    "name": profile.name,
-                    "username": username,
-                    "description": profile.description,
-                    "links": profile.links or [],
-                    "avatarUrl": profile.avatar_url,
-                    "isFeatured": False,
-                }
-            )
-            return backend.server.v2.store.model.CreatorDetails(
-                name=new_profile.name,
-                username=new_profile.username,
-                description=new_profile.description,
-                links=new_profile.links,
-                avatar_url=new_profile.avatarUrl or "",
-                agent_rating=0.0,
-                agent_runs=0,
-                top_categories=[],
-            )
-        else:
-            # Verify that the user is authorized to update this profile
-            if existing_profile.userId != user_id:
-                logger.error(
-                    "Unauthorized update attempt for profile %s by user %s",
-                    existing_profile.userId,
-                    user_id,
-                )
-                raise fastapi.HTTPException(
-                    status_code=403, detail="Unauthorized to update this profile"
-                )
-            logger.debug("Updating existing profile for user %s", user_id)
-            # Prepare update data, only including non-None values
-            update_data = {}
-            if profile.name is not None:
-                update_data["name"] = profile.name
-            if profile.username is not None:
-                update_data["username"] = username
-            if profile.description is not None:
-                update_data["description"] = profile.description
-            if profile.links is not None:
-                update_data["links"] = profile.links
-            if profile.avatar_url is not None:
-                update_data["avatarUrl"] = profile.avatar_url
 
-            # Update the existing profile
-            updated_profile = await prisma.models.Profile.prisma().update(
-                where={"id": existing_profile.id},
-                data=prisma.types.ProfileUpdateInput(**update_data),
+        # Verify that the user is authorized to update this profile
+        if existing_profile.userId != user_id:
+            logger.error(
+                "Unauthorized update attempt for profile %s by user %s",
+                existing_profile.userId,
+                user_id,
             )
-            if updated_profile is None:
-                logger.error("Failed to update profile for user %s", user_id)
-                raise backend.server.v2.store.exceptions.DatabaseError(
-                    "Failed to update profile"
-                )
+            raise fastapi.HTTPException(
+                status_code=403, detail="Unauthorized to update this profile"
+            )
+        logger.debug("Updating existing profile for user %s", user_id)
+        # Prepare update data, only including non-None values
+        update_data = {}
+        if profile.name is not None:
+            update_data["name"] = profile.name
+        if profile.username is not None:
+            update_data["username"] = username
+        if profile.description is not None:
+            update_data["description"] = profile.description
+        if profile.links is not None:
+            update_data["links"] = profile.links
+        if profile.avatar_url is not None:
+            update_data["avatarUrl"] = profile.avatar_url
 
-            return backend.server.v2.store.model.CreatorDetails(
-                name=updated_profile.name,
-                username=updated_profile.username,
-                description=updated_profile.description,
-                links=updated_profile.links,
-                avatar_url=updated_profile.avatarUrl or "",
-                agent_rating=0.0,
-                agent_runs=0,
-                top_categories=[],
+        # Update the existing profile
+        updated_profile = await prisma.models.Profile.prisma().update(
+            where={"id": existing_profile.id},
+            data=prisma.types.ProfileUpdateInput(**update_data),
+        )
+        if updated_profile is None:
+            logger.error("Failed to update profile for user %s", user_id)
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                "Failed to update profile"
             )
+
+        return backend.server.v2.store.model.CreatorDetails(
+            name=updated_profile.name,
+            username=updated_profile.username,
+            description=updated_profile.description,
+            links=updated_profile.links,
+            avatar_url=updated_profile.avatarUrl or "",
+            agent_rating=0.0,
+            agent_runs=0,
+            top_categories=[],
+        )
 
     except prisma.errors.PrismaError as e:
         logger.error("Database error updating profile: %s", str(e))
