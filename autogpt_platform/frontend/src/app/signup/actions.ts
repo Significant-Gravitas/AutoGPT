@@ -36,7 +36,6 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
       if (data.session) {
         await supabase.auth.setSession(data.session);
       }
-      console.log("Signed up");
       revalidatePath("/", "layout");
       redirect("/");
     },
