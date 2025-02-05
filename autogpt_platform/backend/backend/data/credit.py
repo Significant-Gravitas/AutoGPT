@@ -425,6 +425,7 @@ class UserCredit(UserCreditBase):
             + "/marketplace/credits?topup=success",
             cancel_url=settings.config.frontend_base_url
             + "/marketplace/credits?topup=cancel",
+            allow_promotion_codes=True,
         )
 
         await self._add_transaction(
