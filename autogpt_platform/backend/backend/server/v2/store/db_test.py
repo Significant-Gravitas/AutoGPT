@@ -234,7 +234,7 @@ async def test_update_profile(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_user_profile(mocker):
+async def test_get_or_create_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
         id="profile-id",

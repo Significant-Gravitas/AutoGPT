@@ -15,6 +15,7 @@ from typing_extensions import Optional, TypedDict
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
+import backend.server.v2.store.db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
@@ -103,6 +104,7 @@ v1_router.include_router(
 @v1_router.post("/auth/user", tags=["auth"], dependencies=[Depends(auth_middleware)])
 async def get_or_create_user_route(user_data: dict = Depends(auth_middleware)):
     user = await get_or_create_user(user_data)
+    await backend.server.v2.store.db.create_new_user_profile(user)
     return user.model_dump()
 
 

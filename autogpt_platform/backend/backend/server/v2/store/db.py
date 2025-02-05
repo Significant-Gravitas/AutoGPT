@@ -588,9 +588,41 @@ async def create_store_review(
 async def create_new_user_profile(
     user: prisma.models.User,
 ) -> backend.server.v2.store.model.ProfileDetails:
+    """Creates or retrieves a profile for a user.
+
+    If a profile already exists for the user, returns the existing profile.
+    Otherwise creates a new profile with:
+    - Name from the user's email (before @)
+    - Random username in format: [adjective]-[animal]_[number]
+    - Default description and empty links/avatar
+
+    Args:
+        user: The Prisma User model instance to create/get profile for
+
+    Returns:
+        ProfileDetails containing the user's profile information
+
+    Raises:
+        DatabaseError: If there is an error creating or retrieving the profile
+    """
     logger.debug("Creating new user profile for %s", user.id)
 
     try:
+
+        # Check if a profile already exists for this user
+        existing_profile = await prisma.models.Profile.prisma().find_first(
+            where={"userId": user.id}
+        )
+
+        if existing_profile:
+            return backend.server.v2.store.model.ProfileDetails(
+                name=existing_profile.name,
+                username=existing_profile.username,
+                description=existing_profile.description,
+                links=existing_profile.links,
+                avatar_url=existing_profile.avatarUrl,
+            )
+
         username = f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower()
         profile = await prisma.models.Profile.prisma().create(
             data=prisma.types.ProfileCreateInput(
