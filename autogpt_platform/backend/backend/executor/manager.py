@@ -163,6 +163,7 @@ def execute_node(
     # AgentExecutorBlock specially separate the node input_data & its input_default.
     if isinstance(node_block, AgentExecutorBlock):
         input_data = {**node.input_default, "data": input_data}
+    data.data = input_data
 
     # Execute the node
     input_data_str = json.dumps(input_data)
@@ -192,6 +193,11 @@ def execute_node(
 
     output_size = 0
     try:
+        # Charge the user for the execution before running the block.
+        # TODO: We assume the block is executed within 0 seconds.
+        #       This is fine because for now, there is no block that is charged by time.
+        db_client.spend_credits(data, input_size + output_size, 0)
+
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
@@ -210,16 +216,7 @@ def execute_node(
             ):
                 yield execution
 
-        # Update execution status and spend credits
-        res = update_execution(ExecutionStatus.COMPLETED)
-        s = input_size + output_size
-        t = (
-            (res.end_time - res.start_time).total_seconds()
-            if res.end_time and res.start_time
-            else 0
-        )
-        data.data = input_data
-        db_client.spend_credits(data, s, t)
+        update_execution(ExecutionStatus.COMPLETED)
 
     except Exception as e:
         error_msg = str(e)
