@@ -563,10 +563,12 @@ export default function useAgentGraph(
                 if (nodeResult.graph_exec_id != graphExecution.id) {
                   return;
                 }
+                console.log(nodeResult.output_data?.error);
                 if (
                   nodeResult.status === "FAILED" &&
-                  credits !== null &&
-                  credits < 1
+                  nodeResult.output_data?.error?.[0].includes(
+                    "Insufficient balance",
+                  )
                 ) {
                   // Show no credits toast if user has low credits
                   toast({
