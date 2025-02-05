@@ -33,26 +33,17 @@ interface NavbarProps {
 
 async function getProfileData() {
   const api = new BackendAPI();
-  const [profile, credits] = await Promise.all([
-    api.getStoreProfile("navbar"),
-    api.getUserCredit("navbar"),
-  ]);
+  const profile = await Promise.resolve(api.getStoreProfile("navbar"));
 
-  return {
-    profile,
-    credits,
-  };
+  return profile;
 }
 
 export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
   const { user } = await getServerUser();
   const isLoggedIn = user !== null;
   let profile: ProfileDetails | null = null;
-  let credits: { credits: number } = { credits: 0 };
   if (isLoggedIn) {
-    const { profile: t_profile, credits: t_credits } = await getProfileData();
-    profile = t_profile;
-    credits = t_credits;
+    profile = await getProfileData();
   }
 
   return (
@@ -70,7 +61,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
         <div className="flex items-center gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
-              {profile && <CreditsCard credits={credits.credits} />}
+              {profile && <CreditsCard />}
               <ProfilePopoutMenu
                 menuItemGroups={menuItemGroups}
                 userName={profile?.username}
