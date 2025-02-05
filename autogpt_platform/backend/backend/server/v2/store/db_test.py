@@ -195,6 +195,7 @@ async def test_update_profile(mocker):
         id="profile-id",
         name="Test Creator",
         username="creator",
+        userId="user-id",
         description="Test description",
         links=["link1"],
         avatarUrl="avatar.jpg",

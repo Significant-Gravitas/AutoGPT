@@ -93,8 +93,8 @@ async def get_store_agents(
                 slug=agent.slug,
                 agent_name=agent.agent_name,
                 agent_image=agent.agent_image[0] if agent.agent_image else "",
-                creator=agent.creator_username,
-                creator_avatar=agent.creator_avatar,
+                creator=agent.creator_username or "Needs Profile",
+                creator_avatar=agent.creator_avatar or "",
                 sub_heading=agent.sub_heading,
                 description=agent.description,
                 runs=agent.runs,
@@ -585,6 +585,37 @@ async def create_store_review(
         ) from e
 
 
+async def create_new_user_profile(
+    user: prisma.models.User,
+) -> backend.server.v2.store.model.ProfileDetails:
+    logger.debug("Creating new user profile for %s", user.id)
+
+    try:
+        username = f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower()
+        profile = await prisma.models.Profile.prisma().create(
+            data=prisma.types.ProfileCreateInput(
+                userId=user.id,
+                name=user.email.split("@")[0],
+                username=username,
+                description="I'm new here",
+                links=[],
+                avatarUrl="",
+            )
+        )
+        return backend.server.v2.store.model.ProfileDetails(
+            name=profile.name,
+            username=profile.username,
+            description=profile.description,
+            links=profile.links,
+            avatar_url=profile.avatarUrl,
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error("Database error creating new user profile: %s", str(e))
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to create new user profile"
+        ) from e
+
+
 async def get_user_profile(
     user_id: str,
 ) -> backend.server.v2.store.model.ProfileDetails:
@@ -637,40 +668,32 @@ async def update_or_create_profile(
     user_id: str, profile: backend.server.v2.store.model.Profile
 ) -> backend.server.v2.store.model.CreatorDetails:
     """
-    Update the store profile for a user. Creates a new profile if one doesn't exist.
-    Only allows updating if the user_id matches the owning user.
-    If a field is None, it will not overwrite the existing value in the case of an update.
-
+    Update the store profile for a user or create a new one if it doesn't exist.
     Args:
         user_id: ID of the authenticated user
         profile: Updated profile details
-
     Returns:
-        CreatorDetails: The updated profile
-
+        CreatorDetails: The updated or created profile details
     Raises:
-        HTTPException: If user is not authorized to update this profile
-        DatabaseError: If profile cannot be updated due to database issues
+        HTTPException: If the user is not authorized to update the profile
+        DatabaseError: If there's an issue updating or creating the profile
     """
-    logger.info(f"Updating profile for user {user_id} data: {profile}")
-
+    logger.info("Updating profile for user %s with data: %s", user_id, profile)
     try:
-        # Sanitize username to only allow letters and hyphens
+        # Sanitize username to allow only letters, numbers, and hyphens
         username = "".join(
             c if c.isalpha() or c == "-" or c.isnumeric() else ""
             for c in profile.username
         ).lower()
-
+        # Check if profile exists for the given user_id
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
         )
-
-        # If no profile exists, create a new one
         if not existing_profile:
             logger.debug(
-                f"No existing profile found. Creating new profile for user {user_id}"
+                "No existing profile found. Creating new profile for user %s", user_id
             )
-            # Create new profile since one doesn't exist
+            # Create a new profile with default values
             new_profile = await prisma.models.Profile.prisma().create(
                 data={
                     "userId": user_id,
@@ -682,7 +705,6 @@ async def update_or_create_profile(
                     "isFeatured": False,
                 }
             )
-
             return backend.server.v2.store.model.CreatorDetails(
                 name=new_profile.name,
                 username=new_profile.username,
@@ -694,8 +716,18 @@ async def update_or_create_profile(
                 top_categories=[],
             )
         else:
-            logger.debug(f"Updating existing profile for user {user_id}")
-            # Update only provided fields for the existing profile
+            # Verify that the user is authorized to update this profile
+            if existing_profile.userId != user_id:
+                logger.error(
+                    "Unauthorized update attempt for profile %s by user %s",
+                    existing_profile.userId,
+                    user_id,
+                )
+                raise fastapi.HTTPException(
+                    status_code=403, detail="Unauthorized to update this profile"
+                )
+            logger.debug("Updating existing profile for user %s", user_id)
+            # Prepare update data, only including non-None values
             update_data = {}
             if profile.name is not None:
                 update_data["name"] = profile.name
@@ -714,7 +746,7 @@ async def update_or_create_profile(
                 data=prisma.types.ProfileUpdateInput(**update_data),
             )
             if updated_profile is None:
-                logger.error(f"Failed to update profile for user {user_id}")
+                logger.error("Failed to update profile for user %s", user_id)
                 raise backend.server.v2.store.exceptions.DatabaseError(
                     "Failed to update profile"
                 )
@@ -731,7 +763,7 @@ async def update_or_create_profile(
             )
 
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating profile: {str(e)}")
+        logger.error("Database error updating profile: %s", str(e))
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update profile"
         ) from e
