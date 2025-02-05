@@ -60,18 +60,19 @@ export default function CreditsPage() {
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
-    const amount = parseInt(new FormData(form).get("topUpAmount") as string);
-    toastOnFail("request top-up", () => requestTopUp(amount * 100));
+    const amount =
+      parseInt(new FormData(form).get("topUpAmount") as string) * 100;
+    toastOnFail("request top-up", () => requestTopUp(amount));
   };
 
   const submitAutoTopUpConfig = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const formData = new FormData(form);
-    const amount = parseInt(formData.get("topUpAmount") as string);
-    const threshold = parseInt(formData.get("threshold") as string);
+    const amount = parseInt(formData.get("topUpAmount") as string) * 100;
+    const threshold = parseInt(formData.get("threshold") as string) * 100;
     toastOnFail("update auto top-up config", () =>
-      updateAutoTopUpConfig(amount * 100, threshold * 100).then(() => {
+      updateAutoTopUpConfig(amount, threshold).then(() => {
         toast({ title: "Auto top-up config updated! 🎉" });
       }),
     );
