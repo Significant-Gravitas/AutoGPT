@@ -14,8 +14,8 @@ export default function CreditButton() {
         variant="outline"
         className="flex items-center space-x-2 rounded-xl bg-gray-200"
       >
-        <span className="mr-2 flex items-center text-foreground">
-          {credits} <span className="ml-2 text-muted-foreground"> credits</span>
+        <span className="text-foreground mr-2 flex items-center">
+          {credits} <span className="text-muted-foreground ml-2"> credits</span>
         </span>
         <IconRefresh />
       </Button>

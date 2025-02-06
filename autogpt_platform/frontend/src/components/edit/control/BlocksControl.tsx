@@ -175,7 +175,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
             <div className="items-center justify-between">
               <Label
                 htmlFor="search-blocks"
-                className="whitespace-nowrap text-base font-bold text-black dark:text-white 2xl:text-xl"
+                className="text-base font-bold whitespace-nowrap text-black 2xl:text-xl dark:text-white"
                 data-id="blocks-control-label"
                 data-testid="blocks-control-blocks-label"
               >
@@ -257,7 +257,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                         />
                       </span>
                       <span
-                        className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400"
+                        className="block text-xs font-normal break-all text-gray-500 dark:text-gray-400"
                         data-testid={`block-description-${block.id}`}
                       >
                         <TextRenderer

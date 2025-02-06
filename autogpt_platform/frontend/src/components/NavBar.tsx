@@ -17,7 +17,7 @@ export async function NavBar() {
   const { user } = await getServerUser();
 
   return user ? (
-    <header className="sticky top-0 z-50 mx-4 flex h-16 select-none items-center gap-4 border border-gray-300 bg-background p-3 md:rounded-b-2xl md:px-6 md:shadow-sm">
+    <header className="bg-background sticky top-0 z-50 mx-4 flex h-16 items-center gap-4 border border-gray-300 p-3 select-none md:rounded-b-2xl md:px-6 md:shadow-sm">
       <div className="flex flex-1 items-center gap-4">
         <Sheet>
           <SheetTrigger asChild>
@@ -57,7 +57,7 @@ export async function NavBar() {
         {isAvailable && !user && (
           <Link
             href="/login"
-            className="flex flex-row items-center gap-2 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground flex flex-row items-center gap-2"
           >
             Log In
             <IconCircleUser />

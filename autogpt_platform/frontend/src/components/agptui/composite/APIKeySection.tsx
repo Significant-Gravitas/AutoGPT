@@ -205,7 +205,7 @@ export function APIKeysSection() {
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-center space-x-2">
-                <code className="flex-1 rounded-md bg-secondary p-2 text-sm">
+                <code className="bg-secondary flex-1 rounded-md p-2 text-sm">
                   {newApiKey}
                 </code>
                 <Button size="icon" variant="outline" onClick={handleCopyKey}>

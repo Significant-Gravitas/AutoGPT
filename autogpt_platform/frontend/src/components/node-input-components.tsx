@@ -78,7 +78,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
             key={propKey}
             className="flex w-full flex-row justify-between space-y-2"
           >
-            <span className="mr-2 mt-3 dark:text-gray-300">
+            <span className="mt-3 mr-2 dark:text-gray-300">
               {propSchema.title || beautifyString(propKey)}
             </span>
             <NodeGenericInputField
@@ -781,7 +781,7 @@ const NodeOneOfDiscriminatorField: FC<{
   return (
     <div
       className={cn(
-        "flex min-w-[400px] max-w-[95%] flex-col space-y-4",
+        "flex max-w-[95%] min-w-[400px] flex-col space-y-4",
         className,
       )}
     >

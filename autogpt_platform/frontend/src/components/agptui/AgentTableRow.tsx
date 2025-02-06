@@ -82,7 +82,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   }, [agent_id, selectedAgents, setSelectedAgents]);
 
   return (
-    <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
+    <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 md:flex dark:border-neutral-700 dark:hover:bg-neutral-800">
       <div className="flex items-center">
         <div className="flex items-center">
           <input

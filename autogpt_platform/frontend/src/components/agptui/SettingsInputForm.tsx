@@ -50,8 +50,8 @@ export const SettingsInputForm = ({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1077px] bg-white px-4 pt-8 dark:bg-neutral-900 sm:px-6 sm:pt-16">
-      <h1 className="mb-8 text-2xl font-semibold text-slate-950 dark:text-slate-200 sm:mb-16 sm:text-3xl">
+    <div className="mx-auto w-full max-w-[1077px] bg-white px-4 pt-8 sm:px-6 sm:pt-16 dark:bg-neutral-900">
+      <h1 className="mb-8 text-2xl font-semibold text-slate-950 sm:mb-16 sm:text-3xl dark:text-slate-200">
         Settings
       </h1>
 
@@ -59,7 +59,7 @@ export const SettingsInputForm = ({
       <section aria-labelledby="account-heading">
         <h2
           id="account-heading"
-          className="mb-8 text-lg font-medium text-neutral-500 dark:text-neutral-400 sm:mb-12"
+          className="mb-8 text-lg font-medium text-neutral-500 sm:mb-12 dark:text-neutral-400"
         >
           My account
         </h2>
@@ -107,7 +107,7 @@ export const SettingsInputForm = ({
       </section>
 
       <div
-        className="my-8 border-t border-neutral-200 dark:border-neutral-700 sm:my-12"
+        className="my-8 border-t border-neutral-200 sm:my-12 dark:border-neutral-700"
         role="separator"
       />
 

@@ -16,7 +16,7 @@ export function ThemeToggle() {
   if (!mounted) {
     return (
       <div className="relative h-6 w-12 rounded-full bg-gray-200 transition-colors dark:bg-gray-600">
-        <div className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white" />
+        <div className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white" />
       </div>
     );
   }
@@ -29,7 +29,7 @@ export function ThemeToggle() {
       tabIndex={0}
     >
       <div
-        className={`absolute left-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white transition-transform duration-200 ${
+        className={`absolute top-0.5 left-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white transition-transform duration-200 ${
           theme === "dark" ? "translate-x-6" : ""
         }`}
       >

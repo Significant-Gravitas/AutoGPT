@@ -287,7 +287,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         {trigger || <Button variant="default">Publish Agent</Button>}
       </PopoverTrigger>
       <PopoverAnchor asChild>
-        <div className="fixed left-0 top-0 hidden h-screen w-screen items-center justify-center"></div>
+        <div className="fixed top-0 left-0 hidden h-screen w-screen items-center justify-center"></div>
       </PopoverAnchor>
 
       <PopoverContent

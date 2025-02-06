@@ -55,7 +55,7 @@ export default function DataTable({
               <TableCell className="cursor-text">
                 <div className="flex min-h-9 items-center whitespace-pre-wrap">
                   <Button
-                    className="absolute right-1 top-auto m-1 hidden p-2 group-hover:block"
+                    className="absolute top-auto right-1 m-1 hidden p-2 group-hover:block"
                     variant="outline"
                     size="icon"
                     onClick={() =>

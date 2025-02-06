@@ -23,7 +23,7 @@ const OutputModalComponent: FC<OutputModalProps> = ({
   }
 
   return (
-    <div className="nodrag nowheel fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
+    <div className="nodrag nowheel bg-opacity-60 fixed inset-0 flex items-center justify-center bg-white">
       <div className="w-[500px] max-w-[90%] rounded-lg border-[1.5px] bg-white p-5">
         <strong>Output Data History</strong>
         <div className="my-2 max-h-[384px] grow overflow-y-auto rounded-md p-2">

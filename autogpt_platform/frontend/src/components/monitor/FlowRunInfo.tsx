@@ -91,7 +91,7 @@ export const FlowRunInfo: React.FC<
   return (
     <>
       <Card {...props}>
-        <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
+        <CardHeader className="flex-row items-center justify-between space-y-0 space-x-3">
           <div>
             <CardTitle>
               {flow.name}{" "}

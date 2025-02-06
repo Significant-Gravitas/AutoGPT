@@ -146,7 +146,7 @@ const ScrollableLegend: React.FC<
   return (
     <div
       className={cn(
-        "space-x-3 overflow-x-auto whitespace-nowrap px-4 text-sm",
+        "space-x-3 overflow-x-auto px-4 text-sm whitespace-nowrap",
         className,
       )}
       style={{ scrollbarWidth: "none" }}

@@ -27,7 +27,7 @@ export default function AuthButton({
       {isLoading ? (
         <FaSpinner className="animate-spin" />
       ) : (
-        <div className="text-sm font-medium leading-normal text-slate-50">
+        <div className="text-sm leading-normal font-medium text-slate-50">
           {children}
         </div>
       )}

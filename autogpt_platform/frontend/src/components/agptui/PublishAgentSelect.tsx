@@ -51,8 +51,8 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
 
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-      <div className="relative border-b border-slate-200 p-4 dark:border-slate-700 sm:p-6">
-        <div className="absolute right-4 top-4">
+      <div className="relative border-b border-slate-200 p-4 sm:p-6 dark:border-slate-700">
+        <div className="absolute top-4 right-4">
           <button
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
@@ -76,7 +76,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
 
       {agents.length === 0 ? (
         <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
-          <div className="w-full text-center font-['Geist'] text-lg font-normal leading-7 text-neutral-600 dark:text-neutral-400 sm:w-[573px] sm:text-xl">
+          <div className="w-full text-center font-['Geist'] text-lg leading-7 font-normal text-neutral-600 sm:w-[573px] sm:text-xl dark:text-neutral-400">
             Uh-oh.. It seems like you don&apos;t have any agents in your
             library.
             <br />
@@ -110,7 +110,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                       key={agent.id}
                       className={`cursor-pointer overflow-hidden rounded-2xl transition-all ${
                         selectedAgentId === agent.id
-                          ? "shadow-lg ring-4 ring-violet-600"
+                          ? "ring-4 shadow-lg ring-violet-600"
                           : "hover:shadow-md"
                       }`}
                       onClick={() =>
@@ -126,7 +126,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                       role="button"
                       aria-pressed={selectedAgentId === agent.id}
                     >
-                      <div className="relative h-32 bg-gray-100 dark:bg-gray-700 sm:h-40">
+                      <div className="relative h-32 bg-gray-100 sm:h-40 dark:bg-gray-700">
                         <Image
                           src={agent.imageSrc}
                           alt={agent.name}
@@ -135,10 +135,10 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         />
                       </div>
                       <div className="p-3">
-                        <p className="font-poppins text-base font-medium leading-normal text-neutral-800 dark:text-neutral-100 sm:text-base">
+                        <p className="font-poppins text-base leading-normal font-medium text-neutral-800 sm:text-base dark:text-neutral-100">
                           {agent.name}
                         </p>
-                        <small className="font-geist text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
+                        <small className="font-geist text-xs leading-[14px] font-normal text-neutral-500 sm:text-sm dark:text-neutral-400">
                           Edited {agent.lastEdited}
                         </small>
                       </div>
@@ -149,7 +149,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-between gap-4 border-t border-slate-200 p-4 dark:border-slate-700 sm:p-6">
+          <div className="flex justify-between gap-4 border-t border-slate-200 p-4 sm:p-6 dark:border-slate-700">
             <Button
               onClick={onCancel}
               variant="outline"

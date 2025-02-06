@@ -6,7 +6,7 @@ interface Props {
 
 export default function AuthHeader({ children }: Props) {
   return (
-    <div className="mb-8 text-2xl font-semibold leading-normal text-slate-950">
+    <div className="mb-8 text-2xl leading-normal font-semibold text-slate-950">
       {children}
     </div>
   );

@@ -71,7 +71,7 @@ export const CustomContent: Story = {
         </SheetHeader>
         <div className="py-4">
           <p>This sheet has custom content.</p>
-          <ul className="list-disc pl-4 pt-2">
+          <ul className="list-disc pt-2 pl-4">
             <li>Item 1</li>
             <li>Item 2</li>
             <li>Item 3</li>

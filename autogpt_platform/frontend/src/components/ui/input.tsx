@@ -12,7 +12,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         type={type}
         className={cn(
           "agpt-border-input agpt-shadow-input flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-50 dark:placeholder:text-gray-400",
-          type == "file" ? "pb-0.5 pt-1.5" : "", // fix alignment
+          type == "file" ? "pt-1.5 pb-0.5" : "", // fix alignment
           className,
         )}
         ref={ref}

@@ -95,25 +95,25 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
       {/* Title */}
-      <div className="font-poppins mb-3 w-full text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
+      <div className="font-poppins mb-3 w-full text-2xl leading-normal font-medium text-neutral-900 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10 dark:text-neutral-100">
         {name}
       </div>
 
       {/* Creator */}
       <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <div className="font-geist text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
+        <div className="font-geist text-base font-normal text-neutral-800 sm:text-lg lg:text-xl dark:text-neutral-200">
           by
         </div>
         <Link
           href={`/marketplace/creator/${encodeURIComponent(creator)}`}
-          className="font-geist text-base font-medium text-neutral-800 hover:underline dark:text-neutral-200 sm:text-lg lg:text-xl"
+          className="font-geist text-base font-medium text-neutral-800 hover:underline sm:text-lg lg:text-xl dark:text-neutral-200"
         >
           {creator}
         </Link>
       </div>
 
       {/* Short Description */}
-      <div className="font-geist mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
+      <div className="font-geist mb-4 line-clamp-2 w-full text-base leading-normal font-normal text-neutral-600 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7 dark:text-neutral-300">
         {shortDescription}
       </div>
 
@@ -154,12 +154,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       {/* Rating and Runs */}
       <div className="mb-4 flex w-full items-center justify-between lg:mb-[44px]">
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+          <span className="font-geist text-base font-semibold whitespace-nowrap text-neutral-800 sm:text-lg dark:text-neutral-200">
             {rating.toFixed(1)}
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <div className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+        <div className="font-geist text-base font-semibold whitespace-nowrap text-neutral-800 sm:text-lg dark:text-neutral-200">
           {runs.toLocaleString()} runs
         </div>
       </div>
@@ -169,24 +169,24 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Description Section */}
       <div className="mb-4 w-full lg:mb-[36px]">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base leading-6 font-medium text-neutral-800 sm:mb-2 dark:text-neutral-200">
           Description
         </div>
-        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+        <div className="font-geist decoration-skip-ink-none text-base leading-6 font-normal text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           {longDescription}
         </div>
       </div>
 
       {/* Categories */}
       <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-[36px]">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base leading-6 font-medium text-neutral-800 sm:mb-2 dark:text-neutral-200">
           Categories
         </div>
         <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {categories.map((category, index) => (
             <div
               key={index}
-              className="font-geist decoration-skip-ink-none whitespace-nowrap rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base font-normal leading-6 text-neutral-800 underline-offset-[from-font] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-[16px] sm:py-[10px]"
+              className="font-geist decoration-skip-ink-none rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base leading-6 font-normal whitespace-nowrap text-neutral-800 underline-offset-[from-font] sm:px-[16px] sm:py-[10px] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
             >
               {category}
             </div>
@@ -196,13 +196,13 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Version History */}
       <div className="flex w-full flex-col gap-0.5 sm:gap-1">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base leading-6 font-medium text-neutral-800 sm:mb-2 dark:text-neutral-200">
           Version history
         </div>
-        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+        <div className="font-geist decoration-skip-ink-none text-base leading-6 font-normal text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           Last updated {lastUpdated}
         </div>
-        <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
+        <div className="text-xs text-neutral-600 sm:text-sm dark:text-neutral-400">
           Version {version}
         </div>
       </div>

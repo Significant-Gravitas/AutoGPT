@@ -169,7 +169,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   return (
     <div className="mx-auto flex w-full flex-col rounded-3xl bg-white dark:bg-gray-800">
       <div className="relative p-6">
-        <div className="absolute right-4 top-2">
+        <div className="absolute top-2 right-4">
           <button
             onClick={onClose}
             className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
@@ -181,10 +181,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             />
           </button>
         </div>
-        <h3 className="h3-poppins text-center text-2xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100">
+        <h3 className="h3-poppins text-center text-2xl leading-loose font-semibold text-neutral-900 dark:text-neutral-100">
           Publish Agent
         </h3>
-        <p className="p text-center text-base font-normal leading-7 text-neutral-600 dark:text-neutral-400">
+        <p className="p text-center text-base leading-7 font-normal text-neutral-600 dark:text-neutral-400">
           Write a bit of details about your agent
         </p>
       </div>
@@ -193,7 +193,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="title"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300"
           >
             Title
           </label>
@@ -203,14 +203,14 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Agent name"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="p-ui-medium w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="p-ui-medium w-full rounded-[55px] border border-slate-200 py-2.5 pr-14 pl-4 text-base leading-normal font-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
         <div className="space-y-1.5">
           <label
             htmlFor="subheader"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300"
           >
             Subheader
           </label>
@@ -220,14 +220,14 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="A tagline for your agent"
             value={subheader}
             onChange={(e) => setSubheader(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pr-14 pl-4 font-['Geist'] text-base leading-normal font-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
         <div className="space-y-1.5">
           <label
             htmlFor="slug"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300"
           >
             Slug
           </label>
@@ -237,12 +237,12 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="URL-friendly name for your agent"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pr-14 pl-4 font-['Geist'] text-base leading-normal font-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
         <div className="space-y-2.5">
-          <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+          <label className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300">
             Thumbnail images
           </label>
           <div className="flex h-[350px] items-center justify-center overflow-hidden rounded-[20px] border border-neutral-300 p-2.5 dark:border-neutral-600">
@@ -305,7 +305,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                     />
                     <button
                       onClick={() => handleRemoveImage(index)}
-                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white bg-opacity-70 transition-opacity hover:bg-opacity-100 dark:bg-gray-800 dark:bg-opacity-70 dark:hover:bg-opacity-100"
+                      className="bg-opacity-70 hover:bg-opacity-100 dark:bg-opacity-70 dark:hover:bg-opacity-100 absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white transition-opacity dark:bg-gray-800"
                       aria-label="Remove image"
                     >
                       <IconClose
@@ -336,11 +336,11 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+          <label className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300">
             AI image generator
           </label>
           <div className="flex items-center justify-between">
-            <p className="text-base font-normal leading-normal text-slate-700 dark:text-slate-400">
+            <p className="text-base leading-normal font-normal text-slate-700 dark:text-slate-400">
               You can use AI to generate a cover image for you
             </p>
             <Button
@@ -364,7 +364,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="youtube"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300"
           >
             YouTube video link
           </label>
@@ -374,14 +374,14 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Paste a video link here"
             value={youtubeLink}
             onChange={(e) => setYoutubeLink(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pr-14 pl-4 font-['Geist'] text-base leading-normal font-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
         <div className="space-y-1.5">
           <label
             htmlFor="category"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300"
           >
             Category
           </label>
@@ -389,7 +389,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             id="category"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pr-5 pl-4 font-['Geist'] text-base leading-normal font-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           >
             <option value="">Select a category for your agent</option>
             <option value="productivity">Productivity</option>
@@ -409,7 +409,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="description"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="text-sm leading-tight font-medium text-slate-950 dark:text-slate-300"
           >
             Description
           </label>
@@ -418,7 +418,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Describe your agent and what it does"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-900 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pr-14 pl-4 font-['Geist'] text-base leading-normal font-normal text-slate-900 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           ></textarea>
         </div>
       </div>
@@ -428,7 +428,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           onClick={onBack}
           variant="outline"
           size="default"
-          className="w-full dark:border-slate-700 dark:text-slate-300 sm:flex-1"
+          className="w-full sm:flex-1 dark:border-slate-700 dark:text-slate-300"
         >
           Back
         </Button>
@@ -436,7 +436,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           onClick={handleSubmit}
           variant="default"
           size="default"
-          className="w-full bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 sm:flex-1"
+          className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1 dark:bg-neutral-600 dark:hover:bg-neutral-500"
         >
           Submit for review
         </Button>

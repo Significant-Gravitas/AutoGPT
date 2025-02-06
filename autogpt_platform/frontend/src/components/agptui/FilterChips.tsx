@@ -41,10 +41,10 @@ export const FilterChips: React.FC<FilterChipsProps> = ({
         <Badge
           key={badge}
           variant={selectedFilters.includes(badge) ? "secondary" : "outline"}
-          className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-full border border-black/50 px-3 py-1 dark:border-white/50 lg:mb-3 lg:gap-2.5 lg:px-6 lg:py-2"
+          className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-full border border-black/50 px-3 py-1 lg:mb-3 lg:gap-2.5 lg:px-6 lg:py-2 dark:border-white/50"
           onClick={() => handleBadgeClick(badge)}
         >
-          <div className="font-neue text-sm font-light tracking-tight text-[#474747] dark:text-[#e0e0e0] lg:text-xl lg:font-medium lg:leading-9">
+          <div className="font-neue text-sm font-light tracking-tight text-[#474747] lg:text-xl lg:leading-9 lg:font-medium dark:text-[#e0e0e0]">
             {badge}
           </div>
         </Badge>

@@ -21,13 +21,13 @@ export default function AuthBottomText({
         "mt-8 inline-flex w-full items-center justify-center",
       )}
     >
-      <span className="text-sm font-medium leading-normal text-slate-950">
+      <span className="text-sm leading-normal font-medium text-slate-950">
         {text}
       </span>
       {linkText && (
         <Link
           href={href}
-          className="ml-1 text-sm font-medium leading-normal text-slate-950 underline"
+          className="ml-1 text-sm leading-normal font-medium text-slate-950 underline"
         >
           {linkText}
         </Link>

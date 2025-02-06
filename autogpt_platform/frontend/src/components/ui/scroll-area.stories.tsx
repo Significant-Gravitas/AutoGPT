@@ -61,7 +61,7 @@ export const NestedScrollAreas: Story = {
     className: "h-[300px] w-[350px] rounded-md border p-4",
     children: (
       <div>
-        <h4 className="mb-4 text-sm font-medium leading-none">
+        <h4 className="mb-4 text-sm leading-none font-medium">
           Outer Scroll Area
         </h4>
         {Array(3)
@@ -71,7 +71,7 @@ export const NestedScrollAreas: Story = {
               <p className="mb-2">Section {i + 1}</p>
               <ScrollArea className="h-[100px] w-[300px] rounded-md border p-4">
                 <div>
-                  <h5 className="mb-2 text-sm font-medium leading-none">
+                  <h5 className="mb-2 text-sm leading-none font-medium">
                     Inner Scroll Area
                   </h5>
                   {Array(10)

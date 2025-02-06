@@ -87,7 +87,7 @@ export const WithoutFooter: Story = {
 
 export const WithCustomStyles: Story = {
   render: () => (
-    <Table className="border-2 border-primary">
+    <Table className="border-primary border-2">
       <TableHeader>
         <TableRow>
           <TableHead className="bg-primary text-primary-foreground">

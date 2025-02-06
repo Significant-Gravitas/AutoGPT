@@ -72,7 +72,7 @@ export function NavBarButtons({ className }: { className?: string }) {
           data-testid="marketplace-nav-link"
           className={cn(
             className,
-            "flex items-center gap-2 rounded-xl p-3 text-muted-foreground hover:text-foreground",
+            "text-muted-foreground hover:text-foreground flex items-center gap-2 rounded-xl p-3",
           )}
         >
           <LuShoppingCart /> Marketplace

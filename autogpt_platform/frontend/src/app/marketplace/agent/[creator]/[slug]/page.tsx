@@ -81,12 +81,12 @@ export default async function Page({
             }
           />
         </div>
-        <Separator className="mb-[25px] mt-6" />
+        <Separator className="mt-6 mb-[25px]" />
         <AgentsSection
           agents={otherAgents.agents}
           sectionTitle={`Other agents by ${agent.creator}`}
         />
-        <Separator className="mb-[25px] mt-6" />
+        <Separator className="mt-6 mb-[25px]" />
         <AgentsSection
           agents={similarAgents.agents}
           sectionTitle="Similar agents"

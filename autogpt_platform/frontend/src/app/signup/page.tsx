@@ -128,7 +128,7 @@ export default function SignupPage() {
                 <FormControl>
                   <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
-                <FormDescription className="text-sm font-normal leading-tight text-slate-500">
+                <FormDescription className="text-sm leading-tight font-normal text-slate-500">
                   Password needs to be at least 6 characters long
                 </FormDescription>
                 <FormMessage />
@@ -155,21 +155,21 @@ export default function SignupPage() {
                 </FormControl>
                 <div className="">
                   <FormLabel>
-                    <span className="mr-1 text-sm font-normal leading-normal text-slate-950">
+                    <span className="mr-1 text-sm leading-normal font-normal text-slate-950">
                       I agree to the
                     </span>
                     <Link
                       href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
-                      className="text-sm font-normal leading-normal text-slate-950 underline"
+                      className="text-sm leading-normal font-normal text-slate-950 underline"
                     >
                       Terms of Use
                     </Link>
-                    <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+                    <span className="mx-1 text-sm leading-normal font-normal text-slate-950">
                       and
                     </span>
                     <Link
                       href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
-                      className="text-sm font-normal leading-normal text-slate-950 underline"
+                      className="text-sm leading-normal font-normal text-slate-950 underline"
                     >
                       Privacy Policy
                     </Link>
@@ -184,31 +184,31 @@ export default function SignupPage() {
       </Form>
       {showWaitlistPrompt && (
         <div>
-          <span className="mr-1 text-sm font-normal leading-normal text-red-500">
+          <span className="mr-1 text-sm leading-normal font-normal text-red-500">
             The provided email may not be allowed to sign up.
           </span>
           <br />
-          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+          <span className="mx-1 text-sm leading-normal font-normal text-slate-950">
             - AutoGPT Platform is currently in closed beta. You can join
           </span>
           <Link
             href="https://agpt.co/waitlist"
-            className="text-sm font-normal leading-normal text-slate-950 underline"
+            className="text-sm leading-normal font-normal text-slate-950 underline"
           >
             the waitlist here.
           </Link>
           <br />
-          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+          <span className="mx-1 text-sm leading-normal font-normal text-slate-950">
             - Make sure you use the same email address you used to sign up for
             the waitlist.
           </span>
           <br />
-          <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
+          <span className="mx-1 text-sm leading-normal font-normal text-slate-950">
             - You can self host the platform, visit our
           </span>
           <Link
             href="https://agpt.co/waitlist"
-            className="text-sm font-normal leading-normal text-slate-950 underline"
+            className="text-sm leading-normal font-normal text-slate-950 underline"
           >
             GitHub repository.
           </Link>

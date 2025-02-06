@@ -68,7 +68,7 @@ const InputModalComponent: FC<ModalProps> = ({
           value={tempValue}
           onChange={(e) => setTempValue(e.target.value)}
         />
-        <div className="absolute bottom-2 right-2 flex space-x-2">
+        <div className="absolute right-2 bottom-2 flex space-x-2">
           <Button onClick={copyValue} size="icon" variant="outline">
             <Clipboard size={18} />
           </Button>
@@ -90,13 +90,13 @@ const InputModalComponent: FC<ModalProps> = ({
     <>
       {isMaximized ? (
         createPortal(
-          <div className="fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
+          <div className="bg-opacity-60 fixed inset-0 flex items-center justify-center bg-white">
             {modalContent}
           </div>,
           document.body,
         )
       ) : (
-        <div className="nodrag fixed inset-0 flex items-center justify-center bg-white bg-opacity-60">
+        <div className="nodrag bg-opacity-60 fixed inset-0 flex items-center justify-center bg-white">
           {modalContent}
         </div>
       )}

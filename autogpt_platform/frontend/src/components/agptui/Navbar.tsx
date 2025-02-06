@@ -57,7 +57,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 mx-[16px] hidden h-16 max-w-[1600px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+      <nav className="sticky top-0 z-50 mx-[16px] hidden h-16 max-w-[1600px] items-center justify-between rounded-br-2xl rounded-bl-2xl border border-white/50 bg-white/5 py-3 pr-3 pl-6 backdrop-blur-[26px] md:inline-flex dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-center gap-11">
           <div className="relative h-10 w-[88.87px]">
             <IconAutoGPTLogo className="h-full w-full" />
@@ -96,7 +96,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn ? (
-          <div className="fixed right-4 top-4 z-50">
+          <div className="fixed top-4 right-4 z-50">
             <MobileNavBar
               userName={profile?.username}
               menuItemGroups={[
@@ -126,7 +126,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
         ) : (
           <Link
             href="/login"
-            className="fixed right-4 top-4 z-50 mt-4 inline-flex h-8 items-center justify-end rounded-lg pr-4 md:hidden"
+            className="fixed top-4 right-4 z-50 mt-4 inline-flex h-8 items-center justify-end rounded-lg pr-4 md:hidden"
           >
             <Button
               variant="default"

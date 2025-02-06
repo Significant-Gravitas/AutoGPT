@@ -63,7 +63,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
-      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 sm:mb-8 sm:text-[35px] dark:text-neutral-100">
         Credits
       </h1>
 

@@ -124,7 +124,7 @@ export default function LoginPage() {
                   <span>Password</span>
                   <Link
                     href="/reset_password"
-                    className="text-sm font-normal leading-normal text-black underline"
+                    className="text-sm leading-normal font-normal text-black underline"
                   >
                     Forgot your password?
                   </Link>

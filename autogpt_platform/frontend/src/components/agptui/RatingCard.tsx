@@ -57,7 +57,7 @@ export const RatingCard: React.FC<RatingCardProps> = ({
     <div className="relative flex w-[400px] flex-col rounded-[32px] bg-white p-8 shadow-lg">
       <button
         onClick={handleClose}
-        className="absolute right-6 top-6 h-6 w-6 text-gray-400 transition-colors hover:text-gray-600"
+        className="absolute top-6 right-6 h-6 w-6 text-gray-400 transition-colors hover:text-gray-600"
       >
         <Cross1Icon className="h-5 w-5" />
       </button>

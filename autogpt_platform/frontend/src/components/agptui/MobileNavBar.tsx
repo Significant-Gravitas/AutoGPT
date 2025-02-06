@@ -87,7 +87,7 @@ const PopoutMenuItem: React.FC<{
       {getIcon(icon)}
       <div className="relative">
         <div
-          className={`font-['Inter'] text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
+          className={`font-['Inter'] text-base leading-7 font-normal text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
         >
           {text}
         </div>
@@ -129,7 +129,7 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
       <PopoverTrigger asChild>
         <Button
           aria-label="Open menu"
-          className="fixed right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50 md:hidden"
+          className="fixed top-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 md:hidden dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50"
           data-testid="mobile-nav-bar-trigger"
         >
           {isOpen ? (
@@ -161,10 +161,10 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                     </AvatarFallback>
                   </Avatar>
                   <div className="relative h-14 w-[153px]">
-                    <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747] dark:text-[#cfcfcf]">
+                    <div className="absolute top-0 left-0 font-['Inter'] text-lg leading-7 font-semibold text-[#474747] dark:text-[#cfcfcf]">
                       {userName || "Unknown User"}
                     </div>
-                    <div className="absolute left-0 top-6 font-['Inter'] text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
+                    <div className="absolute top-6 left-0 font-['Inter'] text-base leading-7 font-normal text-[#474747] dark:text-[#cfcfcf]">
                       {userEmail || "No Email Set"}
                     </div>
                   </div>

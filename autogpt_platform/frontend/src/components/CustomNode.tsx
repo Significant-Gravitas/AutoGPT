@@ -722,7 +722,7 @@ export function CustomNode({
               <Badge
                 key={category.category}
                 variant="outline"
-                className={`${getPrimaryCategoryColor([category])} h-6 whitespace-nowrap rounded-full border border-gray-300 opacity-50`}
+                className={`${getPrimaryCategoryColor([category])} h-6 rounded-full border border-gray-300 whitespace-nowrap opacity-50`}
               >
                 {beautifyString(category.category.toLowerCase())}
               </Badge>
@@ -744,7 +744,7 @@ export function CustomNode({
                   <div className="nodrag mr-5 flex flex-col gap-1">
                     Webhook URL:
                     <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                      <code className="select-all text-sm">
+                      <code className="text-sm select-all">
                         {data.webhook.url}
                       </code>
                       <Button
@@ -762,7 +762,7 @@ export function CustomNode({
                     </div>
                   </div>
                 ) : (
-                  <p className="italic text-gray-500">
+                  <p className="text-gray-500 italic">
                     (A Webhook URL will be generated when you save the agent)
                   </p>
                 ))}

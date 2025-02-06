@@ -101,7 +101,7 @@ export function RunnerOutputUI({
 
                     <div className="group relative rounded-md bg-gray-100 p-2">
                       <Button
-                        className="absolute right-1 top-1 z-10 m-1 hidden p-2 group-hover:block"
+                        className="absolute top-1 right-1 z-10 m-1 hidden p-2 group-hover:block"
                         variant="outline"
                         size="icon"
                         onClick={() =>
@@ -117,7 +117,7 @@ export function RunnerOutputUI({
                       <Textarea
                         readOnly
                         value={formatOutput(block.result ?? "No output yet")}
-                        className="w-full resize-none whitespace-pre-wrap break-words border-none bg-transparent text-sm"
+                        className="w-full resize-none border-none bg-transparent text-sm break-words whitespace-pre-wrap"
                         style={{
                           height: "auto",
                           minHeight: "2.5rem",
