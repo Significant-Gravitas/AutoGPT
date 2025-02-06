@@ -92,7 +92,9 @@ export default function useAgentGraph(
       .then((flows) => setAvailableFlows(flows))
       .catch();
 
-    api.connectWebSocket();
+    api.connectWebSocket().catch((error) => {
+      console.error("Failed to connect WebSocket:", error);
+    });
 
     return () => {
       api.disconnectWebSocket();
@@ -110,7 +112,9 @@ export default function useAgentGraph(
 
     if (flowID && flowVersion) {
       api.subscribeToExecution(flowID, flowVersion);
-      console.debug("Subscribed to execution");
+      console.debug(
+        `Subscribed to execution events for ${flowID} v.${flowVersion}`,
+      );
     }
   }, [api, flowID, flowVersion, flowExecutionID]);
 
@@ -538,7 +542,6 @@ export default function useAgentGraph(
           });
           return;
         }
-        // api.subscribeToExecution(savedAgent.id, savedAgent.version);
         setSaveRunRequest({ request: "run", state: "running" });
         api
           .executeGraph(savedAgent.id, savedAgent.version)
