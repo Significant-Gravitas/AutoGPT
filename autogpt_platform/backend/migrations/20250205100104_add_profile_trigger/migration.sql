@@ -1,5 +1,5 @@
-CREATE OR REPLACE FUNCTION add_user_and_profile_to_platform()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION generate_username()
+RETURNS TEXT AS $$
 DECLARE
     -- Random username generation
     selected_adjective TEXT;
@@ -7,23 +7,6 @@ DECLARE
     random_int         INT;
     generated_username TEXT;
 BEGIN
-    -- Exit early if NEW.id is null to prevent constraint violations
-    IF NEW.id IS NULL THEN
-        RAISE EXCEPTION 'Cannot create user/profile: id is null';
-    END IF;
-
-    /*
-      1) Insert into platform."User"
-         (If you already have such a row or want different columns, adjust below.)
-    */
-    INSERT INTO platform."User" (id, email, "updatedAt")
-    VALUES (NEW.id, NEW.email, now());
-
-    /*
-      2) Generate a random username and verify uniqueness
-         -- This generates random combinations until finding an unused username
-         -- Will raise an exception if unable to generate a unique username after 10 attempts
-    */
     FOR i IN 1..10 LOOP
         SELECT unnest
           INTO selected_adjective
@@ -40,7 +23,7 @@ BEGIN
         SELECT floor(random() * (99999 - 10000 + 1) + 10000)::int
           INTO random_int;
 
-        generated_username := lower(selected_adjective || '-' || selected_animal || '_' || random_int);
+        generated_username := lower(selected_adjective || '-' || selected_animal || '-' || random_int);
 
         -- Check if username is already taken
         IF NOT EXISTS (
@@ -55,9 +38,27 @@ BEGIN
             RAISE EXCEPTION 'Unable to generate unique username after 10 attempts';
         END IF;
     END LOOP;
+    RETURN generated_username;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION add_user_and_profile_to_platform()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Exit early if NEW.id is null to prevent constraint violations
+    IF NEW.id IS NULL THEN
+        RAISE EXCEPTION 'Cannot create user/profile: id is null';
+    END IF;
 
     /*
-      3) Insert into platform."Profile"
+      1) Insert into platform."User"
+         (If you already have such a row or want different columns, adjust below.)
+    */
+    INSERT INTO platform."User" (id, email, "updatedAt")
+    VALUES (NEW.id, NEW.email, now());
+
+    /*
+      2) Insert into platform."Profile"
          Adjust columns/types depending on how your "Profile" schema is defined:
            - "links" might be text[], jsonb, or something else in your table.
            - "avatarUrl" and "description" can be defaulted as well.
@@ -69,7 +70,7 @@ BEGIN
         NEW.id,
         NEW.id,
         COALESCE(split_part(NEW.email, '@', 1), 'user'),  -- handle null email
-        generated_username,
+        platform.generate_username(),
         'I''m new here',
         '{}',                            -- empty array or empty JSON, depending on your column definition
         '',
