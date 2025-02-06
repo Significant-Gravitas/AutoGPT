@@ -180,6 +180,13 @@ export default function CreditsPage() {
               />
             </div>
 
+            <p className="text-sm">
+              <b>Note:</b> For your safety, we will top up your balance{" "}
+              <b>at most once</b> per agent execution to prevent unintended
+              excessive charges. Therefore, ensure that the automatic top-up
+              amount is sufficient for your agent&apos;s operation.
+            </p>
+
             {autoTopUpConfig?.amount ? (
               <>
                 <Button type="submit" className="w-full">
