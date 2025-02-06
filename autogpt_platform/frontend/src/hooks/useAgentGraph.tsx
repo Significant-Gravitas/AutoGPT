@@ -21,6 +21,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
+import useCredits from "./useCredits";
+import { default as NextLink } from "next/link";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -72,6 +74,7 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
+  const { credits, fetchCredits } = useCredits();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -559,6 +562,33 @@ export default function useAgentGraph(
                 // We are racing the server here, since we need the ID to filter events
                 if (nodeResult.graph_exec_id != graphExecution.id) {
                   return;
+                }
+                if (
+                  nodeResult.status === "FAILED" &&
+                  nodeResult.output_data?.error?.[0]
+                    .toLowerCase()
+                    .includes("insufficient balance")
+                ) {
+                  // Show no credits toast if user has low credits
+                  toast({
+                    variant: "destructive",
+                    title: "Credits low",
+                    description: (
+                      <div>
+                        Agent execution failed due to insufficient credits.
+                        <br />
+                        Go to the{" "}
+                        <NextLink
+                          className="text-purple-300"
+                          href="/marketplace/credits"
+                        >
+                          Credits
+                        </NextLink>{" "}
+                        page to top up.
+                      </div>
+                    ),
+                    duration: 5000,
+                  });
                 }
                 if (
                   !["COMPLETED", "TERMINATED", "FAILED"].includes(
