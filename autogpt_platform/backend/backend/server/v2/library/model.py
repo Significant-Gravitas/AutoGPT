@@ -178,4 +178,4 @@ class LibraryAgentFilter(str, enum.Enum):
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
     IS_FAVOURITE = "isFavourite"
-    CAN_ACCESS_GRAPH = "canAccessGraph"
+    IS_CREATED_BY_USER = "isCreatedByUser"

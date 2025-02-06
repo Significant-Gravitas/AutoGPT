@@ -43,8 +43,8 @@ async def get_library_agents(
     """
     try:
 
-        page_num = int(page)
-        page_size_num = int(page_size)
+        page_num = int(page) if int(page) > 0 else 1
+        page_size_num = int(page_size) if int(page_size) > 0 else 50
 
         return await backend.server.v2.library.db.get_library_agents(
             user_id, search_term, sort_by, page_num, page_size_num

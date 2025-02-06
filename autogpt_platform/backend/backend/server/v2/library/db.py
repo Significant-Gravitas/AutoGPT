@@ -79,7 +79,7 @@ async def get_library_agents(
                 order_by = {"isFavorite": "desc"}
             elif (
                 sort_by
-                == backend.server.v2.library.model.LibraryAgentFilter.CAN_ACCESS_GRAPH
+                == backend.server.v2.library.model.LibraryAgentFilter.IS_CREATED_BY_USER
             ):
                 order_by = {"isCreatedByUser": "desc"}
 
