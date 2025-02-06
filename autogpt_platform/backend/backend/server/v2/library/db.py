@@ -6,6 +6,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
+import backend.data.includes
 import backend.server.model
 import backend.server.v2.library.model
 import backend.server.v2.store.exceptions
@@ -46,21 +47,21 @@ async def get_library_agents(
         isArchived=False,
     )
 
-    # if search_term:
-    #     where_clause["OR"] = [
-    #         {
-    #             "Agent": {
-    #                 "is": {"name": {"contains": search_term, "mode": "insensitive"}}
-    #             }
-    #         },
-    #         {
-    #             "Agent": {
-    #                 "is": {
-    #                     "description": {"contains": search_term, "mode": "insensitive"}
-    #                 }
-    #             }
-    #         },
-    #     ]
+    if search_term:
+        where_clause["OR"] = [
+            {
+                "Agent": {
+                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
+                }
+            },
+            {
+                "Agent": {
+                    "is": {
+                        "description": {"contains": search_term, "mode": "insensitive"}
+                    }
+                }
+            },
+        ]
 
     try:
         order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
@@ -87,7 +88,7 @@ async def get_library_agents(
             include={
                 "Agent": {
                     "include": {
-                        "AgentNodes": {"include": {"Input": True, "Output": True}},
+                        **backend.data.includes.AGENT_GRAPH_INCLUDE,
                         "AgentGraphExecution": {"where": {"userId": user_id}},
                     },
                 },
@@ -102,6 +103,7 @@ async def get_library_agents(
         agent_count = await prisma.models.LibraryAgent.prisma().count(
             where=where_clause
         )
+
         return backend.server.v2.library.model.LibraryAgentResponse(
             agents=[
                 backend.server.v2.library.model.LibraryAgent.from_db(agent)
@@ -483,7 +485,7 @@ async def main():
 
         time.sleep(2)
         library_agents = await get_library_agents(
-            "5f8edafd-27ab-4343-88b3-6dbc02be7b06"
+            "658bc98d-e647-419d-a9c9-c78e3fdbbaf2"
         )
         print(library_agents)
     finally:
