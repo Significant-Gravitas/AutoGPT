@@ -92,7 +92,7 @@ async def handle_subscribe(
             WsMessage(
                 method=Methods.SUBSCRIBE,
                 success=True,
-                channel=str(hash((ex_sub.graph_id, ex_sub.graph_version))),
+                channel=f"{ex_sub.graph_id}_{ex_sub.graph_version}",
             ).model_dump_json()
         )
 
@@ -116,7 +116,7 @@ async def handle_unsubscribe(
             WsMessage(
                 method=Methods.UNSUBSCRIBE,
                 success=True,
-                channel=str(hash((ex_sub.graph_id, ex_sub.graph_version))),
+                channel=f"{ex_sub.graph_id}_{ex_sub.graph_version}",
             ).model_dump_json()
         )
 
