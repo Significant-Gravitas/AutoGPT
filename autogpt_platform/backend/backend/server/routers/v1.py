@@ -178,6 +178,8 @@ async def configure_user_auto_top_up(
 ) -> str:
     if request.threshold < 0:
         raise ValueError("Threshold must be greater than 0")
+    if request.amount < 500 and request.amount != 0:
+        raise ValueError("Amount must be greater than or equal to 500")
     if request.amount < request.threshold:
         raise ValueError("Amount must be greater than or equal to threshold")
 
@@ -240,7 +242,7 @@ async def manage_payment_method(
 ) -> dict[str, str]:
     session = stripe.billing_portal.Session.create(
         customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.platform_base_url + "/marketplace/credits",
+        return_url=settings.config.frontend_base_url + "/marketplace/credits",
     )
     if not session:
         raise HTTPException(
