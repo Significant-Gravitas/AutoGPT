@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 >
                   <IconCoin className="h-6 w-6" />
                   <div className="p-ui-medium text-base font-medium leading-normal">
-                    Credits
+                    Billing
                   </div>
                 </Link>
               )}
@@ -125,7 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               >
                 <IconCoin className="h-6 w-6" />
                 <div className="p-ui-medium text-base font-medium leading-normal">
-                  Credits
+                  Billing
                 </div>
               </Link>
             )}
