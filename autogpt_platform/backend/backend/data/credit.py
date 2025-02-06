@@ -202,15 +202,37 @@ class UserCreditBase(ABC):
         transaction_type: CreditTransactionType,
         is_active: bool = True,
         transaction_key: str | None = None,
+        ceiling_balance: int | None = None,
         metadata: Json = Json({}),
-    ) -> int:
+    ) -> tuple[int, str]:
+        """
+        Add a new transaction for the user.
+        This is the only method that should be used to add a new transaction.
+
+        Args:
+            user_id (str): The user ID.
+            amount (int): The amount of credits to add.
+            transaction_type (CreditTransactionType): The type of transaction.
+            is_active (bool): Whether the transaction is active or needs to be manually activated through _enable_transaction.
+            transaction_key (str | None): The transaction key. Avoids adding transaction if the key already exists.
+            ceiling_balance (int | None): The ceiling balance. Avoids adding more credits if the balance is already above the ceiling.
+            metadata (Json): The metadata of the transaction.
+
+        Returns:
+            tuple[int, str]: The new balance & the transaction key.
+        """
         async with db.locked_transaction(f"usr_trx_{user_id}"):
             # Get latest balance snapshot
             user_balance, _ = await self._get_credits(user_id)
 
+            if ceiling_balance and user_balance >= ceiling_balance:
+                raise ValueError(
+                    f"You already have enough balance for user {user_id}, balance: {user_balance}, ceiling: {ceiling_balance}"
+                )
+
             if amount < 0 and user_balance < abs(amount):
                 raise ValueError(
-                    f"Insufficient balance for user {user_id}, balance: {user_balance}, amount: {amount}"
+                    f"Insufficient balance of ${user_balance/100} to run the block that costs ${abs(amount)/100}"
                 )
 
             # Create the transaction
@@ -225,9 +247,8 @@ class UserCreditBase(ABC):
             }
             if transaction_key:
                 transaction_data["transactionKey"] = transaction_key
-            await CreditTransaction.prisma().create(data=transaction_data)
-
-            return user_balance + amount
+            tx = await CreditTransaction.prisma().create(data=transaction_data)
+            return user_balance + amount, tx.transactionKey
 
 
 class UsageTransactionMetadata(BaseModel):
@@ -308,7 +329,7 @@ class UserCredit(UserCreditBase):
         if cost == 0:
             return 0
 
-        balance = await self._add_transaction(
+        balance, _ = await self._add_transaction(
             user_id=entry.user_id,
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
@@ -326,11 +347,17 @@ class UserCredit(UserCreditBase):
         )
         user_id = entry.user_id
 
-        # Auto top-up if balance just went below threshold due to this transaction.
+        # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
-        if balance < auto_top_up.threshold <= balance - cost:
+        if auto_top_up.threshold and balance < auto_top_up.threshold:
             try:
-                await self.top_up_credits(user_id=user_id, amount=auto_top_up.amount)
+                await self._top_up_credits(
+                    user_id=user_id,
+                    amount=auto_top_up.amount,
+                    # Avoid multiple auto top-ups within the same graph execution.
+                    key=f"AUTO-TOP-UP-{user_id}-{entry.graph_exec_id}",
+                    ceiling_balance=auto_top_up.threshold,
+                )
             except Exception as e:
                 # Failed top-up is not critical, we can move on.
                 logger.error(
@@ -340,8 +367,33 @@ class UserCredit(UserCreditBase):
         return cost
 
     async def top_up_credits(self, user_id: str, amount: int):
+        await self._top_up_credits(user_id, amount)
+
+    async def _top_up_credits(
+        self,
+        user_id: str,
+        amount: int,
+        key: str | None = None,
+        ceiling_balance: int | None = None,
+    ):
         if amount < 0:
             raise ValueError(f"Top up amount must not be negative: {amount}")
+
+        if key is not None and (
+            await CreditTransaction.prisma().find_first(
+                where={"transactionKey": key, "userId": user_id}
+            )
+        ):
+            raise ValueError(f"Transaction key {key} already exists for user {user_id}")
+
+        _, transaction_key = await self._add_transaction(
+            user_id=user_id,
+            amount=amount,
+            transaction_type=CreditTransactionType.TOP_UP,
+            is_active=False,
+            transaction_key=key,
+            ceiling_balance=ceiling_balance,
+        )
 
         customer_id = await get_stripe_customer_id(user_id)
 
@@ -379,13 +431,10 @@ class UserCredit(UserCreditBase):
                     },
                 )
                 if payment_intent.status == "succeeded":
-                    await self._add_transaction(
+                    await self._enable_transaction(
+                        transaction_key=transaction_key,
                         user_id=user_id,
-                        amount=amount,
-                        transaction_type=CreditTransactionType.TOP_UP,
-                        transaction_key=payment_intent.id,
                         metadata=Json({"payment_intent": payment_intent}),
-                        is_active=True,
                     )
                     return
 
@@ -399,16 +448,12 @@ class UserCredit(UserCreditBase):
                 f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
             )
 
-        if not (user := await get_user_by_id(user_id)):
-            raise ValueError(f"User not found: {user_id}")
-
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            customer_email=user.email,
             line_items=[
                 {
                     "price_data": {
@@ -422,13 +467,14 @@ class UserCredit(UserCreditBase):
                 }
             ],
             mode="payment",
+            ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=settings.config.platform_base_url
+            success_url=settings.config.frontend_base_url
             + "/marketplace/credits?topup=success",
-            cancel_url=settings.config.platform_base_url
+            cancel_url=settings.config.frontend_base_url
             + "/marketplace/credits?topup=cancel",
-            return_url=settings.config.platform_base_url + "/marketplace/credits",
+            allow_promotion_codes=True,
         )
 
         await self._add_transaction(
@@ -508,7 +554,11 @@ class UserCredit(UserCreditBase):
         )
         tx_time = None
         for t in transactions:
-            metadata = UsageTransactionMetadata.model_validate(t.metadata)
+            metadata = (
+                UsageTransactionMetadata.model_validate(t.metadata)
+                if t.metadata
+                else UsageTransactionMetadata()
+            )
             tx_time = t.createdAt.replace(tzinfo=None)
 
             if t.type == CreditTransactionType.USAGE and metadata.graph_exec_id:
@@ -555,12 +605,13 @@ class BetaUserCredit(UserCredit):
             return balance
 
         try:
-            return await self._add_transaction(
+            balance, _ = await self._add_transaction(
                 user_id=user_id,
                 amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.TOP_UP,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
             )
+            return balance
         except UniqueViolationError:
             # Already refilled this month
             return (await self._get_credits(user_id))[0]
@@ -602,8 +653,6 @@ def get_block_costs() -> dict[str, list[BlockCost]]:
 
 async def get_stripe_customer_id(user_id: str) -> str:
     user = await get_user_by_id(user_id)
-    if not user:
-        raise ValueError(f"User not found: {user_id}")
 
     if user.stripeCustomerId:
         return user.stripeCustomerId
@@ -624,8 +673,6 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     user = await get_user_by_id(user_id)
-    if not user:
-        raise ValueError("Invalid user ID")
 
     if not user.topUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)

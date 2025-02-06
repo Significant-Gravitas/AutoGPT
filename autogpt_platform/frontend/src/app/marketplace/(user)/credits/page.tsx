@@ -23,6 +23,7 @@ export default function CreditsPage() {
     updateAutoTopUpConfig,
     transactionHistory,
     fetchTransactionHistory,
+    formatCredits,
   } = useCredits();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -59,7 +60,8 @@ export default function CreditsPage() {
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
-    const amount = parseInt(new FormData(form).get("topUpAmount") as string);
+    const amount =
+      parseInt(new FormData(form).get("topUpAmount") as string) * 100;
     toastOnFail("request top-up", () => requestTopUp(amount));
   };
 
@@ -67,8 +69,8 @@ export default function CreditsPage() {
     e.preventDefault();
     const form = e.currentTarget;
     const formData = new FormData(form);
-    const amount = parseInt(formData.get("topUpAmount") as string);
-    const threshold = parseInt(formData.get("threshold") as string);
+    const amount = parseInt(formData.get("topUpAmount") as string) * 100;
+    const threshold = parseInt(formData.get("threshold") as string) * 100;
     toastOnFail("update auto top-up config", () =>
       updateAutoTopUpConfig(amount, threshold).then(() => {
         toast({ title: "Auto top-up config updated! 🎉" });
@@ -108,16 +110,16 @@ export default function CreditsPage() {
                 htmlFor="topUpAmount"
                 className="mb-1 block text-neutral-700"
               >
-                Top-up Amount (Credits)
+                Top-up amount (USD), minimum $5:
               </label>
               <input
                 type="number"
                 id="topUpAmount"
                 name="topUpAmount"
                 placeholder="Enter top-up amount"
-                min="500"
-                step="100"
-                defaultValue={500}
+                min="5"
+                step="1"
+                defaultValue={5}
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
@@ -130,49 +132,76 @@ export default function CreditsPage() {
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="mt-6 space-y-4">
-            <h3 className="text-lg font-medium">Auto Top-up Configuration</h3>
-
-            <div>
-              <label
-                htmlFor="autoTopUpAmount"
-                className="mb-1 block text-neutral-700"
-              >
-                Auto Top-up Amount (Credits)
-              </label>
-              <input
-                type="number"
-                id="autoTopUpAmount"
-                name="topUpAmount"
-                defaultValue={autoTopUpConfig?.amount || ""}
-                placeholder="Enter auto top-up amount"
-                step="100"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
-                required
-              />
-            </div>
+            <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
 
             <div>
               <label
                 htmlFor="threshold"
                 className="mb-1 block text-neutral-700"
               >
-                Threshold (Credits)
+                When my balance goes below this amount:
               </label>
               <input
                 type="number"
                 id="threshold"
                 name="threshold"
-                defaultValue={autoTopUpConfig?.threshold || ""}
-                placeholder="Enter threshold value"
-                step="100"
+                defaultValue={
+                  autoTopUpConfig?.threshold
+                    ? autoTopUpConfig.threshold / 100
+                    : ""
+                }
+                placeholder="Refill threshold, minimum $5"
+                min="5"
+                step="1"
                 className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
             </div>
 
-            <Button type="submit" className="w-full">
-              Save
-            </Button>
+            <div>
+              <label
+                htmlFor="autoTopUpAmount"
+                className="mb-1 block text-neutral-700"
+              >
+                Automatically refill my balance with this amount:
+              </label>
+              <input
+                type="number"
+                id="autoTopUpAmount"
+                name="topUpAmount"
+                defaultValue={
+                  autoTopUpConfig?.amount ? autoTopUpConfig.amount / 100 : ""
+                }
+                placeholder="Refill amount, minimum $5"
+                min="5"
+                step="1"
+                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                required
+              />
+            </div>
+
+            {autoTopUpConfig?.amount ? (
+              <>
+                <Button type="submit" className="w-full">
+                  Save Changes
+                </Button>
+                <Button
+                  className="w-full"
+                  variant="destructive"
+                  onClick={() =>
+                    updateAutoTopUpConfig(0, 0).then(() => {
+                      toast({ title: "Auto top-up config disabled! 🎉" });
+                    })
+                  }
+                >
+                  Disable Auto-Refill
+                </Button>
+              </>
+            ) : (
+              <Button type="submit" className="w-full">
+                Enable Auto-Refill
+              </Button>
+            )}
           </form>
         </div>
 
@@ -203,6 +232,9 @@ export default function CreditsPage() {
             executions are happening.
           </p>
           <br />
+          {transactionHistory.transactions.length === 0 && (
+            <p className="text-neutral-600">No transactions found.</p>
+          )}
           <Table
             className={
               transactionHistory.transactions.length === 0 ? "hidden" : ""
@@ -229,9 +261,9 @@ export default function CreditsPage() {
                       transaction.amount > 0 ? "text-green-500" : "text-red-500"
                     }
                   >
-                    <b>{transaction.amount}</b>
+                    <b>{formatCredits(transaction.amount)}</b>
                   </TableCell>
-                  <TableCell>{transaction.balance}</TableCell>
+                  <TableCell>{formatCredits(transaction.balance)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
