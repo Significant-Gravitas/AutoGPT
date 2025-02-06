@@ -71,6 +71,8 @@ services:
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
       - RABBITMQ_USER=rabbitmq_user_default
       - RABBITMQ_PASSWORD=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
       - REDIS_PASSWORD=password
