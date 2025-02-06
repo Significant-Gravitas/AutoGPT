@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from Pyro5 import api as pyro
 from Pyro5 import config as pyro_config
 
-from backend.data import db, redis
+from backend.data import db, rabbitmq, redis
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
@@ -116,6 +116,7 @@ class AppService(AppProcess, ABC):
     shared_event_loop: asyncio.AbstractEventLoop
     use_db: bool = False
     use_redis: bool = False
+    use_rabbitmq: bool = False
     use_supabase: bool = False
 
     def __init__(self):
@@ -147,6 +148,8 @@ class AppService(AppProcess, ABC):
             self.shared_event_loop.run_until_complete(db.connect())
         if self.use_redis:
             redis.connect()
+        if self.use_rabbitmq:
+            rabbitmq.connect()
         if self.use_supabase:
             from supabase import create_client
 
@@ -175,6 +178,8 @@ class AppService(AppProcess, ABC):
         if self.use_redis:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
             redis.disconnect()
+        if self.use_rabbitmq:
+            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting RabbitMQ...")
 
     @conn_retry("Pyro", "Starting Pyro Service")
     def __start_pyro(self):
