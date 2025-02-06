@@ -14,8 +14,10 @@ import LibraryNotificationCard, {
   NotificationCardData,
 } from "./LibraryNotificationCard";
 import { cn } from "@/lib/utils";
+import { useFlags } from 'launchdarkly-react-client-sdk'
+import { withFeatureFlag } from '@/components/feature-flag/with-feature-flag'
 
-export const LibraryNotificationDropdown = () => {
+const LibraryNotificationDropdown = () => {
   const controls = useAnimationControls();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<
@@ -143,3 +145,5 @@ export const LibraryNotificationDropdown = () => {
     </DropdownMenu>
   );
 };
+
+export default withFeatureFlag(LibraryNotificationDropdown, 'library-notification');

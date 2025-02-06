@@ -8,16 +8,16 @@ export const LibraryAgentCard = ({
   id,
   name,
   can_access_graph,
+  image_url,
 }: LibraryAgent) => {
   const descriptions = `An intelligent agent that helps automate your workflow,
     saving valuable time and improving productivity with smart automations,
     and enabling you to focus on what matters most.`;
 
-  const imageUrl = null;
   return (
     <div className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
       <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
-        {!imageUrl ? (
+        {!image_url ? (
           <div
             className={`h-full w-full ${
               [
@@ -35,7 +35,7 @@ export const LibraryAgentCard = ({
           />
         ) : (
           <Image
-            src={imageUrl}
+            src={image_url}
             alt={`${name} preview image`}
             fill
             className="object-cover"

@@ -47,7 +47,7 @@ const LibraryAgentListContainer: React.FC<
   );
 
   useEffect(() => {
-    fetchAgents(1);
+    fetchAgents(0);
   }, [fetchAgents]);
 
   const handleInfiniteScroll = useCallback(
