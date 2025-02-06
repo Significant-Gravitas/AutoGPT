@@ -191,11 +191,11 @@ MODEL_METADATA = {
         "anthropic", 200000, 4096
     ),  # claude-3-haiku-20240307
     # https://docs.aimlapi.com/api-overview/model-database/text-models
-    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata("aiml_api", 32000),
-    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata("aiml_api", 128000),
-    LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata("aiml_api", 128000),
-    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata("aiml_api", 131000),
-    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata("aiml_api", 128000),
+    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata("aiml_api", 32000, 8000),
+    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata("aiml_api", 128000, 40000),
+    LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata("aiml_api", 128000, None),
+    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata("aiml_api", 131000, 2000),
+    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata("aiml_api", 128000, None),
     # https://console.groq.com/docs/models
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, None),
     LlmModel.LLAMA3_3_70B: ModelMetadata("groq", 128000, 32768),
