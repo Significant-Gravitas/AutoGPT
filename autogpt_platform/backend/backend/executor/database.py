@@ -8,6 +8,7 @@ from backend.data.execution import (
     RedisExecutionEventBus,
     create_graph_execution,
     get_execution_results,
+    get_executions_in_timerange,
     get_incomplete_executions,
     get_latest_execution,
     update_execution_status,
@@ -18,8 +19,11 @@ from backend.data.execution import (
 )
 from backend.data.graph import get_graph, get_node
 from backend.data.user import (
+    get_active_user_ids_in_timerange,
+    get_user_by_id,
     get_user_integrations,
     get_user_metadata,
+    get_user_notification_preference,
     update_user_integrations,
     update_user_metadata,
 )
@@ -72,6 +76,7 @@ class DatabaseManager(AppService):
     update_node_execution_stats = exposed_run_and_wait(update_node_execution_stats)
     upsert_execution_input = exposed_run_and_wait(upsert_execution_input)
     upsert_execution_output = exposed_run_and_wait(upsert_execution_output)
+    get_executions_in_timerange = exposed_run_and_wait(get_executions_in_timerange)
 
     # Graphs
     get_node = exposed_run_and_wait(get_node)
@@ -84,8 +89,15 @@ class DatabaseManager(AppService):
         exposed_run_and_wait(user_credit_model.spend_credits),
     )
 
-    # User + User Metadata + User Integrations
+    # User + User Metadata + User Integrations + User Notification Preferences
     get_user_metadata = exposed_run_and_wait(get_user_metadata)
     update_user_metadata = exposed_run_and_wait(update_user_metadata)
     get_user_integrations = exposed_run_and_wait(get_user_integrations)
     update_user_integrations = exposed_run_and_wait(update_user_integrations)
+    get_active_user_ids_in_timerange = exposed_run_and_wait(
+        get_active_user_ids_in_timerange
+    )
+    get_user_by_id = exposed_run_and_wait(get_user_by_id)
+    get_user_notification_preference = exposed_run_and_wait(
+        get_user_notification_preference
+    )
