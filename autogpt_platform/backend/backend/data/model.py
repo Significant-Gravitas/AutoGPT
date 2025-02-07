@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -22,6 +23,7 @@ from prisma.enums import CreditTransactionType
 from pydantic import (
     BaseModel,
     ConfigDict,
+    EmailStr,
     Field,
     GetCoreSchemaHandler,
     SecretStr,
@@ -389,3 +391,23 @@ class UserTransaction(BaseModel):
 class TransactionHistory(BaseModel):
     transactions: list[UserTransaction]
     next_transaction_time: datetime | None
+
+
+class NotificationPreference(BaseModel):
+    user_id: str
+    email: EmailStr
+    preferences: dict[NotificationType, bool] = {}  # Which notifications they want
+    daily_limit: int = 10  # Max emails per day
+    emails_sent_today: int = 0
+    last_reset_date: datetime = datetime.now()
+
+
+class NotificationType(str, Enum):
+    AGENT_RUN = "agent_run"
+    ZERO_BALANCE = "zero_balance"
+    LOW_BALANCE = "low_balance"
+    BLOCK_EXECUTION_FAILED = "block_execution_failed"
+    CONTINUOUS_AGENT_ERROR = "continuous_agent_error"
+    DAILY_SUMMARY = "daily_summary"
+    WEEKLY_SUMMARY = "weekly_summary"
+    MONTHLY_SUMMARY = "monthly_summary"
