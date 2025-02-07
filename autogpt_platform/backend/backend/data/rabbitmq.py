@@ -1,14 +1,16 @@
-from enum import Enum
 import logging
-from typing import Optional, Callable, Any
 from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Awaitable, Optional
 
-import pika
-from pika.spec import BasicProperties
 import aio_pika
+import pika
+import pika.adapters.blocking_connection
+from pika.spec import BasicProperties
+from pydantic import BaseModel
+
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +72,17 @@ class RabbitMQBase(ABC):
         return bool(self.is_connected and self._channel)
 
     @abstractmethod
-    def connect(self):
+    def connect(self) -> None | Awaitable[None]:
         """Establish connection to RabbitMQ"""
         pass
 
     @abstractmethod
-    def disconnect(self):
+    def disconnect(self) -> None | Awaitable[None]:
         """Close connection to RabbitMQ"""
         pass
 
     @abstractmethod
-    def declare_infrastructure(self):
+    def declare_infrastructure(self) -> None | Awaitable[None]:
         """Declare exchanges and queues for this service"""
         pass
 
@@ -181,6 +183,13 @@ class SyncRabbitMQ(RabbitMQBase):
             mandatory=mandatory,
         )
 
+    def get_channel(self) -> pika.adapters.blocking_connection.BlockingChannel:
+        if not self.is_ready:
+            self.connect()
+        if self._channel is None:
+            raise RuntimeError("Channel should be established after connect")
+        return self._channel
+
 
 class AsyncRabbitMQ(RabbitMQBase):
     """Asynchronous RabbitMQ client"""
@@ -194,7 +203,7 @@ class AsyncRabbitMQ(RabbitMQBase):
         return bool(self.is_connected and self._channel and not self._channel.is_closed)
 
     @conn_retry("AsyncRabbitMQ", "Acquiring async connection")
-    async def connect(self) -> None:
+    async def connect(self):
         if self.is_connected:
             return
 
@@ -203,14 +212,14 @@ class AsyncRabbitMQ(RabbitMQBase):
             port=self.port,
             login=self.username,
             password=self.password,
-            virtualhost=self.config.vhost,
+            virtualhost=self.config.vhost.lstrip("/"),
         )
         self._channel = await self._connection.channel()
         await self._channel.set_qos(prefetch_count=1)
 
         await self.declare_infrastructure()
 
-    async def disconnect(self) -> None:
+    async def disconnect(self):
         if self._channel:
             await self._channel.close()
             self._channel = None
@@ -278,3 +287,10 @@ class AsyncRabbitMQ(RabbitMQBase):
             ),
             routing_key=routing_key,
         )
+
+    async def get_channel(self) -> aio_pika.abc.AbstractChannel:
+        if not self.is_ready:
+            await self.connect()
+        if self._channel is None:
+            raise RuntimeError("Channel should be established after connect")
+        return self._channel

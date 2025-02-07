@@ -169,7 +169,9 @@ class AppService(AppProcess, ABC):
             logger.info(f"[{self.__class__.__name__}] ⏳ Configuring RabbitMQ...")
             if self.use_async:
                 self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.use_rabbitmq)
-                self.shared_event_loop.run_until_complete(self.rabbitmq_service.connect())
+                self.shared_event_loop.run_until_complete(
+                    self.rabbitmq_service.connect()
+                )
             else:
                 self.rabbitmq_service = rabbitmq.SyncRabbitMQ(self.use_rabbitmq)
                 self.rabbitmq_service.connect()
