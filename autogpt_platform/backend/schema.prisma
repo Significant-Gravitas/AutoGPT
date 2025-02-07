@@ -33,12 +33,13 @@ model User {
   AgentPreset AgentPreset[]
   UserAgent   UserAgent[]
 
-  Profile                Profile[]
-  StoreListing           StoreListing[]
-  StoreListingReview     StoreListingReview[]
-  StoreListingSubmission StoreListingSubmission[]
-  APIKeys                APIKey[]
-  IntegrationWebhooks    IntegrationWebhook[]
+  Profile                    Profile[]
+  StoreListing               StoreListing[]
+  StoreListingReview         StoreListingReview[]
+  StoreListingSubmission     StoreListingSubmission[]
+  APIKeys                    APIKey[]
+  IntegrationWebhooks        IntegrationWebhook[]
+  UserNotificationPreference UserNotificationPreference[]
 
   @@index([id])
   @@index([email])
@@ -108,6 +109,17 @@ model AgentPreset {
   AgentExecution AgentGraphExecution[]
 
   @@index([userId])
+}
+
+model UserNotificationPreference {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  preferences Json @default("{}")
 }
 
 // For the library page
