@@ -249,7 +249,8 @@ export default function useAgentGraph(
               ) {
                 continue;
               }
-              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + 1;
+              const count = executionData.output_data[key].length;
+              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + count;
               // For static edges beadDown is always one less than beadUp
               // Because there's no queueing and one bead is always at the connection point
               if (edge.data?.isStatic) {
@@ -257,9 +258,8 @@ export default function useAgentGraph(
                 edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
                 continue;
               }
-              //todo kcze this assumes output at key is always array with one element
               edge.data!.beadData = [
-                executionData.output_data[key][0],
+                ...executionData.output_data[key].toReversed(),
                 ...edge.data!.beadData!,
               ];
             }
