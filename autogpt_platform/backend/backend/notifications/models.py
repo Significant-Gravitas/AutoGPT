@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Generic, Literal, Optional, TypeVar, Union, overload
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
 class BatchingStrategy(str, Enum):
@@ -26,7 +26,7 @@ class NotificationType(str, Enum):
     def strategy(self) -> BatchingStrategy:
         BATCHING_RULES = {
             # These are batched by the notification service
-            NotificationType.AGENT_RUN: BatchingStrategy.HOURLY,
+            NotificationType.AGENT_RUN: BatchingStrategy.IMMEDIATE,
             # These are batched by the notification service, but with a backoff strategy
             NotificationType.ZERO_BALANCE: BatchingStrategy.BACKOFF,
             NotificationType.LOW_BALANCE: BatchingStrategy.BACKOFF,
@@ -58,11 +58,10 @@ T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 
 class BaseNotificationData(BaseModel):
-    type: str
+    pass
 
 
 class AgentRunData(BaseNotificationData):
-    type: Literal["agent_run"] = "agent_run"
     agent_name: str
     credits_used: float
     # remaining_balance: float
@@ -72,14 +71,12 @@ class AgentRunData(BaseNotificationData):
 
 
 class ZeroBalanceData(BaseNotificationData):
-    type: Literal["zero_balance"] = "zero_balance"
     last_transaction: float
     last_transaction_time: datetime
     top_up_link: str
 
 
 class LowBalanceData(BaseNotificationData):
-    type: Literal["low_balance"] = "low_balance"
     current_balance: float
     threshold_amount: float
     top_up_link: str
@@ -87,7 +84,6 @@ class LowBalanceData(BaseNotificationData):
 
 
 class BlockExecutionFailedData(BaseNotificationData):
-    type: Literal["block_execution_failed"] = "block_execution_failed"
     block_name: str
     block_id: str
     error_message: str
@@ -97,7 +93,6 @@ class BlockExecutionFailedData(BaseNotificationData):
 
 
 class ContinuousAgentErrorData(BaseNotificationData):
-    type: Literal["continuous_agent_error"] = "continuous_agent_error"
     agent_name: str
     error_message: str
     graph_id: str
@@ -119,12 +114,10 @@ class BaseSummaryData(BaseNotificationData):
 
 
 class DailySummaryData(BaseSummaryData):
-    type: Literal["daily_summary"] = "daily_summary"
     date: datetime
 
 
 class WeeklySummaryData(BaseSummaryData):
-    type: Literal["weekly_summary"] = "weekly_summary"
     start_date: datetime
     end_date: datetime
     week_number: int
@@ -132,7 +125,6 @@ class WeeklySummaryData(BaseSummaryData):
 
 
 class MonthlySummaryData(BaseSummaryData):
-    type: Literal["monthly_summary"] = "monthly_summary"
     month: int
     year: int
 
@@ -227,14 +219,6 @@ def create_notification(
 def create_notification(
     user_id: str, type: NotificationType, data: BaseNotificationData
 ) -> NotificationEvent[BaseNotificationData]:
-    if not hasattr(data, "type"):
-        raise ValueError(
-            f"Data does not have a 'type' attribute: {data}, and is not a valid NotificationData"
-        )
-    if data.type != type.value:
-        raise ValueError(
-            f"Data type {data.type} doesn't match notification type {type}"
-        )
     return NotificationEvent(user_id=user_id, type=type, data=data)
 
 
@@ -248,14 +232,3 @@ class NotificationBatch(BaseModel):
 class NotificationResult(BaseModel):
     success: bool
     message: Optional[str] = None
-
-
-class NotificationPreference(BaseModel):
-    """User's notification preferences"""
-
-    user_id: str
-    email: EmailStr
-    preferences: dict[NotificationType, bool] = {}  # Which notifications they want
-    daily_limit: int = 10  # Max emails per day
-    emails_sent_today: int = 0
-    last_reset_date: datetime = datetime.now()
