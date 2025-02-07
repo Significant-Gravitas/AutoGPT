@@ -18,6 +18,7 @@ from typing import (
     FrozenSet,
     Iterator,
     List,
+    Optional,
     Set,
     Tuple,
     Type,
@@ -116,7 +117,9 @@ class AppService(AppProcess, ABC):
     shared_event_loop: asyncio.AbstractEventLoop
     use_db: bool = False
     use_redis: bool = False
-    use_rabbitmq: bool = False
+    use_async: bool = False
+    use_rabbitmq: Optional[rabbitmq.RabbitMQConfig] = None
+    rabbitmq_service: Optional[rabbitmq.SyncRabbitMQ | rabbitmq.AsyncRabbitMQ] = None
     use_supabase: bool = False
 
     def __init__(self):
@@ -130,6 +133,20 @@ class AppService(AppProcess, ABC):
     @classmethod
     def get_host(cls) -> str:
         return os.environ.get(f"{cls.service_name.upper()}_HOST", config.pyro_host)
+
+    @property
+    def rabbit(self) -> rabbitmq.SyncRabbitMQ | rabbitmq.AsyncRabbitMQ:
+        """Access the RabbitMQ service. Will raise if not configured."""
+        if not self.rabbitmq_service:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.rabbitmq_service
+
+    @property
+    def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
+        """Access the RabbitMQ config. Will raise if not configured."""
+        if not self.use_rabbitmq:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.use_rabbitmq
 
     def run_service(self) -> None:
         while True:
@@ -149,7 +166,13 @@ class AppService(AppProcess, ABC):
         if self.use_redis:
             redis.connect()
         if self.use_rabbitmq:
-            rabbitmq.connect()
+            logger.info(f"[{self.__class__.__name__}] ⏳ Configuring RabbitMQ...")
+            if self.use_async:
+                self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.use_rabbitmq)
+                self.shared_event_loop.run_until_complete(self.rabbitmq_service.connect())
+            else:
+                self.rabbitmq_service = rabbitmq.SyncRabbitMQ(self.use_rabbitmq)
+                self.rabbitmq_service.connect()
         if self.use_supabase:
             from supabase import create_client
 
