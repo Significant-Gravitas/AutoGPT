@@ -1,232 +1,280 @@
+from enum import Enum
 import logging
-import os
 from typing import Optional, Callable, Any
+from abc import ABC, abstractmethod
 
-from dotenv import load_dotenv
 import pika
-from pika.adapters.blocking_connection import BlockingChannel
-from pika.spec import Basic, BasicProperties
+from pika.spec import BasicProperties
 import aio_pika
-from aio_pika.abc import (
-    AbstractChannel,
-    AbstractConnection,
-    AbstractQueue,
-    AbstractIncomingMessage,
-)
-
 from backend.util.retry import conn_retry
-
-load_dotenv()
-
-HOST = os.getenv("RABBITMQ_HOST", "localhost")
-PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
-USERNAME = os.getenv("RABBITMQ_DEFAULT_USER", "guest")
-PASSWORD = os.getenv("RABBITMQ_DEFAULT_PASS", "guest")
-VIRTUAL_HOST = os.getenv("RABBITMQ_VHOST", "/")
+from backend.util.settings import Settings
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-# Synchronous connections
-connection: Optional[pika.BlockingConnection] = None
-channel: Optional[BlockingChannel] = None
 
-# Async connections
-connection_async: Optional[AbstractConnection] = None
-channel_async: Optional[AbstractChannel] = None
-
-
-@conn_retry("RabbitMQ", "Acquiring connection")
-def connect() -> pika.BlockingConnection:
-    global connection, channel
-    if connection and connection.is_open:
-        return connection
-
-    credentials = pika.PlainCredentials(USERNAME, PASSWORD)
-    parameters = pika.ConnectionParameters(
-        host=HOST,
-        port=PORT,
-        virtual_host=VIRTUAL_HOST,
-        credentials=credentials,
-        heartbeat=600,
-        blocked_connection_timeout=300,
-    )
-
-    connection = pika.BlockingConnection(parameters)
-    channel = connection.channel()
-    channel.basic_qos(prefetch_count=1)
-    return connection
+class ExchangeType(str, Enum):
+    DIRECT = "direct"
+    FANOUT = "fanout"
+    TOPIC = "topic"
+    HEADERS = "headers"
 
 
-@conn_retry("RabbitMQ", "Releasing connection")
-def disconnect():
-    global connection, channel
-    if channel:
-        if channel.is_open:
-            channel.close()
-        channel = None
-    if connection:
-        if connection.is_open:
-            connection.close()
-        connection = None
+class Exchange(BaseModel):
+    name: str
+    type: ExchangeType
+    durable: bool = True
+    auto_delete: bool = False
 
 
-def get_channel(auto_connect: bool = True) -> BlockingChannel:
-    global channel
-    if channel and channel.is_open:
-        return channel
-    if auto_connect:
-        connect()
-        # This may seem like a wierd place to double check, but its a good sanity check
-        # and fixes the type checker since we are relying on globals
-        if not channel:
-            raise RuntimeError("RabbitMQ connection is not established")
-        return channel
-    raise RuntimeError("RabbitMQ connection is not established")
+class Queue(BaseModel):
+    name: str
+    durable: bool = True
+    auto_delete: bool = False
+    # Optional exchange binding configuration
+    exchange: Optional[Exchange] = None
+    routing_key: Optional[str] = None
+    arguments: Optional[dict] = None
 
 
-def declare_queue(
-    queue_name: str, durable: bool = True, auto_delete: bool = False
-) -> None:
-    ch = get_channel()
-    ch.queue_declare(queue=queue_name, durable=durable, auto_delete=auto_delete)
+class RabbitMQConfig(BaseModel):
+    """Configuration for a RabbitMQ service instance"""
+
+    vhost: str = "/"
+    exchanges: list[Exchange]
+    queues: list[Queue]
 
 
-def publish_message(
-    queue_name: str,
-    message: str,
-    properties: Optional[BasicProperties] = None,
-    mandatory: bool = True,
-) -> None:
-    ch = get_channel()
-    ch.basic_publish(
-        exchange="",
-        routing_key=queue_name,
-        body=message.encode(),
-        properties=properties or BasicProperties(delivery_mode=2),
-        mandatory=mandatory,
-    )
+class RabbitMQBase(ABC):
+    """Base class for RabbitMQ connections with shared configuration"""
+
+    def __init__(self, config: RabbitMQConfig):
+        settings = Settings()
+        self.host = settings.config.rabbitmq_host
+        self.port = settings.config.rabbitmq_port
+        self.username = settings.secrets.rabbitmq_default_user
+        self.password = settings.secrets.rabbitmq_default_pass
+        self.config = config
+
+        self._connection = None
+        self._channel = None
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if we have a valid connection"""
+        return bool(self._connection)
+
+    @property
+    def is_ready(self) -> bool:
+        """Check if we have a valid channel"""
+        return bool(self.is_connected and self._channel)
+
+    @abstractmethod
+    def connect(self):
+        """Establish connection to RabbitMQ"""
+        pass
+
+    @abstractmethod
+    def disconnect(self):
+        """Close connection to RabbitMQ"""
+        pass
+
+    @abstractmethod
+    def declare_infrastructure(self):
+        """Declare exchanges and queues for this service"""
+        pass
 
 
-def consume_messages(
-    queue_name: str,
-    callback: Callable[[BlockingChannel, Basic.Deliver, BasicProperties, str], Any],
-    auto_ack: bool = False,
-) -> None:
-    ch = get_channel()
-    ch.basic_consume(
-        queue=queue_name,
-        on_message_callback=lambda ch, method, props, body: callback(
-            ch, method, props, body.decode()
-        ),
-        auto_ack=auto_ack,
-    )
-    try:
-        ch.start_consuming()
-    except KeyboardInterrupt:
-        ch.stop_consuming()
+class SyncRabbitMQ(RabbitMQBase):
+    """Synchronous RabbitMQ client"""
 
+    @property
+    def is_connected(self) -> bool:
+        return bool(self._connection and self._connection.is_open)
 
-# Async Section
-@conn_retry("AsyncRabbitMQ", "Acquiring async connection")
-async def connect_async() -> AbstractConnection:
-    global connection_async, channel_async
-    if connection_async and not connection_async.is_closed:
-        return connection_async
+    @property
+    def is_ready(self) -> bool:
+        return bool(self.is_connected and self._channel and self._channel.is_open)
 
-    connection_async = await aio_pika.connect_robust(
-        host=HOST,
-        port=PORT,
-        login=USERNAME,
-        password=PASSWORD,
-        virtualhost=VIRTUAL_HOST,
-    )
-    channel_async = await connection_async.channel()
-    await channel_async.set_qos(prefetch_count=1)
-    return connection_async
+    @conn_retry("RabbitMQ", "Acquiring connection")
+    def connect(self) -> None:
+        if self.is_connected:
+            return
 
+        credentials = pika.PlainCredentials(self.username, self.password)
+        parameters = pika.ConnectionParameters(
+            host=self.host,
+            port=self.port,
+            virtual_host=self.config.vhost,
+            credentials=credentials,
+            heartbeat=600,
+            blocked_connection_timeout=300,
+        )
 
-@conn_retry("AsyncRabbitMQ", "Releasing async connection")
-async def disconnect_async():
-    global connection_async, channel_async
-    if channel_async:
-        await channel_async.close()
-        channel_async = None
-    if connection_async:
-        await connection_async.close()
-        connection_async = None
+        self._connection = pika.BlockingConnection(parameters)
+        self._channel = self._connection.channel()
+        self._channel.basic_qos(prefetch_count=1)
 
+        self.declare_infrastructure()
 
-async def get_channel_async(auto_connect: bool = True) -> AbstractChannel:
-    global channel_async
-    if channel_async and not channel_async.is_closed:
-        return channel_async
-    if auto_connect:
-        await connect_async()
-        # This may seem like a wierd place to double check, but its a good sanity check
-        # and fixes the type checker since we are relying on globals
-        if not channel_async:
-            raise RuntimeError("AsyncRabbitMQ connection is not established")
-        return channel_async
-    raise RuntimeError("AsyncRabbitMQ connection is not established")
+    def disconnect(self) -> None:
+        if self._channel:
+            if self._channel.is_open:
+                self._channel.close()
+            self._channel = None
+        if self._connection:
+            if self._connection.is_open:
+                self._connection.close()
+            self._connection = None
 
+    def declare_infrastructure(self) -> None:
+        """Declare exchanges and queues for this service"""
+        if not self.is_ready:
+            self.connect()
 
-async def declare_queue_async(
-    queue_name: str, durable: bool = True, auto_delete: bool = False
-) -> AbstractQueue:
-    ch = await get_channel_async()
-    return await ch.declare_queue(
-        name=queue_name, durable=durable, auto_delete=auto_delete
-    )
+        if self._channel is None:
+            raise RuntimeError("Channel should be established after connect")
 
+        # Declare exchanges
+        for exchange in self.config.exchanges:
+            self._channel.exchange_declare(
+                exchange=exchange.name,
+                exchange_type=exchange.type.value,
+                durable=exchange.durable,
+                auto_delete=exchange.auto_delete,
+            )
 
-async def publish_message_async(
-    queue_name: str, message: str, persistent: bool = True
-) -> None:
-    ch = await get_channel_async()
-    await ch.default_exchange.publish(
-        aio_pika.Message(
+        # Declare queues and bind them to exchanges
+        for queue in self.config.queues:
+            self._channel.queue_declare(
+                queue=queue.name,
+                durable=queue.durable,
+                auto_delete=queue.auto_delete,
+                arguments=queue.arguments,
+            )
+            if queue.exchange:
+                self._channel.queue_bind(
+                    queue=queue.name,
+                    exchange=queue.exchange.name,
+                    routing_key=queue.routing_key or queue.name,
+                )
+
+    def publish_message(
+        self,
+        routing_key: str,
+        message: str,
+        exchange: Optional[Exchange] = None,
+        properties: Optional[BasicProperties] = None,
+        mandatory: bool = True,
+    ) -> None:
+        if not self.is_ready:
+            self.connect()
+
+        if self._channel is None:
+            raise RuntimeError("Channel should be established after connect")
+
+        self._channel.basic_publish(
+            exchange=exchange.name if exchange else "",
+            routing_key=routing_key,
             body=message.encode(),
-            delivery_mode=(
-                aio_pika.DeliveryMode.PERSISTENT
-                if persistent
-                else aio_pika.DeliveryMode.NOT_PERSISTENT
+            properties=properties or BasicProperties(delivery_mode=2),
+            mandatory=mandatory,
+        )
+
+
+class AsyncRabbitMQ(RabbitMQBase):
+    """Asynchronous RabbitMQ client"""
+
+    @property
+    def is_connected(self) -> bool:
+        return bool(self._connection and not self._connection.is_closed)
+
+    @property
+    def is_ready(self) -> bool:
+        return bool(self.is_connected and self._channel and not self._channel.is_closed)
+
+    @conn_retry("AsyncRabbitMQ", "Acquiring async connection")
+    async def connect(self) -> None:
+        if self.is_connected:
+            return
+
+        self._connection = await aio_pika.connect_robust(
+            host=self.host,
+            port=self.port,
+            login=self.username,
+            password=self.password,
+            virtualhost=self.config.vhost,
+        )
+        self._channel = await self._connection.channel()
+        await self._channel.set_qos(prefetch_count=1)
+
+        await self.declare_infrastructure()
+
+    async def disconnect(self) -> None:
+        if self._channel:
+            await self._channel.close()
+            self._channel = None
+        if self._connection:
+            await self._connection.close()
+            self._connection = None
+
+    async def declare_infrastructure(self):
+        """Declare exchanges and queues for this service"""
+        if not self.is_ready:
+            await self.connect()
+
+        if self._channel is None:
+            raise RuntimeError("Channel should be established after connect")
+
+        # Declare exchanges
+        for exchange in self.config.exchanges:
+            await self._channel.declare_exchange(
+                name=exchange.name,
+                type=exchange.type.value,
+                durable=exchange.durable,
+                auto_delete=exchange.auto_delete,
+            )
+
+        # Declare queues and bind them to exchanges
+        for queue in self.config.queues:
+            queue_obj = await self._channel.declare_queue(
+                name=queue.name,
+                durable=queue.durable,
+                auto_delete=queue.auto_delete,
+                arguments=queue.arguments,
+            )
+            if queue.exchange:
+                exchange = await self._channel.get_exchange(queue.exchange.name)
+                await queue_obj.bind(
+                    exchange, routing_key=queue.routing_key or queue.name
+                )
+
+    async def publish_message(
+        self,
+        routing_key: str,
+        message: str,
+        exchange: Optional[Exchange] = None,
+        persistent: bool = True,
+    ) -> None:
+        if not self.is_ready:
+            await self.connect()
+
+        if self._channel is None:
+            raise RuntimeError("Channel should be established after connect")
+
+        if exchange:
+            exchange_obj = await self._channel.get_exchange(exchange.name)
+        else:
+            exchange_obj = self._channel.default_exchange
+
+        await exchange_obj.publish(
+            aio_pika.Message(
+                body=message.encode(),
+                delivery_mode=(
+                    aio_pika.DeliveryMode.PERSISTENT
+                    if persistent
+                    else aio_pika.DeliveryMode.NOT_PERSISTENT
+                ),
             ),
-        ),
-        routing_key=queue_name,
-    )
-
-
-async def consume_messages_async(
-    queue_name: str,
-    callback: Callable[[AbstractIncomingMessage], Any],
-    auto_ack: bool = False,
-) -> None:
-    queue = await declare_queue_async(queue_name)
-
-    async with queue.iterator() as queue_iter:
-        async for message in queue_iter:
-            try:
-                if auto_ack:
-                    await message.ack()
-                await callback(message)
-                if not auto_ack:
-                    await message.ack()
-            except Exception as e:
-                logger.exception(f"Error processing message: {e}")
-                await message.reject(requeue=True)
-
-
-# Example usage of callback functions
-def sync_message_handler(
-    channel: BlockingChannel,
-    method: Basic.Deliver,
-    properties: BasicProperties,
-    body: str,
-) -> None:
-    logger.info(f"Received message: {body}")
-    channel.basic_ack(delivery_tag=method.delivery_tag)
-
-
-async def async_message_handler(message: AbstractIncomingMessage) -> None:
-    async with message.process():
-        logger.info(f"Received message: {message.body.decode()}")
+            routing_key=routing_key,
+        )
