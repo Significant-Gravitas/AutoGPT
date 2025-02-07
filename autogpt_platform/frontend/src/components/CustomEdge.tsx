@@ -40,7 +40,6 @@ export function CustomEdge({
   targetY,
   markerEnd,
 }: EdgeProps<CustomEdge>) {
-  const [isHovered, setIsHovered] = useState(false);
   const [beads, setBeads] = useState<{
     beads: Bead[];
     created: number;
@@ -182,13 +181,7 @@ export function CustomEdge({
       <BaseEdge
         path={svgPath}
         markerEnd={markerEnd}
-        style={{
-          strokeWidth: (isHovered ? 3 : 2) + (data?.isStatic ? 0.5 : 0),
-          stroke:
-            (data?.edgeColor ?? "#555555") +
-            (selected || isHovered ? "" : "80"),
-          strokeDasharray: data?.isStatic ? "5 3" : "0",
-        }}
+        className={`transition-all duration-200 ${data?.isStatic ? "[stroke-dasharray:5_3]" : "[stroke-dasharray:0]"} [stroke-width:${data?.isStatic ? 2.5 : 2}px] hover:[stroke-width:${data?.isStatic ? 3.5 : 3}px] ${selected ? `[stroke:${data?.edgeColor ?? "#555555"}]` : `[stroke:${data?.edgeColor ?? "#555555"}80] hover:[stroke:${data?.edgeColor ?? "#555555"}]`}`}
       />
       <path
         d={svgPath}
@@ -196,8 +189,6 @@ export function CustomEdge({
         strokeOpacity={0}
         strokeWidth={20}
         className="react-flow__edge-interaction"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       />
       <EdgeLabelRenderer>
         <div
@@ -209,9 +200,7 @@ export function CustomEdge({
           className="edge-label-renderer"
         >
           <button
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            className={`edge-label-button ${isHovered ? "visible" : ""}`}
+            className="edge-label-button opacity-0 transition-opacity duration-200 hover:opacity-100"
             onClick={onEdgeRemoveClick}
           >
             <X className="size-4" />
