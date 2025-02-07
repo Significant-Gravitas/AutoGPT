@@ -1,12 +1,8 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { TransactionHistory } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadStripe } from "@stripe/stripe-js";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
-
-const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
-);
 
 export default function useCredits(): {
   credits: number | null;
@@ -24,6 +20,7 @@ export default function useCredits(): {
     amount: number;
     threshold: number;
   } | null>(null);
+  const [stripe, setStripe] = useState<Stripe | null>(null);
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const router = useRouter();
@@ -36,6 +33,20 @@ export default function useCredits(): {
   useEffect(() => {
     fetchCredits();
   }, [fetchCredits]);
+
+  useEffect(() => {
+    const fetchStripe = async () => {
+      if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) {
+        console.debug("Stripe publishable key is not set.");
+        return;
+      }
+      const stripe = await loadStripe(
+        process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      );
+      setStripe(stripe);
+    };
+    fetchStripe();
+  }, []);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
     const response = await api.getAutoTopUpConfig();
@@ -56,16 +67,18 @@ export default function useCredits(): {
 
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
-      const stripe = await stripePromise;
-
       if (!stripe) {
+        console.error(
+          "Trying to top-up failed because Stripe is not loaded." +
+            "Did you set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?",
+        );
         return;
       }
 
       const response = await api.requestTopUp(credit_amount);
       router.push(response.checkout_url);
     },
-    [api, router],
+    [api, router, stripe],
   );
 
   const [transactionHistory, setTransactionHistory] =
