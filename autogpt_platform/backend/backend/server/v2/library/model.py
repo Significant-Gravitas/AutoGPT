@@ -179,3 +179,16 @@ class LibraryAgentFilter(str, enum.Enum):
     UPDATED_AT = "updatedAt"
     IS_FAVOURITE = "isFavourite"
     IS_CREATED_BY_USER = "isCreatedByUser"
+
+
+class LibraryAgentUpdateRequest(pydantic.BaseModel):
+    """Schema for updating a library agent via PUT."""
+
+    auto_update_version: bool = pydantic.Field(
+        False, description="Auto-update the agent version"
+    )
+    is_favorite: bool = pydantic.Field(
+        False, description="Mark the agent as a favorite"
+    )
+    is_archived: bool = pydantic.Field(False, description="Archive the agent")
+    is_deleted: bool = pydantic.Field(False, description="Delete the agent")

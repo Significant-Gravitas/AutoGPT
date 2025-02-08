@@ -1,9 +1,10 @@
 import logging
-import typing
+from typing import Optional
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
-import fastapi
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
 import backend.server.model
 import backend.server.v2.library.db
@@ -12,157 +13,181 @@ import backend.server.v2.store.exceptions
 
 logger = logging.getLogger(__name__)
 
-router = fastapi.APIRouter()
+router = APIRouter(
+    prefix="/agents",
+    tags=["library", "private"],
+    dependencies=[Depends(autogpt_libs.auth.middleware.auth_middleware)],
+)
 
 
 @router.get(
-    "/agents",
-    tags=["library", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    "",
+    response_model=backend.server.v2.library.model.LibraryAgentResponse,
+    responses={
+        500: {"description": "Server error", "content": {"application/json": {}}},
+    },
 )
 async def get_library_agents(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
-    search_term: str | None = fastapi.Query(
+    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
-    sort_by: backend.server.v2.library.model.LibraryAgentFilter | None = fastapi.Query(
+    sort_by: backend.server.v2.library.model.LibraryAgentFilter = Query(
         backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
         description="Sort results by criteria",
     ),
-    page: str = fastapi.Query("1", description="Page number to retrieve"),
-    page_size: str = fastapi.Query("50", description="Number of agents per page"),
+    page: int = Query(
+        1,
+        ge=1,
+        description="Page number to retrieve (must be >= 1)",
+    ),
+    page_size: int = Query(
+        50,
+        ge=1,
+        description="Number of agents per page (must be >= 1)",
+    ),
 ) -> backend.server.v2.library.model.LibraryAgentResponse:
     """
-    Get all agents in the user's library, including both created and saved agents.
+    Get all agents in the user's library (both created and saved).
 
     Args:
-        user_id (str): ID of the authenticated user
-        search (str, optional): Search term to filter agents by name
+        user_id: ID of the authenticated user.
+        search_term: Optional search term to filter agents by name.
+        sort_by: Sorting field/criteria.
+        page: Page number to retrieve.
+        page_size: Number of agents per page.
+
+    Returns:
+        A LibraryAgentResponse containing agents and pagination metadata.
+
+    Raises:
+        HTTPException: If a server/database error occurs.
     """
     try:
-
-        page_num = int(page) if int(page) > 0 else 1
-        page_size_num = int(page_size) if int(page_size) > 0 else 50
-
+        # Fetch agents from database with pagination and sorting
         return await backend.server.v2.library.db.get_library_agents(
-            user_id, search_term, sort_by, page_num, page_size_num
+            user_id=user_id,
+            search_term=search_term,
+            sort_by=sort_by,
+            page=page,
+            page_size=page_size,
         )
-    except Exception as e:
-        logger.exception("Exception occurred whilst getting library agents: %s", e)
-        raise fastapi.HTTPException(
-            status_code=500, detail="Failed to get library agents"
-        )
+    except Exception as exc:
+        logger.exception("Exception occurred while getting library agents: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get library agents",
+        ) from exc
 
 
 @router.post(
-    "/agents/{store_listing_version_id}",
-    tags=["library", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
-    status_code=201,
+    "/{store_listing_version_id}",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Agent added successfully"},
+        404: {"description": "Store listing version not found"},
+        500: {"description": "Server error"},
+    },
 )
 async def add_agent_to_library(
     store_listing_version_id: str,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
-) -> fastapi.Response:
+    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+) -> JSONResponse:
     """
     Add an agent from the store to the user's library.
 
     Args:
-        store_listing_version_id (str): ID of the store listing version to add
-        user_id (str): ID of the authenticated user
+        store_listing_version_id: ID of the store listing version to add.
+        user_id: ID of the authenticated user.
 
     Returns:
-        fastapi.Response: 201 status code on success
+        201 (Created) on success.
 
     Raises:
-        HTTPException: If there is an error adding the agent to the library
+        HTTPException(404): If the listing version is not found.
+        HTTPException(500): If a server/database error occurs.
     """
     try:
-        # Use the database function to add the agent to the library
         await backend.server.v2.library.db.add_store_agent_to_library(
-            store_listing_version_id, user_id
+            store_listing_version_id=store_listing_version_id,
+            user_id=user_id,
         )
-        return fastapi.Response(status_code=201)
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"message": "Agent added to library successfully"},
+        )
 
-    except backend.server.v2.store.exceptions.AgentNotFoundError:
-        raise fastapi.HTTPException(
-            status_code=404,
+    except backend.server.v2.store.exceptions.AgentNotFoundError as exc:
+        logger.exception("Agent not found: %s", store_listing_version_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Store listing version {store_listing_version_id} not found",
-        )
-    except backend.server.v2.store.exceptions.DatabaseError as e:
-        logger.exception(
-            "Database error occurred whilst adding agent to library: %s", e
-        )
-        raise fastapi.HTTPException(
-            status_code=500, detail="Failed to add agent to library"
-        )
-    except Exception as e:
-        logger.exception(
-            "Unexpected exception occurred whilst adding agent to library: %s", e
-        )
-        raise fastapi.HTTPException(
-            status_code=500, detail="Failed to add agent to library"
-        )
+        ) from exc
+
+    except backend.server.v2.store.exceptions.DatabaseError as exc:
+        logger.exception("Database error while adding agent: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add agent to library",
+        ) from exc
+
+    except Exception as exc:
+        logger.exception("Unexpected error while adding agent: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add agent to library",
+        ) from exc
 
 
 @router.put(
-    "/agents/{library_agent_id}",
-    tags=["library", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
-    status_code=204,
+    "/{library_agent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Agent updated successfully"},
+        500: {"description": "Server error"},
+    },
 )
 async def update_library_agent(
     library_agent_id: str,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
-    auto_update_version: bool = False,
-    is_favorite: bool = False,
-    is_archived: bool = False,
-    is_deleted: bool = False,
-) -> fastapi.Response:
+    payload: backend.server.v2.library.model.LibraryAgentUpdateRequest,
+    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+) -> JSONResponse:
     """
     Update the library agent with the given fields.
 
     Args:
-        library_agent_id (str): ID of the library agent to update
-        user_id (str): ID of the authenticated user
-        auto_update_version (bool): Whether to auto-update the agent version
-        is_favorite (bool): Whether the agent is marked as favorite
-        is_archived (bool): Whether the agent is archived
-        is_deleted (bool): Whether the agent is deleted
+        library_agent_id: ID of the library agent to update.
+        payload: Fields to update (auto_update_version, is_favorite, etc.).
+        user_id: ID of the authenticated user.
 
     Returns:
-        fastapi.Response: 204 status code on success
+        204 (No Content) on success.
 
     Raises:
-        HTTPException: If there is an error updating the library agent
+        HTTPException(500): If a server/database error occurs.
     """
     try:
-        # Use the database function to update the library agent
         await backend.server.v2.library.db.update_library_agent(
-            library_agent_id,
-            user_id,
-            auto_update_version,
-            is_favorite,
-            is_archived,
-            is_deleted,
+            library_agent_id=library_agent_id,
+            user_id=user_id,
+            auto_update_version=payload.auto_update_version,
+            is_favorite=payload.is_favorite,
+            is_archived=payload.is_archived,
+            is_deleted=payload.is_deleted,
         )
-        return fastapi.Response(status_code=204)
-
-    except backend.server.v2.store.exceptions.DatabaseError as e:
-        logger.exception("Database error occurred whilst updating library agent: %s", e)
-        raise fastapi.HTTPException(
-            status_code=500, detail="Failed to update library agent"
+        return JSONResponse(
+            status_code=status.HTTP_204_NO_CONTENT,
+            content={"message": "Agent updated successfully"},
         )
-    except Exception as e:
-        logger.exception(
-            "Unexpected exception occurred whilst updating library agent: %s", e
-        )
-        raise fastapi.HTTPException(
-            status_code=500, detail="Failed to update library agent"
-        )
+    except backend.server.v2.store.exceptions.DatabaseError as exc:
+        logger.exception("Database error while updating library agent: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update library agent",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error while updating library agent: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update library agent",
+        ) from exc

@@ -276,7 +276,7 @@ async def update_library_agent(
 
 async def add_store_agent_to_library(
     store_listing_version_id: str, user_id: str
-) -> None:
+) -> prisma.models.LibraryAgent | None:
     """
     Finds the agent from the store listing version and adds it to the user's library (LibraryAgent table)
     if they don't already have it
@@ -331,7 +331,7 @@ async def add_store_agent_to_library(
             return
 
         # Create LibraryAgent entry
-        await prisma.models.LibraryAgent.prisma().create(
+        updated_agent = await prisma.models.LibraryAgent.prisma().create(
             data=prisma.types.LibraryAgentCreateInput(
                 userId=user_id,
                 agentId=agent.id,
@@ -340,7 +340,7 @@ async def add_store_agent_to_library(
             )
         )
         logger.debug("Added agent %s to library for user %s", agent.id, user_id)
-
+        return updated_agent
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise
     except prisma.errors.PrismaError as e:
