@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Generic, Literal, Optional, TypeVar, Union, overload
+from typing import Annotated, Generic, Optional, TypeVar, Union
 
 from pydantic import BaseModel, Field
 
@@ -106,71 +106,6 @@ class NotificationEvent(BaseModel, Generic[T_co]):
     @property
     def template(self) -> str:
         return self.type.template
-
-
-# Type-safe constructors
-@overload
-def create_notification(
-    user_id: str, type: Literal[NotificationType.AGENT_RUN], data: AgentRunData
-) -> NotificationEvent[AgentRunData]: ...
-
-
-@overload
-def create_notification(
-    user_id: str, type: Literal[NotificationType.ZERO_BALANCE], data: ZeroBalanceData
-) -> NotificationEvent[ZeroBalanceData]: ...
-
-
-@overload
-def create_notification(
-    user_id: str, type: Literal[NotificationType.LOW_BALANCE], data: LowBalanceData
-) -> NotificationEvent[LowBalanceData]: ...
-
-
-@overload
-def create_notification(
-    user_id: str,
-    type: Literal[NotificationType.BLOCK_EXECUTION_FAILED],
-    data: BlockExecutionFailedData,
-) -> NotificationEvent[BlockExecutionFailedData]: ...
-
-
-@overload
-def create_notification(
-    user_id: str,
-    type: Literal[NotificationType.CONTINUOUS_AGENT_ERROR],
-    data: ContinuousAgentErrorData,
-) -> NotificationEvent[ContinuousAgentErrorData]: ...
-
-
-@overload
-def create_notification(
-    user_id: str,
-    type: Literal[NotificationType.DAILY_SUMMARY],
-    data: DailySummaryData,
-) -> NotificationEvent[DailySummaryData]: ...
-
-
-@overload
-def create_notification(
-    user_id: str,
-    type: Literal[NotificationType.WEEKLY_SUMMARY],
-    data: WeeklySummaryData,
-) -> NotificationEvent[WeeklySummaryData]: ...
-
-
-@overload
-def create_notification(
-    user_id: str,
-    type: Literal[NotificationType.MONTHLY_SUMMARY],
-    data: MonthlySummaryData,
-) -> NotificationEvent[MonthlySummaryData]: ...
-
-
-def create_notification(
-    user_id: str, type: NotificationType, data: BaseNotificationData
-) -> NotificationEvent[BaseNotificationData]:
-    return NotificationEvent(user_id=user_id, type=type, data=data)
 
 
 class NotificationBatch(BaseModel):

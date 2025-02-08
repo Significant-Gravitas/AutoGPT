@@ -2,16 +2,19 @@
 import logging
 from collections import defaultdict
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from autogpt_libs.utils.cache import thread_cached
 
-from backend.executor.database import DatabaseManager
+if TYPE_CHECKING:
+    from backend.executor.database import DatabaseManager
+
 from backend.notifications.models import (
     DailySummaryData,
     MonthlySummaryData,
+    NotificationEvent,
     NotificationType,
     WeeklySummaryData,
-    create_notification,
 )
 from backend.util.service import get_service_client
 
@@ -117,7 +120,7 @@ class SummaryManager:
             if summary_type == "daily":
                 data = DailySummaryData(date=start_time, **stats)
                 type_ = NotificationType.DAILY_SUMMARY
-                notification = create_notification(
+                notification = NotificationEvent(
                     user_id=user_id,
                     type=type_,
                     data=data,
@@ -131,7 +134,7 @@ class SummaryManager:
                     **stats,
                 )
                 type_ = NotificationType.WEEKLY_SUMMARY
-                notification = create_notification(
+                notification = NotificationEvent(
                     user_id=user_id,
                     type=type_,
                     data=data,
@@ -141,7 +144,7 @@ class SummaryManager:
                     month=start_time.month, year=start_time.year, **stats
                 )
                 type_ = NotificationType.MONTHLY_SUMMARY
-                notification = create_notification(
+                notification = NotificationEvent(
                     user_id=user_id,
                     type=type_,
                     data=data,
