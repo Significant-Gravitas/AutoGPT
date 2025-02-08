@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, cast
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
@@ -152,6 +152,14 @@ async def get_active_user_ids_in_timerange(start_time: str, end_time: str) -> li
         },
     )
     return [user.id for user in users]
+
+
+async def get_active_users_ids() -> list[str]:
+    user_ids = await get_active_user_ids_in_timerange(
+        (datetime.now() - timedelta(days=30)).isoformat(),
+        datetime.now().isoformat(),
+    )
+    return user_ids
 
 
 async def get_user_notification_preference(user_id: str) -> NotificationPreference:

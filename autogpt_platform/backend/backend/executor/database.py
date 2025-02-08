@@ -20,6 +20,7 @@ from backend.data.execution import (
 from backend.data.graph import get_graph, get_node
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_active_users_ids,
     get_user_by_id,
     get_user_integrations,
     get_user_metadata,
@@ -101,3 +102,4 @@ class DatabaseManager(AppService):
     get_user_notification_preference = exposed_run_and_wait(
         get_user_notification_preference
     )
+    get_active_users_ids = exposed_run_and_wait(get_active_users_ids)
