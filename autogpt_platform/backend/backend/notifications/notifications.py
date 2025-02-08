@@ -85,7 +85,6 @@ def create_notification_config() -> RabbitMQConfig:
     ]
 
     return RabbitMQConfig(
-        vhost="/notifications",
         exchanges=[
             notification_exchange,
             batch_exchange,
