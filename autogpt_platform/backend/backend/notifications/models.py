@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 from backend.data.model import BatchingStrategy, NotificationType
 
-
 T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 

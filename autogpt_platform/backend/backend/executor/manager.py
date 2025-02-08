@@ -12,11 +12,7 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
-from backend.notifications.models import (
-    AgentRunData,
-    NotificationType,
-    create_notification,
-)
+from backend.notifications.models import AgentRunData, create_notification
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager

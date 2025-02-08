@@ -216,17 +216,17 @@ class NotificationManager(AppService):
                 # users = [db.get_user(user_id)]
                 users = []
             else:
-                users = db.get_active_users_in_timerange(
+                users = db.get_active_user_ids_in_timerange(
                     start_time.isoformat(), end_time.isoformat()
                 )
 
-            for user in users:
+            for user_id in users:
                 await self.summary_manager.generate_summary(
-                    summary_type, user.id, start_time, end_time, self
+                    summary_type, user_id, start_time, end_time, self
                 )
                 # Schedule next summary if this wasn't manually triggered
                 if not user_id and not summary_type:
-                    await self._schedule_next_summary(summary_type, user.id)
+                    await self._schedule_next_summary(summary_type, user_id)
 
     async def _process_summary_trigger(self, message: str):
         """Process a summary trigger message"""
@@ -300,9 +300,9 @@ class NotificationManager(AppService):
             summary_queues.append(queue)
 
         # Initial summary scheduling
-        for user in get_db_client().get_active_users():
+        for user_id in get_db_client().get_active_users_ids():
             for summary_type in ["daily", "weekly", "monthly"]:
-                self.run_and_wait(self._schedule_next_summary(summary_type, user.id))
+                self.run_and_wait(self._schedule_next_summary(summary_type, user_id))
 
         while self.running:
             try:
