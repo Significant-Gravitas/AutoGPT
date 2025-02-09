@@ -1,7 +1,7 @@
 "use client";
 import { Upload, X } from "lucide-react";
 import { Button } from "./Button";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion, useAnimation } from "framer-motion";
 import { cn, removeCredentials } from "@/lib/utils";
 import {
@@ -78,7 +78,6 @@ function updateBlockIDs(graph: Graph) {
 }
 
 export const LibraryUploadAgent = () => {
-  const [scrolled, setScrolled] = useState(false);
   const [isDroped, setisDroped] = useState(false);
   const controls = useAnimation();
   const api = useBackendAPI();
@@ -91,19 +90,6 @@ export const LibraryUploadAgent = () => {
       agentDescription: "",
     },
   });
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 30) {
-        setScrolled(true);
-      } else {
-        setScrolled(false);
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     if (!agentObject) {
@@ -173,29 +159,12 @@ export const LibraryUploadAgent = () => {
         <Button
           variant="library_primary"
           size="library"
-          className={cn(
-            "max-w-[177px] transition-all duration-200 ease-in-out",
-            scrolled ? "w-fit max-w-fit" : "w-fit sm:w-[177px]",
-          )}
+          className="w-fit sm:w-[177px]"
         >
-          <motion.div animate={controls}>
-            <Upload
-              className={cn(
-                "h-5 w-5 transition-all duration-200 ease-in-out",
-                !scrolled && "sm:mr-2",
-              )}
-            />
-          </motion.div>
-          {!scrolled && (
-            <motion.div
-              initial={{ opacity: 1 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="hidden items-center transition-opacity duration-300 sm:inline-flex"
-            >
-              Upload an agent
-            </motion.div>
-          )}
+          <Upload className="h-5 w-5 sm:mr-2" />
+          <span className="hidden items-center sm:inline-flex">
+            Upload an agent
+          </span>
         </Button>
       </DialogTrigger>
       <DialogContent>
