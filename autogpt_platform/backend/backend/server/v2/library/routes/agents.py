@@ -42,7 +42,7 @@ async def get_library_agents(
         description="Page number to retrieve (must be >= 1)",
     ),
     page_size: int = Query(
-        50,
+        15,
         ge=1,
         description="Number of agents per page (must be >= 1)",
     ),

@@ -21,8 +21,9 @@ export type AgentStatus =
 const LibraryAgentListContainer: React.FC<
   LibraryAgentListContainerProps
 > = ({}) => {
-  const [nextToken, setNextToken] = useState<number>(1);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const api = useBackendAPI();
   const { agents, setAgents, setAgentLoading, agentLoading } =
@@ -32,14 +33,18 @@ const LibraryAgentListContainer: React.FC<
     async (page: number) => {
       try {
         const response = await api.listLibraryAgents(
-          page === 0 ? {} : { page: page },
+          page === 1 ? {} : { page: page },
         );
-        if (page) {
+        if (page > 1) {
           setAgents((prevAgent) => [...prevAgent, ...response.agents]);
         } else {
           setAgents(response.agents);
         }
-        setNextToken(page + 1);
+        console.log(response);
+        setHasMore(
+          response.pagination.current_page * response.pagination.page_size <
+            response.pagination.total_items,
+        );
       } finally {
         setAgentLoading(false);
         setLoadingMore(false);
@@ -49,12 +54,12 @@ const LibraryAgentListContainer: React.FC<
   );
 
   useEffect(() => {
-    fetchAgents(0);
+    fetchAgents(1);
   }, [fetchAgents]);
 
   const handleInfiniteScroll = useCallback(
     (scrollY: number) => {
-      if (!nextToken || loadingMore) return;
+      if (!hasMore || loadingMore) return;
 
       const { scrollHeight, clientHeight } = document.documentElement;
       const SCROLL_THRESHOLD = 20;
@@ -62,10 +67,12 @@ const LibraryAgentListContainer: React.FC<
 
       if (scrollY + clientHeight >= scrollHeight - SCROLL_THRESHOLD) {
         setLoadingMore(true);
-        setTimeout(() => fetchAgents(nextToken), FETCH_DELAY);
+        const nextPage = currentPage + 1;
+        setCurrentPage(nextPage);
+        setTimeout(() => fetchAgents(nextPage), FETCH_DELAY);
       }
     },
-    [nextToken, loadingMore, fetchAgents],
+    [currentPage, hasMore, loadingMore, fetchAgents],
   );
 
   useThreshold(handleInfiniteScroll, 50);
@@ -103,8 +110,8 @@ const LibraryAgentListContainer: React.FC<
               />
             ))}
           </div>
-          {loadingMore && (
-            <div className="flex items-center justify-center py-4">
+          {loadingMore && hasMore && (
+            <div className="flex items-center justify-center py-4 pt-8">
               <LoadingSpinner />
             </div>
           )}

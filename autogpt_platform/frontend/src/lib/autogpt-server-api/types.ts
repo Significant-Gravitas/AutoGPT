@@ -624,9 +624,10 @@ export interface LibraryAgent {
 export interface LibraryAgentResponse {
   agents: LibraryAgent[];
   pagination: {
-    total: number;
-    page: number;
-    size: number;
+    current_page: number;
+    page_size: number;
+    total_items: number;
+    total_pages: number;
   };
 }
 
