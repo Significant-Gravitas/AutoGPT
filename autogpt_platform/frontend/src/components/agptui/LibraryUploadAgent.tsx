@@ -27,6 +27,7 @@ import { FileUploader } from "react-drag-drop-files";
 import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast";
 
 const fileTypes = ["JSON"];
 
@@ -79,8 +80,11 @@ function updateBlockIDs(graph: Graph) {
 
 export const LibraryUploadAgent = () => {
   const [isDroped, setisDroped] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const controls = useAnimation();
   const api = useBackendAPI();
+  const { toast } = useToast();
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -91,11 +95,14 @@ export const LibraryUploadAgent = () => {
     },
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (!agentObject) {
       form.setError("root", { message: "No Agent object to save" });
       return;
     }
+
+    setIsLoading(true);
+
     const payload: GraphCreatable = {
       ...agentObject,
       name: values.agentName,
@@ -103,17 +110,23 @@ export const LibraryUploadAgent = () => {
       is_active: true,
     };
 
-    api
-      .createGraph(payload)
-      .then((response) => {
-        const qID = "flowID";
-        window.location.href = `/build?${qID}=${response.id}`;
-      })
-      .catch((error) => {
-        form.setError("root", {
-          message: `Could not create agent: ${error}`,
-        });
+    try {
+      const response = await api.createGraph(payload);
+      setIsOpen(false);
+      toast({
+        title: "Success",
+        description: "Agent uploaded successfully",
+        variant: "default",
       });
+      const qID = "flowID";
+      window.location.href = `/build?${qID}=${response.id}`;
+    } catch (error) {
+      form.setError("root", {
+        message: `Could not create agent: ${error}`,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (file: File) => {
@@ -154,7 +167,7 @@ export const LibraryUploadAgent = () => {
   };
 
   return (
-    <Dialog>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button
           variant="library_primary"
@@ -209,7 +222,7 @@ export const LibraryUploadAgent = () => {
                 <FormItem className="rounded-xl border-2 border-dashed border-neutral-300 hover:border-neutral-600">
                   <FormControl>
                     {field.value ? (
-                      <div className="flex rounded-[10px] border p-2 font-sans text-sm font-medium text-[#525252] outline-none">
+                      <div className="relative flex rounded-[10px] border p-2 font-sans text-sm font-medium text-[#525252] outline-none">
                         <span className="line-clamp-1">{field.value.name}</span>
                         <Button
                           onClick={() =>
@@ -280,9 +293,16 @@ export const LibraryUploadAgent = () => {
               variant="library_primary"
               size="library"
               className="mt-2 self-end"
-              disabled={!agentObject}
+              disabled={!agentObject || isLoading}
             >
-              Upload Agent
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-t-2 border-white"></div>
+                  <span>Uploading...</span>
+                </div>
+              ) : (
+                "Upload Agent"
+              )}
             </Button>
           </form>
         </Form>
