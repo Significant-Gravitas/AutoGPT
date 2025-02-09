@@ -16,7 +16,7 @@ services:
       - app-network-test
   redis-test:
     image: redis:latest
-    command: redis-server --requirepass password   ### ADD REDIS_PASSWORD=yourpassword TO YOUR .env file and replace password ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     ports:
       - "6379:6379"
     networks:

@@ -62,7 +62,7 @@ services:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?connect_timeout=60&schema=platform
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=password ### ADD REDIS_PASSWORD=yourpassword TO YOUR .env file and replace password with ${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - EXECUTIONSCHEDULER_HOST=rest_server
@@ -101,7 +101,7 @@ services:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?connect_timeout=60&schema=platform
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=password ### ADD REDIS_PASSWORD=yourpassword TO YOUR .env file and replace password with ${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
@@ -134,7 +134,7 @@ services:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?connect_timeout=60&schema=platform
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=password ### ADD REDIS_PASSWORD=yourpassword TO YOUR .env file and replace password with ${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - BACKEND_CORS_ALLOW_ORIGINS=["${SITE_URL}"]
