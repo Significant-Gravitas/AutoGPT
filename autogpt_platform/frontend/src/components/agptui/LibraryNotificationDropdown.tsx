@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./Button";
 import { BellIcon, X } from "lucide-react";
-import { motion, useAnimationControls } from "framer-motion";
+import { motion, useAnimationControls, useScroll } from "framer-motion";
 import { useState, useEffect, useMemo } from "react";
 import LibraryNotificationCard, {
   NotificationCardData,
@@ -23,6 +23,15 @@ const LibraryNotificationDropdown = () => {
   const [notifications, setNotifications] = useState<
     NotificationCardData[] | null
   >(null);
+  const { scrollY } = useScroll();
+  const [scrollPosition, setScrollPosition] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = scrollY.onChange((currentY) => {
+      setScrollPosition(currentY);
+    });
+    return () => unsubscribe();
+  }, [scrollY]);
 
   const initialNotificationData = useMemo(
     () =>
@@ -74,25 +83,33 @@ const LibraryNotificationDropdown = () => {
           size="library"
           onMouseEnter={handleHoverStart}
           onMouseLeave={handleHoverStart}
-          className="z-50 w-fit max-w-[161px] transition-all duration-200 ease-in-out sm:w-[161px]"
+          className={cn(
+            "z-50 max-w-[161px] transition-all duration-200 ease-in-out",
+            scrollY.get() > 30 ? "w-fit max-w-fit" : "w-fit sm:w-[161px]",
+          )}
         >
           <motion.div animate={controls}>
             <BellIcon
-              className="h-5 w-5 transition-all duration-200 ease-in-out sm:mr-2"
+              className={cn(
+                "h-5 w-5 transition-all duration-200 ease-in-out",
+                scrollY.get() <= 30 && "sm:mr-2",
+              )}
               strokeWidth={2}
             />
           </motion.div>
-          <motion.div
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="hidden items-center transition-opacity duration-300 sm:inline-flex"
-          >
-            Your updates
-            <span className="ml-2 text-[14px]">
-              {notifications?.length || 0}
-            </span>
-          </motion.div>
+          {scrollY.get() <= 30 && (
+            <motion.div
+              initial={{ opacity: 1 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="hidden items-center transition-opacity duration-300 sm:inline-flex"
+            >
+              Your updates
+              <span className="ml-2 text-[14px]">
+                {notifications?.length || 0}
+              </span>
+            </motion.div>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -129,4 +146,7 @@ const LibraryNotificationDropdown = () => {
   );
 };
 
-export default LibraryNotificationDropdown;
+export default withFeatureFlag(
+  LibraryNotificationDropdown,
+  "library-notifications",
+);
