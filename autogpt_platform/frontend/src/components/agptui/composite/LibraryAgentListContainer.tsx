@@ -31,7 +31,9 @@ const LibraryAgentListContainer: React.FC<
   const fetchAgents = useCallback(
     async (page: number) => {
       try {
-        const response = await api.listLibraryAgents({ page: page });
+        const response = await api.listLibraryAgents(
+          page === 0 ? {} : { page: page },
+        );
         if (page) {
           setAgents((prevAgent) => [...prevAgent, ...response.agents]);
         } else {
