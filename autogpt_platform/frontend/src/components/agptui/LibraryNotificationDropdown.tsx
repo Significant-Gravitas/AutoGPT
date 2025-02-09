@@ -14,8 +14,8 @@ import LibraryNotificationCard, {
   NotificationCardData,
 } from "./LibraryNotificationCard";
 import { cn } from "@/lib/utils";
-import { useFlags } from 'launchdarkly-react-client-sdk'
-import { withFeatureFlag } from '@/components/feature-flag/with-feature-flag'
+import { useFlags } from "launchdarkly-react-client-sdk";
+import { withFeatureFlag } from "@/components/feature-flag/with-feature-flag";
 
 const LibraryNotificationDropdown = () => {
   const controls = useAnimationControls();
@@ -146,4 +146,7 @@ const LibraryNotificationDropdown = () => {
   );
 };
 
-export default withFeatureFlag(LibraryNotificationDropdown, 'library-notification');
+export default withFeatureFlag(
+  LibraryNotificationDropdown,
+  "library-notification",
+);

@@ -1,9 +1,9 @@
-'use client'
+"use client";
 
 import LibraryActionHeader from "@/components/agptui/composite/LibraryActionHeader";
 import LibraryAgentListContainer from "@/components/agptui/composite/LibraryAgentListContainer";
-import { useFlags } from 'launchdarkly-react-client-sdk'
-import { withFeatureFlag } from '@/components/feature-flag/with-feature-flag'
+import { useFlags } from "launchdarkly-react-client-sdk";
+import { withFeatureFlag } from "@/components/feature-flag/with-feature-flag";
 
 /**
  * LibraryPage Component
@@ -22,4 +22,4 @@ const LibraryPage = () => {
   );
 };
 
-export default withFeatureFlag(LibraryPage, 'library');
+export default withFeatureFlag(LibraryPage, "library");

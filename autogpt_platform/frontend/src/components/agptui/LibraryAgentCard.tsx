@@ -8,12 +8,10 @@ export const LibraryAgentCard = ({
   id,
   name,
   can_access_graph,
+  description,
+  creator_image_url,
   image_url,
 }: LibraryAgent) => {
-  const descriptions = `An intelligent agent that helps automate your workflow,
-    saving valuable time and improving productivity with smart automations,
-    and enabling you to focus on what matters most.`;
-
   return (
     <div className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
       <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
@@ -45,7 +43,11 @@ export const LibraryAgentCard = ({
         <div className="absolute bottom-4 left-4">
           <Avatar className="h-16 w-16 border-2 border-white dark:border-gray-800">
             <AvatarImage
-              src="/avatar-placeholder.png"
+              src={
+                creator_image_url
+                  ? creator_image_url
+                  : "/avatar-placeholder.png"
+              }
               alt={`${name} creator avatar`}
             />
             <AvatarFallback>{name.charAt(0)}</AvatarFallback>
@@ -53,13 +55,13 @@ export const LibraryAgentCard = ({
         </div>
       </div>
 
-      <div className="w-full px-4 py-4">
+      <div className="flex w-full flex-1 flex-col px-4 py-4">
         <h3 className="font-poppins mb-2 text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
           {name}
         </h3>
 
-        <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-          {descriptions}
+        <p className="mb-4 flex-1 text-sm text-gray-600 dark:text-gray-400">
+          {description}
         </p>
 
         <div className="items-between mt-4 flex w-full justify-between">
