@@ -75,7 +75,7 @@ const LibraryAgentListContainer: React.FC<
   );
 
   return (
-    <div className="space-y-[10px] p-2">
+    <div className="px-2">
       {agentLoading ? (
         <div className="flex h-[200px] items-center justify-center">
           <LoadingSpinner />
