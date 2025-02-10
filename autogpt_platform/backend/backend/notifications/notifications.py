@@ -7,6 +7,12 @@ from typing import TYPE_CHECKING, Optional
 from aio_pika.exceptions import QueueEmpty
 from autogpt_libs.utils.cache import thread_cached
 from prisma.models import UserNotificationBatch
+import logging
+import time
+from typing import TYPE_CHECKING
+
+from aio_pika.exceptions import QueueEmpty
+from autogpt_libs.utils.cache import thread_cached
 
 from backend.data.notifications import (
     BatchingStrategy,
