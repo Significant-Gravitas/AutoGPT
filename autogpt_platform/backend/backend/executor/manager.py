@@ -12,7 +12,11 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
-from backend.notifications.models import AgentRunData, create_notification
+from backend.data.notifications import (
+    AgentRunData,
+    NotificationEventModel,
+    NotificationType,
+)
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
@@ -223,7 +227,7 @@ def execute_node(
         # Update execution status and spend credits
         update_execution(ExecutionStatus.COMPLETED)
         notification_service.queue_notification(
-            create_notification(
+            NotificationEventModel(
                 user_id=user_id,
                 type=NotificationType.AGENT_RUN,
                 data=AgentRunData(

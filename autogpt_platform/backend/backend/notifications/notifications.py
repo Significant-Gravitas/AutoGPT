@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING, Optional
 
 from autogpt_libs.utils.cache import thread_cached
 
-from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.executor.database import DatabaseManager
-from backend.notifications.models import (
+from backend.data.notifications import (
     BatchingStrategy,
-    NotificationEvent,
     NotificationResult,
 )
+from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.executor.database import DatabaseManager
 from backend.notifications.summary import SummaryManager
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Settings
@@ -110,7 +109,7 @@ class NotificationManager(AppService):
     def get_port(cls) -> int:
         return settings.config.notification_service_port
 
-    def get_routing_key(self, event: NotificationEvent) -> str:
+    def get_routing_key(self, event: NotificationEventModel) -> str:
         """Get the appropriate routing key for an event"""
         if event.strategy == BatchingStrategy.IMMEDIATE:
             return f"notification.immediate.{event.type.value}"
@@ -122,7 +121,7 @@ class NotificationManager(AppService):
             return f"batch.daily.{event.type.value}"
 
     @expose
-    def queue_notification(self, event: NotificationEvent) -> NotificationResult:
+    def queue_notification(self, event: NotificationEventModel) -> NotificationResult:
         """Queue a notification - exposed method for other services to call"""
         try:
             routing_key = self.get_routing_key(event)
@@ -255,7 +254,7 @@ class NotificationManager(AppService):
     async def _process_notification(self, message: str) -> bool:
         """Process a single notification"""
         try:
-            event = NotificationEvent.parse_raw(message)
+            event = NotificationEventModel.parse_raw(message)
             # Implementation of actual notification sending would go here
             logger.info(f"Processing notification: {event}")
             return True

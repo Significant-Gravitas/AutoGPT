@@ -9,10 +9,10 @@ from autogpt_libs.utils.cache import thread_cached
 if TYPE_CHECKING:
     from backend.executor.database import DatabaseManager
 
-from backend.notifications.models import (
+from backend.data.notifications import (
     DailySummaryData,
     MonthlySummaryData,
-    NotificationEvent,
+    NotificationEventModel,
     NotificationType,
     WeeklySummaryData,
 )
@@ -120,7 +120,7 @@ class SummaryManager:
             if summary_type == "daily":
                 data = DailySummaryData(date=start_time, **stats)
                 type_ = NotificationType.DAILY_SUMMARY
-                notification = NotificationEvent(
+                notification = NotificationEventModel(
                     user_id=user_id,
                     type=type_,
                     data=data,
@@ -134,7 +134,7 @@ class SummaryManager:
                     **stats,
                 )
                 type_ = NotificationType.WEEKLY_SUMMARY
-                notification = NotificationEvent(
+                notification = NotificationEventModel(
                     user_id=user_id,
                     type=type_,
                     data=data,
@@ -144,7 +144,7 @@ class SummaryManager:
                     month=start_time.month, year=start_time.year, **stats
                 )
                 type_ = NotificationType.MONTHLY_SUMMARY
-                notification = NotificationEvent(
+                notification = NotificationEventModel(
                     user_id=user_id,
                     type=type_,
                     data=data,
