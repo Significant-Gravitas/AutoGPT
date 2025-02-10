@@ -11,7 +11,6 @@ import {
   CarouselIndicator,
 } from "@/components/ui/carousel";
 import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 import Link from "next/link";
 
