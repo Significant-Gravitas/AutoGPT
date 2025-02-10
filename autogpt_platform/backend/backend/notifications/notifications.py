@@ -4,21 +4,24 @@ import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 
+from aio_pika.exceptions import QueueEmpty
 from autogpt_libs.utils.cache import thread_cached
 from prisma.models import UserNotificationBatch
 
 from backend.data.notifications import (
     BatchingStrategy,
+    NotificationEventDTO,
+    NotificationEventModel,
     NotificationResult,
     get_batch_delay,
-    NotificationEventModel,
+    get_data_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.executor.database import DatabaseManager
+from backend.notifications.email import EmailSender
 from backend.notifications.summary import SummaryManager
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Settings
-from aio_pika.exceptions import QueueEmpty
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
@@ -31,11 +34,12 @@ def create_notification_config() -> RabbitMQConfig:
     """Create RabbitMQ configuration for notifications"""
     notification_exchange = Exchange(name="notifications", type=ExchangeType.TOPIC)
 
-    batch_exchange = Exchange(name="batching", type=ExchangeType.TOPIC)
+    # batch_exchange = Exchange(name="batching", type=ExchangeType.TOPIC)
 
     summary_exchange = Exchange(name="summaries", type=ExchangeType.TOPIC)
 
     dead_letter_exchange = Exchange(name="dead_letter", type=ExchangeType.DIRECT)
+    delay_exchange = Exchange(name="delay", type=ExchangeType.DIRECT)
 
     queues = [
         # Main notification queues
@@ -43,8 +47,10 @@ def create_notification_config() -> RabbitMQConfig:
             name="immediate_notifications",
             exchange=notification_exchange,
             routing_key="notification.immediate.#",
-            # dead_letter_exchange=dead_letter_exchange,
-            # dead_letter_routing_key="failed.immediate",
+            arguments={
+                "x-dead-letter-exchange": dead_letter_exchange.name,
+                "x-dead-letter-routing-key": "failed.immediate",
+            },
         ),
         Queue(
             name="backoff_notifications",
@@ -52,14 +58,28 @@ def create_notification_config() -> RabbitMQConfig:
             routing_key="notification.backoff.#",
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
-                "x-dead-letter-routing_key": "failed.backoff",
+                "x-dead-letter-routing-key": "failed.backoff",
             },
         ),
         # Batch queues for aggregation
-        Queue(
-            name="hourly_batch", exchange=batch_exchange, routing_key="batch.hourly.#"
-        ),
-        Queue(name="daily_batch", exchange=batch_exchange, routing_key="batch.daily.#"),
+        # Queue(
+        #     name="hourly_batch", exchange=batch_exchange, routing_key="batch.hourly.#"
+        # ),
+        # Queue(name="daily_batch", exchange=batch_exchange, routing_key="batch.daily.#"),
+        # Queue(
+        #     name="batch_rechecks_delay",
+        #     exchange=delay_exchange,
+        #     routing_key="batch.*.recheck",
+        #     arguments={
+        #         "x-dead-letter-exchange": batch_exchange.name,
+        #         "x-dead-letter-routing-key": "batch.recheck",
+        #     },
+        # ),
+        # Queue(
+        #     name="batch_rechecks",
+        #     exchange=batch_exchange,
+        #     routing_key="batch.recheck",
+        # ),
         # Summary queues
         Queue(
             name="daily_summary_trigger",
@@ -90,9 +110,10 @@ def create_notification_config() -> RabbitMQConfig:
     return RabbitMQConfig(
         exchanges=[
             notification_exchange,
-            batch_exchange,
+            # batch_exchange,
             summary_exchange,
             dead_letter_exchange,
+            delay_exchange,
         ],
         queues=queues,
     )
@@ -108,6 +129,7 @@ class NotificationManager(AppService):
         self.use_rabbitmq = create_notification_config()
         self.summary_manager = SummaryManager()
         self.running = True
+        self.email_sender = EmailSender()
 
     @classmethod
     def get_port(cls) -> int:
@@ -119,24 +141,35 @@ class NotificationManager(AppService):
             return f"notification.immediate.{event.type.value}"
         elif event.strategy == BatchingStrategy.BACKOFF:
             return f"notification.backoff.{event.type.value}"
-        elif event.strategy == BatchingStrategy.HOURLY:
-            return f"batch.hourly.{event.type.value}"
-        else:  # DAILY
-            return f"batch.daily.{event.type.value}"
+        # elif event.strategy == BatchingStrategy.HOURLY:
+        #     return f"batch.hourly.{event.type.value}"
+        # else:  # DAILY
+        #     return f"batch.daily.{event.type.value}"
+        return f"notification.{event.type.value}"
 
     @expose
-    def queue_notification(self, event: NotificationEventModel) -> NotificationResult:
+    def queue_notification(self, event: NotificationEventDTO) -> NotificationResult:
         """Queue a notification - exposed method for other services to call"""
         try:
-            routing_key = self.get_routing_key(event)
-            message = event.json()
+            logger.info(f"Recieved Request to queue {event=}")
+            # Workaround for not being able to seralize generics over the expose bus
+            parsed_event = NotificationEventModel[
+                get_data_type(event.type)
+            ].model_validate(event.model_dump())
+            routing_key = self.get_routing_key(parsed_event)
+            message = parsed_event.model_dump_json()
+
+            logger.info(f"Recieved Request to queue {message=}")
 
             # Get the appropriate exchange based on strategy
             exchange = None
-            if event.strategy in [BatchingStrategy.HOURLY, BatchingStrategy.DAILY]:
-                exchange = "batching"
-            else:
-                exchange = "notifications"
+            # if parsed_event.strategy in [
+            #     BatchingStrategy.HOURLY,
+            #     BatchingStrategy.DAILY,
+            # ]:
+            #     exchange = "batching"
+            # else:
+            exchange = "notifications"
 
             # Publish to RabbitMQ
             self.run_and_wait(
@@ -233,6 +266,7 @@ class NotificationManager(AppService):
     async def _process_summary_trigger(self, message: str):
         """Process a summary trigger message"""
         try:
+
             data = json.loads(message)
             await self.process_summaries(
                 summary_type=data["summary_type"], user_id=data["user_id"]
@@ -255,60 +289,89 @@ class NotificationManager(AppService):
             else:
                 return datetime(now.year, now.month - 1, 1)
 
-    async def _process_notification(self, message: str) -> bool:
-        """Process a single notification"""
+    async def _process_immediate(self, message: str) -> bool:
+        """Process a single notification immediately"""
         try:
-            event = NotificationEventModel.parse_raw(message)
+            event = NotificationEventDTO.model_validate_json(message)
+            parsed_event = NotificationEventModel[
+                get_data_type(event.type)
+            ].model_validate_json(message)
             # Implementation of actual notification sending would go here
-            logger.info(f"Processing notification: {event}")
+            self.email_sender.send_templated(event.type, event.user_id, parsed_event)
+            logger.info(f"Processing notification: {parsed_event}")
             return True
         except Exception as e:
             logger.error(f"Error processing notification: {e}")
             return False
 
-    def should_send(self, batch: UserNotificationBatch) -> bool:
-        """Determine if a batch should be sent"""
-        if not batch.notifications:
-            return False
-        # if any notifications are older than the batch delay, send them
-        if any(
-            notification.created_at < datetime.now() - get_batch_delay(batch.type)
-            for notification in batch.notifications
-            if isinstance(notification, NotificationEventModel)
-        ):
-            logger.info(f"Sending batch of {len(batch.notifications)} notifications")
-            return True
-        return False
+    # def should_send(self, batch: UserNotificationBatch) -> bool:
+    #     """Determine if a batch should be sent"""
+    #     if not batch.notifications:
+    #         return False
+    #     # if any notifications are older than the batch delay, send them
+    #     if any(
+    #         notification.created_at < datetime.now() - get_batch_delay(batch.type)
+    #         for notification in batch.notifications
+    #         if isinstance(notification, NotificationEventModel)
+    #     ):
+    #         logger.info(f"Sending batch of {len(batch.notifications)} notifications")
+    #         return True
+    #     return False
 
-    async def _process_batch_message(self, message: str) -> bool:
-        """Process a batch notification & return status from processing"""
-        try:
-            event = NotificationEventModel.model_validate_json(message)
-            # Implementation of batch notification sending would go here
-            # Add to database
-            db = get_db_client()
-            logger.info(f"Processing batch ingestion of {event}")
-            logger.info(f"type of event: {type(event)}")
-            batch = db.create_or_add_to_user_notification_batch(
-                event.user_id, event.type, event
-            )
-            if not batch.notifications:
-                logger.info(f"No notifications to send for batch of {event.user_id}")
-                return True
-            if self.should_send(batch):
-                logger.info(
-                    f"Processing batch of {len(batch.notifications)} notifications"
-                )
-                db.empty_user_notification_batch(event.user_id, batch.type)
-                # send_email_with_template(event.user_id, event.type, event.data)
-            else:
-                logger.info(f"Holding on to batch for {event.user_id}")
-                # queue a message to check again in x time if we haven't gotten any new to send it
-            return True
+    # async def _process_batch_message(self, message: str) -> bool:
+    #     """Process a batch notification & return status from processing"""
+    #     try:
+    #         logger.info(f"Processing batch message: {message}")
+    #         event = NotificationEventDTO.model_validate_json(message)
+    #         logger.info(f"Event: {event}")
+    #         parsed_event = NotificationEventModel[
+    #             get_data_type(event.type)
+    #         ].model_validate_json(message)
+    #         logger.info(f"Processing batch ingestion of {parsed_event}")
+    #         # Implementation of batch notification sending would go here
+    #         # Add to database
+    #         db = get_db_client()
+    #         logger.info(f"Processing batch ingestion of {parsed_event}")
+    #         logger.info(f"type of event: {type(parsed_event)}")
+    #         batch = db.create_or_add_to_user_notification_batch(
+    #             parsed_event.user_id, parsed_event.type, parsed_event.model_dump_json()
+    #         )
+    #         batch = UserNotificationBatch.model_validate(batch)
+    #         if not batch.notifications:
+    #             logger.info(
+    #                 f"No notifications to send for batch of {parsed_event.user_id}"
+    #             )
+    #             return True
+    #         if self.should_send(batch):
+    #             logger.info(
+    #                 f"Processing batch of {len(batch.notifications)} notifications"
+    #             )
+    #             db.empty_user_notification_batch(parsed_event.user_id, batch.type)
+    #             # self.send_email_with_template(event.user_id, event.type, event.data)
+    #         else:
+    #             logger.info(
+    #                 f"Holding on to batch for {parsed_event.user_id} type {batch.type.lower()}"
+    #             )
+    #             logger.info(f"batch: {batch}")
+    #             logger.info(f"delay: {get_batch_delay(batch.type)}")
+    #             delay = get_batch_delay(batch.type)
 
-        except Exception as e:
-            logger.error(f"Error processing batch: {e}")
-            return False
+    #             await self.rabbit.publish_message(
+    #                 routing_key=f"batch.{batch.type.lower()}.recheck",
+    #                 message=json.dumps(
+    #                     {"user_id": parsed_event.user_id, "type": batch.type}
+    #                 ),
+    #                 exchange=next(
+    #                     ex for ex in self.rabbit_config.exchanges if ex.name == "delay"
+    #                 ),
+    #                 expiration=delay,
+    #             )
+
+    #         return True
+
+    #     except Exception as e:
+    #         logger.error(f"Error processing batch: {e}")
+    #         return False
 
     def run_service(self):
         logger.info(f"[{self.service_name}] Started notification service")
@@ -322,9 +385,11 @@ class NotificationManager(AppService):
 
         backoff_queue = self.run_and_wait(channel.get_queue("backoff_notifications"))
 
-        hourly_queue = self.run_and_wait(channel.get_queue("hourly_batch"))
+        # hourly_queue = self.run_and_wait(channel.get_queue("hourly_batch"))
 
-        daily_queue = self.run_and_wait(channel.get_queue("daily_batch"))
+        # daily_queue = self.run_and_wait(channel.get_queue("daily_batch"))
+
+        # recheck_queue = self.run_and_wait(channel.get_queue("batch_rechecks"))
 
         # Set up summary queues
         summary_queues = []
@@ -347,48 +412,82 @@ class NotificationManager(AppService):
 
                     if message:
                         success = self.run_and_wait(
-                            self._process_notification(message.body.decode())
+                            self._process_immediate(message.body.decode())
                         )
                         if success:
                             self.run_and_wait(message.ack())
                         else:
-                            self.run_and_wait(message.reject(requeue=False))
+                            self.run_and_wait(message.reject(requeue=True))
                 except QueueEmpty:
-                    logger.info("Immediate queue empty")
+                    logger.debug("Immediate queue empty")
 
                 # Process backoff notifications similarly
                 try:
                     message = self.run_and_wait(backoff_queue.get())
 
                     if message:
-                        success = self.run_and_wait(
-                            self._process_notification(message.body.decode())
-                        )
+                        # success = self.run_and_wait(
+                        #     self._process_backoff(message.body.decode())
+                        # )
+                        success = True
                         if success:
                             self.run_and_wait(message.ack())
                         else:
                             # If failed, will go to DLQ with delay
-                            self.run_and_wait(message.reject(requeue=False))
+                            self.run_and_wait(message.reject(requeue=True))
                 except QueueEmpty:
-                    logger.info("Backoff queue empty")
+                    logger.debug("Backoff queue empty")
 
-                # Add to plan db/process batch and delay or send
-                for queue in [
-                    hourly_queue,
-                    daily_queue,
-                ]:
-                    try:
-                        message = self.run_and_wait(queue.get())
-                        if message:
-                            success = self.run_and_wait(
-                                self._process_batch_message(message.body.decode())
-                            )
-                            if success:
-                                self.run_and_wait(message.ack())
-                            else:
-                                self.run_and_wait(message.reject(requeue=True))
-                    except QueueEmpty:
-                        logger.info(f"Queue empty: {queue}")
+                # # Add to plan db/process batch and delay or send
+                # for queue in [
+                #     hourly_queue,
+                #     daily_queue,
+                # ]:
+                #     try:
+                #         message = self.run_and_wait(queue.get(no_ack=False))
+                #         if message:
+                #             success = self.run_and_wait(
+                #                 self._process_batch_message(message.body.decode())
+                #             )
+                #             if success:
+                #                 self.run_and_wait(message.ack())
+                #             else:
+                #                 self.run_and_wait(message.reject(requeue=True))
+                #     except QueueEmpty:
+                #         logger.debug(f"Queue empty: {queue}")
+
+                # # Process batch rechecks
+                # try:
+                #     message = self.run_and_wait(recheck_queue.get())
+                #     if message:
+                #         logger.info(f"Processing recheck message: {message}")
+                #         data = json.loads(message.body.decode())
+
+                #         db = get_db_client()
+                #         batch = db.get_user_notification_batch(
+                #             data["user_id"], data["type"]
+                #         )
+                #         if batch and self.should_send(
+                #             UserNotificationBatch.model_validate(batch)
+                #         ):
+                #             # Send and empty the batch
+                #             db.empty_user_notification_batch(
+                #                 data["user_id"], data["type"]
+                #             )
+                #             if batch.notifications:
+                #                 self.email_sender.send_templated(
+                #                     batch.type,
+                #                     data["user_id"],
+                #                     [
+                #                         NotificationEventModel[
+                #                             get_data_type(notification.type)
+                #                         ].model_validate(notification)
+                #                         for notification in batch.notifications
+                #                     ],
+                #                 )
+                #         self.run_and_wait(message.ack())
+                # except QueueEmpty:
+                #     logger.debug("Recheck queue empty")
 
                 # Process summary triggers
                 for queue in summary_queues:
@@ -401,12 +500,12 @@ class NotificationManager(AppService):
                             )
                             self.run_and_wait(message.ack())
                     except QueueEmpty:
-                        logger.info(f"Queue empty: {queue}")
+                        logger.debug(f"Queue empty: {queue}")
 
                 time.sleep(0.1)
 
             except QueueEmpty as e:
-                logger.info(f"Queue empty: {e}")
+                logger.debug(f"Queue empty: {e}")
             except Exception as e:
                 logger.error(f"Error in notification service loop: {e}")
 
