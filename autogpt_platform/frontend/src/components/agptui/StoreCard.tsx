@@ -71,15 +71,14 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       {/* Content Section */}
       <div className="w-full px-2 py-4">
         {/* Title and Creator */}
-        <h3 className="font-poppins mb-2 text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
+        <h3 className="font-poppins mb-0.5 text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (
-          <p className="font-lead mb-4 text-base font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="font-lead mb-2.5 text-base font-normal text-neutral-600 dark:text-neutral-400">
             by {creatorName}
           </p>
         )}
-
         {/* Description */}
         <p className="font-geist mb-4 line-clamp-3 text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {description}

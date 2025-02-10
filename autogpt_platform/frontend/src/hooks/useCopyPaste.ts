@@ -101,28 +101,26 @@ export function useCopyPaste(getNextNodeId: () => string) {
 
             setNodes((nodes) => {
               return nodes.map((node) => {
-                if (oldToNewIdMap[node.id]) {
-                  const nodeConnections = pastedEdges
-                    .filter(
-                      (edge: Edge) =>
-                        edge.source === node.id || edge.target === node.id,
-                    )
-                    .map((edge: Edge) => ({
-                      edge_id: edge.id,
-                      source: edge.source,
-                      target: edge.target,
-                      sourceHandle: edge.sourceHandle,
-                      targetHandle: edge.targetHandle,
-                    }));
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      connections: nodeConnections,
-                    },
-                  };
-                }
-                return node;
+                const nodeConnections = getEdges()
+                  .filter(
+                    (edge: Edge) =>
+                      edge.source === node.id || edge.target === node.id,
+                  )
+                  .map((edge: Edge) => ({
+                    edge_id: edge.id,
+                    source: edge.source,
+                    target: edge.target,
+                    sourceHandle: edge.sourceHandle,
+                    targetHandle: edge.targetHandle,
+                  }));
+
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    connections: nodeConnections,
+                  },
+                };
               });
             });
           }

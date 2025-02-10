@@ -25,10 +25,10 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
         console.error("Error signing up", error);
         // FIXME: supabase doesn't return the correct error message for this case
         if (error.message.includes("P0001")) {
-          return "Please join our waitlist for your turn: https://agpt.co/waitlist";
+          return "not_allowed";
         }
-        if (error.code?.includes("user_already_exists")) {
-          redirect("/login");
+        if (error.code === "user_already_exists") {
+          return "user_already_exists";
         }
         return error.message;
       }
@@ -36,9 +36,8 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
       if (data.session) {
         await supabase.auth.setSession(data.session);
       }
-      console.log("Signed up");
       revalidatePath("/", "layout");
-      redirect("/marketplace/profile");
+      redirect("/");
     },
   );
 }

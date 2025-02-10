@@ -2,37 +2,37 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AnalyticsDetails,
   AnalyticsMetrics,
+  APIKey,
   APIKeyCredentials,
+  APIKeyPermission,
   Block,
+  CreatorsResponse,
+  CreatorDetails,
+  CreateAPIKeyResponse,
+  Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
   GraphExecution,
   Graph,
   GraphCreatable,
-  GraphExecuteResponse,
   GraphMeta,
   GraphUpdateable,
-  NodeExecutionResult,
   MyAgentsResponse,
+  NodeExecutionResult,
   ProfileDetails,
-  User,
+  Schedule,
+  ScheduleCreatable,
   StoreAgentsResponse,
   StoreAgentDetails,
-  CreatorsResponse,
-  CreatorDetails,
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
   StoreSubmission,
   StoreReviewCreate,
   StoreReview,
-  ScheduleCreatable,
-  Schedule,
+  TransactionHistory,
+  User,
   UserPasswordCredentials,
-  Credentials,
-  APIKeyPermission,
-  CreateAPIKeyResponse,
-  APIKey,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -100,8 +100,25 @@ export default class BackendAPI {
     return this._request("POST", "/credits/auto-top-up", config);
   }
 
-  requestTopUp(amount: number): Promise<{ checkout_url: string }> {
-    return this._request("POST", "/credits", { amount });
+  getTransactionHistory(
+    lastTransction: Date | null,
+    countLimit: number,
+  ): Promise<TransactionHistory> {
+    return this._get(
+      `/credits/transactions`,
+      lastTransction
+        ? {
+            transaction_time: lastTransction,
+            transaction_count_limit: countLimit,
+          }
+        : {
+            transaction_count_limit: countLimit,
+          },
+    );
+  }
+
+  requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {
+    return this._request("POST", "/credits", { credit_amount });
   }
 
   getUserPaymentPortalLink(): Promise<{ url: string }> {
@@ -167,9 +184,10 @@ export default class BackendAPI {
 
   executeGraph(
     id: string,
+    version: number,
     inputData: { [key: string]: any } = {},
-  ): Promise<GraphExecuteResponse> {
-    return this._request("POST", `/graphs/${id}/execute`, inputData);
+  ): Promise<{ graph_exec_id: string }> {
+    return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
   }
 
   async getGraphExecutionInfo(
@@ -739,8 +757,11 @@ export default class BackendAPI {
     return () => this.wsMessageHandlers[method].delete(handler);
   }
 
-  subscribeToExecution(graphId: string) {
-    this.sendWebSocketMessage("subscribe", { graph_id: graphId });
+  subscribeToExecution(graphId: string, graphVersion: number) {
+    this.sendWebSocketMessage("subscribe", {
+      graph_id: graphId,
+      graph_version: graphVersion,
+    });
   }
 }
 
@@ -751,7 +772,7 @@ type GraphCreateRequestBody = {
 };
 
 type WebsocketMessageTypeMap = {
-  subscribe: { graph_id: string };
+  subscribe: { graph_id: string; graph_version: number };
   execution_event: NodeExecutionResult;
   heartbeat: "ping" | "pong";
 };

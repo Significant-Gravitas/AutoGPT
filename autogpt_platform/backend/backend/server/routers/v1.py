@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
@@ -31,6 +32,7 @@ from backend.data.api_key import (
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    TransactionHistory,
     get_auto_top_up,
     get_block_costs,
     get_stripe_customer_id,
@@ -48,6 +50,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    ExecuteGraphResponse,
     RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
@@ -151,7 +154,9 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
 ):
-    checkout_url = await _user_credit_model.top_up_intent(user_id, request.amount)
+    checkout_url = await _user_credit_model.top_up_intent(
+        user_id, request.credit_amount
+    )
     return {"checkout_url": checkout_url}
 
 
@@ -173,6 +178,8 @@ async def configure_user_auto_top_up(
 ) -> str:
     if request.threshold < 0:
         raise ValueError("Threshold must be greater than 0")
+    if request.amount < 500 and request.amount != 0:
+        raise ValueError("Amount must be greater than or equal to 500")
     if request.amount < request.threshold:
         raise ValueError("Amount must be greater than or equal to threshold")
 
@@ -235,13 +242,29 @@ async def manage_payment_method(
 ) -> dict[str, str]:
     session = stripe.billing_portal.Session.create(
         customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.platform_base_url + "/marketplace/credits",
+        return_url=settings.config.frontend_base_url + "/marketplace/credits",
     )
     if not session:
         raise HTTPException(
             status_code=400, detail="Failed to create billing portal session"
         )
     return {"url": session.url}
+
+
+@v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
+async def get_credit_history(
+    user_id: Annotated[str, Depends(get_user_id)],
+    transaction_time: datetime | None = None,
+    transaction_count_limit: int = 100,
+) -> TransactionHistory:
+    if transaction_count_limit < 1 or transaction_count_limit > 1000:
+        raise ValueError("Transaction count limit must be between 1 and 1000")
+
+    return await _user_credit_model.get_transaction_history(
+        user_id=user_id,
+        transaction_time=transaction_time or datetime.max,
+        transaction_count_limit=transaction_count_limit,
+    )
 
 
 ########################################################
@@ -469,7 +492,7 @@ async def set_graph_active_version(
 
 
 @v1_router.post(
-    path="/graphs/{graph_id}/execute",
+    path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -478,12 +501,12 @@ def execute_graph(
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
-) -> dict[str, Any]:  # FIXME: add proper return type
+) -> ExecuteGraphResponse:
     try:
         graph_exec = execution_manager_client().add_execution(
             graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
-        return {"id": graph_exec.graph_exec_id}
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
     except Exception as e:
         msg = e.__str__().encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)

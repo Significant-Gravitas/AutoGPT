@@ -70,7 +70,7 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
 
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
-  additionalProperties: { type: "string" | "number" | "integer" };
+  additionalProperties?: { type: "string" | "number" | "integer" };
   default?: { [key: string]: string | number };
   secret?: boolean;
 };
@@ -135,12 +135,14 @@ export const PROVIDER_NAMES = {
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
   SLANT3D: "slant3d",
+  SCREENSHOTONE: "screenshotone",
   SMTP: "smtp",
   TWITTER: "twitter",
   REPLICATE: "replicate",
   REDDIT: "reddit",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
+  TODOIST: "todoist",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
@@ -254,14 +256,6 @@ export type GraphUpdateable = Omit<
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
-
-/* Derived from backend/executor/manager.py:ExecutionManager.add_execution */
-export type GraphExecuteResponse = {
-  /** ID of the initiated run */
-  id: string;
-  /** List of node executions */
-  executions: Array<{ id: string; node_id: string }>;
-};
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
@@ -576,4 +570,21 @@ export interface APIKey {
 export interface CreateAPIKeyResponse {
   api_key: APIKey;
   plain_text_key: string;
+}
+
+export interface CreditTransaction {
+  transaction_time: Date;
+  transaction_type: string;
+  amount: number;
+  balance: number;
+  description: string;
+  usage_graph_id: string;
+  usage_execution_id: string;
+  usage_node_count: number;
+  usage_starting_time: Date;
+}
+
+export interface TransactionHistory {
+  transactions: CreditTransaction[];
+  next_transaction_time: Date | null;
 }
