@@ -75,7 +75,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.LayoutDashboard,
                       text: "Creator Dashboard",
-                      href: "profile/dashboard",
+                      href: "/profile/dashboard",
                     },
                     {
                       icon: IconType.UploadCloud,
