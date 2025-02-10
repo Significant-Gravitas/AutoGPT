@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Generic, Optional, TypeVar, Union
 
+import prisma
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
@@ -244,10 +245,18 @@ async def get_user_notification_last_message_in_batch(
 async def empty_user_notification_batch(
     user_id: str, notification_type: NotificationType
 ) -> None:
-    await UserNotificationBatch.prisma().delete_many(
-        where=UserNotificationBatchWhereInput(
-            userId=user_id,
-            type=notification_type,
-        ),
-        include={"notifications": True},
-    )
+    async with prisma.Prisma().tx() as transaction:
+        await transaction.notificationevent.delete_many(
+            where={
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                }
+            }
+        )
+
+        await transaction.usernotificationbatch.delete_many(
+            where=UserNotificationBatchWhereInput(
+                userId=user_id,
+                type=notification_type,
+            )
+        )
