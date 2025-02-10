@@ -297,6 +297,7 @@ class AgentOutputBlock(Block):
 
     class Output(BlockSchema):
         output: Any = SchemaField(description="The value recorded as output.")
+        name: Any = SchemaField(description="The name of the value recorded as output.")
 
     def __init__(self):
         super().__init__(
@@ -348,6 +349,7 @@ class AgentOutputBlock(Block):
                 yield "output", f"Error: {e}, {input_data.value}"
         else:
             yield "output", input_data.value
+            yield "name", input_data.name
 
 
 class AddToDictionaryBlock(Block):

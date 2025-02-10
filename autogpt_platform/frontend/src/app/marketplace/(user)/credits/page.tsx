@@ -81,7 +81,7 @@ export default function CreditsPage() {
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
       <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
-        Credits
+        Billing
       </h1>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
@@ -179,6 +179,13 @@ export default function CreditsPage() {
                 required
               />
             </div>
+
+            <p className="text-sm">
+              <b>Note:</b> For your safety, we will top up your balance{" "}
+              <b>at most once</b> per agent execution to prevent unintended
+              excessive charges. Therefore, ensure that the automatic top-up
+              amount is sufficient for your agent&apos;s operation.
+            </p>
 
             {autoTopUpConfig?.amount ? (
               <>
