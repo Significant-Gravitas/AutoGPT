@@ -23,10 +23,7 @@ logger = logging.getLogger(__name__)
 async def get_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
-    filter_by: list[backend.server.v2.library.model.LibraryAgentFilter] = [],
-    sort_by: list[backend.server.v2.library.model.LibraryAgentSort] = [
-        backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT,
-    ],
+    sort_by: backend.server.v2.library.model.LibraryAgentSort = backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
 ) -> backend.server.v2.library.model.LibraryAgentResponse:
@@ -91,23 +88,13 @@ async def get_library_agents(
             },
         ]
 
-    for term in filter_by:
-        if term == backend.server.v2.library.model.LibraryAgentFilter.IS_FAVOURITE:
-            where_clause["isFavorite"] = True
-        elif (
-            term
-            == backend.server.v2.library.model.LibraryAgentFilter.IS_CREATED_BY_USER
-        ):
-            where_clause["isCreatedByUser"] = True
-
     # Determine sorting
     order_by: prisma.types.LibraryAgentOrderByInput | None = None
 
-    for sort_term in sort_by:
-        if sort_term == backend.server.v2.library.model.LibraryAgentSort.CREATED_AT:
-            order_by = {"createdAt": "desc"}
-        elif sort_term == backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT:
-            order_by = {"updatedAt": "desc"}
+    if sort_by == backend.server.v2.library.model.LibraryAgentSort.CREATED_AT:
+        order_by = {"createdAt": "asc"}
+    elif sort_by == backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT:
+        order_by = {"updatedAt": "desc"}
 
     try:
         # Query Prisma

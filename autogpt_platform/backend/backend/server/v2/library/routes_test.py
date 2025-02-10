@@ -91,8 +91,7 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     mock_db_call.assert_called_once_with(
         user_id="test-user-id",
         search_term="test",
-        filter_by=[],
-        sort_by=[backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT],
+        sort_by=backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT,
         page=1,
         page_size=15,
     )
@@ -107,8 +106,7 @@ def test_get_library_agents_error(mocker: pytest_mock.MockFixture):
     mock_db_call.assert_called_once_with(
         user_id="test-user-id",
         search_term="test",
-        filter_by=[],
-        sort_by=[backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT],
+        sort_by=backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT,
         page=1,
         page_size=15,
     )

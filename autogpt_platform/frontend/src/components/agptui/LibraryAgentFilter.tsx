@@ -1,4 +1,4 @@
-import { LibraryAgentFilterEnum } from "@/lib/autogpt-server-api";
+import { LibraryAgentSortEnum } from "@/lib/autogpt-server-api";
 import {
   Select,
   SelectContent,
@@ -13,10 +13,10 @@ import { useLibraryPageContext } from "./providers/LibraryAgentProvider";
 
 const LibraryAgentFilter = ({}: {}) => {
   const api = useBackendAPI();
-  const { setAgentLoading, setAgents, setLibraryFilter, searchTerm } =
+  const { setAgentLoading, setAgents, setLibrarySort, searchTerm } =
     useLibraryPageContext();
-  const handleSortChange = async (value: LibraryAgentFilterEnum) => {
-    setLibraryFilter(value);
+  const handleSortChange = async (value: LibraryAgentSortEnum) => {
+    setLibrarySort(value);
     setAgentLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     let response = await api.listLibraryAgents({
@@ -47,17 +47,11 @@ const LibraryAgentFilter = ({}: {}) => {
               "font-sans text-[14px] font-[500] leading-[24px] text-neutral-600"
             }
           >
-            <SelectItem value={LibraryAgentFilterEnum.CREATED_AT}>
+            <SelectItem value={LibraryAgentSortEnum.CREATED_AT}>
               Creation Date
             </SelectItem>
-            <SelectItem value={LibraryAgentFilterEnum.UPDATED_AT}>
+            <SelectItem value={LibraryAgentSortEnum.UPDATED_AT}>
               Last Modified
-            </SelectItem>
-            <SelectItem value={LibraryAgentFilterEnum.IS_FAVOURITE}>
-              Favorites
-            </SelectItem>
-            <SelectItem value={LibraryAgentFilterEnum.IS_CREATED_BY_USER}>
-              Created By Me
             </SelectItem>
           </SelectGroup>
         </SelectContent>

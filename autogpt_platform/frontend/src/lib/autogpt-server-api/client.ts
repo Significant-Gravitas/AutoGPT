@@ -40,7 +40,6 @@ import {
   LibraryAgent,
   LibraryAgentPreset,
   AgentStatus,
-  LibraryAgentFilterEnum,
   LibraryAgentSortEnum,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
@@ -455,8 +454,7 @@ export default class BackendAPI {
 
   async listLibraryAgents(params?: {
     search_term?: string;
-    filter_by?: LibraryAgentFilterEnum[];
-    sort_by?: LibraryAgentSortEnum[];
+    sort_by?: LibraryAgentSortEnum;
     page?: number;
     page_size?: number;
   }): Promise<LibraryAgentResponse> {

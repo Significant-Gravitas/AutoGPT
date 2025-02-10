@@ -1,4 +1,4 @@
-import { LibraryAgent, LibraryAgentFilterEnum } from "@/lib/autogpt-server-api";
+import { LibraryAgent, LibraryAgentSortEnum } from "@/lib/autogpt-server-api";
 import {
   createContext,
   useState,
@@ -17,8 +17,8 @@ interface LibraryPageContextType {
   setSearchTerm: Dispatch<SetStateAction<string | undefined>>;
   uploadedFile: File | null;
   setUploadedFile: Dispatch<SetStateAction<File | null>>;
-  libraryFilter: LibraryAgentFilterEnum;
-  setLibraryFilter: Dispatch<SetStateAction<LibraryAgentFilterEnum>>;
+  librarySort: LibraryAgentSortEnum;
+  setLibrarySort: Dispatch<SetStateAction<LibraryAgentSortEnum>>;
 }
 
 export const LibraryPageContext = createContext<LibraryPageContextType>(
@@ -34,8 +34,8 @@ export function LibraryPageProvider({ children }: LibraryPageProviderProps) {
   const [agentLoading, setAgentLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string | undefined>("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [libraryFilter, setLibraryFilter] = useState<LibraryAgentFilterEnum>(
-    LibraryAgentFilterEnum.UPDATED_AT,
+  const [librarySort, setLibrarySort] = useState<LibraryAgentSortEnum>(
+    LibraryAgentSortEnum.UPDATED_AT,
   );
 
   return (
@@ -49,8 +49,8 @@ export function LibraryPageProvider({ children }: LibraryPageProviderProps) {
         setSearchTerm,
         uploadedFile,
         setUploadedFile,
-        libraryFilter,
-        setLibraryFilter,
+        librarySort,
+        setLibrarySort,
       }}
     >
       {children}
