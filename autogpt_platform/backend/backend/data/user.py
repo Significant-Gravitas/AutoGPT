@@ -8,12 +8,8 @@ from prisma import Json
 from prisma.models import User
 
 from backend.data.db import prisma
-from backend.data.model import (
-    NotificationPreference,
-    UserIntegrations,
-    UserMetadata,
-    UserMetadataRaw,
-)
+from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
+from backend.data.notifications import NotificationPreference
 from backend.util.encryption import JSONCryptor
 
 logger = logging.getLogger(__name__)

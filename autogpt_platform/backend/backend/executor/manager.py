@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
-
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
 
@@ -38,7 +37,6 @@ from backend.data.execution import (
     parse_execution_output,
 )
 from backend.data.graph import GraphModel, Link, Node
-from backend.data.model import NotificationType
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured

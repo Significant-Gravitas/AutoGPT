@@ -18,6 +18,11 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.graph import get_graph, get_node
+from backend.data.notifications import (
+    create_or_add_to_user_notification_batch,
+    empty_user_notification_batch,
+    get_user_notification_last_message_in_batch,
+)
 from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_active_users_ids,
@@ -103,3 +108,12 @@ class DatabaseManager(AppService):
         get_user_notification_preference
     )
     get_active_users_ids = exposed_run_and_wait(get_active_users_ids)
+
+    # Notifications
+    create_or_add_to_user_notification_batch = exposed_run_and_wait(
+        create_or_add_to_user_notification_batch
+    )
+    get_user_notification_last_message_in_batch = exposed_run_and_wait(
+        get_user_notification_last_message_in_batch
+    )
+    empty_user_notification_batch = exposed_run_and_wait(empty_user_notification_batch)
