@@ -14,7 +14,7 @@ from redis.lock import Lock as RedisLock
 
 from backend.data.notifications import (
     AgentRunData,
-    NotificationEventModel,
+    NotificationEventDTO,
     NotificationType,
 )
 
@@ -226,19 +226,20 @@ def execute_node(
 
         # Update execution status and spend credits
         update_execution(ExecutionStatus.COMPLETED)
-        notification_service.queue_notification(
-            NotificationEventModel(
-                user_id=user_id,
-                type=NotificationType.AGENT_RUN,
-                data=AgentRunData(
-                    agent_name=node_block.name,
-                    credits_used=cost,
-                    execution_time=0,
-                    graph_id=graph_id,
-                    node_count=1,
-                ),
-            )
+        event = NotificationEventDTO(
+            user_id=user_id,
+            type=NotificationType.AGENT_RUN,
+            data=AgentRunData(
+                agent_name=node_block.name,
+                credits_used=cost,
+                execution_time=0,
+                graph_id=graph_id,
+                node_count=1,
+            ).model_dump(),
         )
+
+        logger.info(f"Sending notification for {event}")
+        notification_service.queue_notification(event)
 
     except Exception as e:
         error_msg = str(e)
