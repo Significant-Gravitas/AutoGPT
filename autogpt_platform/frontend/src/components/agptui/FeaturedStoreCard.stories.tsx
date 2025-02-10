@@ -13,14 +13,19 @@ const meta = {
   },
   tags: ["autodocs"],
   argTypes: {
-    agentName: { control: "text" },
-    subHeading: { control: "text" },
-    agentImage: { control: "text" },
-    creatorImage: { control: "text" },
-    creatorName: { control: "text" },
-    description: { control: "text" },
-    runs: { control: "number" },
-    rating: { control: "number", min: 0, max: 5, step: 0.1 },
+    agent: {
+      agent_name: { control: "text" },
+      sub_heading: { control: "text" },
+      agent_image: { control: "text" },
+      creator_avatar: { control: "text" },
+      creator: { control: "text" },
+      runs: { control: "number" },
+      rating: { control: "number", min: 0, max: 5, step: 0.1 },
+      slug: { control: "text" },
+    },
+    backgroundColor:{
+      control: "color"
+    }
   },
 } satisfies Meta<typeof FeaturedAgentCard>;
 
@@ -51,17 +56,20 @@ export const Default: Story = {
 
 export const WithInteraction: Story = {
   args: {
-    agentName: "AI Writing Assistant",
-    subHeading: "Enhance your writing",
-    description:
-      "An AI-powered writing assistant that helps improve your writing style and clarity.",
-    agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    creatorName: "WordCraft AI",
-    runs: 200000,
-    rating: 4.6,
+    agent: {
+      slug: "",
+      agent_name: "AI Writing Assistant",
+      sub_heading: "Enhance your writing",
+      description:
+          "An AI-powered writing assistant that helps improve your writing style and clarity.",
+      agent_image:
+          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      creator_avatar:
+          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+      creator: "WordCraft AI",
+      runs: 200000,
+      rating: 4.6,
+    },
     backgroundColor: "bg-white",
   },
   play: async ({ canvasElement }) => {
