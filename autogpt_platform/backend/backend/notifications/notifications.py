@@ -5,10 +5,13 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 
 from autogpt_libs.utils.cache import thread_cached
+from prisma.models import UserNotificationBatch
 
 from backend.data.notifications import (
     BatchingStrategy,
     NotificationResult,
+    get_batch_delay,
+    NotificationEventModel,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.executor.database import DatabaseManager
