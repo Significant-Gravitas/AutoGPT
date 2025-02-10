@@ -59,6 +59,7 @@ mem0ai = "^0.1.48"
 todoist-api-python = "^2.1.7"
 moviepy = "^2.1.2"
 pika = "^1.3.2"
+postmarker = "^1.0"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.32.1"
