@@ -3,15 +3,13 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Generic, Optional, TypeVar, Union
 
-from prisma.enums import NotificationType
 from prisma import Json
+from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
 from prisma.types import UserNotificationBatchWhereInput
 
 # from backend.notifications.models import NotificationEvent
-from pydantic import BaseModel, EmailStr, Field, field_validator, validator
-
-from backend.util import json
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
