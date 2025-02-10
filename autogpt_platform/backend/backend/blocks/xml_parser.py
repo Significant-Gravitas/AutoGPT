@@ -1,8 +1,8 @@
-from backend.data.block import Block, BlockSchema, BlockOutput
-from backend.data.model import SchemaField
-from gravitasml.token import tokenize
 from gravitasml.parser import Parser
+from gravitasml.token import tokenize
 
+from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.model import SchemaField
 
 
 class XMLParserBlock(Block):
@@ -11,7 +11,7 @@ class XMLParserBlock(Block):
 
     class Output(BlockSchema):
         parsed_xml: dict = SchemaField(description="output parsed xml to dict")
-        error : str = SchemaField(description="Error in parsing")
+        error: str = SchemaField(description="Error in parsing")
 
     def __init__(self):
         super().__init__(
@@ -35,4 +35,3 @@ class XMLParserBlock(Block):
             raise ValueError(f"Validation error for dict:{val_e}") from val_e
         except SyntaxError as syn_e:
             raise SyntaxError(f"Error in input xml syntax: {syn_e}") from syn_e
-
