@@ -21,6 +21,7 @@ from backend.data.graph import get_graph, get_node
 from backend.data.notifications import (
     create_or_add_to_user_notification_batch,
     empty_user_notification_batch,
+    get_user_notification_batch,
     get_user_notification_last_message_in_batch,
 )
 from backend.data.user import (
@@ -117,3 +118,4 @@ class DatabaseManager(AppService):
         get_user_notification_last_message_in_batch
     )
     empty_user_notification_batch = exposed_run_and_wait(empty_user_notification_batch)
+    get_user_notification_batch = exposed_run_and_wait(get_user_notification_batch)
