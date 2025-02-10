@@ -1,13 +1,15 @@
 import asyncio
 import logging
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
+import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -29,7 +31,15 @@ from backend.data.api_key import (
     update_api_key_permissions,
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.credit import get_block_costs, get_user_credit_model
+from backend.data.credit import (
+    AutoTopUpConfig,
+    TransactionHistory,
+    get_auto_top_up,
+    get_block_costs,
+    get_stripe_customer_id,
+    get_user_credit_model,
+    set_auto_top_up,
+)
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -41,6 +51,8 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    ExecuteGraphResponse,
+    RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
 )
@@ -65,7 +77,6 @@ def execution_scheduler_client() -> ExecutionScheduler:
 settings = Settings()
 logger = logging.getLogger(__name__)
 integration_creds_manager = IntegrationCredentialsManager()
-
 
 _user_credit_model = get_user_credit_model()
 
@@ -135,7 +146,126 @@ async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
     # Credits can go negative, so ensure it's at least 0 for user to see.
-    return {"credits": max(await _user_credit_model.get_or_refill_credit(user_id), 0)}
+    return {"credits": max(await _user_credit_model.get_credits(user_id), 0)}
+
+
+@v1_router.post(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
+async def request_top_up(
+    request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
+):
+    checkout_url = await _user_credit_model.top_up_intent(
+        user_id, request.credit_amount
+    )
+    return {"checkout_url": checkout_url}
+
+
+@v1_router.patch(
+    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+)
+async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
+    await _user_credit_model.fulfill_checkout(user_id=user_id)
+    return Response(status_code=200)
+
+
+@v1_router.post(
+    path="/credits/auto-top-up",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def configure_user_auto_top_up(
+    request: AutoTopUpConfig, user_id: Annotated[str, Depends(get_user_id)]
+) -> str:
+    if request.threshold < 0:
+        raise ValueError("Threshold must be greater than 0")
+    if request.amount < 500 and request.amount != 0:
+        raise ValueError("Amount must be greater than or equal to 500")
+    if request.amount < request.threshold:
+        raise ValueError("Amount must be greater than or equal to threshold")
+
+    current_balance = await _user_credit_model.get_credits(user_id)
+
+    if current_balance < request.threshold:
+        await _user_credit_model.top_up_credits(user_id, request.amount)
+    else:
+        await _user_credit_model.top_up_credits(user_id, 0)
+
+    await set_auto_top_up(
+        user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
+    )
+    return "Auto top-up settings updated"
+
+
+@v1_router.get(
+    path="/credits/auto-top-up",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_user_auto_top_up(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> AutoTopUpConfig:
+    return await get_auto_top_up(user_id)
+
+
+@v1_router.post(path="/credits/stripe_webhook", tags=["credits"])
+async def stripe_webhook(request: Request):
+    # Get the raw request body
+    payload = await request.body()
+    # Get the signature header
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.secrets.stripe_webhook_secret
+        )
+    except ValueError:
+        # Invalid payload
+        raise HTTPException(status_code=400)
+    except stripe.SignatureVerificationError:
+        # Invalid signature
+        raise HTTPException(status_code=400)
+
+    if (
+        event["type"] == "checkout.session.completed"
+        or event["type"] == "checkout.session.async_payment_succeeded"
+    ):
+        await _user_credit_model.fulfill_checkout(
+            session_id=event["data"]["object"]["id"]
+        )
+
+    return Response(status_code=200)
+
+
+@v1_router.get(path="/credits/manage", dependencies=[Depends(auth_middleware)])
+async def manage_payment_method(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> dict[str, str]:
+    session = stripe.billing_portal.Session.create(
+        customer=await get_stripe_customer_id(user_id),
+        return_url=settings.config.frontend_base_url + "/marketplace/credits",
+    )
+    if not session:
+        raise HTTPException(
+            status_code=400, detail="Failed to create billing portal session"
+        )
+    return {"url": session.url}
+
+
+@v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
+async def get_credit_history(
+    user_id: Annotated[str, Depends(get_user_id)],
+    transaction_time: datetime | None = None,
+    transaction_count_limit: int = 100,
+) -> TransactionHistory:
+    if transaction_count_limit < 1 or transaction_count_limit > 1000:
+        raise ValueError("Transaction count limit must be between 1 and 1000")
+
+    return await _user_credit_model.get_transaction_history(
+        user_id=user_id,
+        transaction_time=transaction_time or datetime.max,
+        transaction_count_limit=transaction_count_limit,
+    )
 
 
 ########################################################
@@ -196,11 +326,12 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
 ) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, user_id=user_id)
+    return await do_create_graph(create_graph, is_template=False, user_id=user_id)
 
 
 async def do_create_graph(
     create_graph: CreateGraph,
+    is_template: bool,
     # user_id doesn't have to be annotated like on other endpoints,
     # because create_graph isn't used directly as an endpoint
     user_id: str,
@@ -212,6 +343,7 @@ async def do_create_graph(
         graph = await graph_db.get_graph(
             create_graph.template_id,
             create_graph.template_version,
+            template=True,
             user_id=user_id,
         )
         if not graph:
@@ -224,6 +356,8 @@ async def do_create_graph(
             status_code=400, detail="Either graph or template_id must be provided."
         )
 
+    graph.is_template = is_template
+    graph.is_active = not is_template
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
@@ -367,21 +501,21 @@ async def set_graph_active_version(
 
 
 @v1_router.post(
-    path="/graphs/{graph_id}/execute",
+    path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
 def execute_graph(
     graph_id: str,
-    graph_version: int,
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
-) -> dict[str, Any]:  # FIXME: add proper return type
+    graph_version: Optional[int] = None,
+) -> ExecuteGraphResponse:
     try:
         graph_exec = execution_manager_client().add_execution(
             graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
-        return {"id": graph_exec.graph_exec_id}
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
     except Exception as e:
         msg = e.__str__().encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
@@ -435,6 +569,47 @@ async def get_graph_run_node_execution_results(
 
 
 ########################################################
+##################### Templates ########################
+########################################################
+
+
+@v1_router.get(
+    path="/templates",
+    tags=["graphs", "templates"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_templates(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> Sequence[graph_db.GraphModel]:
+    return await graph_db.get_graphs(filter_by="template", user_id=user_id)
+
+
+@v1_router.get(
+    path="/templates/{graph_id}",
+    tags=["templates", "graphs"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_template(
+    graph_id: str, version: int | None = None
+) -> graph_db.GraphModel:
+    graph = await graph_db.get_graph(graph_id, version, template=True)
+    if not graph:
+        raise HTTPException(status_code=404, detail=f"Template #{graph_id} not found.")
+    return graph
+
+
+@v1_router.post(
+    path="/templates",
+    tags=["templates", "graphs"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def create_new_template(
+    create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
+) -> graph_db.GraphModel:
+    return await do_create_graph(create_graph, is_template=True, user_id=user_id)
+
+
+########################################################
 ##################### Schedules ########################
 ########################################################
 
@@ -443,6 +618,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     cron: str
     input_data: dict[Any, Any]
     graph_id: str
+    graph_version: int
 
 
 @v1_router.post(
@@ -454,10 +630,13 @@ async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
 ) -> scheduler.JobInfo:
-    graph = await graph_db.get_graph(schedule.graph_id, user_id=user_id)
+    graph = await graph_db.get_graph(
+        schedule.graph_id, schedule.graph_version, user_id=user_id
+    )
     if not graph:
         raise HTTPException(
-            status_code=404, detail=f"Graph #{schedule.graph_id} not found."
+            status_code=404,
+            detail=f"Graph #{schedule.graph_id} v.{schedule.graph_version} not found.",
         )
 
     return await asyncio.to_thread(
@@ -510,7 +689,6 @@ def get_execution_schedules(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def create_api_key(
     request: CreateAPIKeyRequest, user_id: Annotated[str, Depends(get_user_id)]
 ) -> CreateAPIKeyResponse:
@@ -534,7 +712,6 @@ async def create_api_key(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def get_api_keys(
     user_id: Annotated[str, Depends(get_user_id)]
 ) -> list[APIKeyWithoutHash]:
@@ -552,7 +729,6 @@ async def get_api_keys(
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
 )
-@feature_flag("api-keys-enabled")
 async def get_api_key(
     key_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> APIKeyWithoutHash:

@@ -64,6 +64,9 @@ class BlockCategory(Enum):
     SAFETY = (
         "Block that provides AI safety mechanisms such as detecting harmful content"
     )
+    PRODUCTIVITY = "Block that helps with productivity"
+    ISSUE_TRACKING = "Block that helps with issue tracking"
+    MULTIMEDIA = "Block that interacts with multimedia content"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -395,6 +398,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         }
 
     def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        # Merge the input data with the extra execution arguments, preferring the args for security
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"

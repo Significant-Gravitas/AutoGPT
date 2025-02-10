@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { FeaturedSection } from "./FeaturedSection";
+import { FeaturedAgent, FeaturedSection } from "./FeaturedSection";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
@@ -15,7 +15,7 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     featuredAgents: { control: "object" },
-    onCardClick: { action: "clicked" },
+    // onCardClick: { action: "clicked" },
   },
 } satisfies Meta<typeof FeaturedSection>;
 
@@ -24,97 +24,102 @@ type Story = StoryObj<typeof meta>;
 
 const mockFeaturedAgents = [
   {
-    agentName: "Personalized Morning Coffee Newsletter example of three lines",
-    subHeading:
+    agent_name: "Personalized Morning Coffee Newsletter example of three lines",
+    sub_heading:
       "Transform ideas into breathtaking images with this AI-powered Image Generator.",
-    creatorName: "AI Solutions Inc.",
+    creator: "AI Solutions Inc.",
     description:
       "Elevate your web content with this powerful AI Webpage Copy Improver. Designed for marketers, SEO specialists, and web developers, this tool analyses and enhances website copy for maximum impact. Using advanced language models, it optimizes text for better clarity, SEO performance, and increased conversion rates.",
     runs: 50000,
     rating: 4.7,
-    agentImage:
+    agent_image:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    creatorImage:
+    creator_avatar:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    slug: "personalized-morning-coffee-newsletter",
   },
   {
-    agentName: "Data Analyzer Lite",
-    subHeading: "Basic data analysis tool",
-    creatorName: "DataTech",
+    agent_name: "Data Analyzer Lite",
+    sub_heading: "Basic data analysis tool",
+    creator: "DataTech",
     description:
       "A lightweight data analysis tool for basic data processing needs.",
     runs: 10000,
     rating: 2.8,
-    agentImage:
+    agent_image:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    creatorImage:
+    creator_avatar:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    slug: "data-analyzer-lite",
   },
   {
-    agentName: "CodeAssist AI",
-    subHeading: "Your AI coding companion",
-    creatorName: "DevTools Co.",
+    agent_name: "CodeAssist AI",
+    sub_heading: "Your AI coding companion",
+    creator: "DevTools Co.",
     description:
       "An intelligent coding assistant that helps developers write better code faster.",
     runs: 1000000,
     rating: 4.9,
-    agentImage:
+    agent_image:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    creatorImage:
+    creator_avatar:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    slug: "codeassist-ai",
   },
   {
-    agentName: "MultiTasker",
-    subHeading: "All-in-one productivity suite",
-    creatorName: "Productivity Plus",
+    agent_name: "MultiTasker",
+    sub_heading: "All-in-one productivity suite",
+    creator: "Productivity Plus",
     description:
       "A comprehensive productivity suite that combines task management, note-taking, and project planning into one seamless interface. Features include smart task prioritization, automated scheduling, and AI-powered insights to help you work more efficiently.",
     runs: 75000,
     rating: 4.5,
-    agentImage:
+    agent_image:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    creatorImage:
+    creator_avatar:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    slug: "multitasker",
   },
   {
-    agentName: "QuickTask",
-    subHeading: "Fast task automation",
-    creatorName: "EfficientWorks",
+    agent_name: "QuickTask",
+    sub_heading: "Fast task automation",
+    creator: "EfficientWorks",
     description: "Simple and efficient task automation tool.",
     runs: 50000,
     rating: 4.2,
-    agentImage:
+    agent_image:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    creatorImage:
+    creator_avatar:
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    slug: "quicktask",
   },
-];
+] satisfies FeaturedAgent[];
 
 export const Default: Story = {
   args: {
     featuredAgents: mockFeaturedAgents,
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
 
 export const SingleAgent: Story = {
   args: {
     featuredAgents: [mockFeaturedAgents[0]],
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
 
 export const NoAgents: Story = {
   args: {
     featuredAgents: [],
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
 };
 
 export const WithInteraction: Story = {
   args: {
     featuredAgents: mockFeaturedAgents,
-    onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
+    // onCardClick: (agentName: string) => console.log(`Clicked on ${agentName}`),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

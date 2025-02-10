@@ -535,6 +535,7 @@ async def get_execution(user_id: str, execution_id: str) -> GraphExecution | Non
 async def get_graph(
     graph_id: str,
     version: int | None = None,
+    template: bool = False,
     user_id: str | None = None,
     for_export: bool = False,
 ) -> GraphModel | None:
@@ -551,7 +552,7 @@ async def get_graph(
 
     if version is not None:
         where_clause["version"] = version
-    else:
+    elif not template:
         where_clause["isActive"] = True
 
     graph = await AgentGraph.prisma().find_first(
@@ -560,18 +561,17 @@ async def get_graph(
         order={"version": "desc"},
     )
 
-    # The Graph has to be owned by the user or a store listing.
-    if (
-        graph is None
-        or graph.userId != user_id
+    # For access, the graph must be owned by the user or listed in the store
+    if graph is None or (
+        graph.userId != user_id
         and not (
             await StoreListingVersion.prisma().find_first(
-                where=prisma.types.StoreListingVersionWhereInput(
-                    agentId=graph_id,
-                    agentVersion=version or graph.version,
-                    isDeleted=False,
-                    StoreListing={"is": {"isApproved": True}},
-                )
+                where={
+                    "agentId": graph_id,
+                    "agentVersion": version or graph.version,
+                    "isDeleted": False,
+                    "StoreListing": {"is": {"isApproved": True}},
+                }
             )
         )
     ):
@@ -631,7 +631,9 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
 
-    if created_graph := await get_graph(graph.id, graph.version, user_id=user_id):
+    if created_graph := await get_graph(
+        graph.id, graph.version, graph.is_template, user_id=user_id
+    ):
         return created_graph
 
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")

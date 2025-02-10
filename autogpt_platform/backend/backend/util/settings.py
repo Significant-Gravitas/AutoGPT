@@ -81,9 +81,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
-    enable_credit: str = Field(
-        default="false",
+    enable_credit: bool = Field(
+        default=False,
         description="If user credit system is enabled or not",
+    )
+    enable_beta_monthly_credit: bool = Field(
+        default=True,
+        description="If beta monthly credits accounting is enabled or not",
     )
     num_user_credits_refill: int = Field(
         default=1500,
@@ -153,9 +157,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    reddit_user_agent: str = Field(
+        default="AutoGPT:1.0 (by /u/autogpt)",
+        description="The user agent for the Reddit API",
+    )
+
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    rabbitmq_host: str = Field(
+        default="localhost",
+        description="The host for the RabbitMQ server",
+    )
+    rabbitmq_port: int = Field(
+        default=5672,
+        description="The port for the RabbitMQ server",
+    )
+
+    rabbitmq_vhost: str = Field(
+        default="/",
+        description="The vhost for the RabbitMQ server",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -249,6 +272,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     encryption_key: str = Field(default="", description="Encryption key")
 
+    rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
+    rabbitmq_default_pass: str = Field(
+        default="", description="RabbitMQ default password"
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -276,8 +304,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
-    reddit_username: str = Field(default="", description="Reddit username")
-    reddit_password: str = Field(default="", description="Reddit password")
 
     openweathermap_api_key: str = Field(
         default="", description="OpenWeatherMap API key"
@@ -308,6 +334,18 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
+    mem0_api_key: str = Field(default="", description="Mem0 API key")
+
+    linear_client_id: str = Field(default="", description="Linear client ID")
+    linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    todoist_client_id: str = Field(default="", description="Todoist client ID")
+    todoist_client_secret: str = Field(default="", description="Todoist client secret")
+
+    stripe_api_key: str = Field(default="", description="Stripe API Key")
+    stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
+
+    screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
 
     # Add more secret fields as needed
 

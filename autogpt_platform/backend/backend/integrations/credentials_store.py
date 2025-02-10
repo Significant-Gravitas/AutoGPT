@@ -23,6 +23,15 @@ from backend.util.settings import Settings
 
 settings = Settings()
 
+# This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
+ollama_credentials = APIKeyCredentials(
+    id="744fdc56-071a-4761-b5a5-0af0ce10a2b5",
+    provider="ollama",
+    api_key=SecretStr("FAKE_API_KEY"),
+    title="Use Credits for Ollama",
+    expires_at=None,
+)
+
 revid_credentials = APIKeyCredentials(
     id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
     provider="revid",
@@ -121,9 +130,24 @@ nvidia_credentials = APIKeyCredentials(
     title="Use Credits for Nvidia",
     expires_at=None,
 )
+screenshotone_credentials = APIKeyCredentials(
+    id="3b1bdd16-8818-4bc2-8cbb-b23f9a3439ed",
+    provider="screenshotone",
+    api_key=SecretStr(settings.secrets.screenshotone_api_key),
+    title="Use Credits for ScreenshotOne",
+    expires_at=None,
+)
+mem0_credentials = APIKeyCredentials(
+    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    provider="mem0",
+    api_key=SecretStr(settings.secrets.mem0_api_key),
+    title="Use Credits for Mem0",
+    expires_at=None,
+)
 
 
 DEFAULT_CREDENTIALS = [
+    ollama_credentials,
     revid_credentials,
     ideogram_credentials,
     replicate_credentials,
@@ -137,7 +161,9 @@ DEFAULT_CREDENTIALS = [
     fal_credentials,
     exa_credentials,
     e2b_credentials,
+    mem0_credentials,
     nvidia_credentials,
+    screenshotone_credentials,
 ]
 
 
@@ -169,6 +195,10 @@ class IntegrationCredentialsStore:
     def get_all_creds(self, user_id: str) -> list[Credentials]:
         users_credentials = self._get_user_integrations(user_id).credentials
         all_credentials = users_credentials
+        # These will always be added
+        all_credentials.append(ollama_credentials)
+
+        # These will only be added if the API key is set
         if settings.secrets.revid_api_key:
             all_credentials.append(revid_credentials)
         if settings.secrets.ideogram_api_key:
@@ -197,6 +227,10 @@ class IntegrationCredentialsStore:
             all_credentials.append(e2b_credentials)
         if settings.secrets.nvidia_api_key:
             all_credentials.append(nvidia_credentials)
+        if settings.secrets.screenshotone_api_key:
+            all_credentials.append(screenshotone_credentials)
+        if settings.secrets.mem0_api_key:
+            all_credentials.append(mem0_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:

@@ -42,6 +42,11 @@ async def get_profile(
     """
     try:
         profile = await backend.server.v2.store.db.get_user_profile(user_id)
+        if profile is None:
+            return fastapi.responses.JSONResponse(
+                status_code=404,
+                content={"detail": "Profile not found"},
+            )
         return profile
     except Exception:
         logger.exception("Exception occurred whilst getting user profile")
@@ -77,7 +82,7 @@ async def update_or_create_profile(
         HTTPException: If there is an error updating the profile
     """
     try:
-        updated_profile = await backend.server.v2.store.db.update_or_create_profile(
+        updated_profile = await backend.server.v2.store.db.update_profile(
             user_id=user_id, profile=profile
         )
         return updated_profile
@@ -659,16 +664,13 @@ async def review_submission(
     try:
         submission = await backend.server.v2.store.db.review_store_submission(
             store_listing_version_id=request.store_listing_version_id,
-            is_approved=request.isApproved,
+            is_approved=request.is_approved,
             comments=request.comments,
             reviewer_id=user.user_id,
         )
         return submission
     except Exception:
-        logger.exception("Exception occurred whilst reviewing store submission")
-        return fastapi.responses.JSONResponse(
+        raise fastapi.HTTPException(
             status_code=500,
-            content={
-                "detail": "An error occurred while reviewing the store submission"
-            },
+            detail="An error occurred while creating the store submission review",
         )
