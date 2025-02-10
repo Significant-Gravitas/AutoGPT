@@ -30,19 +30,20 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     agent: {
-      agent_name: "Personalized Morning Coffee Newsletter example of three lines",
+      agent_name:
+        "Personalized Morning Coffee Newsletter example of three lines",
       sub_heading:
-          "Transform ideas into breathtaking images with this AI-powered Image Generator.",
+        "Transform ideas into breathtaking images with this AI-powered Image Generator.",
       description:
-          "Elevate your web content with this powerful AI Webpage Copy Improver. Designed for marketers, SEO specialists, and web developers, this tool analyses and enhances website copy for maximum impact. Using advanced language models, it optimizes text for better clarity, SEO performance, and increased conversion rates.",
+        "Elevate your web content with this powerful AI Webpage Copy Improver. Designed for marketers, SEO specialists, and web developers, this tool analyses and enhances website copy for maximum impact. Using advanced language models, it optimizes text for better clarity, SEO performance, and increased conversion rates.",
       agent_image:
-          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+        "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
       creator_avatar:
-          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+        "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
       creator: "AI Solutions Inc.",
       runs: 50000,
       rating: 4.7,
-      slug: ""
+      slug: "",
     },
     backgroundColor: "bg-white",
   },
