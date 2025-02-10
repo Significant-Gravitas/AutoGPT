@@ -32,9 +32,6 @@ class CreateCampaignBlock(Block):
         )
 
     class Output(BlockSchema):
-        ok: bool = SchemaField(
-            description="Whether the campaign was created successfully",
-        )
         id: int = SchemaField(
             description="The ID of the created campaign",
         )
@@ -102,10 +99,11 @@ class CreateCampaignBlock(Block):
     ) -> BlockOutput:
         response = self.create_campaign(input_data.name, credentials)
 
-        yield "ok", response.ok
         yield "id", response.id
         yield "name", response.name
         yield "created_at", response.created_at
+        if not response.ok:
+            yield "error", "Failed to create campaign"
 
 
 class AddLeadToCampaignBlock(Block):
@@ -132,9 +130,6 @@ class AddLeadToCampaignBlock(Block):
     class Output(BlockSchema):
         campaign_id: int = SchemaField(
             description="The ID of the campaign the lead was added to (passed through)",
-        )
-        ok: bool = SchemaField(
-            description="Whether the lead was added to the campaign successfully",
         )
         upload_count: int = SchemaField(
             description="The number of leads added to the campaign",
@@ -235,7 +230,6 @@ class AddLeadToCampaignBlock(Block):
         )
 
         yield "campaign_id", input_data.campaign_id
-        yield "ok", response.ok
         yield "upload_count", response.upload_count
         if response.already_added_to_campaign:
             yield "already_added_to_campaign", response.already_added_to_campaign
@@ -249,6 +243,8 @@ class AddLeadToCampaignBlock(Block):
             yield "lead_import_stopped_count", response.lead_import_stopped_count
         if response.error:
             yield "error", response.error
+        if not response.ok:
+            yield "error", "Failed to add leads to campaign"
 
 
 class SaveCampaignSequencesBlock(Block):
@@ -268,9 +264,6 @@ class SaveCampaignSequencesBlock(Block):
         )
 
     class Output(BlockSchema):
-        ok: bool = SchemaField(
-            description="Whether the sequences were saved successfully",
-        )
         data: dict | str | None = SchemaField(
             description="Data from the API",
             default=None,
@@ -335,10 +328,11 @@ class SaveCampaignSequencesBlock(Block):
             input_data.campaign_id, input_data.sequences, credentials
         )
 
-        yield "ok", response.ok
         if response.data:
             yield "data", response.data
         if response.message:
             yield "message", response.message
         if response.error:
             yield "error", response.error
+        if not response.ok:
+            yield "error", "Failed to save sequences"
