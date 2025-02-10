@@ -23,9 +23,9 @@ const meta = {
       rating: { control: "number", min: 0, max: 5, step: 0.1 },
       slug: { control: "text" },
     },
-    backgroundColor:{
-      control: "color"
-    }
+    backgroundColor: {
+      control: "color",
+    },
   },
 } satisfies Meta<typeof FeaturedAgentCard>;
 
@@ -61,11 +61,11 @@ export const WithInteraction: Story = {
       agent_name: "AI Writing Assistant",
       sub_heading: "Enhance your writing",
       description:
-          "An AI-powered writing assistant that helps improve your writing style and clarity.",
+        "An AI-powered writing assistant that helps improve your writing style and clarity.",
       agent_image:
-          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+        "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
       creator_avatar:
-          "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+        "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
       creator: "WordCraft AI",
       runs: 200000,
       rating: 4.6,
