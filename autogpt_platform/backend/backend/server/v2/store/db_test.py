@@ -158,6 +158,26 @@ async def test_create_store_submission(mocker):
         agentId="agent-id",
         agentVersion=1,
         owningUserId="user-id",
+        StoreListingVersions=[
+            prisma.models.StoreListingVersion(
+                id="version-id",
+                agentId="agent-id",
+                agentVersion=1,
+                slug="test-agent",
+                name="Test Agent",
+                description="Test description",
+                createdAt=datetime.now(),
+                updatedAt=datetime.now(),
+                subHeading="Test heading",
+                imageUrls=["image.jpg"],
+                categories=["test"],
+                isFeatured=False,
+                isDeleted=False,
+                version=1,
+                isAvailable=True,
+                isApproved=False,
+            )
+        ],
     )
 
     # Mock prisma calls
@@ -181,6 +201,7 @@ async def test_create_store_submission(mocker):
     # Verify results
     assert result.name == "Test Agent"
     assert result.description == "Test description"
+    assert result.store_listing_version_id == "version-id"
 
     # Verify mocks called correctly
     mock_agent_graph.return_value.find_first.assert_called_once()
@@ -195,6 +216,7 @@ async def test_update_profile(mocker):
         id="profile-id",
         name="Test Creator",
         username="creator",
+        userId="user-id",
         description="Test description",
         links=["link1"],
         avatarUrl="avatar.jpg",
@@ -221,7 +243,7 @@ async def test_update_profile(mocker):
     )
 
     # Call function
-    result = await db.update_or_create_profile("user-id", profile)
+    result = await db.update_profile("user-id", profile)
 
     # Verify results
     assert result.username == "creator"
@@ -237,7 +259,7 @@ async def test_get_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
         id="profile-id",
-        name="No Profile Data",
+        name="Test User",
         username="testuser",
         description="Test description",
         links=["link1", "link2"],
@@ -245,20 +267,22 @@ async def test_get_user_profile(mocker):
         isFeatured=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
+        userId="user-id",
     )
 
     # Mock prisma calls
     mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
-    mock_profile_db.return_value.find_unique = mocker.AsyncMock(
+    mock_profile_db.return_value.find_first = mocker.AsyncMock(
         return_value=mock_profile
     )
 
     # Call function
     result = await db.get_user_profile("user-id")
 
+    assert result is not None
     # Verify results
-    assert result.name == "No Profile Data"
-    assert result.username == "No Profile Data"
-    assert result.description == "No Profile Data"
-    assert result.links == []
-    assert result.avatar_url == ""
+    assert result.name == "Test User"
+    assert result.username == "testuser"
+    assert result.description == "Test description"
+    assert result.links == ["link1", "link2"]
+    assert result.avatar_url == "avatar.jpg"
