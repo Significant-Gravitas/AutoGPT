@@ -146,6 +146,9 @@ model UserNotificationBatch {
   type NotificationType
 
   notifications NotificationEvent[]
+
+  // Each user can only have one batch of a notification type at a time
+  @@unique([userId, type])
 }
 
 model UserNotificationPreference {
