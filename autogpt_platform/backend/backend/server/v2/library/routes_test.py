@@ -89,11 +89,12 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     assert data.agents[1].agent_id == "test-agent-2"
     assert data.agents[1].can_access_graph is False
     mock_db_call.assert_called_once_with(
-        "test-user-id",
-        "test",
-        backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
-        1,
-        50,
+        user_id="test-user-id",
+        search_term="test",
+        filter_by=[],
+        sort_by=[backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT],
+        page=1,
+        page_size=15,
     )
 
 
@@ -104,11 +105,12 @@ def test_get_library_agents_error(mocker: pytest_mock.MockFixture):
     response = client.get("/agents?search_term=test")
     assert response.status_code == 500
     mock_db_call.assert_called_once_with(
-        "test-user-id",
-        "test",
-        backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
-        1,
-        50,
+        user_id="test-user-id",
+        search_term="test",
+        filter_by=[],
+        sort_by=[backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT],
+        page=1,
+        page_size=15,
     )
 
 

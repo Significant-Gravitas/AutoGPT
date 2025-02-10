@@ -32,8 +32,12 @@ async def get_library_agents(
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
-    sort_by: backend.server.v2.library.model.LibraryAgentFilter = Query(
-        backend.server.v2.library.model.LibraryAgentFilter.UPDATED_AT,
+    filter_by: list[backend.server.v2.library.model.LibraryAgentFilter] = Query(
+        [],
+        description="Filter results by criteria",
+    ),
+    sort_by: list[backend.server.v2.library.model.LibraryAgentSort] = Query(
+        [backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT],
         description="Sort results by criteria",
     ),
     page: int = Query(
@@ -52,8 +56,9 @@ async def get_library_agents(
 
     Args:
         user_id: ID of the authenticated user.
-        search_term: Optional search term to filter agents by name.
-        sort_by: Sorting field/criteria.
+        search_term: Optional search term to filter agents by name/description.
+        filter_by: List of filters to apply (favorites, created by user).
+        sort_by: List of sorting criteria (created date, updated date).
         page: Page number to retrieve.
         page_size: Number of agents per page.
 
@@ -68,6 +73,7 @@ async def get_library_agents(
         return await backend.server.v2.library.db.get_library_agents(
             user_id=user_id,
             search_term=search_term,
+            filter_by=filter_by,
             sort_by=sort_by,
             page=page,
             page_size=page_size,
