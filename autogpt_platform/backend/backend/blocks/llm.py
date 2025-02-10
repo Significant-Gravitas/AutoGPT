@@ -509,6 +509,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             client = openai.OpenAI(
                 base_url="https://api.aimlapi.com/v2",
                 api_key=credentials.api_key.get_secret_value(),
+                default_headers={"X-Project": "AutoGPT"},
             )
 
             completion = client.chat.completions.create(
