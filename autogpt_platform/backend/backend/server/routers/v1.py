@@ -65,6 +65,7 @@ from backend.server.model import (
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
+from backend.server.routers.otto.routes import otto_router
 
 if TYPE_CHECKING:
     from backend.data.model import Credentials
@@ -102,6 +103,7 @@ v1_router.include_router(
     dependencies=[Depends(auth_middleware)],
 )
 
+v1_router.include_router(otto_router)
 
 ########################################################
 ##################### Auth #############################
