@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Annotated, Generic, Optional, Type, TypeVar, Union
+from typing import Annotated, Generic, Optional, TypeVar, Union
 
 from prisma import Json
 from prisma.enums import NotificationType
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 
-class BatchingStrategy(str, Enum):
+class BatchingStrategy(Enum):
     IMMEDIATE = "immediate"  # Send right away (errors, critical notifications)
     HOURLY = "hourly"  # Batch for up to an hour (usage reports)
     DAILY = "daily"  # Daily digest (summary notifications)
@@ -141,7 +141,7 @@ class NotificationEventModel(BaseModel, Generic[T_co]):
 
 def get_data_type(
     notification_type: NotificationType,
-) -> Type[BaseNotificationData]:
+) -> type[BaseNotificationData]:
     return {
         NotificationType.AGENT_RUN: AgentRunData,
         NotificationType.ZERO_BALANCE: ZeroBalanceData,
@@ -205,10 +205,12 @@ class NotificationTypeOverride:
 class NotificationPreference(BaseModel):
     user_id: str
     email: EmailStr
-    preferences: dict[NotificationType, bool] = {}  # Which notifications they want
+    preferences: dict[NotificationType, bool] = Field(
+        default_factory=dict, description="Which notifications the user wants"
+    )
     daily_limit: int = 10  # Max emails per day
     emails_sent_today: int = 0
-    last_reset_date: datetime = datetime.now()
+    last_reset_date: datetime = Field(default_factory=datetime.now)
 
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
@@ -235,7 +237,6 @@ async def create_or_add_to_user_notification_batch(
     ].model_validate_json(data)
 
     # Serialize the data
-    # serialized_data = json.dumps(notification_data.data.model_dump())
     json_data: Json = Json(notification_data.data.model_dump_json())
 
     # First try to find existing batch
