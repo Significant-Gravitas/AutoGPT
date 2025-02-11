@@ -142,19 +142,25 @@ async def migrate_and_encrypt_user_integrations():
 
 
 async def get_active_user_ids_in_timerange(start_time: str, end_time: str) -> list[str]:
-    users = await User.prisma().find_many(
-        where={
-            "AgentGraphExecutions": {
-                "some": {
-                    "createdAt": {
-                        "gte": datetime.fromisoformat(start_time),
-                        "lte": datetime.fromisoformat(end_time),
+    try:
+        users = await User.prisma().find_many(
+            where={
+                "AgentGraphExecutions": {
+                    "some": {
+                        "createdAt": {
+                            "gte": datetime.fromisoformat(start_time),
+                            "lte": datetime.fromisoformat(end_time),
+                        }
                     }
                 }
-            }
-        },
-    )
-    return [user.id for user in users]
+            },
+        )
+        return [user.id for user in users]
+
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get active user ids in timerange {start_time} to {end_time}: {e}"
+        ) from e
 
 
 async def get_active_users_ids() -> list[str]:
