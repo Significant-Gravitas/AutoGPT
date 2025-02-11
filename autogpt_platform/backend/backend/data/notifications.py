@@ -141,7 +141,7 @@ class NotificationEventModel(BaseModel, Generic[T_co]):
 
 def get_data_type(
     notification_type: NotificationType,
-) -> Type[BaseNotificationData]:
+) -> type[BaseNotificationData]:
     return {
         NotificationType.AGENT_RUN: AgentRunData,
         NotificationType.ZERO_BALANCE: ZeroBalanceData,
