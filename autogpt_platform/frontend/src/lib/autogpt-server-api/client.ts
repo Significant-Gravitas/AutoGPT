@@ -2,8 +2,14 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AnalyticsDetails,
   AnalyticsMetrics,
+  APIKey,
   APIKeyCredentials,
+  APIKeyPermission,
   Block,
+  CreatorsResponse,
+  CreatorDetails,
+  CreateAPIKeyResponse,
+  Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
@@ -11,28 +17,23 @@ import {
   GraphExecutionMeta,
   Graph,
   GraphCreatable,
-  GraphExecuteResponse,
   GraphMeta,
   GraphUpdateable,
-  NodeExecutionResult,
   MyAgentsResponse,
-  OAuth2Credentials,
+  NodeExecutionResult,
   ProfileDetails,
-  User,
+  Schedule,
+  ScheduleCreatable,
   StoreAgentsResponse,
   StoreAgentDetails,
-  CreatorsResponse,
-  CreatorDetails,
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
   StoreSubmission,
   StoreReviewCreate,
   StoreReview,
-  ScheduleCreatable,
-  Schedule,
-  APIKeyPermission,
-  CreateAPIKeyResponse,
-  APIKey,
+  TransactionHistory,
+  User,
+  UserPasswordCredentials,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -89,6 +90,46 @@ export default class BackendAPI {
     }
   }
 
+  getAutoTopUpConfig(): Promise<{ amount: number; threshold: number }> {
+    return this._get("/credits/auto-top-up");
+  }
+
+  setAutoTopUpConfig(config: {
+    amount: number;
+    threshold: number;
+  }): Promise<{ amount: number; threshold: number }> {
+    return this._request("POST", "/credits/auto-top-up", config);
+  }
+
+  getTransactionHistory(
+    lastTransction: Date | null,
+    countLimit: number,
+  ): Promise<TransactionHistory> {
+    return this._get(
+      `/credits/transactions`,
+      lastTransction
+        ? {
+            transaction_time: lastTransction,
+            transaction_count_limit: countLimit,
+          }
+        : {
+            transaction_count_limit: countLimit,
+          },
+    );
+  }
+
+  requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {
+    return this._request("POST", "/credits", { credit_amount });
+  }
+
+  getUserPaymentPortalLink(): Promise<{ url: string }> {
+    return this._get("/credits/manage");
+  }
+
+  fulfillCheckout(): Promise<void> {
+    return this._request("PATCH", "/credits");
+  }
+
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
   }
@@ -140,9 +181,10 @@ export default class BackendAPI {
 
   executeGraph(
     id: string,
+    version: number,
     inputData: { [key: string]: any } = {},
-  ): Promise<GraphExecuteResponse> {
-    return this._request("POST", `/graphs/${id}/execute`, inputData);
+  ): Promise<{ graph_exec_id: string }> {
+    return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {
@@ -203,7 +245,17 @@ export default class BackendAPI {
     return this._request(
       "POST",
       `/integrations/${credentials.provider}/credentials`,
-      credentials,
+      { ...credentials, type: "api_key" },
+    );
+  }
+
+  createUserPasswordCredentials(
+    credentials: Omit<UserPasswordCredentials, "id" | "type">,
+  ): Promise<UserPasswordCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      { ...credentials, type: "user_password" },
     );
   }
 
@@ -215,10 +267,7 @@ export default class BackendAPI {
     );
   }
 
-  getCredentials(
-    provider: string,
-    id: string,
-  ): Promise<APIKeyCredentials | OAuth2Credentials> {
+  getCredentials(provider: string, id: string): Promise<Credentials> {
     return this._get(`/integrations/${provider}/credentials/${id}`);
   }
 
@@ -720,8 +769,11 @@ export default class BackendAPI {
     return () => this.wsMessageHandlers[method].delete(handler);
   }
 
-  subscribeToExecution(graphId: string) {
-    this.sendWebSocketMessage("subscribe", { graph_id: graphId });
+  subscribeToExecution(graphId: string, graphVersion: number) {
+    this.sendWebSocketMessage("subscribe", {
+      graph_id: graphId,
+      graph_version: graphVersion,
+    });
   }
 }
 
@@ -732,7 +784,7 @@ type GraphCreateRequestBody = {
 };
 
 type WebsocketMessageTypeMap = {
-  subscribe: { graph_id: string };
+  subscribe: { graph_id: string; graph_version: number };
   execution_event: NodeExecutionResult;
   heartbeat: "ping" | "pong";
 };

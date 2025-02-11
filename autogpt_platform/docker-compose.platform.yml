@@ -36,6 +36,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    environment:
+      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
+      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7 # CHANGE THIS TO A RANDOM PASSWORD IN PRODUCTION -- everywhere lol
+    ports:
+      - "5672:5672"
+      - "15672:15672"
 
   rest_server:
     build:
@@ -55,6 +70,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
     environment:
       - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
@@ -62,6 +79,10 @@ services:
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=rabbitmq_user_default
+      - RABBITMQ_PASSWORD=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
@@ -69,7 +90,7 @@ services:
       - EXECUTIONMANAGER_HOST=executor
       - FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
-      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=  # DO NOT USE IN PRODUCTION!!
+      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
     ports:
       - "8006:8006"
       - "8003:8003" # execution scheduler
@@ -90,6 +111,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       db:
         condition: service_healthy
       migrate:
@@ -102,10 +125,14 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=rabbitmq_user_default
+      - RABBITMQ_PASSWORD=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
-      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=  # DO NOT USE IN PRODUCTION!!
+      - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
     ports:
       - "8002:8000"
     networks:
@@ -127,14 +154,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # rabbitmq:
+      #   condition: service_healthy
       migrate:
-        condition: service_completed_successfully
+        condition: service_completed_successfully 
     environment:
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
       - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password
+      # - RABBITMQ_HOST=rabbitmq # TODO: Uncomment this when we have a need for it in websocket (like nofifying when stuff went down)
+      # - RABBITMQ_PORT=5672
+      # - RABBITMQ_USER=rabbitmq_user_default
+      # - RABBITMQ_PASSWORD=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]

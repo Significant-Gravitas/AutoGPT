@@ -64,7 +64,7 @@ export const FlowInfo: React.FC<
     setNodes,
     edges,
     setEdges,
-  } = useAgentGraph(flow.id, false);
+  } = useAgentGraph(flow.id, flow.version, undefined, false);
 
   const api = useBackendAPI();
   const { toast } = useToast();
@@ -223,7 +223,7 @@ export const FlowInfo: React.FC<
           )}
           <Link
             className={buttonVariants({ variant: "default" })}
-            href={`/build?flowID=${flow.id}`}
+            href={`/build?flowID=${flow.id}&flowVersion=${flow.version}`}
           >
             <Pencil2Icon className="mr-2" />
             Open in Builder

@@ -37,6 +37,25 @@ jobs:
         run: |
           yarn lint
 
+  type-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Run tsc check
+        run: |
+          yarn type-check
+
   test:
     runs-on: ubuntu-latest
     strategy:

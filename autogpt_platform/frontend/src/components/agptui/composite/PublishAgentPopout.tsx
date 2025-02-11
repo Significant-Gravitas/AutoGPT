@@ -8,7 +8,10 @@ import {
   PopoverAnchor,
 } from "@/components/ui/popover";
 import { PublishAgentSelect } from "../PublishAgentSelect";
-import { PublishAgentInfo } from "../PublishAgentSelectInfo";
+import {
+  PublishAgentInfo,
+  PublishAgentInfoInitialData,
+} from "../PublishAgentSelectInfo";
 import { PublishAgentAwaitingReview } from "../PublishAgentAwaitingReview";
 import { Button } from "../Button";
 import {
@@ -45,17 +48,17 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   );
   const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
-  const [initialData, setInitialData] = React.useState<{
-    agent_id: string;
-    title: string;
-    subheader: string;
-    slug: string;
-    thumbnailSrc: string;
-    youtubeLink: string;
-    category: string;
-    description: string;
-    additionalImages?: string[];
-  } | null>(null);
+  const [initialData, setInitialData] =
+    React.useState<PublishAgentInfoInitialData>({
+      agent_id: "",
+      title: "",
+      subheader: "",
+      slug: "",
+      thumbnailSrc: "",
+      youtubeLink: "",
+      category: "",
+      description: "",
+    });
   const [publishData, setPublishData] =
     React.useState<StoreSubmissionRequest>(submissionData);
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
@@ -260,7 +263,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                   onClose={handleClose}
                   onDone={handleClose}
                   onViewProgress={() => {
-                    router.push("/store/dashboard");
+                    router.push("/marketplace/dashboard");
                     handleClose();
                   }}
                 />

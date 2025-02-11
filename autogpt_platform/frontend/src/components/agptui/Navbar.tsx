@@ -33,49 +33,35 @@ interface NavbarProps {
 
 async function getProfileData() {
   const api = new BackendAPI();
-  const [profile, credits] = await Promise.all([
-    api.getStoreProfile("navbar"),
-    api.getUserCredit("navbar"),
-  ]);
+  const profile = await Promise.resolve(api.getStoreProfile("navbar"));
 
-  return {
-    profile,
-    credits,
-  };
+  return profile;
 }
 
 export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
   const { user } = await getServerUser();
   const isLoggedIn = user !== null;
   let profile: ProfileDetails | null = null;
-  let credits: { credits: number } = { credits: 0 };
   if (isLoggedIn) {
-    const { profile: t_profile, credits: t_credits } = await getProfileData();
-    profile = t_profile;
-    credits = t_credits;
+    profile = await getProfileData();
   }
 
   return (
     <>
-      <nav className="sticky top-0 z-50 mx-[16px] hidden h-16 w-full max-w-[1600px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+      <nav className="sticky top-0 z-50 mx-[16px] hidden h-16 max-w-[1600px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
         <div className="flex items-center gap-11">
           <div className="relative h-10 w-[88.87px]">
             <IconAutoGPTLogo className="h-full w-full" />
           </div>
           {links.map((link) => (
-            <NavbarLink
-              key={link.name}
-              name={link.name}
-              href={link.href}
-              className="font-poppins text-[20px] leading-[28px]"
-            />
+            <NavbarLink key={link.name} name={link.name} href={link.href} />
           ))}
         </div>
         {/* Profile section */}
         <div className="flex items-center gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
-              {profile && <CreditsCard credits={credits.credits} />}
+              {profile && <CreditsCard />}
               <ProfilePopoutMenu
                 menuItemGroups={menuItemGroups}
                 userName={profile?.username}

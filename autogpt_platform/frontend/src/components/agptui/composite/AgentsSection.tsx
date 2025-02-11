@@ -8,6 +8,7 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 export interface Agent {
   slug: string;
@@ -39,7 +40,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
 
   const handleCardClick = (creator: string, slug: string) => {
     router.push(
-      `/store/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+      `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
     );
   };
 
