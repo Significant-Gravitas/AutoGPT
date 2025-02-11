@@ -1,5 +1,4 @@
 'use client';
-import { useRouter } from 'next/navigation';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
 type OnboardingState = {
@@ -48,7 +47,7 @@ export default function OnboardingLayout({
   return (
     <OnboardingContext.Provider value={{ state, setState }}>
       <div className="min-h-screen w-full flex items-center justify-center bg-gray-100">
-        <div className="max-w-2xl w-full mx-auto px-4 flex flex-col items-center">
+        <div className="w-full mx-auto px-4 flex flex-col items-center">
           {children}
         </div>
       </div>

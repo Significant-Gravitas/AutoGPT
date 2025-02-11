@@ -1,15 +1,17 @@
 import Link from "next/link";
 
 type OnboardingButtonProps = {
+  className?: string;
   children?: React.ReactNode;
   disabled?: boolean;
   onClick?: () => void;
   href?: string;
- } & React.ButtonHTMLAttributes<HTMLButtonElement>;
- 
- export default function OnboardingButton({ children, disabled, onClick, href, ...props }: OnboardingButtonProps) {
+};
+
+export default function OnboardingButton({ className, children, disabled, onClick, href }: OnboardingButtonProps) {
   const buttonClasses = `
-    font-geist text-white
+    ${className}
+    font-geist text-white justify-center flex
     h-12 min-w-[100px] rounded-full py-3 px-5 gap-2.5
     transition-colors duration-200
     ${disabled ?
@@ -17,7 +19,7 @@ type OnboardingButtonProps = {
       'bg-zinc-700 hover:bg-zinc-800'
     }
   `;
- 
+
   if (href) {
     return (
       <Link href={href} className={buttonClasses}>
@@ -25,15 +27,14 @@ type OnboardingButtonProps = {
       </Link>
     );
   }
- 
+
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={buttonClasses}
-      {...props}
     >
       {children}
     </button>
   );
- }
+}
