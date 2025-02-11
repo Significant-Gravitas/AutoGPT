@@ -654,9 +654,9 @@ class UserCredit(UserCreditBase):
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
             success_url=settings.config.frontend_base_url
-            + "/marketplace/credits?topup=success",
+            + "/profile/credits?topup=success",
             cancel_url=settings.config.frontend_base_url
-            + "/marketplace/credits?topup=cancel",
+            + "/profile/credits?topup=cancel",
             allow_promotion_codes=True,
         )
 
