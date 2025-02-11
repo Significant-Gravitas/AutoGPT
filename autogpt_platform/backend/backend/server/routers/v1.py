@@ -311,6 +311,11 @@ async def get_graph(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
+@v1_router.get(
+    path="/templates/{graph_id}/versions",
+    tags=["templates", "graphs"],
+    dependencies=[Depends(auth_middleware)],
+)
 async def get_graph_all_versions(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Sequence[graph_db.GraphModel]:
