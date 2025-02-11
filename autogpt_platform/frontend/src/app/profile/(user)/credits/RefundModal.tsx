@@ -68,11 +68,6 @@ export const RefundModal = ({
     );
   };
 
-  // Filter for TOP_UP transactions (amount is a number now)
-  const topUpTransactions = transactions.filter(
-    (t) => t.description === "TOP_UP Transaction" && t.amount > 0,
-  );
-
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -88,7 +83,7 @@ export const RefundModal = ({
               </div>
             )}
 
-            {topUpTransactions.length === 0 ? (
+            {transactions.length === 0 ? (
               <p className="text-sm text-gray-500">
                 No eligible transactions found for refund.
               </p>
@@ -105,7 +100,7 @@ export const RefundModal = ({
                     <SelectValue placeholder="Select a transaction" />
                   </SelectTrigger>
                   <SelectContent>
-                    {topUpTransactions.map((transaction) => (
+                    {transactions.map((transaction) => (
                       <SelectItem
                         key={transaction.transaction_key}
                         value={transaction.transaction_key}
