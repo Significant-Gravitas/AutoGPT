@@ -4,10 +4,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
 
-export default function useCredits(): {
+export default function useCredits({
+  fetchInitialCredits = false,
+  fetchInitialAutoTopUpConfig = false,
+  fetchInitialTransactionHistory = false,
+  fetchStripeLibrary = false,
+}: {
+  fetchInitialCredits?: boolean;
+  fetchInitialAutoTopUpConfig?: boolean;
+  fetchInitialTransactionHistory?: boolean;
+  fetchStripeLibrary?: boolean;
+} = {}): {
   credits: number | null;
   fetchCredits: () => void;
   requestTopUp: (credit_amount: number) => Promise<void>;
+  refundTopUp: (transaction_key: string, reason: string) => Promise<number>;
   autoTopUpConfig: { amount: number; threshold: number } | null;
   fetchAutoTopUpConfig: () => void;
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
@@ -31,10 +42,12 @@ export default function useCredits(): {
   }, [api]);
 
   useEffect(() => {
+    if (!fetchInitialCredits) return;
     fetchCredits();
   }, [fetchCredits]);
 
   useEffect(() => {
+    if (!fetchStripeLibrary) return;
     const fetchStripe = async () => {
       if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) {
         console.debug("Stripe publishable key is not set.");
@@ -54,6 +67,7 @@ export default function useCredits(): {
   }, [api]);
 
   useEffect(() => {
+    if (!fetchInitialAutoTopUpConfig) return;
     fetchAutoTopUpConfig();
   }, [fetchAutoTopUpConfig]);
 
@@ -81,6 +95,16 @@ export default function useCredits(): {
     [api, router, stripe],
   );
 
+  const refundTopUp = useCallback(
+    async (transaction_key: string, reason: string) => {
+      const refunded_amount = await api.refundTopUp(transaction_key, reason);
+      await fetchCredits();
+      setTransactionHistory(await api.getTransactionHistory());
+      return refunded_amount;
+    },
+    [api, fetchCredits],
+  );
+
   const [transactionHistory, setTransactionHistory] =
     useState<TransactionHistory>({
       transactions: [],
@@ -102,6 +126,7 @@ export default function useCredits(): {
   }, [api, transactionHistory]);
 
   useEffect(() => {
+    if (!fetchInitialTransactionHistory) return;
     fetchTransactionHistory();
     // Note: We only need to fetch transaction history once.
     // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
@@ -123,6 +148,7 @@ export default function useCredits(): {
     credits,
     fetchCredits,
     requestTopUp,
+    refundTopUp,
     autoTopUpConfig,
     fetchAutoTopUpConfig,
     updateAutoTopUpConfig,

@@ -373,6 +373,9 @@ model AnalyticsMetrics {
 enum CreditTransactionType {
   TOP_UP
   USAGE
+  BONUS
+  REFUND
+  CARD_CHECK
 }
 
 ////////////////////////////////////////////////////////////

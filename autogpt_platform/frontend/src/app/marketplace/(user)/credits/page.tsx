@@ -1,10 +1,13 @@
 "use client";
-import { useEffect, useCallback } from "react";
-import { Button } from "@/components/agptui/Button";
+import { useEffect, useState, useCallback } from "react";
+import { Button } from "@/components/ui/button";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
+
+import { RefundModal } from "./RefundModal";
+import { CreditTransaction } from "@/lib/autogpt-server-api";
 
 import {
   Table,
@@ -24,7 +27,12 @@ export default function CreditsPage() {
     transactionHistory,
     fetchTransactionHistory,
     formatCredits,
-  } = useCredits();
+    refundTopUp,
+  } = useCredits({
+    fetchInitialAutoTopUpConfig: true,
+    fetchInitialTransactionHistory: true,
+    fetchStripeLibrary: true,
+  });
   const router = useRouter();
   const searchParams = useSearchParams();
   const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
@@ -32,7 +40,7 @@ export default function CreditsPage() {
 
   const toastOnFail = useCallback(
     (action: string, fn: () => Promise<any>) => {
-      fn().catch((e) => {
+      return fn().catch((e) => {
         toast({
           title: `Unable to ${action}`,
           description: e.message,
@@ -43,6 +51,25 @@ export default function CreditsPage() {
     },
     [toast],
   );
+
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [topUpTransactions, setTopUpTransactions] = useState<
+    CreditTransaction[]
+  >([]);
+  const openRefundModal = () => {
+    api.getTransactionHistory(null, 20, "TOP_UP").then((history) => {
+      setTopUpTransactions(history.transactions);
+      setIsRefundModalOpen(true);
+    });
+  };
+  const refundCredits = async (transaction_key: string, reason: string) =>
+    toastOnFail("refund transaction", async () => {
+      const amount = await refundTopUp(transaction_key, reason);
+      toast({
+        title: "Refund approved! 🎉",
+        description: `Your refund has been automatically processed. Based on your remaining balance, the amount of ${formatCredits(amount)} will be credited to your account.`,
+      });
+    });
 
   useEffect(() => {
     if (api && topupStatus === "success") {
@@ -131,7 +158,7 @@ export default function CreditsPage() {
           </form>
 
           {/* Auto Top-up Form */}
-          <form onSubmit={submitAutoTopUpConfig} className="mt-6 space-y-4">
+          <form onSubmit={submitAutoTopUpConfig} className="my-6 space-y-4">
             <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
 
             <div>
@@ -259,7 +286,16 @@ export default function CreditsPage() {
               {transactionHistory.transactions.map((transaction, i) => (
                 <TableRow key={i}>
                   <TableCell>
-                    {new Date(transaction.transaction_time).toLocaleString()}
+                    {new Date(transaction.transaction_time).toLocaleString(
+                      undefined,
+                      {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "numeric",
+                      },
+                    )}
                   </TableCell>
                   <TableCell>{transaction.description}</TableCell>
                   {/* Make it green if it's positive, red if it's negative */}
@@ -275,15 +311,31 @@ export default function CreditsPage() {
               ))}
             </TableBody>
           </Table>
-          {transactionHistory.next_transaction_time && (
+          <div className="my-6 space-y-4">
+            {transactionHistory.next_transaction_time && (
+              <Button
+                type="submit"
+                className="w-full"
+                onClick={() => fetchTransactionHistory()}
+              >
+                Load More
+              </Button>
+            )}
             <Button
-              type="submit"
+              variant="destructive"
+              onClick={() => openRefundModal()}
               className="w-full"
-              onClick={() => fetchTransactionHistory()}
             >
-              Load More
+              Request Refund
             </Button>
-          )}
+            <RefundModal
+              isOpen={isRefundModalOpen}
+              onClose={() => setIsRefundModalOpen(false)}
+              transactions={topUpTransactions}
+              formatCredits={formatCredits}
+              refundCredits={refundCredits}
+            />
+          </div>
         </div>
       </div>
     </div>

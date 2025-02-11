@@ -573,6 +573,7 @@ export interface CreateAPIKeyResponse {
 }
 
 export interface CreditTransaction {
+  transaction_key: string;
   transaction_time: Date;
   transaction_type: string;
   amount: number;
