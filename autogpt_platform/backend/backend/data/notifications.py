@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Annotated, Generic, Optional, Type, TypeVar, Union
+from typing import Annotated, Generic, Optional, TypeVar, Union
 
 from prisma import Json
 from prisma.enums import NotificationType
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 
-class BatchingStrategy(str, Enum):
+class BatchingStrategy(Enum):
     IMMEDIATE = "immediate"  # Send right away (errors, critical notifications)
     HOURLY = "hourly"  # Batch for up to an hour (usage reports)
     DAILY = "daily"  # Daily digest (summary notifications)
@@ -205,7 +205,9 @@ class NotificationTypeOverride:
 class NotificationPreference(BaseModel):
     user_id: str
     email: EmailStr
-    preferences: dict[NotificationType, bool] = Field(default_factory=dict, description="Which notifications the user wants")
+    preferences: dict[NotificationType, bool] = Field(
+        default_factory=dict, description="Which notifications the user wants"
+    )
     daily_limit: int = 10  # Max emails per day
     emails_sent_today: int = 0
     last_reset_date: datetime = Field(default_factory=datetime.now)
