@@ -235,7 +235,6 @@ async def create_or_add_to_user_notification_batch(
     ].model_validate_json(data)
 
     # Serialize the data
-    # serialized_data = json.dumps(notification_data.data.model_dump())
     json_data: Json = Json(notification_data.data.model_dump_json())
 
     # First try to find existing batch
