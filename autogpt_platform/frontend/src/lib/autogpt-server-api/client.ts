@@ -16,7 +16,6 @@ import {
   GraphExecution,
   Graph,
   GraphCreatable,
-  GraphExecuteResponse,
   GraphMeta,
   GraphUpdateable,
   MyAgentsResponse,
@@ -191,9 +190,10 @@ export default class BackendAPI {
 
   executeGraph(
     id: string,
+    version: number,
     inputData: { [key: string]: any } = {},
-  ): Promise<GraphExecuteResponse> {
-    return this._request("POST", `/graphs/${id}/execute`, inputData);
+  ): Promise<{ graph_exec_id: string }> {
+    return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
   }
 
   async getGraphExecutionInfo(
@@ -816,8 +816,11 @@ export default class BackendAPI {
     return () => this.wsMessageHandlers[method].delete(handler);
   }
 
-  subscribeToExecution(graphId: string) {
-    this.sendWebSocketMessage("subscribe", { graph_id: graphId });
+  subscribeToExecution(graphId: string, graphVersion: number) {
+    this.sendWebSocketMessage("subscribe", {
+      graph_id: graphId,
+      graph_version: graphVersion,
+    });
   }
 }
 
@@ -828,7 +831,7 @@ type GraphCreateRequestBody = {
 };
 
 type WebsocketMessageTypeMap = {
-  subscribe: { graph_id: string };
+  subscribe: { graph_id: string; graph_version: number };
   execution_event: NodeExecutionResult;
   heartbeat: "ping" | "pong";
 };

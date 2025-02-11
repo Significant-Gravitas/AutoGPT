@@ -135,6 +135,7 @@ export const PROVIDER_NAMES = {
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
   SLANT3D: "slant3d",
+  SCREENSHOTONE: "screenshotone",
   SMTP: "smtp",
   TWITTER: "twitter",
   REPLICATE: "replicate",
@@ -255,14 +256,6 @@ export type GraphUpdateable = Omit<
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
-
-/* Derived from backend/executor/manager.py:ExecutionManager.add_execution */
-export type GraphExecuteResponse = {
-  /** ID of the initiated run */
-  id: string;
-  /** List of node executions */
-  executions: Array<{ id: string; node_id: string }>;
-};
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
@@ -519,6 +512,7 @@ export type Schedule = {
 export type ScheduleCreatable = {
   cron: string;
   graph_id: string;
+  graph_version: number;
   input_data: { [key: string]: any };
 };
 

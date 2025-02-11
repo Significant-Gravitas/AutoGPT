@@ -1,12 +1,8 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { TransactionHistory } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadStripe } from "@stripe/stripe-js";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
-
-const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
-);
 
 export default function useCredits(): {
   credits: number | null;
@@ -17,12 +13,14 @@ export default function useCredits(): {
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
   transactionHistory: TransactionHistory;
   fetchTransactionHistory: () => void;
+  formatCredits: (credit: number | null) => string;
 } {
   const [credits, setCredits] = useState<number | null>(null);
   const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
     amount: number;
     threshold: number;
   } | null>(null);
+  const [stripe, setStripe] = useState<Stripe | null>(null);
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const router = useRouter();
@@ -35,6 +33,20 @@ export default function useCredits(): {
   useEffect(() => {
     fetchCredits();
   }, [fetchCredits]);
+
+  useEffect(() => {
+    const fetchStripe = async () => {
+      if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) {
+        console.debug("Stripe publishable key is not set.");
+        return;
+      }
+      const stripe = await loadStripe(
+        process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      );
+      setStripe(stripe);
+    };
+    fetchStripe();
+  }, []);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
     const response = await api.getAutoTopUpConfig();
@@ -55,16 +67,18 @@ export default function useCredits(): {
 
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
-      const stripe = await stripePromise;
-
       if (!stripe) {
+        console.error(
+          "Trying to top-up failed because Stripe is not loaded." +
+            "Did you set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?",
+        );
         return;
       }
 
       const response = await api.requestTopUp(credit_amount);
       router.push(response.checkout_url);
     },
-    [api, router],
+    [api, router, stripe],
   );
 
   const [transactionHistory, setTransactionHistory] =
@@ -89,6 +103,20 @@ export default function useCredits(): {
 
   useEffect(() => {
     fetchTransactionHistory();
+    // Note: We only need to fetch transaction history once.
+    // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const formatCredits = useCallback((credit: number | null) => {
+    if (credit === null) {
+      return "-";
+    }
+    const value = Math.abs(credit);
+    const sign = credit < 0 ? "-" : "";
+    const precision =
+      2 - (value % 100 === 0 ? 1 : 0) - (value % 10 === 0 ? 1 : 0);
+    return `${sign}$${(value / 100).toFixed(precision)}`;
   }, []);
 
   return {
@@ -100,5 +128,6 @@ export default function useCredits(): {
     updateAutoTopUpConfig,
     transactionHistory,
     fetchTransactionHistory,
+    formatCredits,
   };
 }

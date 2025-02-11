@@ -51,6 +51,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    ExecuteGraphResponse,
     RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
@@ -178,6 +179,8 @@ async def configure_user_auto_top_up(
 ) -> str:
     if request.threshold < 0:
         raise ValueError("Threshold must be greater than 0")
+    if request.amount < 500 and request.amount != 0:
+        raise ValueError("Amount must be greater than or equal to 500")
     if request.amount < request.threshold:
         raise ValueError("Amount must be greater than or equal to threshold")
 
@@ -240,7 +243,7 @@ async def manage_payment_method(
 ) -> dict[str, str]:
     session = stripe.billing_portal.Session.create(
         customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.platform_base_url + "/marketplace/credits",
+        return_url=settings.config.frontend_base_url + "/marketplace/credits",
     )
     if not session:
         raise HTTPException(
@@ -509,7 +512,7 @@ async def set_graph_active_version(
 
 
 @v1_router.post(
-    path="/graphs/{graph_id}/execute",
+    path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -518,13 +521,13 @@ def execute_graph(
     node_input: dict[Any, Any],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
-) -> dict[str, Any]:  # FIXME: add proper return type
+) -> ExecuteGraphResponse:
     try:
         logger.info("Node input: %s", node_input)
         graph_exec = execution_manager_client().add_execution(
             graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
-        return {"id": graph_exec.graph_exec_id}
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
     except Exception as e:
         msg = e.__str__().encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
@@ -586,6 +589,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     cron: str
     input_data: dict[Any, Any]
     graph_id: str
+    graph_version: int
 
 
 @v1_router.post(
@@ -597,10 +601,13 @@ async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
 ) -> scheduler.JobInfo:
-    graph = await graph_db.get_graph(schedule.graph_id, user_id=user_id)
+    graph = await graph_db.get_graph(
+        schedule.graph_id, schedule.graph_version, user_id=user_id
+    )
     if not graph:
         raise HTTPException(
-            status_code=404, detail=f"Graph #{schedule.graph_id} not found."
+            status_code=404,
+            detail=f"Graph #{schedule.graph_id} v.{schedule.graph_version} not found.",
         )
 
     return await asyncio.to_thread(
