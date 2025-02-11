@@ -205,10 +205,10 @@ class NotificationTypeOverride:
 class NotificationPreference(BaseModel):
     user_id: str
     email: EmailStr
-    preferences: dict[NotificationType, bool] = {}  # Which notifications they want
+    preferences: dict[NotificationType, bool] = Field(default_factory=dict, description="Which notifications the user wants")
     daily_limit: int = 10  # Max emails per day
     emails_sent_today: int = 0
-    last_reset_date: datetime = datetime.now()
+    last_reset_date: datetime = Field(default_factory=datetime.now)
 
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
