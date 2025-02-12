@@ -37,6 +37,22 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+      image: rabbitmq:management
+      container_name: rabbitmq
+      healthcheck:
+        test: rabbitmq-diagnostics -q ping
+        interval: 30s
+        timeout: 10s
+        retries: 5
+        start_period: 10s
+      environment:
+        - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
+        - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      ports:
+        - "5672:5672"
+        - "15672:15672"
+
   rest_server:
     build:
       context: ../
@@ -62,6 +78,10 @@ services:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?connect_timeout=60&schema=platform
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=rabbitmq_user_default
+      - RABBITMQ_PASSWORD=${RABBITMQ_DEFAULT_PASS}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
@@ -102,6 +122,11 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=rabbitmq_user_default
+      - RABBITMQ_PASSWORD=${RABBITMQ_DEFAULT_PASS}
+      - ENABLE_AUTH=true
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
