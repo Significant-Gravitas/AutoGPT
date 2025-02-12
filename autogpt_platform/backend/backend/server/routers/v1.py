@@ -311,11 +311,6 @@ async def get_graph(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-@v1_router.get(
-    path="/templates/{graph_id}/versions",
-    tags=["templates", "graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
 async def get_graph_all_versions(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> Sequence[graph_db.GraphModel]:
@@ -331,38 +326,7 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
 ) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=False, user_id=user_id)
-
-
-async def do_create_graph(
-    create_graph: CreateGraph,
-    is_template: bool,
-    # user_id doesn't have to be annotated like on other endpoints,
-    # because create_graph isn't used directly as an endpoint
-    user_id: str,
-) -> graph_db.GraphModel:
-    if create_graph.graph:
-        graph = graph_db.make_graph_model(create_graph.graph, user_id)
-    elif create_graph.template_id:
-        # Create a new graph from a template
-        graph = await graph_db.get_graph(
-            create_graph.template_id,
-            create_graph.template_version,
-            template=True,
-            user_id=user_id,
-        )
-        if not graph:
-            raise HTTPException(
-                400, detail=f"Template #{create_graph.template_id} not found"
-            )
-        graph.version = 1
-    else:
-        raise HTTPException(
-            status_code=400, detail="Either graph or template_id must be provided."
-        )
-
-    graph.is_template = is_template
-    graph.is_active = not is_template
+    graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
@@ -571,47 +535,6 @@ async def get_graph_run_node_execution_results(
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     return await execution_db.get_execution_results(graph_exec_id)
-
-
-########################################################
-##################### Templates ########################
-########################################################
-
-
-@v1_router.get(
-    path="/templates",
-    tags=["graphs", "templates"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def get_templates(
-    user_id: Annotated[str, Depends(get_user_id)]
-) -> Sequence[graph_db.GraphModel]:
-    return await graph_db.get_graphs(filter_by="template", user_id=user_id)
-
-
-@v1_router.get(
-    path="/templates/{graph_id}",
-    tags=["templates", "graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def get_template(
-    graph_id: str, version: int | None = None
-) -> graph_db.GraphModel:
-    graph = await graph_db.get_graph(graph_id, version, template=True)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Template #{graph_id} not found.")
-    return graph
-
-
-@v1_router.post(
-    path="/templates",
-    tags=["templates", "graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def create_new_template(
-    create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
-) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=True, user_id=user_id)
 
 
 ########################################################
