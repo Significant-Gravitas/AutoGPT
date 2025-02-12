@@ -159,8 +159,7 @@ class NotificationManager(AppService):
             parsed_event = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate_json(message)
-            # Implementation of actual notification sending would go here
-            user_email = get_db_client().get_user_by_id(event.user_id).email
+            user_email = get_db_client().get_user_email_by_id(event.user_id)
             should_send = (
                 get_db_client()
                 .get_user_notification_preference(event.user_id)

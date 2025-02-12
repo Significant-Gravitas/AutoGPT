@@ -1,7 +1,6 @@
 import logging
 import pathlib
 
-from backend.util.text import TextFormatter
 from postmarker.core import PostmarkClient
 from postmarker.models.emails import EmailManager
 from prisma.enums import NotificationType
@@ -12,6 +11,7 @@ from backend.data.notifications import (
     T_co,
 )
 from backend.util.settings import Settings
+from backend.util.text import TextFormatter
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -26,9 +26,14 @@ class TypedPostmarkClient(PostmarkClient):
 
 class EmailSender:
     def __init__(self):
-        self.postmark = TypedPostmarkClient(
-            server_token=settings.secrets.postmark_server_api_token
-        )
+        if settings.secrets.postmark_server_api_token:
+            self.postmark = TypedPostmarkClient(
+                server_token=settings.secrets.postmark_server_api_token
+            )
+        else:
+            logger.warning(
+                "Postmark server API token not found, email sending disabled"
+            )
         self.formatter = TextFormatter()
 
     def send_templated(
@@ -37,6 +42,9 @@ class EmailSender:
         user_email: str,
         data: NotificationEventModel[T_co] | list[NotificationEventModel[T_co]],
     ):
+        if not self.postmark:
+            logger.warning("Postmark client not initialized, email not sent")
+            return
         body = self._get_template(notification)
         # use the jinja2 library to render the template
         body = self.formatter.format_string(body, data)
