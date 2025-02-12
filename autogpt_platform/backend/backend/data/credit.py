@@ -545,7 +545,7 @@ class UserCredit(UserCreditBase):
         balance = await self.get_credits(user_id)
 
         # If the user has enough balance, just let them win the dispute.
-        if balance >= transaction.amount:
+        if balance - amount >= settings.config.refund_credit_tolerance_threshold:
             logger.warning(f"Accepting dispute from {user_id} for ${amount/100}")
             dispute.close()
             return
