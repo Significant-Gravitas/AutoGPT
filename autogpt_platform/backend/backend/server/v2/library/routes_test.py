@@ -1,7 +1,6 @@
 import datetime
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
+import autogpt_libs.auth as autogpt_api_auth
 import fastapi
 import fastapi.testclient
 import pytest
@@ -27,10 +26,8 @@ def override_get_user_id():
     return "test-user-id"
 
 
-app.dependency_overrides[
-    autogpt_libs.auth.middleware.auth_middleware
-] = override_auth_middleware
-app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
+app.dependency_overrides[autogpt_api_auth.auth_middleware] = override_auth_middleware
+app.dependency_overrides[autogpt_api_auth.get_user_id] = override_get_user_id
 
 
 def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
