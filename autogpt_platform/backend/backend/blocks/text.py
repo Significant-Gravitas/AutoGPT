@@ -105,26 +105,27 @@ class ExtractTextInformationBlock(Block):
                 },
             ],
             test_output=[
+                # Test case 1
                 ("positive", "World!"),
                 ("matched_results", ["World!"]),
                 ("matched_count", 1),
-
+                # Test case 2
                 ("positive", "Hello, World!"),
                 ("matched_results", ["Hello, World!"]),
                 ("matched_count", 1),
-
+                # Test case 3
                 ("negative", "Hello, World!"),
                 ("matched_results", []),
                 ("matched_count", 0),
-
+                # Test case 4
                 ("positive", "Hello,"),
                 ("matched_results", ["Hello,"]),
                 ("matched_count", 1),
-
+                # Test case 5
                 ("positive", "World!!"),
                 ("matched_results", ["World!!"]),
                 ("matched_count", 1),
-
+                # Test case 6
                 ("positive", "World!!"),
                 ("positive", "Earth!!"),
                 ("matched_results", ["World!!", "Earth!!"]),
