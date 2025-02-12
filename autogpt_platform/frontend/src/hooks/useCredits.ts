@@ -1,5 +1,8 @@
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
-import { TransactionHistory } from "@/lib/autogpt-server-api/types";
+import {
+  RefundRequest,
+  TransactionHistory,
+} from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
@@ -8,11 +11,13 @@ export default function useCredits({
   fetchInitialCredits = false,
   fetchInitialAutoTopUpConfig = false,
   fetchInitialTransactionHistory = false,
+  fetchInitialRefundRequests = false,
   fetchStripeLibrary = false,
 }: {
   fetchInitialCredits?: boolean;
   fetchInitialAutoTopUpConfig?: boolean;
   fetchInitialTransactionHistory?: boolean;
+  fetchInitialRefundRequests?: boolean;
   fetchStripeLibrary?: boolean;
 } = {}): {
   credits: number | null;
@@ -24,6 +29,8 @@ export default function useCredits({
   updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
   transactionHistory: TransactionHistory;
   fetchTransactionHistory: () => void;
+  refundRequests: RefundRequest[];
+  fetchRefundRequests: () => void;
   formatCredits: (credit: number | null) => string;
 } {
   const [credits, setCredits] = useState<number | null>(null);
@@ -44,7 +51,7 @@ export default function useCredits({
   useEffect(() => {
     if (!fetchInitialCredits) return;
     fetchCredits();
-  }, [fetchCredits]);
+  }, [fetchCredits, fetchInitialCredits]);
 
   useEffect(() => {
     if (!fetchStripeLibrary) return;
@@ -59,7 +66,7 @@ export default function useCredits({
       setStripe(stripe);
     };
     fetchStripe();
-  }, []);
+  }, [fetchStripeLibrary]);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
     const response = await api.getAutoTopUpConfig();
@@ -69,7 +76,7 @@ export default function useCredits({
   useEffect(() => {
     if (!fetchInitialAutoTopUpConfig) return;
     fetchAutoTopUpConfig();
-  }, [fetchAutoTopUpConfig]);
+  }, [fetchAutoTopUpConfig, fetchInitialAutoTopUpConfig]);
 
   const updateAutoTopUpConfig = useCallback(
     async (amount: number, threshold: number) => {
@@ -131,7 +138,19 @@ export default function useCredits({
     // Note: We only need to fetch transaction history once.
     // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchInitialTransactionHistory]);
+
+  const [refundRequests, setRefundRequests] = useState<RefundRequest[]>([]);
+
+  const fetchRefundRequests = useCallback(async () => {
+    const response = await api.getRefundRequests();
+    setRefundRequests(response);
+  }, [api]);
+
+  useEffect(() => {
+    if (!fetchInitialRefundRequests) return;
+    fetchRefundRequests();
+  }, [fetchRefundRequests, fetchInitialRefundRequests]);
 
   const formatCredits = useCallback((credit: number | null) => {
     if (credit === null) {
@@ -154,6 +173,8 @@ export default function useCredits({
     updateAutoTopUpConfig,
     transactionHistory,
     fetchTransactionHistory,
+    refundRequests,
+    fetchRefundRequests,
     formatCredits,
   };
 }

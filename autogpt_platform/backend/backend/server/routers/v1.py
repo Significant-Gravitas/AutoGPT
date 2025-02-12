@@ -32,6 +32,7 @@ from backend.data.api_key import (
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    RefundRequest,
     TransactionHistory,
     get_auto_top_up,
     get_block_costs,
@@ -285,6 +286,13 @@ async def get_credit_history(
         transaction_count_limit=transaction_count_limit,
         transaction_type=transaction_type,
     )
+
+
+@v1_router.get(path="/credits/refunds", dependencies=[Depends(auth_middleware)])
+async def get_refund_requests(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> list[RefundRequest]:
+    return await _user_credit_model.get_refund_requests(user_id)
 
 
 ########################################################

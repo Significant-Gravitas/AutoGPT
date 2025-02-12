@@ -590,3 +590,15 @@ export interface TransactionHistory {
   transactions: CreditTransaction[];
   next_transaction_time: Date | null;
 }
+
+export interface RefundRequest {
+  id: string;
+  user_id: string;
+  transaction_key: string;
+  amount: number;
+  reason: string;
+  result: string | null;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+}

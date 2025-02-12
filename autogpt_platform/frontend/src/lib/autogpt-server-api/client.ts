@@ -33,6 +33,7 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  RefundRequest,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -111,6 +112,10 @@ export default class BackendAPI {
     if (countLimit) filters.transaction_count_limit = countLimit;
     if (transactionType) filters.transaction_type = transactionType;
     return this._get(`/credits/transactions`, filters);
+  }
+
+  getRefundRequests(): Promise<RefundRequest[]> {
+    return this._get(`/credits/refunds`);
   }
 
   requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {

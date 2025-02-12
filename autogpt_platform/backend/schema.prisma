@@ -370,6 +370,12 @@ model AnalyticsMetrics {
   @@index([userId])
 }
 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
 enum CreditTransactionType {
   TOP_UP
   USAGE
@@ -378,11 +384,6 @@ enum CreditTransactionType {
   CARD_CHECK
 }
 
-////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////
-////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
-////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////
 model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -400,6 +401,28 @@ model CreditTransaction {
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
   @@index([userId, createdAt])
+}
+
+enum CreditRefundRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CreditRefundRequest {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId         String
+  transactionKey String
+
+  amount Int
+  reason String
+  result String?
+  status CreditRefundRequestStatus @default(PENDING)
+
+  @@index([userId, transactionKey])
 }
 
 ////////////////////////////////////////////////////////////

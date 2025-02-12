@@ -28,8 +28,11 @@ export default function CreditsPage() {
     fetchTransactionHistory,
     formatCredits,
     refundTopUp,
+    refundRequests,
+    fetchRefundRequests,
   } = useCredits({
     fetchInitialAutoTopUpConfig: true,
+    fetchInitialRefundRequests: true,
     fetchInitialTransactionHistory: true,
     fetchStripeLibrary: true,
   });
@@ -113,8 +116,8 @@ export default function CreditsPage() {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}
-        <div>
-          <h2 className="text-lg">Top-up Credits</h2>
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Top-up Credits</h3>
 
           <p className="mb-6 text-neutral-600 dark:text-neutral-400">
             {topupStatus === "success" && (
@@ -239,16 +242,14 @@ export default function CreditsPage() {
           </form>
         </div>
 
-        <div>
+        <div className="my-6 space-y-4">
           {/* Payment Portal */}
-          <h2 className="text-lg">Manage Your Payment Methods</h2>
-          <br />
+
+          <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
           <p className="text-neutral-600">
             You can manage your cards and see your payment history in the
             billing portal.
           </p>
-          <br />
-
           <Button
             type="submit"
             variant="default"
@@ -259,13 +260,11 @@ export default function CreditsPage() {
           </Button>
 
           {/* Transaction History */}
-          <h2 className="mt-6 text-lg">Transaction History</h2>
-          <br />
+          <h3 className="text-lg font-medium">Transaction History</h3>
           <p className="text-neutral-600">
             Running balance might not be ordered accurately when concurrent
             executions are happening.
           </p>
-          <br />
           {transactionHistory.transactions.length === 0 && (
             <p className="text-neutral-600">No transactions found.</p>
           )}
@@ -311,31 +310,67 @@ export default function CreditsPage() {
               ))}
             </TableBody>
           </Table>
-          <div className="my-6 space-y-4">
-            {transactionHistory.next_transaction_time && (
-              <Button
-                type="submit"
-                className="w-full"
-                onClick={() => fetchTransactionHistory()}
-              >
-                Load More
-              </Button>
-            )}
+          {transactionHistory.next_transaction_time && (
             <Button
-              variant="destructive"
-              onClick={() => openRefundModal()}
+              type="submit"
               className="w-full"
+              onClick={() => fetchTransactionHistory()}
             >
-              Request Refund
+              Load More
             </Button>
-            <RefundModal
-              isOpen={isRefundModalOpen}
-              onClose={() => setIsRefundModalOpen(false)}
-              transactions={topUpTransactions}
-              formatCredits={formatCredits}
-              refundCredits={refundCredits}
-            />
-          </div>
+          )}
+
+          {refundRequests.length > 0 && (
+            <>
+              <h3 className="text-lg font-medium">Your Refund Requests</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Last Updated</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Comment</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {refundRequests.map((request, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        {new Date(request.updated_at).toLocaleString(
+                          undefined,
+                          {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "numeric",
+                            minute: "numeric",
+                          },
+                        )}
+                      </TableCell>
+                      <TableCell>{formatCredits(request.amount)}</TableCell>
+                      <TableCell>{request.status}</TableCell>
+                      <TableCell>{request.result}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
+          )}
+
+          <Button
+            variant="destructive"
+            onClick={() => openRefundModal()}
+            className="w-full"
+          >
+            Request Refund
+          </Button>
+          <RefundModal
+            isOpen={isRefundModalOpen}
+            onClose={() => setIsRefundModalOpen(false)}
+            transactions={topUpTransactions}
+            formatCredits={formatCredits}
+            refundCredits={refundCredits}
+          />
         </div>
       </div>
     </div>

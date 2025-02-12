@@ -58,8 +58,8 @@ export const RefundModal = ({
       return;
     }
 
-    if (!refundReason.trim()) {
-      setError("Please provide a reason for the refund");
+    if (refundReason.trim().length < 20) {
+      setError("Please provide a clear reason for the refund");
       return;
     }
 

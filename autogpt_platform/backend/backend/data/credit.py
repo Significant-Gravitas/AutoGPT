@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 import stripe
 from prisma import Json
-from prisma.enums import CreditTransactionType
+from prisma.enums import CreditRefundRequestStatus, CreditTransactionType
 from prisma.errors import UniqueViolationError
-from prisma.models import CreditTransaction, User
+from prisma.models import CreditRefundRequest, CreditTransaction, User
 from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -17,7 +17,12 @@ from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCost, BlockCostType
 from backend.data.execution import NodeExecutionEntry
-from backend.data.model import AutoTopUpConfig, TransactionHistory, UserTransaction
+from backend.data.model import (
+    AutoTopUpConfig,
+    RefundRequest,
+    TransactionHistory,
+    UserTransaction,
+)
 from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
 
@@ -56,6 +61,19 @@ class UserCreditBase(ABC):
 
         Returns:
             TransactionHistory: The credit transactions for the user.
+        """
+        pass
+
+    @abstractmethod
+    async def get_refund_requests(self, user_id: str) -> list[RefundRequest]:
+        """
+        Get the refund requests for the user.
+
+        Args:
+            user_id (str): The user ID.
+
+        Returns:
+            list[RefundRequest]: The refund requests for the user.
         """
         pass
 
@@ -256,6 +274,7 @@ class UserCreditBase(ABC):
         is_active: bool = True,
         transaction_key: str | None = None,
         ceiling_balance: int | None = None,
+        fail_insufficient_credits: bool = True,
         metadata: Json = Json({}),
     ) -> tuple[int, str]:
         """
@@ -269,6 +288,7 @@ class UserCreditBase(ABC):
             is_active (bool): Whether the transaction is active or needs to be manually activated through _enable_transaction.
             transaction_key (str | None): The transaction key. Avoids adding transaction if the key already exists.
             ceiling_balance (int | None): The ceiling balance. Avoids adding more credits if the balance is already above the ceiling.
+            fail_insufficient_credits (bool): Whether to fail if the user has insufficient credits.
             metadata (Json): The metadata of the transaction.
 
         Returns:
@@ -278,15 +298,17 @@ class UserCreditBase(ABC):
             # Get latest balance snapshot
             user_balance, _ = await self._get_credits(user_id)
 
-            if ceiling_balance and user_balance >= ceiling_balance:
+            if ceiling_balance and amount > 0 and user_balance >= ceiling_balance:
                 raise ValueError(
-                    f"You already have enough balance for user {user_id}, balance: {user_balance}, ceiling: {ceiling_balance}"
+                    f"You already have enough balance of ${user_balance/100}, top-up is not required when you already have at least ${ceiling_balance/100}"
                 )
 
-            if amount < 0 and user_balance < abs(amount):
-                raise ValueError(
-                    f"Insufficient balance of ${user_balance/100} to run the block that costs ${abs(amount)/100}"
-                )
+            if amount < 0 and user_balance + amount < 0:
+                if fail_insufficient_credits:
+                    raise ValueError(
+                        f"Insufficient balance of ${user_balance/100}, where this will cost ${abs(amount)/100}"
+                    )
+                amount = min(-user_balance, 0)
 
             # Create the transaction
             transaction_data: CreditTransactionCreateInput = {
@@ -434,15 +456,32 @@ class UserCredit(UserCreditBase):
             }
         )
         balance = await self.get_credits(user_id)
-        amount = min(transaction.amount, balance)
-        if amount <= 0:
+        amount = transaction.amount
+        refund_key = f"{transaction.createdAt.strftime('%Y-%W')}-{user_id}"
+
+        try:
+            await CreditRefundRequest.prisma().create(
+                data={
+                    "id": refund_key,
+                    "transactionKey": transaction_key,
+                    "userId": user_id,
+                    "amount": amount,
+                    "reason": metadata.get("reason", ""),
+                    "status": CreditRefundRequestStatus.PENDING,
+                    "result": "The refund request is under review.",
+                }
+            )
+        except UniqueViolationError:
             raise ValueError(
-                f"Invalid amount to refund ${amount/100} from ${balance/100} balance"
+                "Unable to request a refund for this transaction, the request of the top-up transaction within the same week has already been made."
             )
 
-        refund = stripe.Refund.create(
-            payment_intent=transaction_key, amount=amount, metadata=metadata
-        )
+        if amount - balance > settings.config.refund_credit_tolerance_threshold:
+            # TODO: add a notification for the platform administrator.
+            return 0  # Register the refund request for manual approval.
+
+        # Auto refund the top-up.
+        refund = stripe.Refund.create(payment_intent=transaction_key, metadata=metadata)
         return refund.amount
 
     async def deduct_credits(self, request: stripe.Refund | stripe.Dispute):
@@ -477,6 +516,20 @@ class UserCredit(UserCreditBase):
             transaction_type=CreditTransactionType.REFUND,
             transaction_key=request.id,
             metadata=Json(request),
+            fail_insufficient_credits=False,
+        )
+
+        # Update the result of the refund request if it exists.
+        await CreditRefundRequest.prisma().update_many(
+            where={
+                "userId": transaction.userId,
+                "transactionKey": transaction.transactionKey,
+            },
+            data={
+                "amount": request.amount,
+                "status": CreditRefundRequestStatus.APPROVED,
+                "result": "The refund request has been approved, the amount will be credited back to your account.",
+            },
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
@@ -699,6 +752,10 @@ class UserCredit(UserCreditBase):
         if not credit_transaction:
             return
 
+        # If the transaction is not a checkout session, then skip the fulfillment
+        if not credit_transaction.transactionKey.startswith("cs_"):
+            return
+
         # Retrieve the Checkout Session from the API
         checkout_session = stripe.checkout.Session.retrieve(
             credit_transaction.transactionKey,
@@ -783,6 +840,25 @@ class UserCredit(UserCreditBase):
             ),
         )
 
+    async def get_refund_requests(self, user_id: str) -> list[RefundRequest]:
+        return [
+            RefundRequest(
+                id=r.id,
+                user_id=r.userId,
+                transaction_key=r.transactionKey,
+                amount=r.amount,
+                reason=r.reason,
+                result=r.result,
+                status=r.status,
+                created_at=r.createdAt,
+                updated_at=r.updatedAt,
+            )
+            for r in await CreditRefundRequest.prisma().find_many(
+                where={"userId": user_id},
+                order={"createdAt": "desc"},
+            )
+        ]
+
 
 class BetaUserCredit(UserCredit):
     """
@@ -818,6 +894,9 @@ class DisabledUserCredit(UserCreditBase):
 
     async def get_transaction_history(self, *args, **kwargs) -> TransactionHistory:
         return TransactionHistory(transactions=[], next_transaction_time=None)
+
+    async def get_refund_requests(self, *args, **kwargs) -> list[RefundRequest]:
+        return []
 
     async def spend_credits(self, *args, **kwargs) -> int:
         return 0

@@ -390,3 +390,15 @@ class UserTransaction(BaseModel):
 class TransactionHistory(BaseModel):
     transactions: list[UserTransaction]
     next_transaction_time: datetime | None
+
+
+class RefundRequest(BaseModel):
+    id: str
+    user_id: str
+    transaction_key: str
+    amount: int
+    reason: str
+    result: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
