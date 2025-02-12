@@ -2871,6 +2871,21 @@ sentry = ["django", "sentry-sdk"]
 test = ["coverage", "django", "flake8", "freezegun (==0.3.15)", "langchain-community (>=0.2.0)", "langchain-openai (>=0.2.0)", "mock (>=2.0.0)", "pylint", "pytest", "pytest-asyncio", "pytest-timeout"]
 
 [[package]]
+name = "postmarker"
+version = "1.0"
+description = "Python client library for Postmark API"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "postmarker-1.0-py3-none-any.whl", hash = "sha256:0fa49f236c7193650896cbf31bbfac34043e352574c6c7e3e2ad2b954704f064"},
+    {file = "postmarker-1.0.tar.gz", hash = "sha256:e735303fdf8ede667a1c6e64a95a96e97f0dabbeca726d0ae1f066bdd799fe34"},
+]
+
+[package.dependencies]
+requests = ">=2.20.0"
+
+[[package]]
 name = "praw"
 version = "7.8.1"
 description = "Python Reddit API Wrapper."
@@ -5122,4 +5137,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "4052d96f95ad3dbf8bef4d651168f6df1ef21c506f152ddca119ad8f23caf159"
+content-hash = "e06603a4c5a82e6e40e8b76c7c4a5dc0b60b31fbe5e47cce3b89d66c53bb704c"
