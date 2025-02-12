@@ -99,7 +99,7 @@ async def execute_preset(
     graph_id: str,
     graph_version: int,
     preset_id: str,
-    node_input: dict[str, Any],
+    node_input: Annotated[dict[str, Any], fastapi.Body(..., embed=True)],
     user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)],
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
@@ -109,21 +109,18 @@ async def execute_preset(
 
         logger.debug(f"Preset inputs: {preset.inputs}")
 
-        updated_node_input = node_input.copy()
-        # Merge in preset input values
-        for key, value in preset.inputs.items():
-            if key not in updated_node_input:
-                updated_node_input[key] = value
+        # Merge input overrides with preset inputs
+        merged_node_input = preset.inputs | node_input
 
         execution = execution_manager_client().add_execution(
             graph_id=graph_id,
             graph_version=graph_version,
-            data=updated_node_input,
+            data=merged_node_input,
             user_id=user_id,
             preset_id=preset_id,
         )
 
-        logger.debug(f"Execution added: {execution} with input: {updated_node_input}")
+        logger.debug(f"Execution added: {execution} with input: {merged_node_input}")
 
         return {"id": execution.graph_exec_id}
     except Exception as e:

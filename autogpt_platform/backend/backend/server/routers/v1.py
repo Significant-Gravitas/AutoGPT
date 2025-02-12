@@ -9,7 +9,7 @@ import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -476,7 +476,7 @@ async def set_graph_active_version(
 )
 def execute_graph(
     graph_id: str,
-    node_input: dict[Any, Any],
+    node_input: Annotated[dict[str, Any], Body(..., embed=True)],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
 ) -> ExecuteGraphResponse:
