@@ -1,6 +1,6 @@
-import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type OnboardingListElementProps = {
   label: string;
@@ -10,9 +10,15 @@ type OnboardingListElementProps = {
   onClick: (content: string) => void;
 };
 
-export function OnboardingListElement({ label, text, selected, custom, onClick }: OnboardingListElementProps) {
+export function OnboardingListElement({
+  label,
+  text,
+  selected,
+  custom,
+  onClick,
+}: OnboardingListElementProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(text);
 
   useEffect(() => {
     if (selected && custom && inputRef.current) {
@@ -23,40 +29,52 @@ export function OnboardingListElement({ label, text, selected, custom, onClick }
   const setCustomText = (e: React.ChangeEvent<HTMLInputElement>) => {
     setContent(e.target.value);
     onClick(e.target.value);
-  }
+  };
 
   return (
     <button
       onClick={() => onClick(content)}
-      className={`
-        relative w-[530px] h-[78px] px-5 py-4 bg-white rounded-xl
-        flex items-center
-        transition-all duration-100
-        ${selected ?
-          'border-2 border-violet-700 bg-[#F5F3FF80]' :
-          'border-2 border-transparent hover:border hover:border-zinc-400'
-        }
-      `}
+      className={`relative flex h-[78px] w-[530px] items-center rounded-xl px-5 py-4 transition-all duration-200 ${
+        selected
+          ? "border-2 border-violet-700 bg-[#F5F3FF80]"
+          : "border border-transparent bg-white hover:border-zinc-400"
+      } `}
     >
       <div className="flex flex-col items-start gap-1">
-        <span className="text-zinc-700 text-sm font-medium">{label}</span>
-        {custom && selected ?
+        <span className="text-sm font-medium text-zinc-700">{label}</span>
+        {custom && selected ? (
           <input
             ref={inputRef}
-            className={cn(selected ? "text-zinc-600" : "text-zinc-400", "text-sm font-poppins border-0 bg-[#F5F3FF80] focus:outline-none")}
-            placeholder={text}
+            className={cn(
+              selected ? "text-zinc-600" : "text-zinc-400",
+              "font-poppins border-0 bg-[#F5F3FF80] text-sm focus:outline-none",
+            )}
+            placeholder="Please specify"
             value={content}
-            onChange={setCustomText} /> :
-          <span className={cn(selected ? "text-zinc-600" : "text-zinc-400", "text-sm")}>{text}</span>}
+            onChange={setCustomText}
+          />
+        ) : (
+          <span
+            className={cn(
+              selected ? "text-zinc-600" : "text-zinc-400",
+              "text-sm",
+            )}
+          >
+            {custom ? "Please specify" : text}
+          </span>
+        )}
       </div>
-      {selected && !custom && (
+      {!custom && (
         <div className="absolute right-4">
-          <Check size={24} className="text-violet-700" />
+          <Check
+            size={24}
+            className={`${selected ? "text-violet-700" : "text-transparent"} transition-all duration-200`}
+          />
         </div>
       )}
     </button>
   );
-};
+}
 
 type OnboardingListProps = {
   className?: string;
@@ -69,19 +87,18 @@ type OnboardingListProps = {
   onSelect: (id: string) => void;
 };
 
-const OnboardingList = ({ className, elements, selectedId, onSelect }: OnboardingListProps) => {
-  const [isCustom, setIsCustom] = useState(false);
-
-  useEffect(() => {
-    // If selectedId is not set, set isCustom to false
-    if (selectedId === undefined) {
-      setIsCustom(false);
-      return;
-    }
-    // Search elements for selectedId, if not found, set isCustom to true
-    const found = elements.find((element) => element.id === selectedId);
-    setIsCustom(!found);
-  }, [selectedId]);
+const OnboardingList = ({
+  className,
+  elements,
+  selectedId,
+  onSelect,
+}: OnboardingListProps) => {
+  const isCustom = useCallback(() => {
+    return (
+      selectedId !== undefined &&
+      !elements.some((element) => element.id === selectedId)
+    );
+  }, [selectedId, elements]);
 
   return (
     <div className={cn(className, "flex flex-col gap-2")}>
@@ -96,10 +113,12 @@ const OnboardingList = ({ className, elements, selectedId, onSelect }: Onboardin
       ))}
       <OnboardingListElement
         label="Other"
-        text="Please specify"
-        selected={isCustom}
+        text={isCustom() ? selectedId! : ""}
+        selected={isCustom()}
         custom
-        onClick={onSelect}
+        onClick={(c) => {
+          onSelect(c);
+        }}
       />
     </div>
   );

@@ -12,7 +12,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import { headers } from 'next/headers';
+import { headers } from "next/headers";
 
 // Fonts
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -50,63 +50,65 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
-          {!isOnboarding && <Navbar
-              links={[
-                {
-                  name: "Marketplace",
-                  href: "/marketplace",
-                },
-                {
-                  name: "Library",
-                  href: "/monitoring",
-                },
-                {
-                  name: "Build",
-                  href: "/build",
-                },
-              ]}
-              menuItemGroups={[
-                {
-                  items: [
-                    {
-                      icon: IconType.Edit,
-                      text: "Edit profile",
-                      href: "/marketplace/profile",
-                    },
-                  ],
-                },
-                {
-                  items: [
-                    {
-                      icon: IconType.LayoutDashboard,
-                      text: "Creator Dashboard",
-                      href: "/marketplace/dashboard",
-                    },
-                    {
-                      icon: IconType.UploadCloud,
-                      text: "Publish an agent",
-                    },
-                  ],
-                },
-                {
-                  items: [
-                    {
-                      icon: IconType.Settings,
-                      text: "Settings",
-                      href: "/marketplace/settings",
-                    },
-                  ],
-                },
-                {
-                  items: [
-                    {
-                      icon: IconType.LogOut,
-                      text: "Log out",
-                    },
-                  ],
-                },
-              ]}
-            />}
+            {!isOnboarding && (
+              <Navbar
+                links={[
+                  {
+                    name: "Marketplace",
+                    href: "/marketplace",
+                  },
+                  {
+                    name: "Library",
+                    href: "/monitoring",
+                  },
+                  {
+                    name: "Build",
+                    href: "/build",
+                  },
+                ]}
+                menuItemGroups={[
+                  {
+                    items: [
+                      {
+                        icon: IconType.Edit,
+                        text: "Edit profile",
+                        href: "/marketplace/profile",
+                      },
+                    ],
+                  },
+                  {
+                    items: [
+                      {
+                        icon: IconType.LayoutDashboard,
+                        text: "Creator Dashboard",
+                        href: "/marketplace/dashboard",
+                      },
+                      {
+                        icon: IconType.UploadCloud,
+                        text: "Publish an agent",
+                      },
+                    ],
+                  },
+                  {
+                    items: [
+                      {
+                        icon: IconType.Settings,
+                        text: "Settings",
+                        href: "/marketplace/settings",
+                      },
+                    ],
+                  },
+                  {
+                    items: [
+                      {
+                        icon: IconType.LogOut,
+                        text: "Log out",
+                      },
+                    ],
+                  },
+                ]}
+              />
+            )}
             <main className="w-full flex-grow">{children}</main>
             <TallyPopupSimple />
           </div>

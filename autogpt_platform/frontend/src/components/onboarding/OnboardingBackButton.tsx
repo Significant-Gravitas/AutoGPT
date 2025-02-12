@@ -5,19 +5,16 @@ interface OnboardingBackButtonProps {
   href: string;
 }
 
-export default function OnboardingBackButton({ href }: OnboardingBackButtonProps) {
+export default function OnboardingBackButton({
+  href,
+}: OnboardingBackButtonProps) {
   return (
     <Link
-      className="
-          font-geist text-base font-medium
-          flex items-center gap-2 
-          text-zinc-700 hover:text-zinc-800 
-          transition-colors duration-200
-        "
+      className="font-geist flex items-center gap-2 text-base font-medium text-zinc-700 transition-colors duration-200 hover:text-zinc-800"
       href={href}
     >
-      <ChevronLeft size={24} className="-mr-1"/>
+      <ChevronLeft size={24} className="-mr-1" />
       <span>Back</span>
     </Link>
   );
-};
+}

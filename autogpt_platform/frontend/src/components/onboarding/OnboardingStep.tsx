@@ -1,24 +1,53 @@
-'use client';
+"use client";
 import { ReactNode } from "react";
 import OnboardingBackButton from "./OnboardingBackButton";
 
-interface OnboardingStepProps {
+export function OnboardingStep({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative flex min-h-screen w-full flex-col">
+      <div className="flex flex-col items-center">{children}</div>
+    </div>
+  );
+}
+
+interface OnboardingHeaderProps {
   backHref: string;
   children?: ReactNode;
 }
 
-export default function OnboardingStep({ backHref, children }: OnboardingStepProps) {
+interface OnboardingHeaderProps {
+  backHref: string;
+  children?: ReactNode;
+}
 
-
-
+export function OnboardingHeader({
+  backHref,
+  children,
+}: OnboardingHeaderProps) {
   return (
-    <div className="w-full min-h-screen flex flex-col">
-      <div className="w-full px-5 py-5 flex justify-between items-center">
-        <OnboardingBackButton href={backHref} />
-        <div>Progress...</div>
-      </div>
-      <div className="flex flex-col items-center">
+    <div className="sticky top-0 z-10 w-full">
+      {/* Header content with solid background */}
+      <div className="bg-gray-100 pb-5">
+        <div className="flex w-full items-center justify-between px-5 py-5">
+          <OnboardingBackButton href={backHref} />
+          <div>Progress...</div>
+        </div>
         {children}
+      </div>
+      {/* Gradient overlay */}
+      <div className="h-4 w-full bg-gradient-to-b from-gray-100 via-gray-100/50 to-transparent" />
+    </div>
+  );
+}
+
+export function OnboardingFooter({ children }: { children: ReactNode }) {
+  return (
+    <div className="sticky bottom-0 z-10 w-full">
+      {/* Gradient overlay */}
+      <div className="h-4 w-full bg-gradient-to-t from-gray-100 via-gray-100/50 to-transparent" />
+      {/* Footer content with solid background */}
+      <div className="flex justify-center bg-gray-100">
+        <div className="px-5 py-5">{children}</div>
       </div>
     </div>
   );

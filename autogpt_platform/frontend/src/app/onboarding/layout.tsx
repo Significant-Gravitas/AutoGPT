@@ -1,5 +1,11 @@
-'use client';
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+"use client";
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 type OnboardingState = {
   step: number;
@@ -9,14 +15,18 @@ type OnboardingState = {
   agentInput?: { [key: string]: string };
 };
 
-const OnboardingContext = createContext<{
-  state: OnboardingState;
-  setState: (state: Partial<OnboardingState>) => void;
-} | undefined>(undefined);
+const OnboardingContext = createContext<
+  | {
+      state: OnboardingState;
+      setState: (state: Partial<OnboardingState>) => void;
+    }
+  | undefined
+>(undefined);
 
 export function useOnboarding(step: number) {
   const context = useContext(OnboardingContext);
-  if (!context) throw new Error('useOnboarding must be used within OnboardingLayout');
+  if (!context)
+    throw new Error("useOnboarding must be used within OnboardingLayout");
 
   useEffect(() => {
     if (step > context.state.step) {
@@ -41,13 +51,13 @@ export default function OnboardingLayout({
     if (newState.step && newState.step < state.step) {
       delete newState.step;
     }
-    setStateRaw(prev => ({ ...prev, ...newState }));
+    setStateRaw((prev) => ({ ...prev, ...newState }));
   };
 
   return (
     <OnboardingContext.Provider value={{ state, setState }}>
-      <div className="min-h-screen w-full flex items-center justify-center bg-gray-100">
-        <div className="w-full mx-auto px-4 flex flex-col items-center">
+      <div className="flex min-h-screen w-full items-center justify-center bg-gray-100">
+        <div className="mx-auto flex w-full flex-col items-center px-4">
           {children}
         </div>
       </div>
