@@ -13,16 +13,25 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id                           String   @id // This should match the Supabase user ID
-  email                        String   @unique
-  name                         String?
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
-  metadata                     Json     @default("{}")
-  integrations                 String   @default("")
-  stripeCustomerId             String?
-  topUpConfig                  Json?
-  userNotificationPreferenceId String?  @unique
+  id               String   @id // This should match the Supabase user ID
+  email            String   @unique
+  name             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  metadata         Json     @default("{}")
+  integrations     String   @default("")
+  stripeCustomerId String?
+  topUpConfig      Json?
+
+  maxEmailsPerDay              Int     @default(3)
+  notifyOnAgentRun             Boolean @default(true)
+  notifyOnZeroBalance          Boolean @default(true)
+  notifyOnLowBalance           Boolean @default(true)
+  notifyOnBlockExecutionFailed Boolean @default(true)
+  notifyOnContinuousAgentError Boolean @default(true)
+  notifyOnDailySummary         Boolean @default(true)
+  notifyOnWeeklySummary        Boolean @default(true)
+  notifyOnMonthlySummary       Boolean @default(true)
 
   // Relations
 
@@ -35,14 +44,13 @@ model User {
   AgentPreset AgentPreset[]
   UserAgent   UserAgent[]
 
-  Profile                    Profile[]
-  StoreListing               StoreListing[]
-  StoreListingReview         StoreListingReview[]
-  StoreListingSubmission     StoreListingSubmission[]
-  APIKeys                    APIKey[]
-  IntegrationWebhooks        IntegrationWebhook[]
-  UserNotificationBatch      UserNotificationBatch[]
-  UserNotificationPreference UserNotificationPreference? @relation(fields: [userNotificationPreferenceId], references: [id], onDelete: Cascade)
+  Profile                Profile[]
+  StoreListing           StoreListing[]
+  StoreListingReview     StoreListingReview[]
+  StoreListingSubmission StoreListingSubmission[]
+  APIKeys                APIKey[]
+  IntegrationWebhooks    IntegrationWebhook[]
+  UserNotificationBatch  UserNotificationBatch[]
 
   @@index([id])
   @@index([email])
@@ -151,26 +159,6 @@ model UserNotificationBatch {
 
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
-}
-
-model UserNotificationPreference {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  userId String @unique // Add @unique here
-  User   User?
-
-  maxEmailsPerDay Int @default(3)
-
-  notifyOnAgentRun             Boolean @default(true)
-  notifyOnZeroBalance          Boolean @default(true)
-  notifyOnLowBalance           Boolean @default(true)
-  notifyOnBlockExecutionFailed Boolean @default(true)
-  notifyOnContinuousAgentError Boolean @default(true)
-  notifyOnDailySummary         Boolean @default(true)
-  notifyOnWeeklySummary        Boolean @default(true)
-  notifyOnMonthlySummary       Boolean @default(true)
 }
 
 // For the library page
