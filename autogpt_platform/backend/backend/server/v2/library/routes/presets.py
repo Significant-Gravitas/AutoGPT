@@ -17,9 +17,6 @@ import backend.util.service
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
-integration_creds_manager = (
-    backend.integrations.creds_manager.IntegrationCredentialsManager()
-)
 
 
 @autogpt_libs.utils.cache.thread_cached
@@ -73,9 +70,7 @@ async def create_preset(
     ],
 ) -> backend.server.v2.library.model.LibraryAgentPreset:
     try:
-        return await backend.server.v2.library.db.create_or_update_preset(
-            user_id, preset
-        )
+        return await backend.server.v2.library.db.upsert_preset(user_id, preset)
     except Exception as e:
         logger.exception(f"Exception occurred whilst creating preset: {e}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to create preset")
@@ -90,7 +85,7 @@ async def update_preset(
     ],
 ) -> backend.server.v2.library.model.LibraryAgentPreset:
     try:
-        return await backend.server.v2.library.db.create_or_update_preset(
+        return await backend.server.v2.library.db.upsert_preset(
             user_id, preset, preset_id
         )
     except Exception as e:

@@ -302,7 +302,7 @@ async def get_preset(
         ) from e
 
 
-async def create_or_update_preset(
+async def upsert_preset(
     user_id: str,
     preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
     preset_id: str | None = None,
