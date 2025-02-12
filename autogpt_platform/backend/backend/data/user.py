@@ -34,13 +34,9 @@ async def get_or_create_user(user_data: dict) -> User:
                     "id": user_id,
                     "email": user_email,
                     "name": user_data.get("user_metadata", {}).get("name"),
-                    "UserNotificationPreference": {"create": {"userId": user_id}},
                 }
             )
-        if not user.userNotificationPreferenceId:
-            user.UserNotificationPreference = (
-                await prisma.usernotificationpreference.create(data={"userId": user_id})
-            )
+
         return User.model_validate(user)
     except Exception as e:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
@@ -186,59 +182,22 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
     try:
         user = await User.prisma().find_unique_or_raise(
             where={"id": user_id},
-            include={
-                "UserNotificationPreference": True,
-            },
         )
 
         # enable notifications by default if user has no notification preference (shouldn't ever happen though)
         preferences: dict[NotificationType, bool] = {
-            NotificationType.AGENT_RUN: (
-                user.UserNotificationPreference.notifyOnAgentRun
-                if user.UserNotificationPreference
-                else True
-            ),
-            NotificationType.ZERO_BALANCE: (
-                user.UserNotificationPreference.notifyOnZeroBalance
-                if user.UserNotificationPreference
-                else True
-            ),
-            NotificationType.LOW_BALANCE: (
-                user.UserNotificationPreference.notifyOnLowBalance
-                if user.UserNotificationPreference
-                else True
-            ),
-            NotificationType.BLOCK_EXECUTION_FAILED: (
-                user.UserNotificationPreference.notifyOnBlockExecutionFailed
-                if user.UserNotificationPreference
-                else True
-            ),
-            NotificationType.CONTINUOUS_AGENT_ERROR: (
-                user.UserNotificationPreference.notifyOnContinuousAgentError
-                if user.UserNotificationPreference
-                else True
-            ),
-            NotificationType.DAILY_SUMMARY: (
-                user.UserNotificationPreference.notifyOnDailySummary
-                if user.UserNotificationPreference
-                else True
-            ),
-            NotificationType.WEEKLY_SUMMARY: (
-                user.UserNotificationPreference.notifyOnWeeklySummary
-                if user.UserNotificationPreference
-                else True
-            ),
-            NotificationType.MONTHLY_SUMMARY: (
-                user.UserNotificationPreference.notifyOnMonthlySummary
-                if user.UserNotificationPreference
-                else True
-            ),
+            NotificationType.AGENT_RUN: user.notifyOnAgentRun or True,
+            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or True,
+            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or True,
+            NotificationType.BLOCK_EXECUTION_FAILED: user.notifyOnBlockExecutionFailed
+            or True,
+            NotificationType.CONTINUOUS_AGENT_ERROR: user.notifyOnContinuousAgentError
+            or True,
+            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or True,
+            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or True,
+            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or True,
         }
-        daily_limit = (
-            user.UserNotificationPreference.maxEmailsPerDay
-            if user.UserNotificationPreference
-            else 3
-        )
+        daily_limit = user.maxEmailsPerDay or 3
         notification_preference = NotificationPreference(
             user_id=user.id,
             email=user.email,
