@@ -18,29 +18,34 @@ logger = logging.getLogger(__name__)
 
 
 async def get_or_create_user(user_data: dict) -> User:
-    user_id = user_data.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in token")
+    try:
+        user_id = user_data.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in token")
 
-    user_email = user_data.get("email")
-    if not user_email:
-        raise HTTPException(status_code=401, detail="Email not found in token")
+        user_email = user_data.get("email")
+        if not user_email:
+            raise HTTPException(status_code=401, detail="Email not found in token")
 
-    user = await prisma.user.find_unique(where={"id": user_id})
-    if not user:
-        user = await prisma.user.create(
-            data={
-                "id": user_id,
-                "email": user_email,
-                "name": user_data.get("user_metadata", {}).get("name"),
-                "UserNotificationPreference": {"create": {"userId": user_id}},
-            }
+        user = await prisma.user.find_unique(
+            where={"id": user_id}, include={"UserNotificationPreference": True}
         )
-    if not user.UserNotificationPreference:
-        user.UserNotificationPreference = (
-            await prisma.usernotificationpreference.create(data={"userId": user_id})
-        )
-    return User.model_validate(user)
+        if not user:
+            user = await prisma.user.create(
+                data={
+                    "id": user_id,
+                    "email": user_email,
+                    "name": user_data.get("user_metadata", {}).get("name"),
+                    "UserNotificationPreference": {"create": {"userId": user_id}},
+                }
+            )
+        if not user.UserNotificationPreference:
+            user.UserNotificationPreference = (
+                await prisma.usernotificationpreference.create(data={"userId": user_id})
+            )
+        return User.model_validate(user)
+    except Exception as e:
+        raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
 
 
 async def get_user_by_id(user_id: str) -> User:
@@ -142,19 +147,25 @@ async def migrate_and_encrypt_user_integrations():
 
 
 async def get_active_user_ids_in_timerange(start_time: str, end_time: str) -> list[str]:
-    users = await User.prisma().find_many(
-        where={
-            "AgentGraphExecutions": {
-                "some": {
-                    "createdAt": {
-                        "gte": datetime.fromisoformat(start_time),
-                        "lte": datetime.fromisoformat(end_time),
+    try:
+        users = await User.prisma().find_many(
+            where={
+                "AgentGraphExecutions": {
+                    "some": {
+                        "createdAt": {
+                            "gte": datetime.fromisoformat(start_time),
+                            "lte": datetime.fromisoformat(end_time),
+                        }
                     }
                 }
-            }
-        },
-    )
-    return [user.id for user in users]
+            },
+        )
+        return [user.id for user in users]
+
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get active user ids in timerange {start_time} to {end_time}: {e}"
+        ) from e
 
 
 async def get_active_users_ids() -> list[str]:
