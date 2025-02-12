@@ -15,7 +15,7 @@ from typing_extensions import Optional, TypedDict
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
-import backend.server.v2.library.db
+import backend.server.v2.library.db as library_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
@@ -332,7 +332,7 @@ async def create_new_graph(
     graph = await graph_db.create_graph(graph, user_id=user_id)
 
     # Create a library agent for the new graph
-    await backend.server.v2.library.db.create_library_agent(
+    await library_db.create_library_agent(
         graph.id,
         graph.version,
         user_id,
@@ -396,7 +396,7 @@ async def update_graph(
 
     if new_graph_version.is_active:
         # Keep the library agent up to date with the new active version
-        await backend.server.v2.library.db.update_agent_version_in_library(
+        await library_db.update_agent_version_in_library(
             user_id, graph.id, graph.version
         )
 
@@ -457,7 +457,7 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await backend.server.v2.library.db.update_agent_version_in_library(
+    await library_db.update_agent_version_in_library(
         user_id, new_active_graph.id, new_active_graph.version
     )
 

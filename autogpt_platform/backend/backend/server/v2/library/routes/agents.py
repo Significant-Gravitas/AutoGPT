@@ -1,14 +1,12 @@
 import logging
-import typing
+from typing import Annotated, Sequence
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
-import autogpt_libs.utils.cache
+import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 
-import backend.server.v2.library.db
-import backend.server.v2.library.model
-import backend.server.v2.store.exceptions
+import backend.server.v2.library.db as library_db
+import backend.server.v2.library.model as library_model
+import backend.server.v2.store.exceptions as store_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +16,16 @@ router = fastapi.APIRouter()
 @router.get(
     "/agents",
     tags=["library", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Depends(autogpt_auth_lib.auth_middleware)],
 )
 async def get_library_agents(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ]
-) -> typing.Sequence[backend.server.v2.library.model.LibraryAgent]:
+    user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)]
+) -> Sequence[library_model.LibraryAgent]:
     """
     Get all agents in the user's library, including both created and saved agents.
     """
     try:
-        agents = await backend.server.v2.library.db.get_library_agents(user_id)
+        agents = await library_db.get_library_agents(user_id)
         return agents
     except Exception as e:
         logger.exception(f"Exception occurred whilst getting library agents: {e}")
@@ -41,14 +37,12 @@ async def get_library_agents(
 @router.post(
     "/agents/{store_listing_version_id}",
     tags=["library", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Depends(autogpt_auth_lib.auth_middleware)],
     status_code=201,
 )
 async def add_agent_to_library(
     store_listing_version_id: str,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)],
 ) -> fastapi.Response:
     """
     Add an agent from the store to the user's library.
@@ -65,17 +59,15 @@ async def add_agent_to_library(
     """
     try:
         # Use the database function to add the agent to the library
-        await backend.server.v2.library.db.add_store_agent_to_library(
-            store_listing_version_id, user_id
-        )
+        await library_db.add_store_agent_to_library(store_listing_version_id, user_id)
         return fastapi.Response(status_code=201)
 
-    except backend.server.v2.store.exceptions.AgentNotFoundError:
+    except store_exceptions.AgentNotFoundError:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f"Store listing version {store_listing_version_id} not found",
         )
-    except backend.server.v2.store.exceptions.DatabaseError as e:
+    except store_exceptions.DatabaseError as e:
         logger.exception(f"Database error occurred whilst adding agent to library: {e}")
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to add agent to library"
@@ -92,14 +84,12 @@ async def add_agent_to_library(
 @router.put(
     "/agents/{library_agent_id}",
     tags=["library", "private"],
-    dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[fastapi.Depends(autogpt_auth_lib.auth_middleware)],
     status_code=204,
 )
 async def update_library_agent(
     library_agent_id: str,
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)],
     auto_update_version: bool = False,
     is_favorite: bool = False,
     is_archived: bool = False,
@@ -124,7 +114,7 @@ async def update_library_agent(
     """
     try:
         # Use the database function to update the library agent
-        await backend.server.v2.library.db.update_library_agent(
+        await library_db.update_library_agent(
             library_agent_id,
             user_id,
             auto_update_version,
@@ -134,7 +124,7 @@ async def update_library_agent(
         )
         return fastapi.Response(status_code=204)
 
-    except backend.server.v2.store.exceptions.DatabaseError as e:
+    except store_exceptions.DatabaseError as e:
         logger.exception(f"Database error occurred whilst updating library agent: {e}")
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to update library agent"

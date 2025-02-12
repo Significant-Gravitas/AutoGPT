@@ -1,17 +1,16 @@
 import datetime
 
-import autogpt_libs.auth as autogpt_api_auth
+import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
 
-import backend.server.v2.library.db
-import backend.server.v2.library.model
-import backend.server.v2.library.routes
+import backend.server.v2.library.model as library_model
+from backend.server.v2.library.routes import router as library_router
 
 app = fastapi.FastAPI()
-app.include_router(backend.server.v2.library.routes.router)
+app.include_router(library_router)
 
 client = fastapi.testclient.TestClient(app)
 
@@ -26,13 +25,13 @@ def override_get_user_id():
     return "test-user-id"
 
 
-app.dependency_overrides[autogpt_api_auth.auth_middleware] = override_auth_middleware
-app.dependency_overrides[autogpt_api_auth.get_user_id] = override_get_user_id
+app.dependency_overrides[autogpt_auth_lib.auth_middleware] = override_auth_middleware
+app.dependency_overrides[autogpt_auth_lib.depends.get_user_id] = override_get_user_id
 
 
 def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     mocked_value = [
-        backend.server.v2.library.model.LibraryAgent(
+        library_model.LibraryAgent(
             id="test-agent-1",
             agent_id="test-agent-1",
             agent_version=1,
@@ -46,7 +45,7 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
             input_schema={"type": "object", "properties": {}},
             output_schema={"type": "object", "properties": {}},
         ),
-        backend.server.v2.library.model.LibraryAgent(
+        library_model.LibraryAgent(
             id="test-agent-2",
             agent_id="test-agent-2",
             agent_version=1,
@@ -68,8 +67,7 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     assert response.status_code == 200
 
     data = [
-        backend.server.v2.library.model.LibraryAgent.model_validate(agent)
-        for agent in response.json()
+        library_model.LibraryAgent.model_validate(agent) for agent in response.json()
     ]
     assert len(data) == 2
     assert data[0].agent_id == "test-agent-1"
