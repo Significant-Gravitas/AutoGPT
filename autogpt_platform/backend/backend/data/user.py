@@ -5,35 +5,47 @@ from typing import Optional, cast
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma import Json
+from prisma.enums import NotificationType
 from prisma.models import User
 
 from backend.data.db import prisma
 from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
 from backend.data.notifications import NotificationPreference
+from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.encryption import JSONCryptor
 
 logger = logging.getLogger(__name__)
 
 
 async def get_or_create_user(user_data: dict) -> User:
-    user_id = user_data.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in token")
+    try:
+        user_id = user_data.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in token")
 
-    user_email = user_data.get("email")
-    if not user_email:
-        raise HTTPException(status_code=401, detail="Email not found in token")
+        user_email = user_data.get("email")
+        if not user_email:
+            raise HTTPException(status_code=401, detail="Email not found in token")
 
-    user = await prisma.user.find_unique(where={"id": user_id})
-    if not user:
-        user = await prisma.user.create(
-            data={
-                "id": user_id,
-                "email": user_email,
-                "name": user_data.get("user_metadata", {}).get("name"),
-            }
+        user = await prisma.user.find_unique(
+            where={"id": user_id}
         )
-    return User.model_validate(user)
+        if not user:
+            user = await prisma.user.create(
+                data={
+                    "id": user_id,
+                    "email": user_email,
+                    "name": user_data.get("user_metadata", {}).get("name"),
+                    "UserNotificationPreference": {"create": {"userId": user_id}},
+                }
+            )
+        if not user.userNotificationPreferenceId:
+            user.UserNotificationPreference = (
+                await prisma.usernotificationpreference.create(data={"userId": user_id})
+            )
+        return User.model_validate(user)
+    except Exception as e:
+        raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
 
 
 async def get_user_by_id(user_id: str) -> User:
@@ -135,19 +147,25 @@ async def migrate_and_encrypt_user_integrations():
 
 
 async def get_active_user_ids_in_timerange(start_time: str, end_time: str) -> list[str]:
-    users = await User.prisma().find_many(
-        where={
-            "AgentGraphExecutions": {
-                "some": {
-                    "createdAt": {
-                        "gte": datetime.fromisoformat(start_time),
-                        "lte": datetime.fromisoformat(end_time),
+    try:
+        users = await User.prisma().find_many(
+            where={
+                "AgentGraphExecutions": {
+                    "some": {
+                        "createdAt": {
+                            "gte": datetime.fromisoformat(start_time),
+                            "lte": datetime.fromisoformat(end_time),
+                        }
                     }
                 }
-            }
-        },
-    )
-    return [user.id for user in users]
+            },
+        )
+        return [user.id for user in users]
+
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get active user ids in timerange {start_time} to {end_time}: {e}"
+        ) from e
 
 
 async def get_active_users_ids() -> list[str]:
@@ -159,19 +177,74 @@ async def get_active_users_ids() -> list[str]:
 
 
 async def get_user_notification_preference(user_id: str) -> NotificationPreference:
-    user = await User.prisma().find_unique_or_raise(
-        where={"id": user_id},
-        include={
-            "UserNotificationPreference": True,
-        },
-    )
-    notification_preference = NotificationPreference(
-        user_id=user.id,
-        email=user.email,
-        # TODO with the UI when it comes in
-        preferences={},
-        daily_limit=3,
-        emails_sent_today=0,
-        last_reset_date=datetime.now(),
-    )
-    return NotificationPreference.model_validate(notification_preference)
+    try:
+        user = await User.prisma().find_unique_or_raise(
+            where={"id": user_id},
+            include={
+                "UserNotificationPreference": True,
+            },
+        )
+
+        # enable notifications by default if user has no notification preference (shouldn't ever happen though)
+        preferences: dict[NotificationType, bool] = {
+            NotificationType.AGENT_RUN: (
+                user.UserNotificationPreference.notifyOnAgentRun
+                if user.UserNotificationPreference
+                else True
+            ),
+            NotificationType.ZERO_BALANCE: (
+                user.UserNotificationPreference.notifyOnZeroBalance
+                if user.UserNotificationPreference
+                else True
+            ),
+            NotificationType.LOW_BALANCE: (
+                user.UserNotificationPreference.notifyOnLowBalance
+                if user.UserNotificationPreference
+                else True
+            ),
+            NotificationType.BLOCK_EXECUTION_FAILED: (
+                user.UserNotificationPreference.notifyOnBlockExecutionFailed
+                if user.UserNotificationPreference
+                else True
+            ),
+            NotificationType.CONTINUOUS_AGENT_ERROR: (
+                user.UserNotificationPreference.notifyOnContinuousAgentError
+                if user.UserNotificationPreference
+                else True
+            ),
+            NotificationType.DAILY_SUMMARY: (
+                user.UserNotificationPreference.notifyOnDailySummary
+                if user.UserNotificationPreference
+                else True
+            ),
+            NotificationType.WEEKLY_SUMMARY: (
+                user.UserNotificationPreference.notifyOnWeeklySummary
+                if user.UserNotificationPreference
+                else True
+            ),
+            NotificationType.MONTHLY_SUMMARY: (
+                user.UserNotificationPreference.notifyOnMonthlySummary
+                if user.UserNotificationPreference
+                else True
+            ),
+        }
+        daily_limit = (
+            user.UserNotificationPreference.maxEmailsPerDay
+            if user.UserNotificationPreference
+            else 3
+        )
+        notification_preference = NotificationPreference(
+            user_id=user.id,
+            email=user.email,
+            preferences=preferences,
+            daily_limit=daily_limit,
+            # TODO with other changes later, for now we just will email them
+            emails_sent_today=0,
+            last_reset_date=datetime.now(),
+        )
+        return NotificationPreference.model_validate(notification_preference)
+
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to upsert user notification preference for user {user_id}: {e}"
+        ) from e

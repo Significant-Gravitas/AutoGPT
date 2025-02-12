@@ -13,17 +13,19 @@ generator client {
 
 // User model to mirror Auth provider users
 model User {
-  id               String   @id // This should match the Supabase user ID
-  email            String   @unique
-  name             String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  metadata         Json     @default("{}")
-  integrations     String   @default("")
-  stripeCustomerId String?
-  topUpConfig      Json?
+  id                           String   @id // This should match the Supabase user ID
+  email                        String   @unique
+  name                         String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+  metadata                     Json     @default("{}")
+  integrations                 String   @default("")
+  stripeCustomerId             String?
+  topUpConfig                  Json?
+  userNotificationPreferenceId String?  @unique
 
   // Relations
+
   AgentGraphs          AgentGraph[]
   AgentGraphExecutions AgentGraphExecution[]
   AnalyticsDetails     AnalyticsDetails[]
@@ -39,8 +41,8 @@ model User {
   StoreListingSubmission     StoreListingSubmission[]
   APIKeys                    APIKey[]
   IntegrationWebhooks        IntegrationWebhook[]
-  UserNotificationPreference UserNotificationPreference[]
   UserNotificationBatch      UserNotificationBatch[]
+  UserNotificationPreference UserNotificationPreference? @relation(fields: [userNotificationPreferenceId], references: [id], onDelete: Cascade)
 
   @@index([id])
   @@index([email])
@@ -156,11 +158,19 @@ model UserNotificationPreference {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique // Add @unique here
+  User   User?
 
-  // Dict[NotificationType, bool]
-  preferences Json @default("{}")
+  maxEmailsPerDay Int @default(3)
+
+  notifyOnAgentRun             Boolean @default(true)
+  notifyOnZeroBalance          Boolean @default(true)
+  notifyOnLowBalance           Boolean @default(true)
+  notifyOnBlockExecutionFailed Boolean @default(true)
+  notifyOnContinuousAgentError Boolean @default(true)
+  notifyOnDailySummary         Boolean @default(true)
+  notifyOnWeeklySummary        Boolean @default(true)
+  notifyOnMonthlySummary       Boolean @default(true)
 }
 
 // For the library page

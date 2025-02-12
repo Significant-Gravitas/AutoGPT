@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Annotated, Generic, Optional, Type, TypeVar, Union
+from typing import Annotated, Generic, Optional, TypeVar, Union
 
 from prisma import Json
 from prisma.enums import NotificationType
@@ -11,6 +11,8 @@ from prisma.types import UserNotificationBatchWhereInput
 # from backend.notifications.models import NotificationEvent
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from backend.server.v2.store.exceptions import DatabaseError
+
 from .db import transaction
 
 logger = logging.getLogger(__name__)
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 
-class BatchingStrategy(str, Enum):
+class BatchingStrategy(Enum):
     IMMEDIATE = "immediate"  # Send right away (errors, critical notifications)
     HOURLY = "hourly"  # Batch for up to an hour (usage reports)
     DAILY = "daily"  # Daily digest (summary notifications)
@@ -141,7 +143,7 @@ class NotificationEventModel(BaseModel, Generic[T_co]):
 
 def get_data_type(
     notification_type: NotificationType,
-) -> Type[BaseNotificationData]:
+) -> type[BaseNotificationData]:
     return {
         NotificationType.AGENT_RUN: AgentRunData,
         NotificationType.ZERO_BALANCE: ZeroBalanceData,
@@ -205,10 +207,12 @@ class NotificationTypeOverride:
 class NotificationPreference(BaseModel):
     user_id: str
     email: EmailStr
-    preferences: dict[NotificationType, bool] = {}  # Which notifications they want
+    preferences: dict[NotificationType, bool] = Field(
+        default_factory=dict, description="Which notifications the user wants"
+    )
     daily_limit: int = 10  # Max emails per day
     emails_sent_today: int = 0
-    last_reset_date: datetime = datetime.now()
+    last_reset_date: datetime = Field(default_factory=datetime.now)
 
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
@@ -226,108 +230,131 @@ async def create_or_add_to_user_notification_batch(
     notification_type: NotificationType,
     data: str,  # type: 'NotificationEventModel'
 ) -> dict:
-    logger.info(
-        f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {data}"
-    )
+    try:
+        logger.info(
+            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {data}"
+        )
 
-    notification_data = NotificationEventModel[
-        get_data_type(notification_type)
-    ].model_validate_json(data)
+        notification_data = NotificationEventModel[
+            get_data_type(notification_type)
+        ].model_validate_json(data)
 
-    # Serialize the data
-    # serialized_data = json.dumps(notification_data.data.model_dump())
-    json_data: Json = Json(notification_data.data.model_dump_json())
+        # Serialize the data
+        json_data: Json = Json(notification_data.data.model_dump_json())
 
-    # First try to find existing batch
-    existing_batch = await UserNotificationBatch.prisma().find_unique(
-        where={
-            "userId_type": {
-                "userId": user_id,
-                "type": notification_type,
-            }
-        },
-        include={"notifications": True},
-    )
-
-    if not existing_batch:
-        async with transaction() as tx:
-            notification_event = await tx.notificationevent.create(
-                data={
-                    "type": notification_type,
-                    "data": json_data,
-                }
-            )
-
-            # Create new batch
-            resp = await tx.usernotificationbatch.create(
-                data={
+        # First try to find existing batch
+        existing_batch = await UserNotificationBatch.prisma().find_unique(
+            where={
+                "userId_type": {
                     "userId": user_id,
                     "type": notification_type,
-                    "notifications": {"connect": [{"id": notification_event.id}]},
-                },
-                include={"notifications": True},
-            )
-            return resp.model_dump()
-    else:
-        async with transaction() as tx:
-            notification_event = await tx.notificationevent.create(
-                data={
-                    "type": notification_type,
-                    "data": json_data,
-                    "UserNotificationBatch": {"connect": {"id": existing_batch.id}},
                 }
-            )
-            # Add to existing batch
-            resp = await tx.usernotificationbatch.update(
-                where={"id": existing_batch.id},
-                data={"notifications": {"connect": [{"id": notification_event.id}]}},
-                include={"notifications": True},
-            )
-        if not resp:
-            raise Exception("Failed to add to existing batch")
-        return resp.model_dump()
+            },
+            include={"notifications": True},
+        )
+
+        if not existing_batch:
+            async with transaction() as tx:
+                notification_event = await tx.notificationevent.create(
+                    data={
+                        "type": notification_type,
+                        "data": json_data,
+                    }
+                )
+
+                # Create new batch
+                resp = await tx.usernotificationbatch.create(
+                    data={
+                        "userId": user_id,
+                        "type": notification_type,
+                        "notifications": {"connect": [{"id": notification_event.id}]},
+                    },
+                    include={"notifications": True},
+                )
+                return resp.model_dump()
+        else:
+            async with transaction() as tx:
+                notification_event = await tx.notificationevent.create(
+                    data={
+                        "type": notification_type,
+                        "data": json_data,
+                        "UserNotificationBatch": {"connect": {"id": existing_batch.id}},
+                    }
+                )
+                # Add to existing batch
+                resp = await tx.usernotificationbatch.update(
+                    where={"id": existing_batch.id},
+                    data={
+                        "notifications": {"connect": [{"id": notification_event.id}]}
+                    },
+                    include={"notifications": True},
+                )
+            if not resp:
+                raise DatabaseError(
+                    f"Failed to add notification event {notification_event.id} to existing batch {existing_batch.id}"
+                )
+            return resp.model_dump()
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
 
 
 async def get_user_notification_last_message_in_batch(
     user_id: str,
     notification_type: NotificationType,
 ) -> NotificationEvent | None:
-    batch = await UserNotificationBatch.prisma().find_first(
-        where={"userId": user_id, "type": notification_type},
-        order={"createdAt": "desc"},
-    )
-    if not batch:
-        return None
-    if not batch.notifications:
-        return None
-    return batch.notifications[-1]
+    try:
+        batch = await UserNotificationBatch.prisma().find_first(
+            where={"userId": user_id, "type": notification_type},
+            order={"createdAt": "desc"},
+        )
+        if not batch:
+            return None
+        if not batch.notifications:
+            return None
+        return batch.notifications[-1]
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
 
 
 async def empty_user_notification_batch(
     user_id: str, notification_type: NotificationType
 ) -> None:
-    async with transaction() as tx:
-        await tx.notificationevent.delete_many(
-            where={
-                "UserNotificationBatch": {
-                    "is": {"userId": user_id, "type": notification_type}
+    try:
+        async with transaction() as tx:
+            await tx.notificationevent.delete_many(
+                where={
+                    "UserNotificationBatch": {
+                        "is": {"userId": user_id, "type": notification_type}
+                    }
                 }
-            }
-        )
-
-        await tx.usernotificationbatch.delete_many(
-            where=UserNotificationBatchWhereInput(
-                userId=user_id,
-                type=notification_type,
             )
-        )
+
+            await tx.usernotificationbatch.delete_many(
+                where=UserNotificationBatchWhereInput(
+                    userId=user_id,
+                    type=notification_type,
+                )
+            )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to empty user notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
 
 
 async def get_user_notification_batch(
     user_id: str,
     notification_type: NotificationType,
 ) -> UserNotificationBatch | None:
-    return await UserNotificationBatch.prisma().find_first(
-        where={"userId": user_id, "type": notification_type},
-        include={"notifications": True},
-    )
+    try:
+        return await UserNotificationBatch.prisma().find_first(
+            where={"userId": user_id, "type": notification_type},
+            include={"notifications": True},
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get user notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e

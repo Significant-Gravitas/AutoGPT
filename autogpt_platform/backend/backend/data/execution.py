@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from backend.data.queue import AsyncRedisEventBus, RedisEventBus
+from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import json, mock
 from backend.util.settings import Config
 
@@ -367,21 +368,26 @@ async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
 async def get_executions_in_timerange(
     user_id: str, start_time: str, end_time: str
 ) -> list[ExecutionResult]:
-    executions = await AgentGraphExecution.prisma().find_many(
-        where={
-            "AND": [
-                {
-                    "startedAt": {
-                        "gte": datetime.fromisoformat(start_time),
-                        "lte": datetime.fromisoformat(end_time),
-                    }
-                },
-                {"userId": user_id},
-            ]
-        },
-        include=GRAPH_EXECUTION_INCLUDE,
-    )
-    return [ExecutionResult.from_graph(execution) for execution in executions]
+    try:
+        executions = await AgentGraphExecution.prisma().find_many(
+            where={
+                "AND": [
+                    {
+                        "startedAt": {
+                            "gte": datetime.fromisoformat(start_time),
+                            "lte": datetime.fromisoformat(end_time),
+                        }
+                    },
+                    {"userId": user_id},
+                ]
+            },
+            include=GRAPH_EXECUTION_INCLUDE,
+        )
+        return [ExecutionResult.from_graph(execution) for execution in executions]
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get executions in timerange {start_time} to {end_time} for user {user_id}: {e}"
+        ) from e
 
 
 LIST_SPLIT = "_$_"
