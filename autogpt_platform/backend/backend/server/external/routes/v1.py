@@ -113,7 +113,7 @@ def execute_graph(
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
-        msg = e.__str__().encode().decode("unicode_escape")
+        msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
 
 
