@@ -303,7 +303,21 @@ class NotificationManager(AppService):
                 get_data_type(event.type)
             ].model_validate_json(message)
             # Implementation of actual notification sending would go here
-            self.email_sender.send_templated(event.type, event.user_id, parsed_event)
+            user_email = get_db_client().get_user_by_id(event.user_id).email
+            should_send = (
+                get_db_client()
+                .get_user_notification_preference(event.user_id)
+                .preferences[event.type]
+            )
+            if not user_email:
+                logger.error(f"User email not found for user {event.user_id}")
+                return False
+            if not should_send:
+                logger.debug(
+                    f"User {event.user_id} does not want to receive {event.type} notifications"
+                )
+                return True
+            self.email_sender.send_templated(event.type, user_email, parsed_event)
             logger.info(f"Processing notification: {parsed_event}")
             return True
         except Exception as e:

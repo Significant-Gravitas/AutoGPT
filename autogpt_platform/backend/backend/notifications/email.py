@@ -34,16 +34,16 @@ class EmailSender:
     def send_templated(
         self,
         notification: NotificationType,
-        user_id: str,
+        user_email: str,
         data: NotificationEventModel[T_co] | list[NotificationEventModel[T_co]],
     ):
         body = self._get_template(notification)
         # use the jinja2 library to render the template
         body = self.formatter.format_string(body, data)
         logger.info(
-            f"Sending email to {user_id} with subject {"subject"} and body {body}"
+            f"Sending email to {user_email} with subject {"subject"} and body {body}"
         )
-        self._send_email(user_id, "subject", body)
+        self._send_email(user_email, "subject", body)
 
     def _get_template(self, notification: NotificationType):
         # convert the notification type to a notification type override
@@ -57,13 +57,13 @@ class EmailSender:
             template = file.read()
         return template
 
-    def _send_email(self, user_id: str, subject: str, body: str):
+    def _send_email(self, user_email: str, subject: str, body: str):
         logger.info(
-            f"Sending email to {user_id} with subject {subject} and body {body}"
+            f"Sending email to {user_email} with subject {subject} and body {body}"
         )
         self.postmark.emails.send(
-            From="nicholas.tindle@agpt.co",
-            To="nicholas.tindle@agpt.co",
+            From=settings.config.postmark_sender_email,
+            To=user_email,
             Subject=subject,
             HtmlBody=body,
         )
