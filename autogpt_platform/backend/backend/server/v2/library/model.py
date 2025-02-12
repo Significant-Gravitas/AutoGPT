@@ -1,13 +1,13 @@
 import datetime
 import json
-import typing
+from typing import Any
 
 import prisma.models
 import pydantic
 
-import backend.data.block
-import backend.data.graph
-import backend.server.model
+import backend.data.block as block_model
+import backend.data.graph as graph_model
+import backend.server.model as server_model
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -24,8 +24,8 @@ class LibraryAgent(pydantic.BaseModel):
     description: str
 
     # Made input_schema and output_schema match GraphMeta's type
-    input_schema: dict[str, typing.Any]  # Should be BlockIOObjectSubSchema in frontend
-    output_schema: dict[str, typing.Any]  # Should be BlockIOObjectSubSchema in frontend
+    input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    output_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
 
     is_favorite: bool
     is_created_by_user: bool
@@ -37,7 +37,7 @@ class LibraryAgent(pydantic.BaseModel):
         if not agent.Agent:
             raise ValueError("AgentGraph is required")
 
-        graph = backend.data.graph.GraphModel.from_db(agent.Agent)
+        graph = graph_model.GraphModel.from_db(agent.Agent)
 
         agent_updated_at = agent.Agent.updatedAt
         lib_agent_updated_at = agent.updatedAt
@@ -77,7 +77,7 @@ class LibraryAgentPreset(pydantic.BaseModel):
 
     is_active: bool
 
-    inputs: dict[str, typing.Union[backend.data.block.BlockInput, typing.Any]]
+    inputs: dict[str, block_model.BlockInput | Any]
 
     @staticmethod
     def from_db(preset: prisma.models.AgentPreset):
@@ -100,13 +100,13 @@ class LibraryAgentPreset(pydantic.BaseModel):
 
 class LibraryAgentPresetResponse(pydantic.BaseModel):
     presets: list[LibraryAgentPreset]
-    pagination: backend.server.model.Pagination
+    pagination: server_model.Pagination
 
 
 class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
     name: str
     description: str
-    inputs: dict[str, typing.Union[backend.data.block.BlockInput, typing.Any]]
+    inputs: dict[str, block_model.BlockInput | Any]
     agent_id: str
     agent_version: int
     is_active: bool
