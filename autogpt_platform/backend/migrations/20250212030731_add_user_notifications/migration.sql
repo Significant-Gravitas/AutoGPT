@@ -62,7 +62,7 @@ CREATE UNIQUE INDEX "UserNotificationPreference_userId_key" ON "UserNotification
 CREATE UNIQUE INDEX "User_userNotificationPreferenceId_key" ON "User"("userNotificationPreferenceId");
 
 -- AddForeignKey
-ALTER TABLE "User" ADD CONSTRAINT "User_userNotificationPreferenceId_fkey" FOREIGN KEY ("userNotificationPreferenceId") REFERENCES "UserNotificationPreference"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "User" ADD CONSTRAINT "User_userNotificationPreferenceId_fkey" FOREIGN KEY ("userNotificationPreferenceId") REFERENCES "UserNotificationPreference"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "NotificationEvent" ADD CONSTRAINT "NotificationEvent_userNotificationBatchId_fkey" FOREIGN KEY ("userNotificationBatchId") REFERENCES "UserNotificationBatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
