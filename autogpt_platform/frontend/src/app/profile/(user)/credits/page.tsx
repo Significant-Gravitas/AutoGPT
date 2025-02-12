@@ -68,10 +68,18 @@ export default function CreditsPage() {
   const refundCredits = async (transaction_key: string, reason: string) =>
     toastOnFail("refund transaction", async () => {
       const amount = await refundTopUp(transaction_key, reason);
-      toast({
-        title: "Refund approved! 🎉",
-        description: `Your refund has been automatically processed. Based on your remaining balance, the amount of ${formatCredits(amount)} will be credited to your account.`,
-      });
+      if (amount > 0) {
+        toast({
+          title: "Refund approved! 🎉",
+          description: `Your refund has been automatically processed. Based on your remaining balance, the amount of ${formatCredits(amount)} will be credited to your account.`,
+        });
+      } else {
+        toast({
+          title: "Refund Request Received",
+          description:
+            "We have received your refund request. A member of our team will review it and reach out via email shortly.",
+        });
+      }
     });
 
   useEffect(() => {
