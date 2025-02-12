@@ -1,5 +1,4 @@
 CREATE OR REPLACE FUNCTION migrate_text_column_to_json(
-    p_schema text,  -- Schema name, e.g. 'platform'
     p_table  text,  -- Table name, e.g. 'AgentNodeExecution'
     p_col    text   -- Column name to convert, e.g. 'executionData'
 ) RETURNS void AS $$
@@ -7,17 +6,17 @@ DECLARE
     full_table text;
     tmp_col    text;
 BEGIN
-    -- Build the fully qualified table name.
-    full_table := format('%I.%I', p_schema, p_table);
+    -- Build a fully qualified table name using the dynamic schema.
+    full_table := format('%I.%I', current_schema(), p_table);
     -- Construct the temporary column name.
     tmp_col := p_col || '_tmp';
 
-    -- 1. Add a temporary column of type JSON.
+    -- 1. Add the temporary column of type JSON.
     EXECUTE format('ALTER TABLE %s ADD COLUMN %I json;', full_table, tmp_col);
 
-    -- 2. Update all rows:
-    --    If the original value is NULL, use an empty JSON object.
-    --    Otherwise, cast the value to JSON (which will raise an exception if invalid).
+    -- 2. Convert the data:
+    --    - When the original value is NULL, fallback to an empty JSON object.
+    --    - Otherwise, cast the value to JSON (which will raise an exception on error).
     EXECUTE format(
         'UPDATE %s SET %I = CASE WHEN %I IS NULL THEN ''{}''::json ELSE %I::json END;',
          full_table, tmp_col, p_col, p_col
@@ -33,10 +32,10 @@ $$ LANGUAGE plpgsql;
 
 
 BEGIN;
-  SELECT migrate_text_column_to_json('platform', 'AgentGraphExecution', 'stats');
-  SELECT migrate_text_column_to_json('platform', 'AgentNodeExecution', 'stats');
-  SELECT migrate_text_column_to_json('platform', 'AgentNodeExecution', 'executionData');
-  SELECT migrate_text_column_to_json('platform', 'AgentNode', 'constantInput');
-  SELECT migrate_text_column_to_json('platform', 'AgentNode', 'metadata');
-  SELECT migrate_text_column_to_json('platform', 'AgentNodeExecutionInputOutput', 'data');
+  SELECT migrate_text_column_to_json('AgentGraphExecution', 'stats');
+  SELECT migrate_text_column_to_json('AgentNodeExecution', 'stats');
+  SELECT migrate_text_column_to_json('AgentNodeExecution', 'executionData');
+  SELECT migrate_text_column_to_json('AgentNode', 'constantInput');
+  SELECT migrate_text_column_to_json('AgentNode', 'metadata');
+  SELECT migrate_text_column_to_json('AgentNodeExecutionInputOutput', 'data');
 COMMIT;
