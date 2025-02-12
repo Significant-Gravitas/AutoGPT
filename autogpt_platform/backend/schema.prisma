@@ -42,7 +42,7 @@ model User {
   APIKeys                    APIKey[]
   IntegrationWebhooks        IntegrationWebhook[]
   UserNotificationBatch      UserNotificationBatch[]
-  UserNotificationPreference UserNotificationPreference? @relation(fields: [userNotificationPreferenceId], references: [id])
+  UserNotificationPreference UserNotificationPreference? @relation(fields: [userNotificationPreferenceId], references: [id], onDelete: Cascade)
 
   @@index([id])
   @@index([email])

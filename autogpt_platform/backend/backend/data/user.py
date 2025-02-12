@@ -28,7 +28,7 @@ async def get_or_create_user(user_data: dict) -> User:
             raise HTTPException(status_code=401, detail="Email not found in token")
 
         user = await prisma.user.find_unique(
-            where={"id": user_id}, include={"UserNotificationPreference": True}
+            where={"id": user_id}
         )
         if not user:
             user = await prisma.user.create(
@@ -39,7 +39,7 @@ async def get_or_create_user(user_data: dict) -> User:
                     "UserNotificationPreference": {"create": {"userId": user_id}},
                 }
             )
-        if not user.UserNotificationPreference:
+        if not user.userNotificationPreferenceId:
             user.UserNotificationPreference = (
                 await prisma.usernotificationpreference.create(data={"userId": user_id})
             )
