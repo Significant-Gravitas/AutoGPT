@@ -158,15 +158,13 @@ model AgentNode {
   // List of produced output, that the child node should be executed.
   Output AgentNodeLink[] @relation("AgentNodeSource")
 
-  // JSON serialized dict[str, str] containing predefined input values.
-  constantInput String @default("{}")
+  constantInput Json @default("{}")
 
   // For webhook-triggered blocks: reference to the webhook that triggers the node
   webhookId String?
   Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
-  // JSON serialized dict[str, str] containing the node metadata.
-  metadata String @default("{}")
+  metadata Json @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
 
@@ -239,7 +237,7 @@ model AgentGraphExecution {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats         String? // JSON serialized object
+  stats         Json     @default("{}")
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
   agentPresetId String?
 
@@ -261,14 +259,13 @@ model AgentNodeExecution {
   Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
 
   executionStatus AgentExecutionStatus @default(COMPLETED)
-  // Final JSON serialized input data for the node execution.
-  executionData   String?
+  executionData   Json     @default("{}")
   addedTime       DateTime             @default(now())
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
 
-  stats String? // JSON serialized object
+  stats Json     @default("{}")
 
   @@index([agentGraphExecutionId])
   @@index([agentNodeId])
@@ -279,7 +276,7 @@ model AgentNodeExecutionInputOutput {
   id String @id @default(uuid())
 
   name String
-  data String
+  data Json     @default("{}")
   time DateTime @default(now())
 
   // Prisma requires explicit back-references.
