@@ -13,10 +13,26 @@ BEGIN
     full_table := format('%I.%I', current_schema(), p_table);
     tmp_col := p_col || '_tmp';
 
-    -- 1. Add the temporary column of type JSON.
+    -- 0. Skip the migration if the column is already of type jsonb.
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = p_table
+        AND column_name = p_col
+        AND data_type = 'jsonb'
+    ) THEN
+      RAISE NOTICE 'Column %I.%I is already of type jsonb, skipping migration.', full_table, p_col;
+      RETURN;
+    END IF;
+
+    -- 1. Cleanup the original column from invalid JSON characters.
+    EXECUTE format('UPDATE %s SET %I = replace(%I, E''\\u0000'', '''') WHERE %I LIKE ''%%\\u0000%%'';', full_table, p_col, p_col, p_col);
+
+    -- 2. Add the temporary column of type JSON.
     EXECUTE format('ALTER TABLE %s ADD COLUMN %I jsonb;', full_table, tmp_col);
 
-    -- 2. Convert the data:
+    -- 3. Convert the data:
     --    - If p_default IS NOT NULL, use it as the fallback value.
     --    - Otherwise, keep NULL.
     IF p_default IS NULL THEN
@@ -31,19 +47,19 @@ BEGIN
       );
     END IF;
 
-    -- 3. Drop the original text column.
+    -- 4. Drop the original text column.
     EXECUTE format('ALTER TABLE %s DROP COLUMN %I;', full_table, p_col);
 
-    -- 4. Rename the temporary column to the original column name.
+    -- 5. Rename the temporary column to the original column name.
     EXECUTE format('ALTER TABLE %s RENAME COLUMN %I TO %I;', full_table, tmp_col, p_col);
 
-    -- 5. Optionally set a DEFAULT for future inserts if a fallback is provided.
+    -- 6. Optionally set a DEFAULT for future inserts if a fallback is provided.
     IF p_default IS NOT NULL THEN
       EXECUTE format('ALTER TABLE %s ALTER COLUMN %I SET DEFAULT %L::json;',
                      full_table, p_col, p_default::text);
     END IF;
 
-    -- 6. Optionally mark the column as NOT NULL.
+    -- 7. Optionally mark the column as NOT NULL.
     IF NOT p_set_nullable THEN
       EXECUTE format('ALTER TABLE %s ALTER COLUMN %I SET NOT NULL;', full_table, p_col);
     END IF;
