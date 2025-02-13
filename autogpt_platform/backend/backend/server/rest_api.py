@@ -45,7 +45,7 @@ def launch_darkly_context():
 
 
 @contextlib.asynccontextmanager
-async def lifespan_context(_lifespan_app: fastapi.FastAPI):
+async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()

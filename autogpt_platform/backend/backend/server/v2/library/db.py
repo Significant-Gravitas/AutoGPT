@@ -9,8 +9,8 @@ import prisma.types
 import backend.server.model
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
-import backend.server.v2.store.image_gen
-import backend.server.v2.store.media
+import backend.server.v2.store.image_gen as store_image_gen
+import backend.server.v2.store.media as store_media
 
 logger = logging.getLogger(__name__)
 
@@ -89,15 +89,11 @@ async def create_library_agent(
             # Use .jpeg here since we are generating JPEG images
             filename = f"agent_{agent_id}.jpeg"
 
-            image_url = await backend.server.v2.store.media.check_media_exists(
-                user_id, filename
-            )
+            image_url = await store_media.check_media_exists(user_id, filename)
 
             if not image_url:
                 # Generate agent image as JPEG
-                image = await backend.server.v2.store.image_gen.generate_agent_image(
-                    agent=agent
-                )
+                image = await store_image_gen.generate_agent_image(agent=agent)
 
                 # Create UploadFile with the correct filename and content_type
                 image_file = fastapi.UploadFile(
@@ -105,11 +101,11 @@ async def create_library_agent(
                     filename=filename,
                 )
 
-                image_url = await backend.server.v2.store.media.upload_media(
+                image_url = await store_media.upload_media(
                     user_id=user_id, file=image_file, use_file_name=True
                 )
         except Exception as e:
-            logger.error("Error generating agent image: %s", e)
+            logger.error(f"Error generating agent image: {e}")
             raise store_exceptions.DatabaseError(
                 "Failed to generate agent image"
             ) from e
@@ -207,9 +203,8 @@ async def add_store_agent_to_library(
     if they don't already have it
     """
     logger.debug(
-        "Adding agent from store listing version %s to library for user %s",
-        store_listing_version_id,
-        user_id,
+        f"Adding agent from store listing version #{store_listing_version_id} "
+        f"to library for user #{user_id}"
     )
 
     try:
@@ -222,7 +217,7 @@ async def add_store_agent_to_library(
 
         if not store_listing_version or not store_listing_version.Agent:
             logger.warning(
-                "Store listing version not found: %s", store_listing_version_id
+                f"Store listing version not found: {store_listing_version_id}"
             )
             raise store_exceptions.AgentNotFoundError(
                 f"Store listing version {store_listing_version_id} not found"
@@ -234,7 +229,7 @@ async def add_store_agent_to_library(
 
         if agent.userId == user_id:
             logger.warning(
-                "User %s cannot add their own agent to their library", user_id
+                f"User #{user_id} cannot add their own agent to their library"
             )
             raise store_exceptions.DatabaseError("Cannot add own agent to library")
 
@@ -249,7 +244,7 @@ async def add_store_agent_to_library(
 
         if existing_user_agent:
             logger.debug(
-                "User %s already has agent %s in their library", user_id, agent.id
+                f"User #{user_id} already has agent #{agent.id} in their library"
             )
             return
 
@@ -262,7 +257,7 @@ async def add_store_agent_to_library(
                 "isCreatedByUser": False,
             }
         )
-        logger.debug("Added agent %s to library for user %s", agent.id, user_id)
+        logger.debug(f"Added agent #{agent.id} to library for user #{user_id}")
 
     except store_exceptions.AgentNotFoundError:
         raise

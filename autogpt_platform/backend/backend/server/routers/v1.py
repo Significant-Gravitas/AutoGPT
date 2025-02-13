@@ -131,8 +131,8 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
     output = defaultdict(list)
-    for name, loop_data in obj.execute(data):
-        output[name].append(loop_data)
+    for name, data in obj.execute(data):
+        output[name].append(data)
     return output
 
 
@@ -380,25 +380,14 @@ async def update_graph(
     latest_version_number = max(g.version for g in existing_versions)
     graph.version = latest_version_number + 1
 
-    try:
-        latest_version_graph = next(
-            v for v in existing_versions if v.version == latest_version_number
-        )
-    except StopIteration:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-
-    try:
-        current_active_version = next(
-            (v for v in existing_versions if v.is_active), None
-        )
-    except StopIteration:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-
+    latest_version_graph = next(
+        v for v in existing_versions if v.version == latest_version_number
+    )
+    current_active_version = next((v for v in existing_versions if v.is_active), None)
     if latest_version_graph.is_template != graph.is_template:
         raise HTTPException(
             400, detail="Changing is_template on an existing graph is forbidden"
         )
-
     graph.is_active = not graph.is_template
     graph = graph_db.make_graph_model(graph, user_id)
     graph.reassign_ids(user_id=user_id)
@@ -408,11 +397,6 @@ async def update_graph(
     if new_graph_version.is_active:
         # Keep the library agent up to date with the new active version
         await library_db.update_agent_version_in_library(
-            user_id, graph.id, graph.version
-        )
-
-        # Keep the library agent up to date with the new active version
-        await backend.server.v2.library.db.update_agent_version_in_library(
             user_id, graph.id, graph.version
         )
 
@@ -497,7 +481,6 @@ def execute_graph(
     graph_version: Optional[int] = None,
 ) -> ExecuteGraphResponse:
     try:
-        logger.info("Node input: %s", node_input)
         graph_exec = execution_manager_client().add_execution(
             graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
@@ -647,7 +630,7 @@ async def create_api_key(
         )
         return CreateAPIKeyResponse(api_key=api_key, plain_text_key=plain_text)
     except APIKeyError as e:
-        logger.error("Failed to create API key: %s", e)
+        logger.error(f"Failed to create API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -664,7 +647,7 @@ async def get_api_keys(
     try:
         return await list_user_api_keys(user_id)
     except APIKeyError as e:
-        logger.error("Failed to list API keys: %s", e)
+        logger.error(f"Failed to list API keys: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -684,7 +667,7 @@ async def get_api_key(
             raise HTTPException(status_code=404, detail="API key not found")
         return api_key
     except APIKeyError as e:
-        logger.error("Failed to get API key: %s", e)
+        logger.error(f"Failed to get API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -706,7 +689,7 @@ async def delete_api_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error("Failed to revoke API key: %s", e)
+        logger.error(f"Failed to revoke API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -728,7 +711,7 @@ async def suspend_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error("Failed to suspend API key: %s", e)
+        logger.error(f"Failed to suspend API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -752,5 +735,5 @@ async def update_permissions(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error("Failed to update API key permissions: %s", e)
+        logger.error(f"Failed to update API key permissions: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
