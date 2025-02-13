@@ -237,7 +237,7 @@ model AgentGraphExecution {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats         Json     @default("{}")
+  stats         Json?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
   agentPresetId String?
 
@@ -259,13 +259,13 @@ model AgentNodeExecution {
   Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
 
   executionStatus AgentExecutionStatus @default(COMPLETED)
-  executionData   Json     @default("{}")
+  executionData   Json?
   addedTime       DateTime             @default(now())
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
 
-  stats Json     @default("{}")
+  stats Json?
 
   @@index([agentGraphExecutionId])
   @@index([agentNodeId])
@@ -276,7 +276,7 @@ model AgentNodeExecutionInputOutput {
   id String @id @default(uuid())
 
   name String
-  data Json     @default("{}")
+  data Json
   time DateTime @default(now())
 
   // Prisma requires explicit back-references.

@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, Optional, Type, TypeVar
 
 from prisma import Json
 from prisma.enums import AgentExecutionStatus
@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from backend.data.queue import AsyncRedisEventBus, RedisEventBus
-from backend.util import json, mock, type
+from backend.util import mock, type
 from backend.util.settings import Config
 
 
@@ -107,11 +107,11 @@ class ExecutionResult(BaseModel):
             # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
             for data in execution.Input or []:
-                input_data[data.name] = json.loads(data.data)
+                input_data[data.name] = type.convert(data.data, Type[Any])
 
         output_data: CompletedBlockOutput = defaultdict(list)
         for data in execution.Output or []:
-            output_data[data.name].append(json.loads(data.data))
+            output_data[data.name].append(type.convert(data.data, Type[Any]))
 
         graph_execution: AgentGraphExecution | None = execution.AgentGraphExecution
 
@@ -222,7 +222,7 @@ async def upsert_execution_input(
         )
         return existing_execution.id, {
             **{
-                input_data.name: json.loads(input_data.data)
+                input_data.name: type.convert(input_data.data, Type[Any])
                 for input_data in existing_execution.Input or []
             },
             input_name: input_data,
@@ -448,8 +448,7 @@ async def get_latest_execution(node_id: str, graph_eid: str) -> ExecutionResult 
         where={
             "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
-            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},
-            "executionData": {"not": None},  # type: ignore
+            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},  # type: ignore
         },
         order={"queuedTime": "desc"},
         include=EXECUTION_RESULT_INCLUDE,
