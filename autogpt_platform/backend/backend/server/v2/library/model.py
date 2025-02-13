@@ -76,14 +76,14 @@ class LibraryAgentPreset(pydantic.BaseModel):
 
     is_active: bool
 
-    inputs: dict[str, block_model.BlockInput | Any]
+    inputs: block_model.BlockInput
 
     @staticmethod
     def from_db(preset: prisma.models.AgentPreset):
-        input_data = {}
+        input_data: block_model.BlockInput = {}
 
         for preset_input in preset.InputPresets or []:
-            input_data[preset_input.name] = preset_input.data.data
+            input_data[preset_input.name] = preset_input.data
 
         return LibraryAgentPreset(
             id=preset.id,
@@ -105,7 +105,7 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
 class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
     name: str
     description: str
-    inputs: dict[str, block_model.BlockInput | Any]
+    inputs: block_model.BlockInput
     agent_id: str
     agent_version: int
     is_active: bool
