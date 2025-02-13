@@ -1,7 +1,7 @@
-import json
 import logging
 
 import prisma.errors
+import prisma.fields
 import prisma.models
 import prisma.types
 
@@ -294,7 +294,7 @@ async def upsert_preset(
                     "isActive": preset.is_active,
                     "InputPresets": {
                         "create": [
-                            {"name": name, "data": json.dumps(data)}
+                            {"name": name, "data": prisma.fields.Json(data)}
                             for name, data in preset.inputs.items()
                         ]
                     },
@@ -315,7 +315,7 @@ async def upsert_preset(
                     "isActive": preset.is_active,
                     "InputPresets": {
                         "create": [
-                            {"name": name, "data": json.dumps(data)}
+                            {"name": name, "data": prisma.fields.Json(data)}
                             for name, data in preset.inputs.items()
                         ]
                     },

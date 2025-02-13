@@ -1,5 +1,4 @@
 import datetime
-import json
 from typing import Any
 
 import prisma.models
@@ -83,8 +82,8 @@ class LibraryAgentPreset(pydantic.BaseModel):
     def from_db(preset: prisma.models.AgentPreset):
         input_data = {}
 
-        for data in preset.InputPresets or []:
-            input_data[data.name] = json.loads(data.data)
+        for preset_input in preset.InputPresets or []:
+            input_data[preset_input.name] = preset_input.data.data
 
         return LibraryAgentPreset(
             id=preset.id,

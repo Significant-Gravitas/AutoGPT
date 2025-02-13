@@ -1,5 +1,6 @@
 import datetime
 
+import prisma.fields
 import prisma.models
 
 import backend.data.block
@@ -168,7 +169,7 @@ def test_library_agent_from_db():
                 id="input-123",
                 time=datetime.datetime.now(),
                 name="input1",
-                data='{"type": "string", "value": "test value"}',
+                data=prisma.fields.Json({"type": "string", "value": "test value"}),
             )
         ],
     )
