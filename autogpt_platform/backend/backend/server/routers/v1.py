@@ -476,7 +476,7 @@ async def set_graph_active_version(
 )
 def execute_graph(
     graph_id: str,
-    node_input: Annotated[dict[str, Any], Body(..., embed=True)],
+    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
 ) -> ExecuteGraphResponse:

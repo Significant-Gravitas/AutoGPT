@@ -101,7 +101,7 @@ def execute_graph_block(
 def execute_graph(
     graph_id: str,
     graph_version: int,
-    node_input: Annotated[dict[str, Any], Body(..., embed=True)],
+    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:

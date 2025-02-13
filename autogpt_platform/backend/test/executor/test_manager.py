@@ -375,7 +375,6 @@ async def test_execute_preset(server: SpinTestServer):
         graph_id=test_graph.id,
         graph_version=test_graph.version,
         preset_id=created_preset.id,
-        node_input={},
         user_id=test_user.id,
     )
 

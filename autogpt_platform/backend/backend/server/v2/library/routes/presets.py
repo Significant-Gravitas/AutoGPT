@@ -99,7 +99,9 @@ async def execute_preset(
     graph_id: str,
     graph_version: int,
     preset_id: str,
-    node_input: Annotated[dict[str, Any], fastapi.Body(..., embed=True)],
+    node_input: Annotated[
+        dict[str, Any], fastapi.Body(..., embed=True, default_factory=dict)
+    ],
     user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)],
 ) -> dict[str, Any]:  # FIXME: add proper return type
     try:
