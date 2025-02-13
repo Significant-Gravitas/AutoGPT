@@ -803,6 +803,7 @@ class ExecutionManager(AppService):
         data: BlockInput,
         user_id: str,
         graph_version: Optional[int] = None,
+        preset_id: str | None = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -824,9 +825,9 @@ class ExecutionManager(AppService):
 
             # Extract request input data, and assign it to the input pin.
             if block.block_type == BlockType.INPUT:
-                name = node.input_default.get("name")
-                if name in data.get("node_input", {}):
-                    input_data = {"value": data["node_input"][name]}
+                input_name = node.input_default.get("name")
+                if input_name and input_name in data:
+                    input_data = {"value": data[input_name]}
 
             # Extract webhook payload, and assign it to the input pin
             webhook_payload_key = f"webhook_{node.webhook_id}_payload"
@@ -851,6 +852,7 @@ class ExecutionManager(AppService):
             graph_version=graph.version,
             nodes_input=nodes_input,
             user_id=user_id,
+            preset_id=preset_id,
         )
 
         starting_node_execs = []
