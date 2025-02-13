@@ -33,9 +33,7 @@ class ExecuteGraphResponse(pydantic.BaseModel):
 
 
 class CreateGraph(pydantic.BaseModel):
-    template_id: str | None = None
-    template_version: int | None = None
-    graph: backend.data.graph.Graph | None = None
+    graph: backend.data.graph.Graph
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):

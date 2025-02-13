@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Optional, Type
 
 import prisma
+from prisma import Json
 from prisma.models import (
     AgentGraph,
     AgentGraphExecution,
@@ -18,7 +19,7 @@ from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
-from backend.util import json
+from backend.util import type
 
 from .block import BlockInput, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
@@ -77,8 +78,8 @@ class NodeModel(Node):
         obj = NodeModel(
             id=node.id,
             block_id=node.AgentBlock.id,
-            input_default=json.loads(node.constantInput, target_type=dict[str, Any]),
-            metadata=json.loads(node.metadata, target_type=dict[str, Any]),
+            input_default=type.convert(node.constantInput, dict[str, Any]),
+            metadata=type.convert(node.metadata, dict[str, Any]),
             graph_id=node.agentGraphId,
             graph_version=node.agentGraphVersion,
             webhook_id=node.webhookId,
@@ -129,7 +130,7 @@ class GraphExecutionMeta(BaseDbModel):
         total_run_time = duration
 
         try:
-            stats = json.loads(_graph_exec.stats or "{}", target_type=dict[str, Any])
+            stats = type.convert(_graph_exec.stats or {}, dict[str, Any])
         except ValueError:
             stats = {}
 
@@ -443,11 +444,9 @@ class GraphModel(Graph):
         if for_export:
             # Remove credentials from node input
             if node.constantInput:
-                constant_input = json.loads(
-                    node.constantInput, target_type=dict[str, Any]
-                )
+                constant_input = type.convert(node.constantInput, dict[str, Any])
                 constant_input = GraphModel._hide_node_input_credentials(constant_input)
-                node.constantInput = json.dumps(constant_input)
+                node.constantInput = Json(constant_input)
 
             # Remove webhook info
             node.webhookId = None
@@ -604,7 +603,7 @@ async def get_execution(user_id: str, execution_id: str) -> GraphExecution | Non
 async def get_graph(
     graph_id: str,
     version: int | None = None,
-    template: bool = False,
+    template: bool = False,  # note: currently not in use; TODO: remove from DB entirely
     user_id: str | None = None,
     for_export: bool = False,
 ) -> GraphModel | None:
@@ -723,8 +722,8 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                     {
                         "id": node.id,
                         "agentBlockId": node.block_id,
-                        "constantInput": json.dumps(node.input_default),
-                        "metadata": json.dumps(node.metadata),
+                        "constantInput": Json(node.input_default),
+                        "metadata": Json(node.metadata),
                     }
                     for node in graph.nodes
                 ]
@@ -811,7 +810,7 @@ async def fix_llm_provider_credentials():
             raise RuntimeError(f"Impossible state while processing node {node}")
 
         node_id: str = node["node_id"]
-        node_preset_input: dict = json.loads(node["node_preset_input"])
+        node_preset_input: dict = node["node_preset_input"]
         credentials_meta: dict = node_preset_input["credentials"]
 
         credentials = next(
@@ -847,5 +846,5 @@ async def fix_llm_provider_credentials():
         store.update_creds(user_id, credentials)
         await AgentNode.prisma().update(
             where={"id": node_id},
-            data={"constantInput": json.dumps(node_preset_input)},
+            data={"constantInput": Json(node_preset_input)},
         )

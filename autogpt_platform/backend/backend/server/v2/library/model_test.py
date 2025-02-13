@@ -1,5 +1,6 @@
 import datetime
 
+import prisma.fields
 import prisma.models
 
 import backend.data.block
@@ -70,10 +71,8 @@ def test_library_agent_preset():
         agent_version=1,
         is_active=True,
         inputs={
-            "input1": backend.data.block.BlockInput(
-                name="input1",
-                data={"type": "string", "value": "test value"},
-            )
+            "dictionary": {"key1": "Hello", "key2": "World"},
+            "selected_value": "key2",
         },
         updated_at=datetime.datetime.now(),
     )
@@ -84,9 +83,8 @@ def test_library_agent_preset():
     assert preset.agent_version == 1
     assert preset.is_active is True
     assert preset.inputs == {
-        "input1": backend.data.block.BlockInput(
-            name="input1", data={"type": "string", "value": "test value"}
-        )
+        "dictionary": {"key1": "Hello", "key2": "World"},
+        "selected_value": "key2",
     }
 
 
@@ -99,10 +97,8 @@ def test_library_agent_preset_response():
         agent_version=1,
         is_active=True,
         inputs={
-            "input1": backend.data.block.BlockInput(
-                name="input1",
-                data={"type": "string", "value": "test value"},
-            )
+            "dictionary": {"key1": "Hello", "key2": "World"},
+            "selected_value": "key2",
         },
         updated_at=datetime.datetime.now(),
     )
@@ -131,10 +127,8 @@ def test_create_library_agent_preset_request():
         agent_version=1,
         is_active=True,
         inputs={
-            "input1": backend.data.block.BlockInput(
-                name="input1",
-                data={"type": "string", "value": "test value"},
-            )
+            "dictionary": {"key1": "Hello", "key2": "World"},
+            "selected_value": "key2",
         },
     )
 
@@ -144,9 +138,8 @@ def test_create_library_agent_preset_request():
     assert request.agent_version == 1
     assert request.is_active is True
     assert request.inputs == {
-        "input1": backend.data.block.BlockInput(
-            name="input1", data={"type": "string", "value": "test value"}
-        )
+        "dictionary": {"key1": "Hello", "key2": "World"},
+        "selected_value": "key2",
     }
 
 
@@ -168,7 +161,7 @@ def test_library_agent_from_db():
                 id="input-123",
                 time=datetime.datetime.now(),
                 name="input1",
-                data='{"type": "string", "value": "test value"}',
+                data=prisma.fields.Json({"type": "string", "value": "test value"}),
             )
         ],
     )

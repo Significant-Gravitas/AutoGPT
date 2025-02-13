@@ -132,7 +132,7 @@ async def test_agent_execution(server: SpinTestServer):
     logger.info("Starting test_agent_execution")
     test_user = await create_test_user()
     test_graph = await create_graph(server, create_test_graph(), test_user)
-    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
+    data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,
@@ -375,7 +375,6 @@ async def test_execute_preset(server: SpinTestServer):
         graph_id=test_graph.id,
         graph_version=test_graph.version,
         preset_id=created_preset.id,
-        node_input={},
         user_id=test_user.id,
     )
 
@@ -532,7 +531,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     )
     alt_test_user = admin_user
 
-    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
+    data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,

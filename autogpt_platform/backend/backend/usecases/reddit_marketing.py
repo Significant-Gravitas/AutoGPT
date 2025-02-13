@@ -158,9 +158,8 @@ async def reddit_marketing_agent():
         input_data = {"subreddit": "AutoGPT"}
         response = await server.agent_server.test_execute_graph(
             graph_id=test_graph.id,
-            graph_version=test_graph.version,
-            node_input=input_data,
             user_id=test_user.id,
+            node_input=input_data,
         )
         print(response)
         result = await wait_execution(

@@ -125,15 +125,15 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_execute_graph(
         graph_id: str,
-        node_input: dict[str, Any],
         user_id: str,
         graph_version: Optional[int] = None,
+        node_input: Optional[dict[str, Any]] = None,
     ):
         return backend.server.routers.v1.execute_graph(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            node_input=node_input,
+            node_input=node_input or {},
         )
 
     @staticmethod
@@ -219,14 +219,14 @@ class AgentServer(backend.util.service.AppProcess):
         graph_id: str,
         graph_version: int,
         preset_id: str,
-        node_input: dict[str, Any],
         user_id: str,
+        node_input: Optional[dict[str, Any]] = None,
     ):
         return await backend.server.v2.library.routes.presets.execute_preset(
             graph_id=graph_id,
             graph_version=graph_version,
             preset_id=preset_id,
-            node_input=node_input,
+            node_input=node_input or {},
             user_id=user_id,
         )
 
