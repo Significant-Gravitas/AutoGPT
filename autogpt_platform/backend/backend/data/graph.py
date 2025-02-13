@@ -720,7 +720,7 @@ async def fix_llm_provider_credentials():
     try:
         broken_nodes = await prisma.get_client().query_raw(
             """
-            SELECT    graph."userId"       user_id,
+        SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
         FROM      platform."AgentNode"  node
