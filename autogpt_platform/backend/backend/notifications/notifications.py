@@ -99,8 +99,7 @@ class NotificationManager(AppService):
     def __init__(self):
         super().__init__()
         self.use_db = True
-        self.use_async = False  # Use async RabbitMQ client
-        self.use_rabbitmq = create_notification_config()
+        self.rabbitmq_config = create_notification_config()
         self.running = True
         self.email_sender = EmailSender()
 

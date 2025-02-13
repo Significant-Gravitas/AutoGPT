@@ -716,11 +716,9 @@ async def fix_llm_provider_credentials():
 
     store = IntegrationCredentialsStore()
 
-    broken_nodes = []
-    try:
-        broken_nodes = await prisma.get_client().query_raw(
-            """
-            SELECT    graph."userId"       user_id,
+    broken_nodes = await prisma.get_client().query_raw(
+        """
+        SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
         FROM      platform."AgentNode"  node
@@ -729,10 +727,8 @@ async def fix_llm_provider_credentials():
         WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
         ORDER BY  graph."userId";
         """
-        )
-        logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
-    except Exception as e:
-        logger.error(f"Error fixing LLM credential inputs: {e}")
+    )
+    logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
 
     user_id: str = ""
     user_integrations = None
