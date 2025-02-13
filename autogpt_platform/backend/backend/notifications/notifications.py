@@ -152,7 +152,7 @@ class NotificationManager(AppService):
             return NotificationResult(success=False, message=str(e))
 
     async def _process_immediate(self, message: str) -> bool:
-        """Process a single notification immediately"""
+        """Process a single notification immediately, returning whether to put into the failed queue"""
         try:
             event = NotificationEventDTO.model_validate_json(message)
             parsed_event = NotificationEventModel[

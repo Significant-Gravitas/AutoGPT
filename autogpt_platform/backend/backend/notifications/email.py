@@ -42,6 +42,7 @@ class EmailSender:
         user_email: str,
         data: NotificationEventModel[T_co] | list[NotificationEventModel[T_co]],
     ):
+        """Send an email to a user using a template pulled from the notification type"""
         if not self.postmark:
             logger.warning("Postmark client not initialized, email not sent")
             return
