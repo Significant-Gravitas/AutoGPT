@@ -534,7 +534,7 @@ async def get_execution(user_id: str, execution_id: str) -> GraphExecution | Non
 async def get_graph(
     graph_id: str,
     version: int | None = None,
-    template: bool = False,
+    template: bool = False,  # note: currently not in use; TODO: remove from DB entirely
     user_id: str | None = None,
     for_export: bool = False,
 ) -> GraphModel | None:
