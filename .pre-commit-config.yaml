@@ -231,15 +231,15 @@ repos:
         language: system
         pass_filenames: false
 
-  # - repo: local
-  #   hooks:
-  #     - id: tsc
-  #       name: Typecheck - AutoGPT Platform - Frontend
-  #       entry: bash -c 'cd autogpt_platform/frontend && npm run type-check'
-  #       files: ^autogpt_platform/frontend/
-  #       types: [file]
-  #       language: system
-  #       pass_filenames: false
+  - repo: local
+    hooks:
+      - id: tsc
+        name: Typecheck - AutoGPT Platform - Frontend
+        entry: bash -c 'cd autogpt_platform/frontend && npm run type-check'
+        files: ^autogpt_platform/frontend/
+        types: [file]
+        language: system
+        pass_filenames: false
 
   - repo: local
     hooks:
