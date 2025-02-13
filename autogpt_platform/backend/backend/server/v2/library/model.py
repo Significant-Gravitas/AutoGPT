@@ -1,18 +1,17 @@
 import datetime
-import enum
-import json
-import typing
+from enum import Enum
+from typing import Any
 
 import prisma.enums
 import prisma.models
 import pydantic
 
-import backend.data.block
-import backend.data.graph
-import backend.server.model
+import backend.data.block as block_model
+import backend.data.graph as graph_model
+import backend.server.model as server_model
 
 
-class AgentStatus(str, enum.Enum):
+class AgentStatus(str, Enum):
     # The agent has completed all runs
     COMPLETED = "COMPLETED"
     # An agent is running, but not all runs have completed
@@ -42,7 +41,7 @@ class LibraryAgent(pydantic.BaseModel):
     description: str  # from graph
 
     # Made input_schema and output_schema match GraphMeta's type
-    input_schema: dict[str, typing.Any]  # Should be BlockIOObjectSubSchema in frontend
+    input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
 
     new_output: bool
     can_access_graph: bool
@@ -54,7 +53,7 @@ class LibraryAgent(pydantic.BaseModel):
         if not agent.Agent:
             raise ValueError("AgentGraph is required")
 
-        graph = backend.data.graph.GraphModel.from_db(agent.Agent)
+        graph = graph_model.GraphModel.from_db(agent.Agent)
 
         agent_updated_at = agent.Agent.updatedAt
         lib_agent_updated_at = agent.updatedAt
@@ -124,8 +123,8 @@ class LibraryAgent(pydantic.BaseModel):
 
 
 class LibraryAgentResponse:
-    agents: typing.List[LibraryAgent]
-    pagination: backend.server.model.Pagination  # info
+    agents: list[LibraryAgent]
+    pagination: server_model.Pagination
 
 
 class LibraryAgentPreset(pydantic.BaseModel):
@@ -139,14 +138,15 @@ class LibraryAgentPreset(pydantic.BaseModel):
     description: str
 
     is_active: bool
-    inputs: dict[str, typing.Union[backend.data.block.BlockInput, typing.Any]]
+
+    inputs: block_model.BlockInput
 
     @staticmethod
     def from_db(preset: prisma.models.AgentPreset):
-        input_data = {}
+        input_data: block_model.BlockInput = {}
 
-        for data in preset.InputPresets or []:
-            input_data[data.name] = json.loads(data.data)
+        for preset_input in preset.InputPresets or []:
+            input_data[preset_input.name] = preset_input.data
 
         return LibraryAgentPreset(
             id=preset.id,
@@ -162,13 +162,13 @@ class LibraryAgentPreset(pydantic.BaseModel):
 
 class LibraryAgentPresetResponse(pydantic.BaseModel):
     presets: list[LibraryAgentPreset]
-    pagination: backend.server.model.Pagination
+    pagination: server_model.Pagination
 
 
 class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
     name: str
     description: str
-    inputs: dict[str, typing.Union[backend.data.block.BlockInput, typing.Any]]
+    inputs: block_model.BlockInput
     agent_id: str
     agent_version: int
     is_active: bool

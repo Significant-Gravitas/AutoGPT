@@ -17,6 +17,7 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
+import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.store.model
@@ -124,15 +125,15 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_execute_graph(
         graph_id: str,
-        node_input: dict[str, Any],
         user_id: str,
         graph_version: Optional[int] = None,
+        node_input: Optional[dict[str, Any]] = None,
     ):
         return backend.server.routers.v1.execute_graph(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            node_input=node_input,
+            node_input=node_input or {},
         )
 
     @staticmethod
@@ -171,6 +172,9 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
+        await backend.server.v2.library.db.delete_library_agent_by_graph_id(
+            graph_id=graph_id, user_id=user_id
+        )
         return await backend.server.routers.v1.delete_graph(graph_id, user_id)
 
     @staticmethod
@@ -215,14 +219,14 @@ class AgentServer(backend.util.service.AppProcess):
         graph_id: str,
         graph_version: int,
         preset_id: str,
-        node_input: dict[Any, Any],
         user_id: str,
+        node_input: Optional[dict[str, Any]] = None,
     ):
         return await backend.server.v2.library.routes.presets.execute_preset(
             graph_id=graph_id,
             graph_version=graph_version,
             preset_id=preset_id,
-            node_input=node_input,
+            node_input=node_input or {},
             user_id=user_id,
         )
 

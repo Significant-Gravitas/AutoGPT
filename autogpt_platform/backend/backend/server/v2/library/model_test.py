@@ -1,11 +1,12 @@
 import datetime
 
+import prisma.fields
 import prisma.models
 
-import backend.server.v2.library.model
+import backend.server.v2.library.model as library_model
 
 
-def test_library_agent_from_db():
+def test_agent_preset_from_db():
     # Create mock DB agent
     db_agent = prisma.models.AgentPreset(
         id="test-agent-123",
@@ -23,13 +24,13 @@ def test_library_agent_from_db():
                 id="input-123",
                 time=datetime.datetime.now(),
                 name="input1",
-                data='{"type": "string", "value": "test value"}',
+                data=prisma.fields.Json({"type": "string", "value": "test value"}),
             )
         ],
     )
 
     # Convert to LibraryAgentPreset
-    agent = backend.server.v2.library.model.LibraryAgentPreset.from_db(db_agent)
+    agent = library_model.LibraryAgentPreset.from_db(db_agent)
 
     assert agent.id == "test-agent-123"
     assert agent.agent_version == 1

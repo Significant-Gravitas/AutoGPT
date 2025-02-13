@@ -82,6 +82,8 @@ async def test_get_library_agents(mocker):
     assert result[0].description == "Test Description 2"
     assert result[0].agent_id == "agent2"
     assert result[0].agent_version == 1
+    assert result[0].can_access_graph is False
+    assert result[0].is_latest_version is True
 
 
 @pytest.mark.asyncio

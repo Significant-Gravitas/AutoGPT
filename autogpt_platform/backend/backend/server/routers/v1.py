@@ -9,13 +9,13 @@ import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
-import backend.server.v2.library.db
+import backend.server.v2.library.db as library_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
@@ -326,48 +326,18 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
 ) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=False, user_id=user_id)
-
-
-async def do_create_graph(
-    create_graph: CreateGraph,
-    is_template: bool,
-    # user_id doesn't have to be annotated like on other endpoints,
-    # because create_graph isn't used directly as an endpoint
-    user_id: str,
-) -> graph_db.GraphModel:
-    if create_graph.graph:
-        graph = graph_db.make_graph_model(create_graph.graph, user_id)
-    elif create_graph.template_id:
-        # Create a new graph from a template
-        graph = await graph_db.get_graph(
-            create_graph.template_id,
-            create_graph.template_version,
-            template=True,
-            user_id=user_id,
-        )
-        if not graph:
-            raise HTTPException(
-                400, detail=f"Template #{create_graph.template_id} not found"
-            )
-        graph.version = 1
-
-        # Create a library agent for the new graph
-        await backend.server.v2.library.db.create_library_agent(
-            graph.id,
-            graph.version,
-            user_id,
-        )
-    else:
-        raise HTTPException(
-            status_code=400, detail="Either graph or template_id must be provided."
-        )
-
-    graph.is_template = is_template
-    graph.is_active = not is_template
+    graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
+
+    # Create a library agent for the new graph
+    await library_db.create_library_agent(
+        graph.id,
+        graph.version,
+        user_id,
+    )
+
     graph = await on_graph_activate(
         graph,
         get_credentials=lambda id: integration_creds_manager.get(user_id, id),
@@ -436,6 +406,10 @@ async def update_graph(
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
+        # Keep the library agent up to date with the new active version
+        await library_db.update_agent_version_in_library(
+            user_id, graph.id, graph.version
+        )
 
         # Keep the library agent up to date with the new active version
         await backend.server.v2.library.db.update_agent_version_in_library(
@@ -499,7 +473,7 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await backend.server.v2.library.db.update_agent_version_in_library(
+    await library_db.update_agent_version_in_library(
         user_id, new_active_graph.id, new_active_graph.version
     )
 
@@ -518,7 +492,7 @@ async def set_graph_active_version(
 )
 def execute_graph(
     graph_id: str,
-    node_input: dict[Any, Any],
+    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
 ) -> ExecuteGraphResponse:
@@ -529,7 +503,7 @@ def execute_graph(
         )
         return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
     except Exception as e:
-        msg = e.__str__().encode().decode("unicode_escape")
+        msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
 
 
