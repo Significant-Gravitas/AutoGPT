@@ -34,11 +34,10 @@ export function OnboardingListElement({
   return (
     <button
       onClick={() => onClick(content)}
-      className={`relative flex h-[78px] w-[530px] items-center rounded-xl px-5 py-4 transition-all duration-200 ${
-        selected
-          ? "border-2 border-violet-700 bg-[#F5F3FF80]"
-          : "border border-transparent bg-white hover:border-zinc-400"
-      } `}
+      className={cn(
+        "relative flex h-[78px] w-[530px] items-center rounded-xl border border-transparent px-5 py-4 transition-all duration-200 ease-in-out",
+        selected ? "bg-[#F5F3FF80]" : "bg-white hover:border-zinc-400",
+      )}
     >
       <div className="flex flex-col items-start gap-1">
         <span className="text-sm font-medium text-zinc-700">{label}</span>
@@ -68,10 +67,19 @@ export function OnboardingListElement({
         <div className="absolute right-4">
           <Check
             size={24}
-            className={`${selected ? "text-violet-700" : "text-transparent"} transition-all duration-200`}
+            className={cn(
+              "transition-all duration-200 ease-in-out",
+              selected ? "text-violet-700" : "text-transparent",
+            )}
           />
         </div>
       )}
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 rounded-xl border-2 transition-all duration-200 ease-in-out",
+          selected ? "border-violet-700" : "border-transparent",
+        )}
+      />
     </button>
   );
 }

@@ -17,7 +17,7 @@ export default function OnboardingButton({
 }: OnboardingButtonProps) {
   const buttonClasses = `
     ${className}
-    font-geist text-white
+    font-geist text-white text-sm font-medium
     inline-flex justify-center items-center
     h-12 min-w-[100px] rounded-full py-3 px-5 gap-2.5
     transition-colors duration-200

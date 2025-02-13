@@ -10,7 +10,8 @@ import {
 type OnboardingState = {
   step: number;
   usageReason?: string;
-  integrations?: string[];
+  integrations: string[];
+  otherIntegrations?: string;
   chosenAgentId?: string;
   agentInput?: { [key: string]: string };
 };
@@ -42,7 +43,10 @@ export default function OnboardingLayout({
 }: {
   children: ReactNode;
 }) {
-  const [state, setStateRaw] = useState<OnboardingState>({ step: 0 });
+  const [state, setStateRaw] = useState<OnboardingState>({
+    step: 0,
+    integrations: [],
+  });
 
   //todo kcze user
 

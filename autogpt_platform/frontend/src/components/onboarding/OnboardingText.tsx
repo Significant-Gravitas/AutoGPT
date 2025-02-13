@@ -1,21 +1,31 @@
+import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
+
+const variants = {
+  header: "text-xl font-medium leading-7 text-zinc-900",
+  subheader: "text-sm font-medium leading-6 text-zinc-800",
+  default: "text-sm font-normal leading-6 text-zinc-500",
+};
 
 export function OnboardingText({
   className,
-  isHeader,
+  center,
+  variant = "default",
   children,
 }: {
   className?: string;
-  isHeader?: boolean;
+  center?: boolean;
+  variant?: keyof typeof variants;
   children: ReactNode;
 }) {
   return (
     <div
-      className={`${className} font-poppins text-center ${
-        isHeader
-          ? "text-xl font-medium leading-7 text-zinc-900"
-          : "text-sm font-normal leading-6 text-zinc-500"
-      }`}
+      className={cn(
+        className,
+        "font-poppins w-full",
+        center ? "text-center" : "text-left",
+        variants[variant] || variants.default,
+      )}
     >
       {children}
     </div>

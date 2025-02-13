@@ -47,10 +47,10 @@ export default function Page() {
   return (
     <OnboardingStep>
       <OnboardingHeader backHref={"/onboarding/1-welcome"}>
-        <OnboardingText className="mt-4" isHeader>
+        <OnboardingText className="mt-4" variant="header" center>
           What's your main reason for using AutoGPT?
         </OnboardingText>
-        <OnboardingText className="mt-1">
+        <OnboardingText className="mt-1" center>
           Select the option that best matches your needs
         </OnboardingText>
       </OnboardingHeader>

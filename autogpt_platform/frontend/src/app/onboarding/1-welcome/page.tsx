@@ -16,10 +16,10 @@ export default function Page() {
         width={300}
         height={300}
       />
-      <OnboardingText className="mb-3" isHeader>
+      <OnboardingText className="mb-3" variant="header" center>
         Welcome to AutoGPT
       </OnboardingText>
-      <OnboardingText className="mb-12">
+      <OnboardingText className="mb-12" center>
         Think of AutoGPT as your digital teammate, working intelligently to{" "}
         <br />
         complete tasks based on your directions. Let's learn a bit about you to{" "}
