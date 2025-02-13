@@ -98,7 +98,7 @@ class NotificationManager(AppService):
     def __init__(self):
         super().__init__()
         self.use_db = True
-        self.use_rabbitmq = create_notification_config()
+        self.rabbitmq_config = create_notification_config()
         self.running = True
 
     @classmethod
