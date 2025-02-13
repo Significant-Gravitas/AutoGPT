@@ -4,7 +4,7 @@ from datetime import datetime
 
 import prisma.enums
 from faker import Faker
-from prisma import Prisma
+from prisma import Json, Prisma
 
 faker = Faker()
 
@@ -110,8 +110,8 @@ async def main():
                     "agentBlockId": block.id,
                     "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
-                    "constantInput": "{}",
-                    "metadata": "{}",
+                    "constantInput": Json({}),
+                    "metadata": Json({}),
                 }
             )
             agent_nodes.append(node)
