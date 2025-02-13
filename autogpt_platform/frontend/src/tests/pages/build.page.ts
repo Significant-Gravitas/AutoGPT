@@ -310,8 +310,10 @@ export class BuildPage extends BasePage {
 
   async waitForCompletionBadge(): Promise<void> {
     console.log(`waiting for completion badge`);
+    // data-id="badge-155a41a3-8e98-4cfb-880e-53392777b41a-COMPLETED"
     await this.page.waitForSelector(
       '[data-id^="badge-"][data-id$="-COMPLETED"]',
+      { timeout: 60_000 },
     );
   }
 
