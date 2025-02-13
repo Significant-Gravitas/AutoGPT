@@ -60,6 +60,7 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
+  // Gets the supabase client, which is used to make requests to the backend
   private get supabaseClient(): SupabaseClient | null {
     return isClient
       ? createBrowserClient(
