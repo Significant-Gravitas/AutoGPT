@@ -117,7 +117,7 @@ async def get_or_create_user_route(user_data: dict = Depends(auth_middleware)):
     "/auth/user/email", tags=["auth"], dependencies=[Depends(auth_middleware)]
 )
 async def update_user_email_route(
-    user_id: Annotated[str, Depends(get_user_id)], email: str
+    user_id: Annotated[str, Depends(get_user_id)], email: str = Body(...)
 ) -> dict[str, str]:
     await update_user_email(user_id, email)
 
