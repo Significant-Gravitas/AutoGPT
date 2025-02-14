@@ -7,10 +7,11 @@ from fastapi import HTTPException
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import User
+from prisma.types import UserUpdateInput
 
 from backend.data.db import prisma
 from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
-from backend.data.notifications import NotificationPreference
+from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.encryption import JSONCryptor
 
@@ -55,6 +56,15 @@ async def get_user_email_by_id(user_id: str) -> str:
         return user.email
     except Exception as e:
         raise DatabaseError(f"Failed to get user email for user {user_id}: {e}") from e
+
+
+async def update_user_email(user_id: str, email: str):
+    try:
+        await prisma.user.update(where={"id": user_id}, data={"email": email})
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to update user email for user {user_id}: {e}"
+        ) from e
 
 
 async def create_default_user() -> Optional[User]:
@@ -212,4 +222,65 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
     except Exception as e:
         raise DatabaseError(
             f"Failed to upsert user notification preference for user {user_id}: {e}"
+        ) from e
+
+
+async def update_user_notification_preference(
+    user_id: str, data: NotificationPreferenceDTO
+) -> NotificationPreference:
+    try:
+        update_data: UserUpdateInput = {}
+        if data.email:
+            update_data["email"] = data.email
+        if data.preferences.get(NotificationType.AGENT_RUN):
+            update_data["notifyOnAgentRun"] = True
+        if data.preferences.get(NotificationType.ZERO_BALANCE):
+            update_data["notifyOnZeroBalance"] = True
+        if data.preferences.get(NotificationType.LOW_BALANCE):
+            update_data["notifyOnLowBalance"] = True
+        if data.preferences.get(NotificationType.BLOCK_EXECUTION_FAILED):
+            update_data["notifyOnBlockExecutionFailed"] = True
+        if data.preferences.get(NotificationType.CONTINUOUS_AGENT_ERROR):
+            update_data["notifyOnContinuousAgentError"] = True
+        if data.preferences.get(NotificationType.DAILY_SUMMARY):
+            update_data["notifyOnDailySummary"] = True
+        if data.preferences.get(NotificationType.WEEKLY_SUMMARY):
+            update_data["notifyOnWeeklySummary"] = True
+        if data.preferences.get(NotificationType.MONTHLY_SUMMARY):
+            update_data["notifyOnMonthlySummary"] = True
+        if data.daily_limit:
+            update_data["maxEmailsPerDay"] = data.daily_limit
+
+        user = await User.prisma().update(
+            where={"id": user_id},
+            data=update_data,
+        )
+        if not user:
+            raise ValueError(f"User not found with ID: {user_id}")
+        preferences: dict[NotificationType, bool] = {
+            NotificationType.AGENT_RUN: user.notifyOnAgentRun or True,
+            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or True,
+            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or True,
+            NotificationType.BLOCK_EXECUTION_FAILED: user.notifyOnBlockExecutionFailed
+            or True,
+            NotificationType.CONTINUOUS_AGENT_ERROR: user.notifyOnContinuousAgentError
+            or True,
+            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or True,
+            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or True,
+            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or True,
+        }
+        notification_preference = NotificationPreference(
+            user_id=user.id,
+            email=user.email,
+            preferences=preferences,
+            daily_limit=user.maxEmailsPerDay or 3,
+            # TODO with other changes later, for now we just will email them
+            emails_sent_today=0,
+            last_reset_date=datetime.now(),
+        )
+        return NotificationPreference.model_validate(notification_preference)
+
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to update user notification preference for user {user_id}: {e}"
         ) from e

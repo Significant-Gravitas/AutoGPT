@@ -1,4 +1,3 @@
-from datetime import timedelta
 import logging
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -263,7 +262,6 @@ class AsyncRabbitMQ(RabbitMQBase):
         self,
         routing_key: str,
         message: str,
-        expiration: Optional[timedelta] = None,
         exchange: Optional[Exchange] = None,
         persistent: bool = True,
     ) -> None:
@@ -286,7 +284,6 @@ class AsyncRabbitMQ(RabbitMQBase):
                     if persistent
                     else aio_pika.DeliveryMode.NOT_PERSISTENT
                 ),
-                expiration=expiration if expiration else None,
             ),
             routing_key=routing_key,
         )
