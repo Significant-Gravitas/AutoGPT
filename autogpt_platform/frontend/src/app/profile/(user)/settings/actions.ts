@@ -68,6 +68,5 @@ export async function updateSettings(formData: FormData) {
 export async function getUserPreferences(): Promise<NotificationPreferenceDTO> {
   const api = new BackendApi();
   const preferences = await api.getUserPreferences();
-  console.log(preferences);
   return preferences;
 }

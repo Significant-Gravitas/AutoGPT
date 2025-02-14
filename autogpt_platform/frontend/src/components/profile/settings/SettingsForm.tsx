@@ -20,7 +20,10 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { updateSettings } from "@/app/profile/(user)/settings/actions";
 import { toast } from "@/components/ui/use-toast";
-import { NotificationPreference, NotificationPreferenceDTO } from "@/lib/autogpt-server-api";
+import {
+  NotificationPreference,
+  NotificationPreferenceDTO,
+} from "@/lib/autogpt-server-api";
 
 const formSchema = z
   .object({
@@ -69,8 +72,10 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
     notifyOnAgentRun: preferences.preferences.AGENT_RUN,
     notifyOnZeroBalance: preferences.preferences.ZERO_BALANCE,
     notifyOnLowBalance: preferences.preferences.LOW_BALANCE,
-    notifyOnBlockExecutionFailed: preferences.preferences.BLOCK_EXECUTION_FAILED,
-    notifyOnContinuousAgentError: preferences.preferences.CONTINUOUS_AGENT_ERROR,
+    notifyOnBlockExecutionFailed:
+      preferences.preferences.BLOCK_EXECUTION_FAILED,
+    notifyOnContinuousAgentError:
+      preferences.preferences.CONTINUOUS_AGENT_ERROR,
     notifyOnDailySummary: preferences.preferences.DAILY_SUMMARY,
     notifyOnWeeklySummary: preferences.preferences.WEEKLY_SUMMARY,
     notifyOnMonthlySummary: preferences.preferences.MONTHLY_SUMMARY,
@@ -96,7 +101,6 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
       toast({
         title: "Successfully updated settings",
       });
-
     } catch (error) {
       toast({
         title: "Error",
