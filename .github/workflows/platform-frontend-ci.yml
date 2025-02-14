@@ -132,7 +132,7 @@ jobs:
           yarn test --project=${{ matrix.browser }}
 
       - name: Print Docker Compose logs in debug mode
-        if: runner.debug
+        if: always()
         run: |
           docker compose -f ../docker-compose.yml logs
 
