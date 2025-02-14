@@ -11,12 +11,11 @@ from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from typing_extensions import Optional, TypedDict
-from prisma.enums import NotificationType
+
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
 from backend.data import execution as execution_db
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data import graph as graph_db
 from backend.data.api_key import (
     APIKeyError,
@@ -40,11 +39,12 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
+from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
-    update_user_notification_preference,
     update_user_email,
+    update_user_notification_preference,
 )
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager

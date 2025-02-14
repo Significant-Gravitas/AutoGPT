@@ -8,6 +8,7 @@ from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import User
 from prisma.types import UserUpdateInput
+
 from backend.data.db import prisma
 from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
