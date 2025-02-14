@@ -26,8 +26,8 @@ class TypedPostmarkClient(PostmarkClient):
 
 
 class Template(BaseModel):
-    subject: str
-    body: str
+    subject_template: str
+    body_template: str
     base_template: str
 
 
@@ -58,8 +58,8 @@ class EmailSender:
         try:
             subject, full_message = self.formatter.format_email(
                 base_template=template.base_template,
-                subject_template=template.subject,
-                content_template=template.body,
+                subject_template=template.subject_template,
+                content_template=template.body_template,
                 data=data,
                 unsubscribe_link="https://autogpt.com/unsubscribe",
             )
@@ -84,8 +84,8 @@ class EmailSender:
         with open(pathlib.Path(__file__).parent / template_path, "r") as file:
             template = file.read()
         return Template(
-            subject=notification_type_override.subject,
-            body=template,
+            subject_template=notification_type_override.subject,
+            body_template=template,
             base_template=base_template,
         )
 
