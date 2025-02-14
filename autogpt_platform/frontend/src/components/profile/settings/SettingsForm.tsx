@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { updateSettings } from "@/app/profile/(user)/settings/actions";
 import { toast } from "@/components/ui/use-toast";
+import { NotificationPreference, NotificationPreferenceDTO } from "@/lib/autogpt-server-api";
 
 const formSchema = z
   .object({
@@ -57,21 +58,22 @@ const formSchema = z
 
 interface SettingsFormProps {
   user: User;
+  preferences: NotificationPreferenceDTO;
 }
 
-export default function SettingsForm({ user }: SettingsFormProps) {
+export default function SettingsForm({ user, preferences }: SettingsFormProps) {
   const defaultValues = {
     email: user.email || "",
     password: "",
     confirmPassword: "",
-    notifyOnAgentRun: true,
-    notifyOnZeroBalance: true,
-    notifyOnLowBalance: true,
-    notifyOnBlockExecutionFailed: true,
-    notifyOnContinuousAgentError: true,
-    notifyOnDailySummary: true,
-    notifyOnWeeklySummary: true,
-    notifyOnMonthlySummary: true,
+    notifyOnAgentRun: preferences.preferences.AGENT_RUN,
+    notifyOnZeroBalance: preferences.preferences.ZERO_BALANCE,
+    notifyOnLowBalance: preferences.preferences.LOW_BALANCE,
+    notifyOnBlockExecutionFailed: preferences.preferences.BLOCK_EXECUTION_FAILED,
+    notifyOnContinuousAgentError: preferences.preferences.CONTINUOUS_AGENT_ERROR,
+    notifyOnDailySummary: preferences.preferences.DAILY_SUMMARY,
+    notifyOnWeeklySummary: preferences.preferences.WEEKLY_SUMMARY,
+    notifyOnMonthlySummary: preferences.preferences.MONTHLY_SUMMARY,
   };
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -95,7 +97,6 @@ export default function SettingsForm({ user }: SettingsFormProps) {
         title: "Successfully updated settings",
       });
 
-      form.reset(defaultValues);
     } catch (error) {
       toast({
         title: "Error",

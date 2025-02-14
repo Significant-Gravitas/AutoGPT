@@ -95,7 +95,7 @@ export default class BackendAPI {
     }
   }
 
-  getUserPreferences(): Promise<NotificationPreference> {
+  getUserPreferences(): Promise<NotificationPreferenceDTO> {
     return this._get("/auth/user/preferences");
   }
 

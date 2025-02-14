@@ -348,14 +348,14 @@ export type UserPasswordCredentials = BaseCredentials & {
 
 // Mirror of backend/backend/data/notifications.py:NotificationType
 export type NotificationType =
-  | "agent_run"
-  | "zero_balance"
-  | "low_balance"
-  | "block_execution_failed"
-  | "continuous_agent_error"
-  | "daily_summary"
-  | "weekly_summary"
-  | "monthly_summary";
+  | "AGENT_RUN"
+  | "ZERO_BALANCE"
+  | "LOW_BALANCE"
+  | "BLOCK_EXECUTION_FAILED"
+  | "CONTINUOUS_AGENT_ERROR"
+  | "DAILY_SUMMARY"
+  | "WEEKLY_SUMMARY"
+  | "MONTHLY_SUMMARY";
 
 // Mirror of backend/backend/data/notifications.py:NotificationPreference
 export type NotificationPreferenceDTO = {
