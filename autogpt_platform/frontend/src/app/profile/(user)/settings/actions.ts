@@ -3,10 +3,7 @@
 import { revalidatePath } from "next/cache";
 import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import BackendApi from "@/lib/autogpt-server-api";
-import {
-  NotificationPreference,
-  NotificationType,
-} from "@/lib/autogpt-server-api/types";
+import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api/types";
 
 export async function updateSettings(formData: FormData) {
   const supabase = getServerSupabase();
@@ -49,7 +46,7 @@ export async function updateSettings(formData: FormData) {
   }
 
   const api = new BackendApi();
-  const preferences: NotificationPreference = {
+  const preferences: NotificationPreferenceDTO = {
     email: user?.email || "",
     preferences: {
       agent_run: formData.get("notifyOnAgentRun") === "true",
