@@ -62,6 +62,30 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, webkit]
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # We know these are here, don't report this as a security vulnerability
+      # This is used as the default credential for the entire system's RabbitMQ instance
+      # If you want to replace this, you can do so by making our entire system generate
+      # new credentials for each local user and update the environment variables in
+      # the backend service, docker composes, and examples
+      RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
+      RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
+    services:
+      redis:
+        image: bitnami/redis:6.2
+        env:
+          REDIS_PASSWORD: testpassword
+        ports:
+          - 6379:6379
+      rabbitmq:
+        image: rabbitmq:3.12-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        env:
+          RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
+          RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
 
     steps:
       - name: Checkout repository
@@ -77,8 +101,8 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          large-packages: false  # slow
-          docker-images: false  # limited benefit
+          large-packages: false # slow
+          docker-images: false # limited benefit
 
       - name: Copy default supabase .env
         run: |
