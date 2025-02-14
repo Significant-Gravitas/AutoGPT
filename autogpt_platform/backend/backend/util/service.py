@@ -62,7 +62,7 @@ def expose(func: C) -> C:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            msg = f"Error in {func.__name__}: {e.__str__()}"
+            msg = f"Error in {func.__name__}: {e}"
             if isinstance(e, ValueError):
                 logger.warning(msg)
             else:
@@ -80,7 +80,7 @@ def register_pydantic_serializers(func: Callable):
         try:
             pydantic_types = _pydantic_models_from_type_annotation(annotation)
         except Exception as e:
-            raise TypeError(f"Error while exposing {func.__name__}: {e.__str__()}")
+            raise TypeError(f"Error while exposing {func.__name__}: {e}")
 
         for model in pydantic_types:
             logger.debug(
