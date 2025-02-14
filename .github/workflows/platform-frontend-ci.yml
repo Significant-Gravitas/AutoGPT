@@ -71,22 +71,7 @@ jobs:
       # the backend service, docker composes, and examples
       RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
       RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
-    services:
-      redis:
-        image: bitnami/redis:6.2
-        env:
-          REDIS_PASSWORD: testpassword
-        ports:
-          - 6379:6379
-      rabbitmq:
-        image: rabbitmq:3.12-management
-        ports:
-          - 5672:5672
-          - 15672:15672
-        env:
-          RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
-          RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
-
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -115,6 +100,10 @@ jobs:
       - name: Run docker compose
         run: |
           docker compose -f ../docker-compose.yml up -d
+
+      - name: Run docker compose logs
+        run: |
+          docker compose logs -n all
 
       - name: Install dependencies
         run: |
