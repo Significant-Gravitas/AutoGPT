@@ -25,7 +25,6 @@ export default defineConfig({
   reporter: "html",
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    // viewport: { width: 2560, height: 1440 },
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: "http://localhost:3000/",
 
@@ -41,10 +40,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 1920, height: 1080 },
-      },
+      use: { ...devices["Desktop Chrome"] },
     },
 
     // {
@@ -54,10 +50,7 @@ export default defineConfig({
 
     {
       name: "webkit",
-      use: {
-        ...devices["Desktop Safari"],
-        viewport: { width: 1920, height: 1080 },
-      },
+      use: { ...devices["Desktop Safari"] },
     },
 
     // /* Test against mobile viewports. */
