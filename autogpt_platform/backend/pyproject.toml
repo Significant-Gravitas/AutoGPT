@@ -13,6 +13,7 @@ aio-pika = "^9.5.4"
 anthropic = "^0.45.2"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
+bleach = "^6.2.0"
 click = "^8.1.7"
 cryptography = "^43.0"
 discord-py = "^2.4.0"
@@ -62,7 +63,6 @@ uvicorn = { extras = ["standard"], version = "^0.34.0" }
 websockets = "^13.1"
 youtube-transcript-api = "^0.6.2"
 # NOTE: please insert new dependencies in their alphabetical location
-bleach = "^6.2.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.4.4"
