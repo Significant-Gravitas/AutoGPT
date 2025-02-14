@@ -1,8 +1,9 @@
-from jinja2 import BaseLoader
-from markupsafe import Markup
-from jinja2.sandbox import SandboxedEnvironment
-import bleach
 import logging
+
+import bleach
+from jinja2 import BaseLoader
+from jinja2.sandbox import SandboxedEnvironment
+from markupsafe import Markup
 
 logger = logging.getLogger(__name__)
 

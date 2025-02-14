@@ -4,6 +4,7 @@ import pathlib
 from postmarker.core import PostmarkClient
 from postmarker.models.emails import EmailManager
 from prisma.enums import NotificationType
+from pydantic import BaseModel
 
 from backend.data.notifications import (
     NotificationEventModel,
@@ -12,7 +13,6 @@ from backend.data.notifications import (
 )
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -78,7 +78,7 @@ class EmailSender:
         logger.debug(
             f"Template full path: {pathlib.Path(__file__).parent / template_path}"
         )
-        base_template_path = f"templates/base.html.jinja2"
+        base_template_path = "templates/base.html.jinja2"
         with open(pathlib.Path(__file__).parent / base_template_path, "r") as file:
             base_template = file.read()
         with open(pathlib.Path(__file__).parent / template_path, "r") as file:
