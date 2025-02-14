@@ -12,13 +12,13 @@ export default function useCredits({
   fetchInitialAutoTopUpConfig = false,
   fetchInitialTransactionHistory = false,
   fetchInitialRefundRequests = false,
-  fetchStripeLibrary = false,
+  fetchTopUpLibrary = false,
 }: {
   fetchInitialCredits?: boolean;
   fetchInitialAutoTopUpConfig?: boolean;
   fetchInitialTransactionHistory?: boolean;
   fetchInitialRefundRequests?: boolean;
-  fetchStripeLibrary?: boolean;
+  fetchTopUpLibrary?: boolean;
 } = {}): {
   credits: number | null;
   fetchCredits: () => void;
@@ -54,7 +54,7 @@ export default function useCredits({
   }, [fetchCredits, fetchInitialCredits]);
 
   useEffect(() => {
-    if (!fetchStripeLibrary) return;
+    if (!fetchTopUpLibrary) return;
     const fetchStripe = async () => {
       if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) {
         console.debug("Stripe publishable key is not set.");
@@ -66,7 +66,7 @@ export default function useCredits({
       setStripe(stripe);
     };
     fetchStripe();
-  }, [fetchStripeLibrary]);
+  }, [fetchTopUpLibrary]);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
     const response = await api.getAutoTopUpConfig();
