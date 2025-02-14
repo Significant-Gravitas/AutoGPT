@@ -88,7 +88,7 @@ services:
       - PYRO_HOST=0.0.0.0
       - EXECUTIONSCHEDULER_HOST=rest_server
       - EXECUTIONMANAGER_HOST=executor
-      - NOTIFICATION_HOST=rest_server
+      - NOTIFICATIONMANAGER_HOST=rest_server
       - FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
       - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
@@ -134,7 +134,7 @@ services:
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
       - AGENTSERVER_HOST=rest_server
-      - NOTIFICATION_HOST=rest_server
+      - NOTIFICATIONMANAGER_HOST=rest_server
       - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
     ports:
       - "8002:8000"
