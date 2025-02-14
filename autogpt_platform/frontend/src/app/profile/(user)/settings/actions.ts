@@ -42,7 +42,7 @@ export async function updateSettings(formData: FormData) {
   //   throw new SettingsError(
   //     `Failed to update preferences: ${preferencesError.message}`,
   //   );
-  }
+  // }
 
   const api = new BackendApi();
   const preferences: NotificationPreferenceDTO = {
