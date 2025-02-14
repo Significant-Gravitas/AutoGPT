@@ -96,12 +96,6 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
 
-      - name: Watch Docker Logs
-        run: |
-          docker compose -f ../docker-compose.yml logs -f &
-          LOGS_PID=$!
-          echo "LOGS_PID=$LOGS_PID" >> $GITHUB_ENV
-
       - name: Install dependencies
         run: |
           yarn install --frozen-lockfile
@@ -117,13 +111,6 @@ jobs:
         timeout-minutes: 10
         run: |
           yarn test --project=${{ matrix.browser }}
-
-      - name: Stop Docker Logs
-        if: always()
-        run: |
-          if [ ! -z "$LOGS_PID" ]; then
-            kill $LOGS_PID || true
-          fi
 
       - name: Print Final Docker Compose logs
         if: always()
