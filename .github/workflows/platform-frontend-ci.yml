@@ -96,12 +96,6 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
 
-      - name: Watch Docker Logs
-        run: |
-          docker compose -f ../docker-compose.yml logs -f &
-          LOGS_PID=$!
-          echo "LOGS_PID=$LOGS_PID" >> $GITHUB_ENV
-
       - name: Install dependencies
         run: |
           yarn install --frozen-lockfile
@@ -113,22 +107,22 @@ jobs:
       - name: Install Browser '${{ matrix.browser }}'
         run: yarn playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Run tests
+      - name: Run tests with Docker logs
         timeout-minutes: 10
         run: |
+          # Start streaming Docker logs and save its PID
+          docker compose -f ../docker-compose.yml logs -f &
+          LOGS_PID=$!
+          
+          # Run the tests
           yarn test --project=${{ matrix.browser }}
-
-      - name: Stop Docker Logs
-        if: always()
-        run: |
-          if [ ! -z "$LOGS_PID" ]; then
-            kill $LOGS_PID || true
-          fi
-
-      - name: Print Final Docker Compose logs
-        if: always()
-        run: |
-          docker compose -f ../docker-compose.yml logs
+          TEST_EXIT_CODE=$?
+          
+          # Kill the logs process
+          kill $LOGS_PID || true
+          
+          # Exit with the test's exit code
+          exit $TEST_EXIT_CODE
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
