@@ -21,10 +21,10 @@ export function OnboardingText({
   return (
     <div
       className={cn(
-        className,
-        "font-poppins w-full",
+        "w-full font-poppin",
         center ? "text-center" : "text-left",
         variants[variant] || variants.default,
+        className,
       )}
     >
       {children}

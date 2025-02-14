@@ -37,7 +37,7 @@ function isEmptyOrWhitespace(str: string | undefined | null): boolean {
 }
 
 export default function Page() {
-  const { state, setState } = useOnboarding(2);
+  const { state, setState } = useOnboarding(4);
 
   return (
     <OnboardingStep>

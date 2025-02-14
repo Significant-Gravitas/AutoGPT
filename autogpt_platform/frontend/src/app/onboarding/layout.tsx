@@ -61,7 +61,7 @@ export default function OnboardingLayout({
   return (
     <OnboardingContext.Provider value={{ state, setState }}>
       <div className="flex min-h-screen w-full items-center justify-center bg-gray-100">
-        <div className="mx-auto flex w-full flex-col items-center px-4">
+        <div className="mx-auto flex w-full flex-col items-center">
           {children}
         </div>
       </div>
