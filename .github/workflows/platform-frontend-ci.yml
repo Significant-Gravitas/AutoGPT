@@ -62,10 +62,6 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, webkit]
-    # env:
-    #   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-    #   RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
-    #   RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
 
     steps:
       - name: Checkout repository
