@@ -103,7 +103,7 @@ jobs:
 
       - name: Run docker compose logs
         run: |
-          docker compose logs -n all
+          docker compose -f ../docker-compose.yml logs -n all
 
       - name: Install dependencies
         run: |
