@@ -196,16 +196,16 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
 
         # enable notifications by default if user has no notification preference (shouldn't ever happen though)
         preferences: dict[NotificationType, bool] = {
-            NotificationType.AGENT_RUN: user.notifyOnAgentRun or True,
-            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or True,
-            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or True,
+            NotificationType.AGENT_RUN: user.notifyOnAgentRun or False,
+            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or False,
+            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or False,
             NotificationType.BLOCK_EXECUTION_FAILED: user.notifyOnBlockExecutionFailed
-            or True,
+            or False,
             NotificationType.CONTINUOUS_AGENT_ERROR: user.notifyOnContinuousAgentError
-            or True,
-            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or True,
-            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or True,
-            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or True,
+            or False,
+            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or False,
+            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or False,
+            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or False,
         }
         daily_limit = user.maxEmailsPerDay or 3
         notification_preference = NotificationPreference(
@@ -232,22 +232,38 @@ async def update_user_notification_preference(
         update_data: UserUpdateInput = {}
         if data.email:
             update_data["email"] = data.email
-        if data.preferences.get(NotificationType.AGENT_RUN):
-            update_data["notifyOnAgentRun"] = True
-        if data.preferences.get(NotificationType.ZERO_BALANCE):
-            update_data["notifyOnZeroBalance"] = True
-        if data.preferences.get(NotificationType.LOW_BALANCE):
-            update_data["notifyOnLowBalance"] = True
-        if data.preferences.get(NotificationType.BLOCK_EXECUTION_FAILED):
-            update_data["notifyOnBlockExecutionFailed"] = True
-        if data.preferences.get(NotificationType.CONTINUOUS_AGENT_ERROR):
-            update_data["notifyOnContinuousAgentError"] = True
-        if data.preferences.get(NotificationType.DAILY_SUMMARY):
-            update_data["notifyOnDailySummary"] = True
-        if data.preferences.get(NotificationType.WEEKLY_SUMMARY):
-            update_data["notifyOnWeeklySummary"] = True
-        if data.preferences.get(NotificationType.MONTHLY_SUMMARY):
-            update_data["notifyOnMonthlySummary"] = True
+        if NotificationType.AGENT_RUN in data.preferences:
+            update_data["notifyOnAgentRun"] = data.preferences[
+                NotificationType.AGENT_RUN
+            ]
+        if NotificationType.ZERO_BALANCE in data.preferences:
+            update_data["notifyOnZeroBalance"] = data.preferences[
+                NotificationType.ZERO_BALANCE
+            ]
+        if NotificationType.LOW_BALANCE in data.preferences:
+            update_data["notifyOnLowBalance"] = data.preferences[
+                NotificationType.LOW_BALANCE
+            ]
+        if NotificationType.BLOCK_EXECUTION_FAILED in data.preferences:
+            update_data["notifyOnBlockExecutionFailed"] = data.preferences[
+                NotificationType.BLOCK_EXECUTION_FAILED
+            ]
+        if NotificationType.CONTINUOUS_AGENT_ERROR in data.preferences:
+            update_data["notifyOnContinuousAgentError"] = data.preferences[
+                NotificationType.CONTINUOUS_AGENT_ERROR
+            ]
+        if NotificationType.DAILY_SUMMARY in data.preferences:
+            update_data["notifyOnDailySummary"] = data.preferences[
+                NotificationType.DAILY_SUMMARY
+            ]
+        if NotificationType.WEEKLY_SUMMARY in data.preferences:
+            update_data["notifyOnWeeklySummary"] = data.preferences[
+                NotificationType.WEEKLY_SUMMARY
+            ]
+        if NotificationType.MONTHLY_SUMMARY in data.preferences:
+            update_data["notifyOnMonthlySummary"] = data.preferences[
+                NotificationType.MONTHLY_SUMMARY
+            ]
         if data.daily_limit:
             update_data["maxEmailsPerDay"] = data.daily_limit
 
