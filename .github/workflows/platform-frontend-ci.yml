@@ -62,16 +62,11 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, webkit]
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      # We know these are here, don't report this as a security vulnerability
-      # This is used as the default credential for the entire system's RabbitMQ instance
-      # If you want to replace this, you can do so by making our entire system generate
-      # new credentials for each local user and update the environment variables in
-      # the backend service, docker composes, and examples
-      RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
-      RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
-      
+    # env:
+    #   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    #   RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
+    #   RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -101,9 +96,11 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
 
-      - name: Run docker compose logs
+      - name: Watch Docker Logs
         run: |
-          docker compose -f ../docker-compose.yml logs -n all
+          docker compose -f ../docker-compose.yml logs -f &
+          LOGS_PID=$!
+          echo "LOGS_PID=$LOGS_PID" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
@@ -117,10 +114,18 @@ jobs:
         run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
+        timeout-minutes: 10
         run: |
           yarn test --project=${{ matrix.browser }}
 
-      - name: Print Docker Compose logs in debug mode
+      - name: Stop Docker Logs
+        if: always()
+        run: |
+          if [ ! -z "$LOGS_PID" ]; then
+            kill $LOGS_PID || true
+          fi
+
+      - name: Print Final Docker Compose logs
         if: always()
         run: |
           docker compose -f ../docker-compose.yml logs
