@@ -37,12 +37,11 @@ export async function updateSettings(formData: FormData) {
     }
   }
 
-  const preferencesError = {};
-
-  if (preferencesError) {
-    throw new SettingsError(
-      `Failed to update preferences: ${preferencesError.message}`,
-    );
+  // const preferencesError = {};
+  // if (preferencesError) {
+  //   throw new SettingsError(
+  //     `Failed to update preferences: ${preferencesError.message}`,
+  //   );
   }
 
   const api = new BackendApi();
