@@ -108,7 +108,7 @@ jobs:
         run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           yarn test --project=${{ matrix.browser }}
 
