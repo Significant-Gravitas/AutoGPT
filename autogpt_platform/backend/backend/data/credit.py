@@ -47,7 +47,7 @@ class UserCreditBase(ABC):
         self,
         user_id: str,
         transaction_count_limit: int,
-        transaction_time: datetime | None = None,
+        transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
     ) -> TransactionHistory:
         """
@@ -56,7 +56,7 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             transaction_count_limit (int): The transaction count limit.
-            transaction_time (datetime): The upper bound of the transaction time.
+            transaction_time_ceiling (datetime): The upper bound of the transaction time.
             transaction_type (str): The transaction type filter.
 
         Returns:
@@ -485,7 +485,6 @@ class UserCredit(UserCreditBase):
         return refund.amount
 
     async def deduct_credits(self, request: stripe.Refund | stripe.Dispute):
-
         if isinstance(request, stripe.Refund) and request.status != "succeeded":
             logger.warning(
                 f"Skip processing refund #{request.id} with status {request.status}"
@@ -781,7 +780,7 @@ class UserCredit(UserCreditBase):
         self,
         user_id: str,
         transaction_count_limit: int | None = 100,
-        transaction_time: datetime | None = None,
+        transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
     ) -> TransactionHistory:
 
@@ -789,9 +788,11 @@ class UserCredit(UserCreditBase):
             "userId": user_id,
             "isActive": True,
         }
-        if transaction_time:
-            transaction_time = transaction_time.replace(tzinfo=timezone.utc)
-            transactions_filter["createdAt"] = {"lt": transaction_time}
+        if transaction_time_ceiling:
+            transaction_time_ceiling = transaction_time_ceiling.replace(
+                tzinfo=timezone.utc
+            )
+            transactions_filter["createdAt"] = {"lt": transaction_time_ceiling}
         if transaction_type:
             transactions_filter["type"] = CreditTransactionType[transaction_type]
         transactions = await CreditTransaction.prisma().find_many(
@@ -879,7 +880,7 @@ class BetaUserCredit(UserCredit):
             balance, _ = await self._add_transaction(
                 user_id=user_id,
                 amount=max(self.num_user_credits_refill - balance, 0),
-                transaction_type=CreditTransactionType.BONUS,
+                transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
             )
             return balance

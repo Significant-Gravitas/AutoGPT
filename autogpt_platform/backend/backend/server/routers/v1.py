@@ -283,7 +283,7 @@ async def get_credit_history(
 
     return await _user_credit_model.get_transaction_history(
         user_id=user_id,
-        transaction_time=transaction_time,
+        transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
         transaction_type=transaction_type,
     )

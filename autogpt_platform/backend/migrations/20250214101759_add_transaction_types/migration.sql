@@ -6,6 +6,6 @@
 -- the enum.
 
 
-ALTER TYPE "CreditTransactionType" ADD VALUE 'BONUS';
+ALTER TYPE "CreditTransactionType" ADD VALUE 'GRANT';
 ALTER TYPE "CreditTransactionType" ADD VALUE 'REFUND';
 ALTER TYPE "CreditTransactionType" ADD VALUE 'CARD_CHECK';
