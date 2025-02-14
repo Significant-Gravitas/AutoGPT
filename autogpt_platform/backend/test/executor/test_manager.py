@@ -40,7 +40,7 @@ async def execute_graph(
         graph_version=test_graph.version,
         node_input=input_data,
     )
-    graph_exec_id = response["id"]
+    graph_exec_id = response.graph_exec_id
     logger.info(f"Created execution with ID: {graph_exec_id}")
 
     # Execution queue should be empty
@@ -132,7 +132,7 @@ async def test_agent_execution(server: SpinTestServer):
     logger.info("Starting test_agent_execution")
     test_user = await create_test_user()
     test_graph = await create_graph(server, create_test_graph(), test_user)
-    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
+    data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,
@@ -363,10 +363,8 @@ async def test_execute_preset(server: SpinTestServer):
         agent_id=test_graph.id,
         agent_version=test_graph.version,
         inputs={
-            "node_input": {
-                "dictionary": {"key1": "Hello", "key2": "World"},
-                "selected_value": "key2",
-            }
+            "dictionary": {"key1": "Hello", "key2": "World"},
+            "selected_value": "key2",
         },
         is_active=True,
     )
@@ -377,7 +375,6 @@ async def test_execute_preset(server: SpinTestServer):
         graph_id=test_graph.id,
         graph_version=test_graph.version,
         preset_id=created_preset.id,
-        node_input={},
         user_id=test_user.id,
     )
 
@@ -455,14 +452,11 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
         agent_id=test_graph.id,
         agent_version=test_graph.version,
         inputs={
-            "node_input": {
-                "dictionary": {"key1": "Hello", "key2": "World"},
-                "selected_value": "key2",
-            }
+            "dictionary": {"key1": "Hello", "key2": "World"},
+            "selected_value": "key2",
         },
         is_active=True,
     )
-
     created_preset = await server.agent_server.test_create_preset(preset, test_user.id)
 
     # Execute preset with overriding values
@@ -470,12 +464,12 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
         graph_id=test_graph.id,
         graph_version=test_graph.version,
         preset_id=created_preset.id,
-        node_input={"node_input": {"selected_value": "key1"}},
+        node_input={"selected_value": "key1"},
         user_id=test_user.id,
     )
 
     # Verify execution
-    assert result is not None, f"Result should not be None: {result}"
+    assert result is not None, "Result must not be None"
     graph_exec_id = result["id"]
 
     # Wait for execution to complete
@@ -537,7 +531,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     )
     alt_test_user = admin_user
 
-    data = {"node_input": {"input_1": "Hello", "input_2": "World"}}
+    data = {"input_1": "Hello", "input_2": "World"}
     graph_exec_id = await execute_graph(
         server.agent_server,
         test_graph,

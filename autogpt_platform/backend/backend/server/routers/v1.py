@@ -9,13 +9,13 @@ import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
-import backend.server.v2.library.db
+import backend.server.v2.library.db as library_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
@@ -51,6 +51,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    ExecuteGraphResponse,
     RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
@@ -130,8 +131,8 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
     output = defaultdict(list)
-    for name, loop_data in obj.execute(data):
-        output[name].append(loop_data)
+    for name, data in obj.execute(data):
+        output[name].append(data)
     return output
 
 
@@ -325,42 +326,18 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
 ) -> graph_db.GraphModel:
-    return await do_create_graph(create_graph, is_template=False, user_id=user_id)
-
-
-async def do_create_graph(
-    create_graph: CreateGraph,
-    is_template: bool,
-    # user_id doesn't have to be annotated like on other endpoints,
-    # because create_graph isn't used directly as an endpoint
-    user_id: str,
-) -> graph_db.GraphModel:
-    if create_graph.graph:
-        graph = graph_db.make_graph_model(create_graph.graph, user_id)
-    elif create_graph.template_id:
-        # Create a new graph from a template
-        graph = await graph_db.get_graph(
-            create_graph.template_id,
-            create_graph.template_version,
-            template=True,
-            user_id=user_id,
-        )
-        if not graph:
-            raise HTTPException(
-                400, detail=f"Template #{create_graph.template_id} not found"
-            )
-        graph.version = 1
-
-    else:
-        raise HTTPException(
-            status_code=400, detail="Either graph or template_id must be provided."
-        )
-
-    graph.is_template = is_template
-    graph.is_active = not is_template
+    graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
+
+    # Create a library agent for the new graph
+    await library_db.create_library_agent(
+        graph.id,
+        graph.version,
+        user_id,
+    )
+
     graph = await on_graph_activate(
         graph,
         get_credentials=lambda id: integration_creds_manager.get(user_id, id),
@@ -410,25 +387,14 @@ async def update_graph(
     latest_version_number = max(g.version for g in existing_versions)
     graph.version = latest_version_number + 1
 
-    try:
-        latest_version_graph = next(
-            v for v in existing_versions if v.version == latest_version_number
-        )
-    except StopIteration:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-
-    try:
-        current_active_version = next(
-            (v for v in existing_versions if v.is_active), None
-        )
-    except StopIteration:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-
+    latest_version_graph = next(
+        v for v in existing_versions if v.version == latest_version_number
+    )
+    current_active_version = next((v for v in existing_versions if v.is_active), None)
     if latest_version_graph.is_template != graph.is_template:
         raise HTTPException(
             400, detail="Changing is_template on an existing graph is forbidden"
         )
-
     graph.is_active = not graph.is_template
     graph = graph_db.make_graph_model(graph, user_id)
     graph.reassign_ids(user_id=user_id)
@@ -436,9 +402,8 @@ async def update_graph(
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
-
         # Keep the library agent up to date with the new active version
-        await backend.server.v2.library.db.update_agent_version_in_library(
+        await library_db.update_agent_version_in_library(
             user_id, graph.id, graph.version
         )
 
@@ -499,7 +464,7 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await backend.server.v2.library.db.update_agent_version_in_library(
+    await library_db.update_agent_version_in_library(
         user_id, new_active_graph.id, new_active_graph.version
     )
 
@@ -512,24 +477,23 @@ async def set_graph_active_version(
 
 
 @v1_router.post(
-    path="/graphs/{graph_id}/execute",
+    path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
 def execute_graph(
     graph_id: str,
-    node_input: dict[Any, Any],
+    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
-) -> dict[str, Any]:  # FIXME: add proper return type
+) -> ExecuteGraphResponse:
     try:
-        logger.info("Node input: %s", node_input)
         graph_exec = execution_manager_client().add_execution(
             graph_id, node_input, user_id=user_id, graph_version=graph_version
         )
-        return {"id": graph_exec.graph_exec_id}
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
     except Exception as e:
-        msg = e.__str__().encode().decode("unicode_escape")
+        msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
 
 
@@ -589,6 +553,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     cron: str
     input_data: dict[Any, Any]
     graph_id: str
+    graph_version: int
 
 
 @v1_router.post(
@@ -600,10 +565,13 @@ async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
 ) -> scheduler.JobInfo:
-    graph = await graph_db.get_graph(schedule.graph_id, user_id=user_id)
+    graph = await graph_db.get_graph(
+        schedule.graph_id, schedule.graph_version, user_id=user_id
+    )
     if not graph:
         raise HTTPException(
-            status_code=404, detail=f"Graph #{schedule.graph_id} not found."
+            status_code=404,
+            detail=f"Graph #{schedule.graph_id} v.{schedule.graph_version} not found.",
         )
 
     return await asyncio.to_thread(
@@ -669,7 +637,7 @@ async def create_api_key(
         )
         return CreateAPIKeyResponse(api_key=api_key, plain_text_key=plain_text)
     except APIKeyError as e:
-        logger.error("Failed to create API key: %s", e)
+        logger.error(f"Failed to create API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -686,7 +654,7 @@ async def get_api_keys(
     try:
         return await list_user_api_keys(user_id)
     except APIKeyError as e:
-        logger.error("Failed to list API keys: %s", e)
+        logger.error(f"Failed to list API keys: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -706,7 +674,7 @@ async def get_api_key(
             raise HTTPException(status_code=404, detail="API key not found")
         return api_key
     except APIKeyError as e:
-        logger.error("Failed to get API key: %s", e)
+        logger.error(f"Failed to get API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -728,7 +696,7 @@ async def delete_api_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error("Failed to revoke API key: %s", e)
+        logger.error(f"Failed to revoke API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -750,7 +718,7 @@ async def suspend_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error("Failed to suspend API key: %s", e)
+        logger.error(f"Failed to suspend API key: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -774,5 +742,5 @@ async def update_permissions(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error("Failed to update API key permissions: %s", e)
+        logger.error(f"Failed to update API key permissions: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))

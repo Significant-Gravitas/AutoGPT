@@ -71,7 +71,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.Edit,
                       text: "Edit profile",
-                      href: "/marketplace/profile",
+                      href: "/profile",
                     },
                   ],
                 },
@@ -80,7 +80,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.LayoutDashboard,
                       text: "Creator Dashboard",
-                      href: "/marketplace/dashboard",
+                      href: "/profile/dashboard",
                     },
                     {
                       icon: IconType.UploadCloud,
@@ -93,7 +93,7 @@ export default async function RootLayout({
                     {
                       icon: IconType.Settings,
                       text: "Settings",
-                      href: "/marketplace/settings",
+                      href: "/profile/settings",
                     },
                   ],
                 },

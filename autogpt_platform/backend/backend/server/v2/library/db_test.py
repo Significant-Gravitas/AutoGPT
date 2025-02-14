@@ -83,6 +83,8 @@ async def test_get_library_agents(mocker):
     assert result.agents[0].description == "Test Description 2"
     assert result.agents[0].agent_id == "agent2"
     assert result.agents[0].agent_version == 1
+    assert result.agents[0].can_access_graph is False
+    assert result.agents[0].is_latest_version is True
     assert result.pagination.total_items == 1
     assert result.pagination.total_pages == 1
     assert result.pagination.current_page == 1

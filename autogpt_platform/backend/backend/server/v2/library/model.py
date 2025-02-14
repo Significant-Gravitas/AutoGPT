@@ -1,19 +1,18 @@
 import datetime
-import enum
-import json
-from typing import Any, Dict, List, Tuple, Union
+from enum import Enum
+from typing import Any
 
 import prisma.enums
 import prisma.models
 import pydantic
 
-import backend.data.block
-import backend.data.graph
-import backend.server.model
+import backend.data.block as block_model
+import backend.data.graph as graph_model
+import backend.server.model as server_model
 
 
-class AgentStatus(str, enum.Enum):
-    """Enumeration for various statuses an agent can have."""
+class AgentStatus(str, Enum):
+    """Various statuses an agent can have."""
 
     COMPLETED = "COMPLETED"  # All runs completed
     HEALTHY = "HEALTHY"  # Agent is running (not all runs have completed)
@@ -22,9 +21,9 @@ class AgentStatus(str, enum.Enum):
 
 
 def _calculate_agent_status(
-    executions: List[prisma.models.AgentGraphExecution],
+    executions: list[prisma.models.AgentGraphExecution],
     recent_threshold: datetime.datetime,
-) -> Tuple[AgentStatus, bool]:
+) -> tuple[AgentStatus, bool]:
     """
     Helper function to determine the overall agent status and whether there
     is new output (i.e., completed runs within the recent threshold).
@@ -81,8 +80,8 @@ class LibraryAgent(pydantic.BaseModel):
     name: str
     description: str
 
-    # The schema of the input for this agent (matches GraphMeta input schema)
-    input_schema: Dict[str, Any]
+    # Made input_schema and output_schema match GraphMeta's type
+    input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
 
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
@@ -109,7 +108,8 @@ class LibraryAgent(pydantic.BaseModel):
         if not agent.Agent:
             raise ValueError("Associated Agent record is required.")
 
-        graph = backend.data.graph.GraphModel.from_db(agent.Agent)
+        graph = graph_model.GraphModel.from_db(agent.Agent)
+
         agent_updated_at = agent.Agent.updatedAt
         lib_agent_updated_at = agent.updatedAt
 
@@ -160,8 +160,8 @@ class LibraryAgent(pydantic.BaseModel):
 class LibraryAgentResponse(pydantic.BaseModel):
     """Response schema for a list of library agents and pagination info."""
 
-    agents: List[LibraryAgent]
-    pagination: backend.server.model.Pagination
+    agents: list[LibraryAgent]
+    pagination: server_model.Pagination
 
 
 class LibraryAgentPreset(pydantic.BaseModel):
@@ -177,14 +177,15 @@ class LibraryAgentPreset(pydantic.BaseModel):
     description: str
 
     is_active: bool
-    inputs: Dict[str, Union[backend.data.block.BlockInput, Any]]
+
+    inputs: block_model.BlockInput
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        """Constructs a LibraryAgentPreset from a Prisma AgentPreset model."""
-        input_data: Dict[str, Any] = {}
-        for data in preset.InputPresets or []:
-            input_data[data.name] = json.loads(data.data)
+        input_data: block_model.BlockInput = {}
+
+        for preset_input in preset.InputPresets or []:
+            input_data[preset_input.name] = preset_input.data
 
         return cls(
             id=preset.id,
@@ -201,8 +202,8 @@ class LibraryAgentPreset(pydantic.BaseModel):
 class LibraryAgentPresetResponse(pydantic.BaseModel):
     """Response schema for a list of agent presets and pagination info."""
 
-    presets: List[LibraryAgentPreset]
-    pagination: backend.server.model.Pagination
+    presets: list[LibraryAgentPreset]
+    pagination: server_model.Pagination
 
 
 class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
@@ -212,20 +213,20 @@ class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
 
     name: str
     description: str
-    inputs: Dict[str, Union[backend.data.block.BlockInput, Any]]
+    inputs: block_model.BlockInput
     agent_id: str
     agent_version: int
     is_active: bool
 
 
-class LibraryAgentFilter(str, enum.Enum):
+class LibraryAgentFilter(str, Enum):
     """Possible filters for searching library agents."""
 
     IS_FAVOURITE = "isFavourite"
     IS_CREATED_BY_USER = "isCreatedByUser"
 
 
-class LibraryAgentSort(str, enum.Enum):
+class LibraryAgentSort(str, Enum):
     """Possible sort options for sorting library agents."""
 
     CREATED_AT = "createdAt"

@@ -1,39 +1,37 @@
 import logging
 from typing import Optional
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
+import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
-import backend.server.model
-import backend.server.v2.library.db
-import backend.server.v2.library.model
-import backend.server.v2.store.exceptions
+import backend.server.v2.library.db as library_db
+import backend.server.v2.library.model as library_model
+import backend.server.v2.store.exceptions as store_exceptions
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/agents",
     tags=["library", "private"],
-    dependencies=[Depends(autogpt_libs.auth.middleware.auth_middleware)],
+    dependencies=[Depends(autogpt_auth_lib.auth_middleware)],
 )
 
 
 @router.get(
     "",
-    response_model=backend.server.v2.library.model.LibraryAgentResponse,
+    response_model=library_model.LibraryAgentResponse,
     responses={
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
 async def get_library_agents(
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
-    sort_by: backend.server.v2.library.model.LibraryAgentSort = Query(
-        backend.server.v2.library.model.LibraryAgentSort.UPDATED_AT,
+    sort_by: library_model.LibraryAgentSort = Query(
+        library_model.LibraryAgentSort.UPDATED_AT,
         description="Sort results by criteria",
     ),
     page: int = Query(
@@ -46,7 +44,7 @@ async def get_library_agents(
         ge=1,
         description="Number of agents per page (must be >= 1)",
     ),
-) -> backend.server.v2.library.model.LibraryAgentResponse:
+) -> library_model.LibraryAgentResponse:
     """
     Get all agents in the user's library (both created and saved).
 
@@ -65,20 +63,19 @@ async def get_library_agents(
         HTTPException: If a server/database error occurs.
     """
     try:
-        # Fetch agents from database with pagination and sorting
-        return await backend.server.v2.library.db.get_library_agents(
+        return await library_db.get_library_agents(
             user_id=user_id,
             search_term=search_term,
             sort_by=sort_by,
             page=page,
             page_size=page_size,
         )
-    except Exception as exc:
-        logger.exception("Exception occurred while getting library agents: %s", exc)
+    except Exception as e:
+        logger.error(f"Could not fetch library agents: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get library agents",
-        ) from exc
+        ) from e
 
 
 @router.post(
@@ -92,7 +89,7 @@ async def get_library_agents(
 )
 async def add_agent_to_library(
     store_listing_version_id: str,
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> JSONResponse:
     """
     Add an agent from the store to the user's library.
@@ -109,7 +106,7 @@ async def add_agent_to_library(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        await backend.server.v2.library.db.add_store_agent_to_library(
+        await library_db.add_store_agent_to_library(
             store_listing_version_id=store_listing_version_id,
             user_id=user_id,
         )
@@ -118,26 +115,24 @@ async def add_agent_to_library(
             content={"message": "Agent added to library successfully"},
         )
 
-    except backend.server.v2.store.exceptions.AgentNotFoundError as exc:
-        logger.exception("Agent not found: %s", store_listing_version_id)
+    except store_exceptions.AgentNotFoundError:
+        logger.warning(f"Agent not found: {store_listing_version_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail=f"Store listing version {store_listing_version_id} not found",
-        ) from exc
-
-    except backend.server.v2.store.exceptions.DatabaseError as exc:
-        logger.exception("Database error while adding agent: %s", exc)
+        )
+    except store_exceptions.DatabaseError as e:
+        logger.error(f"Database error occurred whilst adding agent to library: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add agent to library",
-        ) from exc
-
-    except Exception as exc:
-        logger.exception("Unexpected error while adding agent: %s", exc)
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error while adding agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add agent to library",
-        ) from exc
+        ) from e
 
 
 @router.put(
@@ -150,8 +145,8 @@ async def add_agent_to_library(
 )
 async def update_library_agent(
     library_agent_id: str,
-    payload: backend.server.v2.library.model.LibraryAgentUpdateRequest,
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    payload: library_model.LibraryAgentUpdateRequest,
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> JSONResponse:
     """
     Update the library agent with the given fields.
@@ -168,7 +163,7 @@ async def update_library_agent(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        await backend.server.v2.library.db.update_library_agent(
+        await library_db.update_library_agent(
             library_agent_id=library_agent_id,
             user_id=user_id,
             auto_update_version=payload.auto_update_version,
@@ -180,15 +175,15 @@ async def update_library_agent(
             status_code=status.HTTP_204_NO_CONTENT,
             content={"message": "Agent updated successfully"},
         )
-    except backend.server.v2.store.exceptions.DatabaseError as exc:
-        logger.exception("Database error while updating library agent: %s", exc)
+    except store_exceptions.DatabaseError as e:
+        logger.exception(f"Database error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update library agent",
-        ) from exc
-    except Exception as exc:
-        logger.exception("Unexpected error while updating library agent: %s", exc)
+        ) from e
+    except Exception as e:
+        logger.exception(f"Unexpected error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update library agent",
-        ) from exc
+        ) from e

@@ -1,13 +1,11 @@
 import logging
-from typing import Any, Dict
+from typing import Annotated, Any
 
-import autogpt_libs.auth.depends
-import autogpt_libs.auth.middleware
+import autogpt_libs.auth as autogpt_auth_lib
 import autogpt_libs.utils.cache
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 import backend.executor
-import backend.integrations.creds_manager
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
 import backend.util.service
@@ -15,9 +13,6 @@ import backend.util.service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-integration_creds_manager = (
-    backend.integrations.creds_manager.IntegrationCredentialsManager()
-)
 
 
 @autogpt_libs.utils.cache.thread_cached
@@ -33,7 +28,7 @@ def execution_manager_client() -> backend.executor.ExecutionManager:
     description="Retrieve a paginated list of presets for the current user.",
 )
 async def get_presets(
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
     page: int = 1,
     page_size: int = 10,
 ) -> models.LibraryAgentPresetResponse:
@@ -50,8 +45,8 @@ async def get_presets(
     """
     try:
         return await db.get_presets(user_id, page, page_size)
-    except Exception as exc:
-        logger.exception("Exception occurred while getting presets: %s", exc)
+    except Exception as e:
+        logger.exception(f"Exception occurred while getting presets: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get presets",
@@ -66,7 +61,7 @@ async def get_presets(
 )
 async def get_preset(
     preset_id: str,
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
     Retrieve details for a specific preset by its ID.
@@ -89,8 +84,8 @@ async def get_preset(
                 detail=f"Preset {preset_id} not found",
             )
         return preset
-    except Exception as exc:
-        logger.exception("Exception occurred while getting preset: %s", exc)
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst getting preset: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get preset",
@@ -105,7 +100,7 @@ async def get_preset(
 )
 async def create_preset(
     preset: models.CreateLibraryAgentPresetRequest,
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
     Create a new library agent preset. Automatically corrects node_input format if needed.
@@ -121,13 +116,9 @@ async def create_preset(
         HTTPException: If an error occurs while creating the preset.
     """
     try:
-        if preset.inputs is not None and "node_input" not in preset.inputs:
-            # Ensure the expected 'node_input' key is present
-            preset.inputs["node_input"] = preset.inputs
-
-        return await db.create_or_update_preset(user_id, preset)
-    except Exception as exc:
-        logger.exception("Exception occurred while creating preset: %s", exc)
+        return await db.upsert_preset(user_id, preset)
+    except Exception as e:
+        logger.exception(f"Exception occurred while creating preset: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create preset",
@@ -143,7 +134,7 @@ async def create_preset(
 async def update_preset(
     preset_id: str,
     preset: models.CreateLibraryAgentPresetRequest,
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
     Update an existing library agent preset. If the preset doesn't exist, it may be created.
@@ -160,9 +151,9 @@ async def update_preset(
         HTTPException: If an error occurs while updating the preset.
     """
     try:
-        return await db.create_or_update_preset(user_id, preset, preset_id)
-    except Exception as exc:
-        logger.exception("Exception occurred while updating preset: %s", exc)
+        return await db.upsert_preset(user_id, preset, preset_id)
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst updating preset: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update preset",
@@ -177,7 +168,7 @@ async def update_preset(
 )
 async def delete_preset(
     preset_id: str,
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> None:
     """
     Delete a preset by its ID. Returns 204 No Content on success.
@@ -191,8 +182,8 @@ async def delete_preset(
     """
     try:
         await db.delete_preset(user_id, preset_id)
-    except Exception as exc:
-        logger.exception("Exception occurred while deleting preset: %s", exc)
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst deleting preset: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete preset",
@@ -204,15 +195,14 @@ async def delete_preset(
     tags=["presets"],
     summary="Execute a preset",
     description="Execute a preset with the given graph and node input for the current user.",
-    dependencies=[Depends(autogpt_libs.auth.middleware.auth_middleware)],
 )
 async def execute_preset(
     graph_id: str,
     graph_version: int,
     preset_id: str,
-    node_input: Dict[Any, Any],
-    user_id: str = Depends(autogpt_libs.auth.depends.get_user_id),
-) -> Dict[str, Any]:
+    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> dict[str, Any]:  # FIXME: add proper return type
     """
     Execute a preset given graph parameters, returning the execution ID on success.
 
@@ -237,35 +227,25 @@ async def execute_preset(
                 detail="Preset not found",
             )
 
-        logger.info("Preset inputs: %s", preset.inputs)
-        logger.info("Node input: %s", node_input)
-
-        updated_node_input = node_input.copy()
-        if "node_input" not in updated_node_input:
-            updated_node_input = preset.inputs
-        elif "node_input" in preset.inputs and "node_input" in updated_node_input:
-            # Merge in preset input values
-            for key, value in preset.inputs["node_input"].items():
-                if key not in updated_node_input["node_input"]:
-                    updated_node_input["node_input"][key] = value
-
-        logger.info("Updated node input: %s", updated_node_input)
+        # Merge input overrides with preset inputs
+        merged_node_input = preset.inputs | node_input
 
         execution = execution_manager_client().add_execution(
             graph_id=graph_id,
             graph_version=graph_version,
-            data=updated_node_input,
+            data=merged_node_input,
             user_id=user_id,
             preset_id=preset_id,
         )
-        logger.info("Execution added: %s with input: %s", execution, updated_node_input)
+
+        logger.debug(f"Execution added: {execution} with input: {merged_node_input}")
 
         return {"id": execution.graph_exec_id}
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.exception("Exception occurred while executing preset: %s", exc)
+    except Exception as e:
+        logger.exception(f"Exception occurred while executing preset: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            detail=str(e),
         )

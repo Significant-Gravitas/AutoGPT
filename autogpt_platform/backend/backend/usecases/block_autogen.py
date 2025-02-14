@@ -253,12 +253,14 @@ async def block_autogen_agent():
         test_graph = await create_graph(create_test_graph(), user_id=test_user.id)
         input_data = {"input": "Write me a block that writes a string into a file."}
         response = await server.agent_server.test_execute_graph(
-            test_graph.id, input_data, test_user.id
+            graph_id=test_graph.id,
+            user_id=test_user.id,
+            node_input=input_data,
         )
         print(response)
         result = await wait_execution(
             graph_id=test_graph.id,
-            graph_exec_id=response["id"],
+            graph_exec_id=response.graph_exec_id,
             timeout=1200,
             user_id=test_user.id,
         )
