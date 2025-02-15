@@ -124,7 +124,7 @@ export default function Page() {
 
       setState({ integrations });
     },
-    [state.integrations],
+    [state.integrations, setState],
   );
 
   return (
@@ -151,7 +151,7 @@ export default function Page() {
           Help us grow our integrations
         </OnboardingText>
         <OnboardingText className="my-4">
-          Let us know which partnerships you'd like to see next
+          Let us know which partnerships you&apos;d like to see next
         </OnboardingText>
         <OnboardingInput
           className="mb-4"

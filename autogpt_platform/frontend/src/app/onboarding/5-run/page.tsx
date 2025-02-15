@@ -11,6 +11,7 @@ import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCallback, useState } from "react";
 import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
+import Image from "next/image";
 
 const agents = [
   {
@@ -64,7 +65,7 @@ export default function Page() {
       <div className="flex flex-col">
         <OnboardingText variant="header">Run your first agent</OnboardingText>
         <span className="mt-9 text-base font-normal leading-normal text-zinc-600">
-          A 'run' is when your agent starts working on a task
+          A &apos;run&apos; is when your agent starts working on a task
         </span>
         <span className="mt-4 text-base font-normal leading-normal text-zinc-600">
           Click on <b>New Run</b> below to try it out
@@ -117,9 +118,11 @@ export default function Page() {
 
             <div className="mt-4 flex h-20 rounded-lg bg-violet-50 p-2">
               {/* Left image */}
-              <img
+              <Image
                 src="/placeholder.png"
                 alt="Description"
+                width={350}
+                height={196}
                 className="h-full w-auto rounded-lg object-contain"
               />
 
@@ -160,7 +163,7 @@ export default function Page() {
                 the key information and get started.
               </span>
               <span className="mt-4 text-base font-normal leading-normal text-zinc-600">
-                When you're done, click <b>Run Agent</b>.
+                When you&apos;re done, click <b>Run Agent</b>.
               </span>
               <div className="mt-12 inline-flex w-[492px] flex-col items-start justify-start gap-2 rounded-[20px] border border-zinc-300 bg-white p-6">
                 <OnboardingText className="mb-3 font-semibold" variant="header">

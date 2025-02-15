@@ -48,7 +48,7 @@ export default function Page() {
     <OnboardingStep>
       <OnboardingHeader backHref={"/onboarding/1-welcome"}>
         <OnboardingText className="mt-4" variant="header" center>
-          What's your main reason for using AutoGPT?
+          What&apos;s your main reason for using AutoGPT?
         </OnboardingText>
         <OnboardingText className="mt-1" center>
           Select the option that best matches your needs
