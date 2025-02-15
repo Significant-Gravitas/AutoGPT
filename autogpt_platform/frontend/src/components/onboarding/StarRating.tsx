@@ -18,7 +18,6 @@ export default function StarRating({
   const stars = Array(5)
     .fill(0)
     .map((_, index) => {
-      const starValue = index + 1;
       const difference = roundedRating - index;
 
       if (difference >= 1) {

@@ -9,7 +9,6 @@ import {
 
 type OnboardingState = {
   step: number;
-  prevStep?: number;
   usageReason?: string;
   integrations: string[];
   otherIntegrations?: string;
@@ -50,10 +49,6 @@ export default function OnboardingLayout({
   });
 
   const setState = (newState: Partial<OnboardingState>) => {
-    // Update prevStep if step is being set
-    if (newState.step) {
-      newState.prevStep = state.step;
-    }
     setStateRaw((prev) => ({ ...prev, ...newState }));
   };
 

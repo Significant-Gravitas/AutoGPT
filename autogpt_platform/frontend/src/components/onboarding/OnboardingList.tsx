@@ -46,7 +46,7 @@ export function OnboardingListElement({
             ref={inputRef}
             className={cn(
               selected ? "text-zinc-600" : "text-zinc-400",
-              "font-poppins border-0 bg-[#F5F3FF80] text-sm focus:outline-none",
+              "border-0 bg-[#F5F3FF80] font-poppin text-sm focus:outline-none",
             )}
             placeholder="Please specify"
             value={content}
@@ -95,12 +95,12 @@ type OnboardingListProps = {
   onSelect: (id: string) => void;
 };
 
-const OnboardingList = ({
+function OnboardingList({
   className,
   elements,
   selectedId,
   onSelect,
-}: OnboardingListProps) => {
+}: OnboardingListProps) {
   const isCustom = useCallback(() => {
     return (
       selectedId !== undefined &&
@@ -130,6 +130,6 @@ const OnboardingList = ({
       />
     </div>
   );
-};
+}
 
 export default OnboardingList;

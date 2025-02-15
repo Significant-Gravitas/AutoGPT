@@ -2,13 +2,11 @@ import { useState, useEffect, useRef } from "react";
 
 interface OnboardingProgressProps {
   totalSteps: number;
-  fromStep: number;
   toStep: number;
 }
 
 export default function OnboardingProgress({
   totalSteps,
-  fromStep,
   toStep,
 }: OnboardingProgressProps) {
   const [animatedStep, setAnimatedStep] = useState(toStep - 1);
@@ -31,7 +29,7 @@ export default function OnboardingProgress({
         <div key={index} className="h-2 w-2 rounded-full bg-zinc-400" />
       ))}
 
-      {/* Animated progress indicator - always elongated */}
+      {/* Animated progress indicator */}
       <div
         className={`absolute left-0 h-2 w-7 rounded-full bg-zinc-400 ${
           !isInitialMount.current

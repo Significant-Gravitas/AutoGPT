@@ -4,7 +4,6 @@ import OnboardingBackButton from "./OnboardingBackButton";
 import { cn } from "@/lib/utils";
 import OnboardingProgress from "./OnboardingProgress";
 import { useOnboarding } from "@/app/onboarding/layout";
-import { useRouter } from "next/navigation";
 
 export function OnboardingStep({
   dotted,
@@ -43,11 +42,7 @@ export function OnboardingHeader({
       >
         <div className="flex w-full items-center justify-between px-5 py-4">
           <OnboardingBackButton href={backHref} />
-          <OnboardingProgress
-            totalSteps={5}
-            fromStep={(state.prevStep || 1) - 1}
-            toStep={state.step - 1}
-          />
+          <OnboardingProgress totalSteps={5} toStep={state.step - 1} />
         </div>
         {children}
       </div>

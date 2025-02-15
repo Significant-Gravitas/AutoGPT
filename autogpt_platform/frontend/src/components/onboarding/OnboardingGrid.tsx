@@ -19,7 +19,8 @@ function OnboardingGridElement({
   return (
     <button
       className={cn(
-        "font-poppins relative flex h-[236px] w-[200px] flex-col items-start gap-2 rounded-xl border border-transparent bg-white p-[15px] transition-all duration-200 ease-in-out",
+        "relative flex h-[236px] w-[200px] flex-col items-start gap-2 rounded-xl border border-transparent bg-white p-[15px] font-sans",
+        "transition-all duration-200 ease-in-out",
         selected ? "bg-[#F5F3FF80]" : "hover:border-zinc-400",
       )}
       onClick={onClick}

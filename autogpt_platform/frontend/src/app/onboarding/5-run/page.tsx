@@ -3,16 +3,13 @@ import OnboardingButton from "@/components/onboarding/OnboardingButton";
 import {
   OnboardingStep,
   OnboardingHeader,
-  OnboardingFooter,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import { useOnboarding } from "../layout";
 import StarRating from "@/components/onboarding/StarRating";
-import { FaPlus } from "react-icons/fa";
-import { Play, Plus, PlusIcon } from "lucide-react";
+import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCallback, useState } from "react";
-import OnboardingInput from "@/components/onboarding/OnboardingInput";
 import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
 
 const agents = [
@@ -89,7 +86,7 @@ export default function Page() {
             viewBox="0 0 32 32"
             xmlns="http://www.w3.org/2000/svg"
           >
-            <g stroke="#6d28d9" stroke-width="1.2" stroke-linecap="round">
+            <g stroke="#6d28d9" strokeWidth="1.2" strokeLinecap="round">
               <line x1="16" y1="8" x2="16" y2="24" />
               <line x1="8" y1="16" x2="24" y2="16" />
             </g>

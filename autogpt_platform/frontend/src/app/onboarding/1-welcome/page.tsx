@@ -20,9 +20,9 @@ export default function Page() {
         Welcome to AutoGPT
       </OnboardingText>
       <OnboardingText className="mb-12" center>
-        Think of AutoGPT as your digital teammate, working intelligently to{" "}
+        Think of AutoGPT as your digital teammate, working intelligently to
         <br />
-        complete tasks based on your directions. Let's learn a bit about you to{" "}
+        complete tasks based on your directions. Let's learn a bit about you to
         <br />
         tailor your experience.
       </OnboardingText>
